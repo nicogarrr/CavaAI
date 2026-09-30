@@ -1457,6 +1457,17 @@ def dispatch_tracked_news_alerts(tenant_id: int | None = None, user_id: str | No
         db.close()
 
 
+def _gdelt_company_query(company) -> str:
+    """Consulta GDELT por empresa.
+
+    La API DOC 2.0 exige que los terminos con OR vayan entre parentesis;
+    sin ellos rechaza la peticion ("Queries containing OR'd terms must be
+    surrounded by ().") y el carril de noticias de empresa ingiere cero
+    eventos (fallo silencioso: el error viaja en ConnectorResult.errors).
+    """
+    return f'("{company.name}" OR {company.ticker})'
+
+
 @dramatiq.actor(max_retries=2, min_backoff=15_000, queue_name=GDELT_QUEUE_NAME)
 @_coalesce_on_success(
     "refresh_news",
@@ -1486,7 +1497,7 @@ def refresh_news(
             )
             for company in companies:
                 try:
-                    query = f'"{company.name}" OR {company.ticker}'
+                    query = _gdelt_company_query(company)
                     result = _run(
                         service.poll_gdelt(
                             query,
