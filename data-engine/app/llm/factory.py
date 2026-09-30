@@ -42,6 +42,12 @@ def create_llm_provider(
         extra_headers={"x-opencode-session": settings.opencode_go_session},
         model_overrides=settings.llm_model_overrides,
         fallback_model=settings.opencode_go_fallback_model,
+        reasoning_effort=settings.opencode_go_reasoning_effort,
+        reasoning_effort_models={
+            model.strip()
+            for model in settings.opencode_go_reasoning_effort_models.split(",")
+            if model.strip()
+        },
         client=client,
         timeout_seconds=settings.llm_timeout_seconds,
         max_retries=settings.llm_max_retries,
