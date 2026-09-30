@@ -144,9 +144,16 @@ class ThesisGraphApprovalService:
         notes: str | None = None,
         actor: str = "user",
         idempotency_key: str | None = None,
+        tenant_external_id: str | None = None,
     ) -> dict[str, Any]:
         if decision not in DECISIONS:
             raise ValueError(f"decision must be one of {DECISIONS}")
+        if tenant_external_id is not None and not thread_id.startswith(
+            f"thesis:{tenant_external_id}:"
+        ):
+            # Thread belongs to another tenant (or is forged): never touch its
+            # checkpoint and do not reveal that it exists.
+            return {"thread_id": thread_id, "status": "unknown_thread"}
 
         envelope = begin_run(
             db,
