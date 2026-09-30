@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+from urllib.parse import urlsplit
 
 from sqlalchemy.orm import Session
 
@@ -47,6 +48,42 @@ _OUTPUT_SCHEMA = {
 }
 
 
+
+def _source_locator(item: dict) -> str:
+    url = item.get("url")
+    if isinstance(url, str):
+        try:
+            parsed = urlsplit(url)
+            if parsed.scheme in ("https", "http") and parsed.hostname and not parsed.username and not parsed.password:
+                return url
+        except ValueError:
+            pass
+    if item.get("document_id") is not None and item.get("chunk_id") is not None:
+        return f"documento {item['document_id']}, chunk {item['chunk_id']}"
+    return "URL no disponible"
+
+
+def evidence_sections(filing_items: list[dict], rag_context: list[dict]) -> dict[str, dict]:
+    sections = {}
+    filings = [
+        f"Filing {item.get('form') or 'formulario no disponible'}, "
+        f"fecha {item.get('filing_date') or 'no disponible'}. Fuente: {_source_locator(item)}. "
+        "Su disponibilidad no implica verificacion de su contenido."
+        for item in filing_items[:3]
+    ]
+    if filings:
+        sections["filings"] = {"titulo": "Filings disponibles", "parrafos": filings}
+    paragraphs = [
+        f"Extracto documental (no verificado): {item.get('title') or 'Sin titulo'}. "
+        f"Fuente: {_source_locator(item)}. Documento {item.get('document_id')}, "
+        f"chunk {item.get('chunk_id')}: {item.get('text', '')}"
+        for item in rag_context[:3]
+    ]
+    if not paragraphs:
+        paragraphs = ["Sin contexto RAG recuperado para esta empresa y este tenant; no se ha inventado ni sustituido por conocimiento del modelo."]
+    sections["contexto_rag"] = {"titulo": "Contexto documental recuperado", "parrafos": paragraphs}
+    return sections
+
 def _fragment_templates(
     company: Company,
     valuation: dict,
@@ -61,15 +98,14 @@ def _fragment_templates(
     if status == "insufficient_data":
         missing = missing or "datos financieros basicos"
         fragments["caveat_insufficient"] = (
-            f"Tesis de {company.ticker} no publicable todavia: faltan {missing}; "
+            f"Tesis provisional de {company.ticker}: faltan {missing}; "
             "ningun valor justo debe considerarse fiable hasta completar las fuentes."
         )
-        return fragments
 
     price = valuation.get("current_price")
     base = valuation.get("base_value")
     mos = valuation.get("margin_of_safety")
-    if price is not None and base is not None and mos is not None:
+    if status != "insufficient_data" and price is not None and base is not None and mos is not None:
         # MoS = base/price - 1 (valuation/engines/base.py): se nombra
         # explicitamente. Describirlo como distancia precio/base usaria el
         # denominador equivocado.
@@ -78,7 +114,7 @@ def _fragment_templates(
             f"base de {base:.2f} {currency} (margen de seguridad del {mos:.0%})."
         )
     growth = (valuation.get("reverse_dcf") or {}).get("required_revenue_growth")
-    if growth is not None:
+    if status != "insufficient_data" and growth is not None:
         # Es el crecimiento IMPLICITO del modelo con sus supuestos, no una
         # expectativa observada del mercado: la atribucion va al DCF inverso.
         fragments["expectativas_mercado"] = (
@@ -112,6 +148,8 @@ def _fragment_templates(
             )
         else:
             fragments[f"titular_{index}"] = f'{source} publico "{headline}".'
+        citation = _source_locator(item)
+        fragments[f"titular_{index}"] += f" Fuente: {citation}."
         headline_count += 1
     if headline_count:
         fragments["caveat_titulares"] = (
@@ -302,7 +340,7 @@ _SECTIONS_OUTPUT_SCHEMA = {
         "section_ids": {
             "type": "array",
             "minItems": 1,
-            "maxItems": 6,
+            "maxItems": 8,
             "items": {"type": "string"},
         }
     },
@@ -326,6 +364,8 @@ def _section_templates(
     valuation: dict,
     hypothesis: str | None,
     news_items: list[dict],
+    filing_items: list[dict] | None = None,
+    rag_context: list[dict] | None = None,
 ) -> dict[str, dict]:
     """Secciones pre-aprobadas con parrafos de slots ya rellenados.
 
@@ -431,6 +471,8 @@ def _section_templates(
             "parrafos": preguntas[:6],
         }
 
+    if filing_items is not None or rag_context is not None:
+        sections.update(evidence_sections(filing_items or [], rag_context or []))
     return sections
 
 
@@ -446,6 +488,7 @@ def _mandatory_section_ids(sections: dict[str, dict]) -> set[str]:
         mandatory.add("lo_que_sabemos")
     if "no_sabemos" in sections:
         mandatory.add("no_sabemos")
+    mandatory.update(sid for sid in ("lo_que_cambio", "filings", "contexto_rag") if sid in sections)
     return mandatory
 
 
@@ -521,6 +564,8 @@ def maybe_narrative_sections(
     news_items: list[dict] | None,
     *,
     provider=None,
+    filing_items: list[dict] | None = None,
+    rag_context: list[dict] | None = None,
 ) -> list[dict] | None:
     """Analisis narrativo por secciones, o None (fail-closed).
 
@@ -532,7 +577,9 @@ def maybe_narrative_sections(
     """
     if os.getenv("THESIS_NARRATIVE_LLM_ENABLED") != "1":
         return None
-    sections = _section_templates(company, valuation, hypothesis, list(news_items or []))
+    sections = _section_templates(
+        company, valuation, hypothesis, list(news_items or []), filing_items, rag_context
+    )
     if not sections:
         return None
     if "lo_que_sabemos" not in sections:
