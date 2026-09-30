@@ -1256,3 +1256,29 @@ export async function runResearchWorkflow(name: string, ticker?: string): Promis
   if (ticker) revalidatePath(`/research/${ticker.toUpperCase()}`);
   return result;
 }
+
+export async function submitThesisHumanInput(ticker: string, formData: FormData) {
+  const normalizedTicker = ticker.toUpperCase().trim();
+  const driverKey = String(formData.get('driver_key') ?? '').trim();
+  const source = String(formData.get('source') ?? '').trim();
+  const rationale = String(formData.get('rationale') ?? '').trim();
+  const scenario = String(formData.get('scenario') ?? 'base');
+  const rawYear = String(formData.get('fiscal_year') ?? '').trim();
+  const rawValue = String(formData.get('value') ?? '').trim();
+  const year = Number(rawYear);
+  if (!driverKey || driverKey.length > 160 || !source || source.length > 240 || !rationale || rationale.length > 5000) {
+    throw new ValidationError('Indica el driver, la fuente y la justificación.', 'inputs');
+  }
+  if (!['bear', 'base', 'bull'].includes(scenario) || !rawYear || !Number.isInteger(year) || year < 1900 || year > 2200) {
+    throw new ValidationError('Indica un escenario y ejercicio fiscal válidos.', 'inputs');
+  }
+  if (!rawValue || !Number.isFinite(Number(rawValue))) {
+    throw new ValidationError('Indica un valor numérico finito en la unidad del driver.', 'value');
+  }
+  await researchRequest(`/api/thesis/${encodeURIComponent(normalizedTicker)}/inputs`, {
+    method: 'POST',
+    body: JSON.stringify({ inputs: [{ driver_key: driverKey, fiscal_year: year, scenario, value: rawValue, source, rationale }] }),
+  });
+  // Saving a human assumption never silently triggers thesis generation.
+  revalidatePath(`/research/${normalizedTicker}`);
+}
