@@ -6326,6 +6326,21 @@
             ],
             "title": "Input Fingerprint"
           },
+          "inputs_provenance": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inputs Provenance"
+          },
           "invalidation_criteria": {
             "anyOf": [
               {

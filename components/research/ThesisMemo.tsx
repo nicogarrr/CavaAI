@@ -39,6 +39,22 @@ function enumLabel(map: Record<string, string>, value: string | null | undefined
   return map[value] ?? value.replaceAll('_', ' ');
 }
 
+const PROVENANCE_BADGES: Record<string, { label: string; className: string }> = {
+  dato: { label: 'dato', className: 'border-teal-800 bg-teal-950/40 text-teal-300' },
+  derivado: { label: 'derivado', className: 'border-sky-800 bg-sky-950/40 text-sky-300' },
+  estimacion_llm: { label: 'estimación LLM', className: 'border-amber-800 bg-amber-950/40 text-amber-300' },
+  supuesto: { label: 'supuesto', className: 'border-gray-700 bg-gray-900/60 text-gray-300' },
+};
+
+function provenanceValue(value: number | string | null): string {
+  if (value === null || value === undefined) return NA;
+  const parsed = typeof value === 'string' ? Number(value) : value;
+  if (typeof parsed === 'number' && !Number.isNaN(parsed)) {
+    return Math.abs(parsed) < 1 && parsed !== 0 ? pct(parsed) : String(parsed);
+  }
+  return String(value);
+}
+
 function money(value: number | string | null | undefined): string {
   const parsed = typeof value === 'string' ? Number(value) : value;
   if (parsed === null || parsed === undefined || Number.isNaN(parsed)) return NA;
@@ -170,6 +186,33 @@ export default function ThesisMemo({
               <li key={item}>{item}</li>
             ))}
           </ul>
+        </section>
+      ) : null}
+
+      {thesis.inputs_provenance && thesis.inputs_provenance.length > 0 ? (
+        <section className="rounded-lg border border-gray-800 p-4">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+            Procedencia de los inputs
+          </h3>
+          <div className="mt-2 space-y-1.5">
+            {thesis.inputs_provenance.map((item) => {
+              const badge = PROVENANCE_BADGES[item.label] ?? PROVENANCE_BADGES.supuesto;
+              return (
+                <div key={item.key} className="flex flex-wrap items-baseline gap-x-2 text-sm">
+                  <span
+                    className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${badge.className}`}
+                  >
+                    {badge.label}
+                  </span>
+                  <span className="font-medium text-gray-200">{item.key}</span>
+                  <span className="text-gray-400">{provenanceValue(item.value)}</span>
+                  {item.method ? (
+                    <span className="text-xs text-gray-500">· {item.method}</span>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
         </section>
       ) : null}
 

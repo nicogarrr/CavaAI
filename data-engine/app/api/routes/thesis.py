@@ -25,7 +25,7 @@ from app.services.thesis_epub_service import (
 )
 from app.services.thesis_graph_service import ThesisGraphService
 from app.services.thesis_memo import build_memo_markdown
-from app.services.thesis_service import ThesisService, latest_missing_inputs
+from app.services.thesis_service import ThesisService, latest_inputs_provenance, latest_missing_inputs
 
 router = APIRouter()
 
@@ -65,6 +65,7 @@ def generate_thesis(payload: ThesisGenerateRequest, db: Session = Depends(get_db
         raise _safe_generate_error(exc) from exc
     out = ThesisOut.model_validate(thesis).model_dump()
     out["missing_inputs"] = latest_missing_inputs(db, thesis.company_id)
+    out["inputs_provenance"] = latest_inputs_provenance(db, thesis.company_id)
     return out
 
 
@@ -170,6 +171,7 @@ def latest_thesis(ticker: str, db: Session = Depends(get_db)) -> dict:
     payload["stale"] = stale
     payload["latest_data_at"] = latest_data_at
     payload["missing_inputs"] = latest_missing_inputs(db, thesis.company_id)
+    payload["inputs_provenance"] = latest_inputs_provenance(db, thesis.company_id)
     return payload
 
 

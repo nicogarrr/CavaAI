@@ -216,6 +216,17 @@ export type ResearchThesis = {
   /** Human-in-the-loop: inputs que faltan para completar la tesis (nunca se
    *  inventan; la app los pide). null = sin informacion. */
   missing_inputs?: string[] | null;
+  /** Procedencia de cada input del modelo: dato (cita) / derivado (formula +
+   *  inputs) / estimacion_llm (metodo + confianza) / supuesto (rationale). */
+  inputs_provenance?: Array<{
+    key: string;
+    label: 'dato' | 'derivado' | 'estimacion_llm' | 'supuesto';
+    value: number | string | null;
+    unit?: string | null;
+    method?: string | null;
+    source_fact_ids?: number[];
+    confidence?: number | null;
+  }> | null;
   stale?: boolean;
   latest_data_at?: string | null;
   created_at: string;
