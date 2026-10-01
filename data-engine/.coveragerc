@@ -1,0 +1,114 @@
+# Configuracion de medicion de cobertura para data-engine.
+#
+# NO se anade --cov a [tool.pytest.ini_options] addopts a proposito:
+# `python -m pytest` a secas es lo que ejecuta ci.yml, CONTRIBUTING y las
+# plantillas de PR, y follow/foreach. Meter pytest-cov en addopts haria que
+# esos comandos exploten con "unrecognized arguments" en cualquier entorno que
+# no tenga pytest-cov instalado. La medicion es opt-in via
+# `python scripts/run_coverage_gate.py`, que es el unico que pasa --cov.
+#
+# Umbrales:
+#   - global: `fail_under` en [report] (se.compare). Quien quiera el bloqueo
+#     rapido puede usar `coverage report --fail-under=N` sin correr los tests.
+#   - por paquete: data-engine/coverage_baseline.json, aplicado por
+#     scripts/run_coverage_gate.py con regla de ratchet (caida maxima por
+#     paquete). El baseline es la medicion real, nunca un objetivo optimista.
+
+[run]
+# Que se mide. Todo lo demas queda fuera por construccion:
+#   evals/      -> harness de evaluacion, no producto (y lo comparten otros
+#                  agentes en paralelo; medirlo haria el gate fragil).
+#   tests/      -> los propios tests no se auto-cubren.
+#   scripts/    -> utileria de repo (sync_requirements.py, etc.), no producto.
+#   modules/    -> compatibilidad heredada, no importada por app/.
+#   quantstats/ -> third-party vendorizado, no codigo de CavaAI.
+#   alembic/    -> SI se mide: las migraciones son esquema de producto, no
+#                  harness. Ojo con el numero: los tests lanzan `python -m
+#                  alembic upgrade head` en SUBPROCESO (tests/test_migrations.py,
+#                  test_0030_*, test_0017_*, test_tenant_scoped_uniques.py) y
+#                  coverage no instrumenta subprocesos, asi que el tanto por
+#                  tanto de alembic mide solo lo que se importa en proceso
+#                  (p.ej. test_market_context.py) mas el 0% explicito de las
+#                  migraciones que solo se ejercitan en subproceso. Se reporta
+#                  igual: omitirlo esconderia codigo nuevo sin probar.
+#
+# `main.py` NO se mide, a pesar de ser producto y de que ~40 tests lo importan.
+# Motivo tecnico medido, no criterioesthetic: en cuanto `source` incluye un
+# modulo (`main.py`) junto a cualquier entrada en `omit`, coverage resuelve el
+# source con `import main` durante su arranque, lo que arrastra
+# app.services.rag -> qdrant_client -> numpy. numpy queda registrado a medias en
+# sys.modules y el primer import de los tests vuelve a ejecutar el init de la
+# extension `numpy._core._multiarray_umath`, que CPython rechaza con
+# "ImportError: cannot load module more than once per process". Reproducible
+# 3/3 con main.py, 0/3 sin el. Consecuencia aceptada: 230 lineas de entrypoint
+# quedan fuera de la cifra gateada. Ver COVERAGE.md.
+source =
+    app
+    alembic
+
+branch = True
+# Rutas relativas a la raiz del repo para que el informe sea reproducible
+# entre maquinas, worktrees y runners de CI (si no, las rutas absolutas
+# cambian el informe en cada checkout y diff_report se vuelve inutil).
+relative_files = True
+parallel = False
+data_file = htmlcov/.coverage
+
+omit =
+    */__pycache__/*
+    */site-packages/*
+    app/__init__.py
+    alembic/__init__.py
+    alembic/script.py.mako
+    # Plantilla de Alembic, no Python ejecutable.
+    alembic/README
+
+[report]
+# Suelo global, redondeado ABAJO desde la linea base real (81.49% -> 81).
+# Es la segunda red: `coverage report` y `pytest --cov` fallan solos por debajo
+# de 81, sin necesidad del baseline. La red principal (ratchet por paquete con
+# el nombre del paquete y los puntos) es scripts/run_coverage_gate.py.
+# Sube solo, junto con la linea base; relajarlo a mano sin tocar
+# coverage_baseline.json deja las dos redes discrepantes.
+#
+# OJO: 81.49% es el numero con ramas (sentencias 83.39% + ramas 74.86%
+# combinadas), que es el mismo que publica coverage.py. El 83.39% de solo
+# sentencias es mas alto y menos honesto: pagamos branch=True para no gatear las
+# ramas seria tirar el dinero.
+fail_under = 81
+show_missing = True
+skip_covered = False
+# Los numeros por paquete los imprime el gate, no coverage: asi el informe
+# de consola y el JSON que consume CI son el mismo numero.
+precision = 2
+ignore_errors = False
+
+# CRITICO, no es cosmetico. coverage.files.find_python_files() hace os.walk y
+# PODA cualquier subdirectorio sin __init__.py ("si no es importable, ni sus
+# ficheros lo son"). Sin esto, los ficheros NUNCA importados de esas carpetas
+# desaparecen en silencio del denominador: aqui arrastraba a app/core, app/data y
+# alembic/versions (46 migraciones), y costaba 0 puntos sin que nadie lo notase.
+# Peor: anadir codigo nuevo sin tests en una de esas carpetas no moveria el
+# numero, que es justo lo que este gate tiene que cazar.
+# OJO: es opcion de [report], no de [run] (coverage.config la declara como
+# "report:include_namespace_packages"); en [run] coverage la ignora en silencio.
+include_namespace_packages = True
+
+# Estandar de la industria. Todo lo listado aqui es codigo que NO se puede
+# ejecutar de forma significativa en un test unitario, no codigo sin cubrir.
+exclude_lines =
+    # Marca explicita del autor: "esta linea no se cubre y no se debe cubrir".
+    # Se acepta a proposito, pero cada uso es un punto ciego declarado.
+    \#\s*pragma:\s*no\s*cover
+    # Guardas de tipos: solo existen para type-checkers, en runtime es False.
+    if TYPE_CHECKING:
+    # Sobrecargas: los cuerpos son deliberadamente `...`.
+    @overload
+    # Metodos de interfaz que la subclase implementa.
+    raise NotImplementedError
+    # Bloque `if __name__ == "__main__":` (smoke manual, no suite).
+    if __name__ == .__main__.:
+    # Imports opcionales: si la dependencia no esta, el ImportError es la
+    # rama de degradacion soportada, no un hueco de test. Cubre tanto
+    # `except ImportError:` como `except (ImportError, ModuleNotFoundError):`.
+    except \(ImportError, ModuleNotFoundError\)
