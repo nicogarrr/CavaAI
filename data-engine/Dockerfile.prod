@@ -30,7 +30,7 @@ COPY requirements.txt .
 # 2) requirements: sentence-transformers vera torch ya satisfecho.
 # Pin sincronizado con requirements.txt (TORCH_CPU_PIN en
 # data-engine/scripts/sync_requirements.py).
-RUN pip install torch==2.9.1+cpu --index-url https://download.pytorch.org/whl/cpu \
+RUN pip install torch==2.14.1+cpu --index-url https://download.pytorch.org/whl/cpu \
     && pip install -r requirements.txt
 
 # Modelo de embeddings descargado en build en /opt/hf (legible por el usuario
