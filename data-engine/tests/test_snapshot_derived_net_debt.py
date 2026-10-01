@@ -99,8 +99,8 @@ def test_derived_fact_is_safe_for_downstream_consumers(db):
 
 def test_derived_net_debt_carries_shared_source_or_none(db):
     """Sin source_id el auditor marca el claim material como no soportado."""
-    from app.services.thesis_service import ThesisService
     from app.services.source_auditor import SourceAuditor
+    from app.services.thesis_service import ThesisService
 
     c = _company(db)
     _fact(db, c, "revenue", 70_918_000)
