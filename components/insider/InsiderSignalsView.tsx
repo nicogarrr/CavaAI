@@ -14,7 +14,7 @@ import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, Tabl
 import { formatRecordValue, type DataRecord } from '@/components/data/RecordViews';
 import type { InsiderFilingsResult, InsiderSignalsResult } from '@/lib/actions/insider.actions';
 import { getInsiderSignals } from '@/lib/actions/insider.actions';
-import { analyzedCountCopy, degradedCopy } from '@/lib/insider-status-copy';
+import { analyzedCountCopy, degradedCopy, durableReadCopy } from '@/lib/insider-status-copy';
 import { toast } from 'sonner';
 
 interface InsiderSignalsViewProps {
@@ -123,6 +123,12 @@ export default function InsiderSignalsView({ initialTicker, initialResult, initi
         ? (initialResult.signals as DataRecord[])
         : [];
 
+    // Copy de la lectura durable degradada, resuelto una vez: el `reason` del
+    // backend es el nombre de la excepción (`OperationalError`), opaco a pelo.
+    const durable = initialFilings && initialFilings.status !== 'ok'
+        ? durableReadCopy(initialFilings)
+        : null;
+
     return (
         <div className="grid w-full min-w-0 grid-cols-1 gap-6">
             <Card className="rounded-lg border border-gray-700 bg-gray-800/50">
@@ -164,14 +170,26 @@ export default function InsiderSignalsView({ initialTicker, initialResult, initi
                             Lectura parcial: una de las fuentes no respondió. Reintenta la búsqueda.
                         </span>
                     ) : null}
-                    <Badge
-                        variant={initialFilings && initialFilings.status === 'ok' ? 'default' : 'outline'}
-                    >
-                        Monitor cada 15 min · {countText(initialFilings?.count ?? 0)} filings persistidos
-                    </Badge>
-                    {initialFilings && initialFilings.status !== 'ok' ? (
-                        <span className="text-xs text-amber-300">
-                            lectura durable no disponible ({formatRecordValue(initialFilings.reason ?? initialFilings.status)})
+                    {/* El `count` de la lectura durable solo es un recuento si el
+                        status es `ok`: con cualquier otro estado es un cero de
+                        «no se pudo leer» y no debe mostrarse como número. */}
+                    {initialFilings && initialFilings.status === 'ok' ? (
+                        <Badge variant="default">
+                            Monitor cada 15 min · {countText(initialFilings.count)} filings persistidos
+                        </Badge>
+                    ) : (
+                        <Badge variant="outline" className="border-amber-700 text-amber-300">
+                            Monitor cada 15 min · número de filings persistidos desconocido
+                        </Badge>
+                    )}
+                    {durable ? (
+                        <span className="max-w-xl text-xs leading-5 text-amber-300">
+                            {durable.header}
+                            {durable.detail ? (
+                                <span className="block text-amber-300/80">
+                                    Detalle técnico: {durable.detail}
+                                </span>
+                            ) : null}
                         </span>
                     ) : null}
                     {/* El efecto real es una evaluacion inmediata de una sola
