@@ -187,6 +187,13 @@ class FinancialSnapshotBuilder:
             unit=debt.unit,
             source_type="DERIVED",
             is_reported=False,
+            is_adjusted=False,
+            # Column defaults only apply on INSERT; this fact is transient, so
+            # every attribute downstream code reads must be set explicitly.
+            confidence=min(
+                Decimal(str(debt.confidence if debt.confidence is not None else "0.8")),
+                Decimal(str(cash.confidence if cash.confidence is not None else "0.8")),
+            ),
         )
         snapshot.facts["net_debt"] = derived
         snapshot.balance_sheet = debt.period
