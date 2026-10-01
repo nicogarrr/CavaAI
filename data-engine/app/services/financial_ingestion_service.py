@@ -191,6 +191,22 @@ ESEF_SUPERSET_CONCEPTS: dict[str, list[str]] = {
     ],
 }
 
+# Metricas que la via FMP combina entre si (FCF = OCF + capex, margen = FCF /
+# revenue, net debt = deuda - caja). Se indexan por (metrica, fiscal_year) en
+# una sola lectura: cada par se resuelve dentro de SU ano, nunca tomando el
+# "ultimo" de cada metrica por separado.
+DERIVED_PAIR_METRICS: tuple[str, ...] = (
+    "revenue",
+    "operating_cash_flow",
+    "capital_expenditure",
+    "free_cash_flow",
+    "fcf_margin",
+    "total_debt",
+    "cash_and_equivalents",
+    "net_debt",
+    "revenue_growth",
+)
+
 
 def _decimal(value: Any) -> Decimal | None:
     if value is None or value == "":
@@ -1800,74 +1816,120 @@ class FinancialIngestionService:
         return count
 
     def _add_derived_facts(self, db: Session, company: Company, document: Document) -> int:
-        revenue_facts = list(
-            db.scalars(
-                select(FinancialFact)
-                .where(FinancialFact.company_id == company.id, FinancialFact.metric == "revenue")
-                .order_by(FinancialFact.fiscal_year.desc().nullslast())
-                .limit(2)
+        """Derivadas FMP ancladas a un unico ejercicio por par de componentes.
+
+        Resolver cada metrica con ``latest_fact`` y despues combinarlas mezclaba
+        ejercicios: OCF de FY2024 con capex de FY2025, o deuda de un ano contra
+        caja del siguiente. Una deuda neta asi fabricada entra en el puente de
+        equity del DCF (EV - net_debt) como valor que no consta en ningun
+        Balance, y el margen sale de un FCF de un ano dividido por revenue de
+        otro. Aqui cada par se resuelve dentro de su mismo ``fiscal_year`` (el
+        criterio de _derive_sec_metrics) y, si a ese ano le falta uno de sus
+        dos componentes, no se persiste nada: la ausencia es el estado honesto
+        y el motor DCF ya la trata como ``missing`` en vez de estimar.
+        """
+
+        def ownership(fact: FinancialFact) -> tuple[int, int]:
+            """Misma prioridad que latest_fact: la fuente mas autoritativa gana
+            el (metrica, ano) y, a igualdad de fuente, la fila ya persistida."""
+            return (SOURCE_PRIORITY.get(fact.source_type or "", 50), fact.id)
+
+        by_metric: dict[str, dict[int, FinancialFact]] = {}
+        for fact in db.scalars(
+            select(FinancialFact).where(
+                FinancialFact.company_id == company.id,
+                FinancialFact.metric.in_(DERIVED_PAIR_METRICS),
             )
-        )
+        ):
+            if fact.fiscal_year is None:
+                continue
+            current = by_metric.setdefault(fact.metric, {}).get(fact.fiscal_year)
+            if current is None or ownership(fact) < ownership(current):
+                by_metric[fact.metric][fact.fiscal_year] = fact
+
+        def year_fact(metric: str, year: int) -> FinancialFact | None:
+            return by_metric.get(metric, {}).get(year)
+
+        def already_derived(metric: str, year: int) -> bool:
+            return year_fact(metric, year) is not None
+
         count = 0
-        latest_revenue = revenue_facts[0] if revenue_facts else None
-        prior_revenue = revenue_facts[1] if len(revenue_facts) > 1 else None
-        latest_fcf = self.latest_fact(db, company, "free_cash_flow")
-        operating_cash_flow = self.latest_fact(db, company, "operating_cash_flow")
-        capex = self.latest_fact(db, company, "capital_expenditure")
-        total_debt = self.latest_fact(db, company, "total_debt")
-        cash = self.latest_fact(db, company, "cash_and_equivalents")
-
-        if not latest_fcf and operating_cash_flow and capex:
-            count += self._add_derived_fact(
-                db,
-                company,
-                document,
-                "free_cash_flow",
-                operating_cash_flow.value + capex.value,
-                "USD",
-                operating_cash_flow.period,
-                operating_cash_flow.fiscal_year,
-                operating_cash_flow.fiscal_quarter,
-            )
-            db.flush()
-            latest_fcf = self.latest_fact(db, company, "free_cash_flow")
-
-        if latest_revenue and latest_fcf and latest_revenue.value:
-            count += self._add_derived_fact(
-                db,
-                company,
-                document,
-                "fcf_margin",
-                latest_fcf.value / latest_revenue.value,
-                "decimal",
-                latest_revenue.period,
-                latest_revenue.fiscal_year,
-                latest_revenue.fiscal_quarter,
-            )
-        if latest_revenue and prior_revenue and prior_revenue.value:
-            count += self._add_derived_fact(
-                db,
-                company,
-                document,
-                "revenue_growth",
-                latest_revenue.value / prior_revenue.value - Decimal("1"),
-                "decimal",
-                latest_revenue.period,
-                latest_revenue.fiscal_year,
-                latest_revenue.fiscal_quarter,
-            )
-        if total_debt and cash and not self.latest_fact(db, company, "net_debt"):
-            count += self._add_derived_fact(
-                db,
-                company,
-                document,
-                "net_debt",
-                total_debt.value - cash.value,
-                "USD",
-                total_debt.period,
-                total_debt.fiscal_year,
-                total_debt.fiscal_quarter,
-            )
+        years = sorted({year for metric_facts in by_metric.values() for year in metric_facts})
+        for year in years:
+            revenue = year_fact("revenue", year)
+            fcf = year_fact("free_cash_flow", year)
+            if fcf is None:
+                ocf = year_fact("operating_cash_flow", year)
+                capex = year_fact("capital_expenditure", year)
+                if ocf is not None and capex is not None:
+                    fcf = self._add_derived_fact(
+                        db,
+                        company,
+                        document,
+                        "free_cash_flow",
+                        ocf.value + capex.value,
+                        "USD",
+                        ocf.period,
+                        year,
+                        ocf.fiscal_quarter,
+                    )
+                    count += 1
+            if (
+                fcf is not None
+                and revenue is not None
+                and revenue.value > 0
+                and not already_derived("fcf_margin", year)
+            ):
+                count += 1
+                self._add_derived_fact(
+                    db,
+                    company,
+                    document,
+                    "fcf_margin",
+                    fcf.value / revenue.value,
+                    "decimal",
+                    revenue.period,
+                    year,
+                    revenue.fiscal_quarter,
+                )
+            # El crecimiento se ancla al ano anterior EXACTO: comparar con el
+            # ultimo revenue ingested (puede ser el de hace dos ejercicios) y
+            # etiquetarlo FY<este> seria enunciar un dato que no existe.
+            previous_revenue = year_fact("revenue", year - 1)
+            if (
+                revenue is not None
+                and previous_revenue is not None
+                and previous_revenue.value > 0
+                and not already_derived("revenue_growth", year)
+            ):
+                count += 1
+                self._add_derived_fact(
+                    db,
+                    company,
+                    document,
+                    "revenue_growth",
+                    revenue.value / previous_revenue.value - Decimal("1"),
+                    "decimal",
+                    revenue.period,
+                    year,
+                    revenue.fiscal_quarter,
+                )
+            debt = year_fact("total_debt", year)
+            cash = year_fact("cash_and_equivalents", year)
+            if debt is not None and cash is not None and not already_derived("net_debt", year):
+                count += 1
+                self._add_derived_fact(
+                    db,
+                    company,
+                    document,
+                    "net_debt",
+                    debt.value - cash.value,
+                    "USD",
+                    debt.period,
+                    year,
+                    debt.fiscal_quarter,
+                )
+        db.flush()
         return count
 
     def _add_derived_fact(
@@ -1881,24 +1943,25 @@ class FinancialIngestionService:
         period: str,
         fiscal_year: int | None,
         fiscal_quarter: str | None,
-    ) -> int:
-        db.add(
-            FinancialFact(
-                company_id=company.id,
-                metric=metric,
-                value=value,
-                unit=unit,
-                period=period,
-                fiscal_year=fiscal_year,
-                fiscal_quarter=fiscal_quarter,
-                source_id=document.id,
-                source_type="FMP",
-                is_reported=False,
-                is_adjusted=True,
-                confidence=Decimal("0.85"),
-            )
+    ) -> FinancialFact:
+        """Anade la derivada y la DEVUELVE: el caller encadena derivadas (FCF ->
+        margen) y necesita la fila sin releerla de la base."""
+        fact = FinancialFact(
+            company_id=company.id,
+            metric=metric,
+            value=value,
+            unit=unit,
+            period=period,
+            fiscal_year=fiscal_year,
+            fiscal_quarter=fiscal_quarter,
+            source_id=document.id,
+            source_type="FMP",
+            is_reported=False,
+            is_adjusted=True,
+            confidence=Decimal("0.85"),
         )
-        return 1
+        db.add(fact)
+        return fact
 
     async def _add_spot_price(
         self,
