@@ -94,7 +94,60 @@ export default async function ResearchNewsPage({ searchParams }: PageProps) {
         {/* F176: sin contain, Chrome propaga el overflow horizontal de la
             tabla al documento entero (zoom-out y recorte en movil) aunque la
             region ya scrolla por dentro; layout+paint lo contiene aqui. */}
-        <div aria-label="Flujo de eventos de noticias" className="scroll-affordance-x overflow-x-auto [contain:layout_paint]" role="region" tabIndex={0}>
+        {/* Movil: una tarjeta por noticia (titular completo, fecha, fuente). La
+            tabla de 5 columnas solo se usa desde md; en pantallas estrechas
+            cortaba titulares y partia el layout. */}
+        <ul aria-label="Eventos de noticias" className="flex flex-col gap-3 md:hidden">
+          {filtered.map((event) => {
+            const materialityColor =
+              event.materiality_score >= 7
+                ? 'text-red-400'
+                : event.materiality_score >= 4
+                  ? 'text-amber-400'
+                  : 'text-gray-500';
+            const title = newsDisplayTitle(event.title, event.ticker, event.headline_from_source);
+            return (
+              <li className="rounded-lg border border-gray-800 bg-black/20 p-3" key={`card-${event.id}`}>
+                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400">
+                  {event.ticker ? (
+                    <Link className="font-semibold text-teal-300 hover:text-teal-200" href={`/research/${event.ticker}`}>
+                      {event.ticker}
+                    </Link>
+                  ) : null}
+                  {event.news_lane === 'macro' ? (
+                    <span className="rounded-full bg-indigo-950/60 px-2 py-0.5 font-semibold text-indigo-300">
+                      macro{event.macro_theme ? ` · ${etiquetaTemaMacro(event.macro_theme)}` : ''}
+                    </span>
+                  ) : null}
+                  <span>{event.date.split('T')[0]}</span>
+                  {event.date_source === 'gdelt_first_seen' ? (
+                    <span className="rounded-full bg-gray-900 px-2 py-0.5 text-gray-400" title="Fecha de primera detección en GDELT, no de publicación">vía GDELT</span>
+                  ) : null}
+                  {event.date_source === 'ingested_at_fallback' ? (
+                    <span className="rounded-full bg-gray-900 px-2 py-0.5 text-gray-400">fecha de ingesta</span>
+                  ) : null}
+                  <span className={`ml-auto font-semibold ${materialityColor}`}>{event.materiality_score}</span>
+                </div>
+                <p className="mt-2 break-words text-sm text-gray-200">
+                  {event.url ? (
+                    <a className="hover:text-teal-200" href={event.url} rel="noreferrer" target="_blank">
+                      {title}
+                    </a>
+                  ) : (
+                    title
+                  )}
+                </p>
+                <div className="mt-2 flex items-center justify-between gap-2 text-xs text-gray-500">
+                  <span className="min-w-0 break-words">{event.source || NA}</span>
+                  {event.requires_update ? (
+                    <span className="shrink-0 rounded-full bg-amber-950/60 px-2 py-0.5 text-amber-300">Revisar</span>
+                  ) : null}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+        <div aria-label="Flujo de eventos de noticias" className="scroll-affordance-x overflow-x-auto [contain:layout_paint] hidden md:block" role="region" tabIndex={0}>
           <table className="w-full min-w-[650px] text-left text-sm">
             <caption className="sr-only">Eventos de noticias con materialidad y detalles de la fuente por fila</caption>
             <thead className="text-xs uppercase text-gray-500">
@@ -147,6 +200,9 @@ export default async function ResearchNewsPage({ searchParams }: PageProps) {
                       <div>{event.date.split('T')[0]}</div>
                       {event.date_source === 'ingested_at_fallback' ? (
                         <div className="mt-1 text-xs text-gray-500">fecha de ingesta · la fuente no da fecha</div>
+                      ) : null}
+                      {event.date_source === 'gdelt_first_seen' ? (
+                        <div className="mt-1 text-xs text-gray-500" title="Fecha de primera detección en GDELT, no de publicación">vía GDELT</div>
                       ) : null}
                     </td>
                     <td className="max-w-[360px] py-3 text-gray-300">
