@@ -310,7 +310,7 @@ export default function AddTransactionButton({ userId }: Props) {
               <Input
                 id="quantity"
                 type="number"
-                step="0.01"
+                step="any"
                 min="0"
                 placeholder="10"
                 value={formData.quantity}
@@ -328,7 +328,7 @@ export default function AddTransactionButton({ userId }: Props) {
               <Input
                 id="price"
                 type="number"
-                step="0.01"
+                step="any"
                 min="0"
                 placeholder="150.00"
                 value={formData.price}
