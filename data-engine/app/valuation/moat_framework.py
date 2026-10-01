@@ -379,7 +379,7 @@ def aggregate_strength(evaluated: list[CategoryScore]) -> int | None:
     weights = [max(float(item.confidence), 0.01) for item in scores]
     total_weight = sum(weights)
     if total_weight <= 0:  # pragma: no cover - los pesos nunca son todos cero
-        return round(sum(item.strength for item in scores) / len(scores))
+        return round(sum(float(item.strength) for item in scores) / len(scores))
     weighted = sum(
         float(item.strength) * weight for item, weight in zip(scores, weights)
     )

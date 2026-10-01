@@ -183,7 +183,7 @@ PERSISTED_EVALUATED_STATUSES = frozenset({EVIDENCE_BACKED, LIMITED_EVIDENCE})
 def _tier(evidence) -> tuple[str | None, float]:
     """Tier declarado y confianza de la jerarquia; nunca inventar confianza."""
     raw_tier = getattr(evidence, "source_tier", None)
-    tier = SOURCE_TIERS.get(raw_tier, SOURCE_TIERS["tier_unknown"])
+    tier = SOURCE_TIERS.get(str(raw_tier), SOURCE_TIERS["tier_unknown"])
     return raw_tier, float(tier.trust_score)
 
 
