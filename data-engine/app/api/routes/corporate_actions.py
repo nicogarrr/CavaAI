@@ -28,7 +28,7 @@ class CorporateActionInput(BaseModel):
     apply_now: bool = Field(default=True)
 
 
-def _payload(action, ticker: str | None) -> dict:
+def _payload(action, ticker: str | None, first_trade_date=None) -> dict:
     return {
         "id": action.id,
         "ticker": ticker,
@@ -38,6 +38,9 @@ def _payload(action, ticker: str | None) -> dict:
         "description": action.description,
         "applied": action.applied,
         "applied_at": action.applied_at.isoformat() if action.applied_at else None,
+        # Split anterior a la primera operacion: ya reflejado, sin boton Aplicar.
+        "historical": (not action.applied)
+        and CorporateActionService.is_historical(action, first_trade_date),
     }
 
 
@@ -71,7 +74,11 @@ def list_actions(
         if company_ids
         else {}
     )
-    return [_payload(action, tickers.get(action.company_id)) for action in actions]
+    firsts = service.first_trade_dates(db, company_ids)
+    return [
+        _payload(action, tickers.get(action.company_id), firsts.get(action.company_id))
+        for action in actions
+    ]
 
 
 @router.post("", status_code=201)
