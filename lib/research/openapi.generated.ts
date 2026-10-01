@@ -5799,6 +5799,10 @@ export interface components {
             status: string;
             /** Thesis Markdown */
             thesis_markdown: string;
+            /** Valuation Basis */
+            valuation_basis?: {
+                [key: string]: unknown;
+            } | null;
             /** Valuation Risk Score */
             valuation_risk_score: number;
             /** Version */
@@ -5932,6 +5936,8 @@ export interface components {
         };
         /** ValuationResponse */
         ValuationResponse: {
+            /** Adr Ratio */
+            adr_ratio?: number | null;
             /** Base Value */
             base_value?: number | null;
             /** Bear Value */
@@ -5942,6 +5948,10 @@ export interface components {
             current_price?: number | null;
             /** Expected Value */
             expected_value?: number | null;
+            /** Listed Share Values */
+            listed_share_values?: {
+                [key: string]: number;
+            } | null;
             /** Margin Of Safety */
             margin_of_safety?: number | null;
             /**
@@ -5996,6 +6006,8 @@ export interface components {
             trace: {
                 [key: string]: unknown;
             };
+            /** Value Per Share Basis */
+            value_per_share_basis?: string | null;
         };
         /** WatchItemCreate */
         WatchItemCreate: {
