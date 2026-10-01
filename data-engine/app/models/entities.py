@@ -877,6 +877,9 @@ class ThesisVersion(TenantOwnedMixin, Base, TimestampMixin):
     # seleccion de plantillas con slots deterministicos. Null en versiones
     # anteriores a la capa o cuando la capa no produjo seleccion valida.
     narrative_sections: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Base por acción de los escenarios al generar la tesis (F394): ADR ratio y
+    # valores ya convertidos. None = tesis anterior, sin evidencia de base.
+    valuation_basis: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     company: Mapped[Company] = relationship(back_populates="thesis_versions")
 

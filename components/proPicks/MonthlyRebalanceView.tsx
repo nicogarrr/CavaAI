@@ -11,6 +11,7 @@ import {
     buildMonthlySnapshot,
     diffSnapshots,
     isMonthlySnapshot,
+    previousSnapshotError,
     monthKey,
     monthLabelEs,
     type MonthlySnapshot,
@@ -97,6 +98,11 @@ export default function MonthlyRebalanceView({
             const parsed: unknown = JSON.parse(await file.text());
             if (!isMonthlySnapshot(parsed)) {
                 setFileError('Ese archivo no es un snapshot mensual de CavaAI Propicks.');
+                return;
+            }
+            const rejection = previousSnapshotError(parsed, strategyId, month);
+            if (rejection) {
+                setFileError(rejection);
                 return;
             }
             setPrevious(parsed);
