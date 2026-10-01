@@ -154,6 +154,9 @@ export type ResearchValuation = {
   expected_value: number | null;
   margin_of_safety: number | null;
   missing_inputs?: string[];
+  adr_ratio?: number | null;
+  value_per_share_basis?: string | null;
+  listed_share_values?: Partial<Record<'bear' | 'base' | 'bull' | 'expected', number>> | null;
   reverse_dcf: {
     required_revenue_growth?: number;
     solved_value_per_share?: number;
@@ -227,6 +230,12 @@ export type ResearchThesis = {
     source_fact_ids?: number[];
     confidence?: number | null;
   }> | null;
+  /** Base por acción de los escenarios al generar la tesis; null/ausente = tesis anterior sin evidencia. */
+  valuation_basis?: {
+    value_per_share_basis?: string | null;
+    adr_ratio?: number | null;
+    listed_share_values?: Partial<Record<'bear' | 'base' | 'bull' | 'expected', number>> | null;
+  } | null;
   stale?: boolean;
   latest_data_at?: string | null;
   created_at: string;
