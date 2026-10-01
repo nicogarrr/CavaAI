@@ -84,6 +84,7 @@ import { glossary, moatGlossaryKey } from '@/lib/glossary';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+export const maxDuration = 60;
 
 /**
  * El snapshot alimenta la página y el título. Sin esta memoización, el
