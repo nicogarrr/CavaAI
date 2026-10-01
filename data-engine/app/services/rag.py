@@ -1,7 +1,17 @@
+import logging
+
 from qdrant_client import QdrantClient
 
 from app.core.config import get_settings
-from app.core.errors import redact_secrets
+from app.core.errors import redact_secrets as _redact_core
+from app.llm.base import redact_secrets as _redact_llm
+
+logger = logging.getLogger(__name__)
+
+
+def redact_secrets(text: str) -> str:
+    """Compone ambos redactores: userinfo/password= (core) + Bearer/JSON/token (llm)."""
+    return _redact_core(_redact_llm(text))
 
 
 class RAGIndex:
@@ -273,7 +283,10 @@ class RAGIndex:
                 }
                 for r in results
             ]
-        except Exception:
+        except Exception as exc:
+            # Fallar en silencio ocultaba que la busqueda semantica no
+            # funcionaba (embedder o Qdrant caidos): se registra la causa.
+            logger.warning("RAG search failed: %s: %s", type(exc).__name__, redact_secrets(str(exc)))
             return []
 
     def status(self) -> dict:
