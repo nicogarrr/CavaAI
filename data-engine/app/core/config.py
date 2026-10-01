@@ -79,7 +79,7 @@ def _assert_strong_credentials(url: str, *, label: str) -> None:
 
 
 class Settings(BaseSettings):
-    # extra=ignore a propósito: .env comparte claves de frontend
+    # extra=ignore a propÃ³sito: .env comparte claves de frontend
     # (BETTER_AUTH_*, TWELVE_DATA_*, etc.) que el backend no modela.
     # Los typos de claves backend se cubren con tests de contrato
     # (test_settings_hermeticity) en vez de forbid global.
@@ -119,8 +119,8 @@ class Settings(BaseSettings):
     # uso normal. Tier propio y alto; son lecturas baratas cacheadas.
     rate_limit_market_requests_per_minute: int = Field(default=900, ge=10, le=100000)
     rate_limit_expensive_requests_per_minute: int = Field(default=20, ge=1, le=1000)
-    # Suelo del limite SOLO en local. Antes se deducía de app_env in
-    # {"local","test"} dentro de app/core/rate_limit.py, así que 'dev', 'ci' y
+    # Suelo del limite SOLO en local. Antes se deducÃ­a de app_env in
+    # {"local","test"} dentro de app/core/rate_limit.py, asÃ­ que 'dev', 'ci' y
     # 'development' se quedaban sin limite real (10000/min) mientras si
     # exigian Redis. Ahora es un valor explicito y la prediccion es una sola.
     rate_limit_local_request_floor: int = Field(default=10000, ge=0)
@@ -132,7 +132,32 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     qdrant_url: str = "http://localhost:6333"
     duckdb_path: Path = Path("./storage/analytics.duckdb")
-
+    # Retrieval hibrido denso+sparse sobre Qdrant (ver app/services/rag.py y
+    # app/services/hybrid_retrieval.py). Todo aditivo y apagado por defecto:
+    # con los defaults el RAG se comporta exactamente como antes.
+    # backend denso: "fastembed" (ONNX CPU, mismo modelo/dims/vectores que
+    # sentence-transformers) o "sentence-transformers" (legacy).
+    rag_embedding_backend: str = "fastembed"
+    # Modelo denso por defecto: MISMO modelo y dims (384) que produccion.
+    # Cambiar de modelo con mismos dims conserva la coleccion pero mezcla
+    # espacios: reindexar con RAGIndex().rebuild_tenant por tenant.
+    # Cambiar de dims exige coleccion nueva (rag_collection) + rebuild.
+    rag_dense_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    rag_dense_dims: int = Field(default=384, ge=1, le=4096)
+    # Override opt-in de coleccion (None = la historica
+    # "portfolio_research_documents"). Solo para cambios de dims/modelo.
+    rag_collection: str | None = None
+    # Sparse sibling (BM25 estadistico via fastembed, ~10 MB, multilingue).
+    # Apagado por defecto: la ingesta/busqueda densa no cambia.
+    rag_hybrid_enabled: bool = False
+    rag_sparse_model: str = "Qdrant/bm25"
+    rag_sparse_vector_name: str = "bm25"
+    # Fusion RRF (lado cliente, igual semantica que el RRF de Qdrant >= 1.10;
+    # k y pesos configurables sin depender de la version del servidor:
+    # los pesos RRF de servidor exigen Qdrant >= 1.17 y prod va en 1.12.5).
+    rag_rrf_k: int = Field(default=60, ge=1, le=1000)
+    rag_dense_weight: float = Field(default=1.0, ge=0.0, le=100.0)
+    rag_sparse_weight: float = Field(default=1.0, ge=0.0, le=100.0)
     minio_endpoint: str = "localhost:9002"
     minio_access_key: str = "portfolio"
     minio_secret_key: str = "portfoliosecret"
@@ -181,8 +206,8 @@ class Settings(BaseSettings):
     telegram_chat_id: str | None = None
     telegram_api_base_url: str = "https://api.telegram.org"
     telegram_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
-    # Aprobación de tesis por Telegram (human-in-the-loop mínimo viable).
-    # Apagado por defecto: sin este flag no se envía nada ni se sondea nada.
+    # AprobaciÃ³n de tesis por Telegram (human-in-the-loop mÃ­nimo viable).
+    # Apagado por defecto: sin este flag no se envÃ­a nada ni se sondea nada.
     # Env: TELEGRAM_APPROVAL_ENABLED.
     telegram_approval_enabled: bool = False
     # Fichero donde el poller persiste el offset de getUpdates.
@@ -210,7 +235,7 @@ class Settings(BaseSettings):
     opencode_go_api_key: str | None = Field(default=None, repr=False)
     opencode_go_base_url: str = "https://opencode.ai/zen/v1"
     # Default cheap-but-good model. Overridable WITHOUT code change via env
-    # OPENCODE_GO_MODEL (e.g. OPENCODE_GO_MODEL=qwen3.7-plus). Ver también
+    # OPENCODE_GO_MODEL (e.g. OPENCODE_GO_MODEL=qwen3.7-plus). Ver tambiÃ©n
     # default_model_from_env() en app/llm/model_aliases.py.
     opencode_go_model: str = "space-bunny-free"
     # Fallback automatico: si el modelo resuelto falla (cualquier error de
