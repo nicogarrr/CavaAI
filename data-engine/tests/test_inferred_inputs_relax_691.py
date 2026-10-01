@@ -208,7 +208,8 @@ def test_provenance_binds_to_used_input_and_keeps_history(db):
         base=BASE + " (otra)", source_urls=URLS,
     )
     items = {i["key"]: i for i in latest_inputs_provenance(db, company.id, basis)}
-    assert items["fcf_margin"]["value"] == 0.20 and items["fcf_margin"]["origen"] == "INFERIDO"
+    # La mediana historica no trae base documentada con URL: se omite (N/D).
+    assert "fcf_margin" not in items
     usado = items["fcf_margin_usado_en_valoracion"]
     assert usado["value"] == pytest.approx(0.05)
     assert usado["inferred_input_id"] == used.id
