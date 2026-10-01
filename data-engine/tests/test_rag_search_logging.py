@@ -6,10 +6,10 @@ from app.services.rag import RAGIndex
 def test_search_logs_cause_when_embedder_fails(monkeypatch, caplog):
     index = RAGIndex()
 
-    def boom():
+    def boom(texts):
         raise PermissionError("[Errno 13] Permission denied: '/home/cavaai'")
 
-    monkeypatch.setattr(index, "_embedder", boom)
+    monkeypatch.setattr(index, "_dense_vectors", boom)
     with caplog.at_level(logging.WARNING, logger="app.services.rag"):
         assert index.search("q", ticker="ASTS", tenant_id=1) == []
     assert any("PermissionError" in r.getMessage() for r in caplog.records)
@@ -24,12 +24,12 @@ def test_search_without_tenant_returns_empty_without_warning(caplog):
 def test_search_log_redacts_bearer_and_json_secrets(monkeypatch, caplog):
     index = RAGIndex()
 
-    def boom():
+    def boom(texts):
         raise RuntimeError(
             'HTTP 401 Authorization: Bearer sk-live-abc123 {"api_key": "qd-secret-999"} token=tok-777'
         )
 
-    monkeypatch.setattr(index, "_embedder", boom)
+    monkeypatch.setattr(index, "_dense_vectors", boom)
     with caplog.at_level(logging.WARNING, logger="app.services.rag"):
         index.search("q", ticker="ASTS", tenant_id=1)
     text = " ".join(r.getMessage() for r in caplog.records)
