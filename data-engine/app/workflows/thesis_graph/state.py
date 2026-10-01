@@ -16,11 +16,18 @@ class ThesisGraphState(TypedDict, total=False):
     tenant_id: str
     company_id: str | None
     input_fingerprint: str | None
-    # node name -> durable artifact id/hash (never document contents)
+    # node name -> real artifact reference (never a pending stand-in, never
+    # document contents): "company:<id>", "sha256:<hex>", "evidence:facts=N,...",
+    # "model:v3:<fp>", "valuation:<id>", "thesis:v2:draft:sections=3:sha=<hex>",
+    # "audit:facts={...}|docs={...}|lowconf=N", "redteam:<id>:score=N",
+    # "candidate:sha256:<hex>", "approval:<decision>",
+    # "thesis_published:v<n>" | "thesis_unpublished:v<n>:<status>" | "thesis:none"
     artifacts: dict[str, str]
     # append-only log of nodes that committed their artifact (crash audit)
     completed_nodes: Annotated[list[str], operator.add]
-    # running | awaiting_approval | published | changes_requested | failed
+    # running | awaiting_approval | approved | published | changes_requested | failed.
+    # "approved" and "published" are different claims: a human approval never
+    # asserts a publication the classic path did not perform.
     status: str
     error: str | None
     # free-form per-run metadata (kept small; no document payloads)
