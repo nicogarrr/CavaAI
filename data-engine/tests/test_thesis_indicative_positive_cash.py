@@ -2,15 +2,13 @@
 
 import copy
 
+import pytest
 from fastapi.testclient import TestClient
 
 import main
 from app.core.database import init_db
 from app.seed import seed
 from tests import test_thesis_auto_ingest as base
-
-
-import pytest
 
 
 @pytest.fixture(autouse=True)
