@@ -5,12 +5,20 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YA
 import { formatMoney, NA } from '@/lib/format';
 import type { CompanyMarketSnapshot } from '@/lib/actions/market-workspace.actions';
 
-function money(value: number | null) {
-    return value == null ? NA : formatMoney(value, 'USD');
+function money(value: number | null, currency: string | null | undefined) {
+    if (value == null) return NA;
+    // Sin divisa verificada del listado, número pelado: nunca un USD asumido (F380).
+    return currency ? formatMoney(value, currency) : String(value);
 }
 
 /** Gráfico de historial: se carga solo en cliente (dynamic ssr:false desde el panel) */
-export default function CompanyMarketChart({ history }: { history: CompanyMarketSnapshot['history'] }) {
+export default function CompanyMarketChart({
+    history,
+    currency,
+}: {
+    history: CompanyMarketSnapshot['history'];
+    currency?: string | null;
+}) {
     return (
         <div className="h-[280px] w-full sm:h-[420px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -26,7 +34,7 @@ export default function CompanyMarketChart({ history }: { history: CompanyMarket
                     <YAxis domain={['auto', 'auto']} stroke="#6b7280" />
                     <Tooltip
                         contentStyle={{ background: '#111827', border: '1px solid #374151' }}
-                        formatter={(value: number) => [money(value), 'Cierre']}
+                        formatter={(value: number) => [money(value, currency), 'Cierre']}
                     />
                     <Area type="monotone" dataKey="close" stroke="#2dd4bf" fill="url(#marketPrice)" strokeWidth={2} />
                 </AreaChart>
