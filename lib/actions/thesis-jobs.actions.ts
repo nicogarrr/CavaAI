@@ -69,8 +69,13 @@ export type ThesisDebateOutcome =
     | { ok: true; debate: ThesisDebateResult }
     | { ok: false; error: string };
 
-/** El debate encadena 2 llamadas LLM (~35 s): el timeout global de 15 s lo cortaba. */
-const DEBATE_TIMEOUT_MS = 90_000;
+/**
+ * El debate encadena 2 llamadas LLM (~35 s): el timeout global de 15 s lo cortaba.
+ * La ruta research/[ticker] tiene maxDuration = 60 s en Vercel, asi que el
+ * timeout propio debe quedar por debajo para que se active nuestro mensaje.
+ * Si un debate supera ~55 s la accion devuelve el error de timeout controlado.
+ */
+const DEBATE_TIMEOUT_MS = 55_000;
 
 /**
  * POST /api/thesis/{ticker}/debate — debate bull/bear (degrada a determinista).
