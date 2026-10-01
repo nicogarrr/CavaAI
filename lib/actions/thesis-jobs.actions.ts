@@ -2,6 +2,7 @@
 
 import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 import { researchRequest } from '@/lib/research/client';
+import { sanitizeDebate, type SanitizedDebate } from '@/lib/research/debate-sanitize';
 import { assertPositiveInt } from '@/lib/validation/pathParams';
 
 export interface ThesisJobPhase {
@@ -49,7 +50,9 @@ export async function getThesisJobStatus(runId: number): Promise<ThesisJobStatus
     return researchRequest<ThesisJobStatus>(`/api/thesis/jobs/${assertPositiveInt(runId, 'runId')}`);
 }
 
-export interface ThesisDebateResult {
+export type ThesisDebateResult = SanitizedDebate;
+
+export interface RawThesisDebateResult {
     ticker: string;
     thesis_version_id?: number;
     persisted?: boolean;
@@ -62,14 +65,41 @@ export interface ThesisDebateResult {
     model: string | null;
 }
 
-/** POST /api/thesis/{ticker}/debate — debate bull/bear (degrada a determinista). */
-export async function runThesisDebate(ticker: string): Promise<ThesisDebateResult> {
+export type ThesisDebateOutcome =
+    | { ok: true; debate: ThesisDebateResult }
+    | { ok: false; error: string };
+
+/** El debate encadena 2 llamadas LLM (~35 s): el timeout global de 15 s lo cortaba. */
+const DEBATE_TIMEOUT_MS = 90_000;
+
+/**
+ * POST /api/thesis/{ticker}/debate — debate bull/bear (degrada a determinista).
+ * Devuelve un resultado tipado en lugar de lanzar: un throw en una server action
+ * llega a produccion como el error React #441 sin mensaje. La salida del LLM se
+ * sanea y valida antes de salir del servidor.
+ */
+export async function runThesisDebate(ticker: string): Promise<ThesisDebateOutcome> {
     await requireAuthenticatedUser();
     const clean = ticker.trim().toUpperCase();
-    if (!/^[A-Z0-9.\-]{1,20}$/.test(clean)) throw new Error('Ticker no válido');
-    return researchRequest<ThesisDebateResult>(`/api/thesis/${encodeURIComponent(clean)}/debate`, {
-        method: 'POST',
-    });
+    if (!/^[A-Z0-9.\-]{1,20}$/.test(clean)) return { ok: false, error: 'Ticker no válido' };
+    try {
+        const raw = await researchRequest<unknown>(`/api/thesis/${encodeURIComponent(clean)}/debate`, {
+            method: 'POST',
+            timeoutMs: DEBATE_TIMEOUT_MS,
+        });
+        const debate = sanitizeDebate(raw);
+        if (!debate) return { ok: false, error: 'El debate devolvió una respuesta no válida; se descarta.' };
+        return { ok: true, debate };
+    } catch (exc) {
+        const name = exc instanceof Error ? exc.name : '';
+        return {
+            ok: false,
+            error:
+                name === 'TimeoutError' || name === 'AbortError'
+                    ? 'El debate tardó demasiado; reinténtalo.'
+                    : 'No se pudo generar el debate; reinténtalo.',
+        };
+    }
 }
 
 export interface ThesisApproval {
