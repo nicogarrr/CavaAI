@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import re
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from typing import Any
 
@@ -12,6 +14,33 @@ from app.llm.contracts import LLMRequest, LLMResponse, ResponseFormat
 from app.llm.errors import LLMError, ProviderHTTPError, ProviderResponseError
 from app.llm.json import parse_json_response
 from app.llm.routing import TaskModelRouter
+
+logger = logging.getLogger(__name__)
+
+_ERROR_BODY_PREVIEW_CHARS = 200
+_REDACTED = "[REDACTED]"
+_SECRET_PATTERNS = (
+    re.compile(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]+"),
+    re.compile(r"\bsk-[A-Za-z0-9_-]{6,}"),
+    re.compile(
+        r"(?i)((?:api[_-]?key|x-api-key|authorization|token|secret)[\"']?\s*[:=]\s*[\"']?)"
+        r"[^\s\"',;}&]+"
+    ),
+    re.compile(r"(?i)(incorrect api key provided:\s*)\S+"),
+    re.compile(r"(?i)(invalid api key:?\s*)\S+"),
+)
+
+
+def redact_secrets(text: str, known_secrets: Sequence[str] = ()) -> str:
+    """Quita credenciales conocidas y patrones habituales antes de truncar o loguear."""
+    for secret in sorted({str(x) for x in known_secrets if x}, key=len, reverse=True):
+        text = text.replace(secret, _REDACTED)
+    for pattern in _SECRET_PATTERNS:
+        if pattern.groups:
+            text = pattern.sub(lambda m: m.group(1) + _REDACTED, text)
+        else:
+            text = pattern.sub(_REDACTED, text)
+    return text
 
 
 class LLMProvider(ABC):
@@ -71,6 +100,7 @@ class LLMProvider(ABC):
 
             if response.status_code < 400:
                 return response
+            self._log_http_error(response, headers, payload, attempt)
             if response.status_code not in {408, 409, 429} and response.status_code < 500:
                 raise ProviderHTTPError(self.name, response.status_code)
             if attempt >= self._max_retries:
@@ -78,6 +108,34 @@ class LLMProvider(ABC):
             await asyncio.sleep(0.25 * (2**attempt))
 
         raise LLMError(f"{self.name} request failed")
+
+    def _log_http_error(
+        self,
+        response: httpx.Response,
+        headers: Mapping[str, str],
+        payload: Mapping[str, Any],
+        attempt: int,
+    ) -> None:
+        """Deja evidencia del rechazo (estado, modelo, inicio del cuerpo) sin credenciales."""
+        known = [str(getattr(self, "_api_key", "") or "")]
+        try:
+            for value in headers.values():
+                value = str(value)
+                known.append(value)
+                parts = value.split(None, 1)
+                if len(parts) == 2 and parts[0].lower() in {"bearer", "basic", "token"}:
+                    known.append(parts[1])
+            body = redact_secrets(response.text, known)[:_ERROR_BODY_PREVIEW_CHARS]
+        except Exception:  # pragma: no cover - cuerpo ilegible
+            body = "<unreadable>"
+        logger.warning(
+            "LLM provider %s HTTP %s model=%s attempt=%s body=%r",
+            redact_secrets(str(self.name), known),
+            response.status_code,
+            redact_secrets(str(payload.get("model")), known),
+            attempt + 1,
+            body,
+        )
 
     async def _send(
         self,
