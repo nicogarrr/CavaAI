@@ -376,7 +376,7 @@ def _iter_docling_items(doc: Any) -> list[tuple[Any, int]]:
     iterate: Any = getattr(doc, "iterate_items", None)
     if callable(iterate):
         try:
-            return [(item, level) for item, level in iterate()]
+            return [(item, level) for item, level in iterate()]  # type: ignore[misc]
         except Exception as exc:
             raise _LaneFailed(f"Docling iterate_items fallo ({exc})") from exc
     # Superficie antigua/alternativa: textos y tablas como atributos.
