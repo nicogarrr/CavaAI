@@ -3,12 +3,14 @@
 Supuestos: DCF a 5 años con ingresos floor de 1.0 (permite revenue ~0 sin
 romper la matemática) y margen acotado a [1%, 40%]; crecimiento de facts o
 ``default_growth`` (20% para tags pre-FCF/speculative) acotado a
-[-15%, +60%]; WACC 13% por defecto en estos nombres; escenarios causales
-(retraso de ejecución/estrés de financiación, comercialización base,
-monetización acelerada) con dilución extra por escenario (bear ≥ 15%,
-cap 80% sobre el valor); funding gap estimado de caja/OCF/capex con
-horizonte de 2 años y buffer de 50. Sensibilidad: grid crecimiento × WACC;
-sin ingresos coherentes devuelve insufficient_data (no bootstrap).
+[-15%, +60%]; WACC de un ``CalculatedMetric`` trazable y, si no existe, 13%
+por defecto en estos nombres (que entonces bloquea la publicación);
+escenarios causales (retraso de ejecución/estrés de financiación,
+comercialización base, monetización acelerada) con dilución extra por
+escenario (bear ≥ 15%, cap 80% sobre el valor); funding gap estimado de
+caja/OCF/capex con horizonte de 2 años y buffer de 50. Sensibilidad: grid
+crecimiento × WACC; sin ingresos coherentes devuelve insufficient_data (no
+bootstrap). ``net_debt`` ausente nunca es 0: se declara como input faltante.
 """
 
 from __future__ import annotations
@@ -19,11 +21,13 @@ from app.valuation.engines.base import (
     MODEL_VERSION,
     ValuationContext,
     ValuationEngine,
+    apply_publication_blockers,
     default_growth,
     default_terminal_growth,
     default_wacc,
     insufficient_result,
     margin_of_safety,
+    traceable_wacc,
 )
 from app.valuation.funding_gap import estimate_funding_gap
 from app.valuation.moat_framework import empty_moat_framework
@@ -31,6 +35,23 @@ from app.valuation.reverse_dcf import ReverseDCFInputs, solve_required_growth
 from app.valuation.scenario_definitions import speculative_causal_scenarios
 from app.valuation.scenario_model import Scenario, probability_weighted_value
 from app.valuation.sensitivity import sensitivity_grid
+
+
+def _resolve_wacc(db, company) -> tuple[float, str]:
+    """WACC del modelo y su procedencia.
+
+    El WACC por tags (13% para pre-FCF/speculative) es un supuesto, no un
+    dato. Si existe un ``CalculatedMetric`` fechado (rf + ERP + beta +
+    estructura de capital) se usa ese: con g terminal 2,5% la diferencia entre
+    un 13% supuesto y un 8,5% trazable mueve el factor de descuento del valor
+    terminal de 1,80 a 1,29 (~-35% de valor por accion). ``db=None`` solo
+    ocurre en unit tests sin sesion: ahi no hay metric persistido y el
+    supuesto es lo unico disponible.
+    """
+    wacc_traceable = traceable_wacc(db, company) if db is not None else None
+    if wacc_traceable is not None:
+        return wacc_traceable, "calculated_metric"
+    return default_wacc(company), "tag_default"
 
 
 class PreRevenueScenarioEngine(ValuationEngine):
@@ -95,9 +116,21 @@ class PreRevenueScenarioEngine(ValuationEngine):
         assert revenue is not None and shares is not None
 
         margin = snapshot.value("fcf_margin")
+        inferred_margin = None
         if margin is None:
             fcf = snapshot.value("free_cash_flow")
-            if fcf is None or revenue <= 0:
+            if fcf is None and context.db is not None and company.id is not None:
+                # Sin FCF reportado: un margen FCF INFERIDO con base explicita y
+                # URLs https (validado) permite escenarios. Nunca es un fact y el
+                # resultado queda marcado como no publicable.
+                inferred_margin = InferredInputService().latest_valid(
+                    context.db, company.id, "fcf_margin"
+                )
+                if inferred_margin is not None:
+                    margin = float(inferred_margin.value)
+            if margin is not None:
+                pass
+            elif fcf is None or revenue <= 0:
                 result = insufficient_result(
                     ticker=company.ticker,
                     model_type=company.valuation_model,
@@ -111,7 +144,8 @@ class PreRevenueScenarioEngine(ValuationEngine):
                     company.company_type, company.factor_tags or [], company.special_risks or []
                 )
                 return result
-            margin = fcf / revenue
+            else:
+                margin = fcf / revenue
 
         # Near-zero revenue speculative names: still allow but flag low confidence.
         growth = snapshot.value("revenue_growth")
@@ -128,9 +162,31 @@ class PreRevenueScenarioEngine(ValuationEngine):
         # devuelve un EV negativo, que es lo correcto. Para las quemas, el
         # modelo de funding-gap/dilucion es el que informa.
         margin = min(margin, 0.40)
-        wacc = default_wacc(company)
+        wacc, wacc_source = _resolve_wacc(context.db, company)
         terminal = default_terminal_growth(company)
-        net_debt = snapshot.value("net_debt") or 0.0
+        net_debt = snapshot.value("net_debt")
+        if net_debt is None:
+            # El puente de equity es EV - net_debt. Heredarlo como 0.0 no dice
+            # "sin deuda": dice "deuda desconocida" y aun asi inventa equity.
+            # Una biotech con EV 400M y 150M de caja no ingerida pasaria de
+            # 2,00 a 1,25 EUR/accion sobre 200M de acciones (+60% de sobrevalor)
+            # sin un solo fact detras. Mismo criterio que standard_dcf.
+            result = insufficient_result(
+                ticker=company.ticker,
+                model_type=company.valuation_model,
+                engine_key=self.key,
+                current_price=current_price,
+                missing_inputs=["net_debt"],
+                reason=(
+                    "net_debt is required for the equity bridge (EV - net debt) and "
+                    "must not be assumed to be zero."
+                ),
+                snapshot=snapshot,
+            )
+            result["moat"] = empty_moat_framework(
+                company.company_type, company.factor_tags or [], company.special_risks or []
+            )
+            return result
 
         # Preliminary base for funding-gap dilution estimate.
         base_preview = run_dcf(
@@ -240,11 +296,32 @@ class PreRevenueScenarioEngine(ValuationEngine):
             wacc_values=[wacc - 0.01, wacc, wacc + 0.02],
         )
 
-        publishable = funding.status != "incomplete"
+        publishable = funding.status != "incomplete" and inferred_margin is None
         status = "ok" if publishable else "partial"
         missing = list(funding.missing_inputs) if funding.status == "incomplete" else []
+        # Sin un CalculatedMetric fechado el WACC es un supuesto por tags: no
+        # hay forma de trazar la tasa que decide el valor terminal. Con g
+        # terminal 2,5% el spread 10,5pp frente al 6,0pp real baja el factor
+        # de descuento del TV de 1,80 a 1,29 (~-35% de valor por accion). Se
+        # publica igual como orientacion, nunca como valoracion final.
+        publication_blockers: list[str] = []
+        if wacc_source != "calculated_metric":
+            publication_blockers.append("traceable_wacc")
 
-        return {
+        notices = []
+        if not publishable:
+            notices.append(
+                "Scenario values computed but funding-gap dilution is incomplete; "
+                "treat as non-final."
+            )
+        if publication_blockers:
+            notices.append(
+                "WACC is a tag default with no traceable CalculatedMetric: the discount "
+                "rate is an assumption, not a dated source."
+            )
+
+        return apply_publication_blockers(
+            {
             "ticker": company.ticker,
             "model_type": company.valuation_model,
             "status": status,
@@ -256,6 +333,7 @@ class PreRevenueScenarioEngine(ValuationEngine):
             "expected_value": expected,
             "margin_of_safety": margin_of_safety(expected, current_price),
             "missing_inputs": missing,
+            "publication_blockers": publication_blockers,
             "reverse_dcf": reverse,
             "sensitivity": sensitivity,
             "moat": empty_moat_framework(
@@ -267,8 +345,29 @@ class PreRevenueScenarioEngine(ValuationEngine):
                 "input_source": "financial_facts",
                 "publishable": publishable,
                 "status": status,
+                "publication_blockers": publication_blockers,
                 "model_version": MODEL_VERSION,
                 "growth_source": growth_source,
+                "wacc": wacc,
+                "wacc_source": wacc_source,
+                "net_debt": net_debt,
+                "valuation_basis": (
+                    "inferred_inputs" if inferred_margin is not None else "reported_facts"
+                ),
+                "inferred_inputs": (
+                    [
+                        {
+                            "origen": "INFERIDO",
+                            "input_key": inferred_margin.input_key,
+                            "value": float(inferred_margin.value),
+                            "base_inferencia": inferred_margin.base,
+                            "urls_inferencia": list(inferred_margin.source_urls or []),
+                            "inferred_input_id": inferred_margin.id,
+                        }
+                    ]
+                    if inferred_margin is not None
+                    else []
+                ),
                 "scenario_style": "causal_speculative",
                 "probability_method": "source_confidence_plus_growth_and_funding_risk",
                 "evidence_confidence": evidence_confidence,
@@ -293,13 +392,10 @@ class PreRevenueScenarioEngine(ValuationEngine):
                 },
                 "scenarios": scenario_results,
                 "weighted": weighted["trace"],
-                "notice": (
-                    None
-                    if publishable
-                    else "Scenario values computed but funding-gap dilution is incomplete; treat as non-final."
-                ),
+                "notice": " ".join(notices) or None,
             },
-        }
+            }
+        )
 
     def _indicative_partial(self, company, snapshot, current_price: float, db=None) -> dict:
         """Rango indicativo cuando hay precio + acciones sin snapshot coherente.
@@ -380,9 +476,16 @@ class PreRevenueScenarioEngine(ValuationEngine):
             growth = default_growth(company)
         growth = max(min(growth, 0.60), -0.15)
         assumed_margin_base = float(inferred.value) if inferred is not None else 0.15
-        wacc = default_wacc(company)
+        wacc, wacc_source = _resolve_wacc(db, company)
         terminal = default_terminal_growth(company)
-        net_debt = snapshot.value("net_debt") or 0.0
+        net_debt = snapshot.value("net_debt")
+        net_debt_missing = net_debt is None
+        # El puente de equity sigue siendo EV - net_debt. Sin el dato, el
+        # rango por accion es en realidad EV/acciones: asumir deuda cero
+        # infla el valor exactamente net_debt/shares (2,00 vs 1,25 EUR sobre
+        # 200M de acciones en una biotech con 150M de caja no ingerida). Se
+        # declara como supuesto explicito en vez de presentarlo como equity.
+        net_debt_used = 0.0 if net_debt is None else float(net_debt)
 
         preview = run_dcf(
             DCFInputs(
@@ -391,7 +494,7 @@ class PreRevenueScenarioEngine(ValuationEngine):
                 fcf_margin=assumed_margin_base,
                 wacc=wacc,
                 terminal_growth=terminal,
-                net_debt=net_debt,
+                net_debt=net_debt_used,
                 shares_outstanding=shares,
             )
         )
@@ -416,7 +519,7 @@ class PreRevenueScenarioEngine(ValuationEngine):
                     fcf_margin=float(scenario.assumptions["fcf_margin"]),
                     wacc=float(scenario.assumptions["wacc"]),
                     terminal_growth=float(scenario.assumptions["terminal_growth"]),
-                    net_debt=net_debt,
+                    net_debt=net_debt_used,
                     shares_outstanding=shares,
                 )
             )
@@ -460,7 +563,7 @@ class PreRevenueScenarioEngine(ValuationEngine):
                 fcf_margin=assumed_margin_base,
                 wacc=wacc,
                 terminal_growth=terminal,
-                net_debt=net_debt,
+                net_debt=net_debt_used,
                 shares_outstanding=shares,
             )
         )
@@ -471,14 +574,25 @@ class PreRevenueScenarioEngine(ValuationEngine):
                 fcf_margin=assumed_margin_base,
                 wacc=wacc,
                 terminal_growth=terminal,
-                net_debt=net_debt,
+                net_debt=net_debt_used,
                 shares_outstanding=shares,
             ),
             growth_values=[growth - 0.05, growth, growth + 0.05],
             wacc_values=[wacc - 0.01, wacc, wacc + 0.02],
         )
         missing = list(snapshot.missing_inputs)
-        return {
+        if net_debt_missing and "net_debt" not in missing:
+            missing.append("net_debt")
+        # El rango sigue siendo orientativo, pero deja de ser un valor de
+        # equity: se declara que falta el dato y que el WACC es un supuesto.
+        publication_blockers: list[str] = []
+        if net_debt_missing:
+            publication_blockers.append("net_debt")
+        if wacc_source != "calculated_metric":
+            publication_blockers.append("traceable_wacc")
+
+        return apply_publication_blockers(
+            {
             "ticker": company.ticker,
             "model_type": company.valuation_model,
             "status": "partial",
@@ -490,6 +604,7 @@ class PreRevenueScenarioEngine(ValuationEngine):
             "expected_value": expected,
             "margin_of_safety": margin_of_safety(expected, current_price),
             "missing_inputs": missing,
+            "publication_blockers": publication_blockers,
             "reverse_dcf": reverse,
             "sensitivity": sensitivity,
             "moat": empty_moat_framework(
@@ -519,8 +634,13 @@ class PreRevenueScenarioEngine(ValuationEngine):
                 ),
                 "publishable": False,
                 "status": "partial",
+                "publication_blockers": publication_blockers,
                 "model_version": MODEL_VERSION,
                 "growth_source": growth_source,
+                "wacc": wacc,
+                "wacc_source": wacc_source,
+                "net_debt": net_debt,
+                "net_debt_source": "missing_assumed_zero" if net_debt_missing else "financial_facts",
                 "scenario_style": "causal_speculative_indicative",
                 "probability_method": "source_confidence_plus_growth_and_funding_risk",
                 "fact_ids": snapshot.fact_ids(),
@@ -558,6 +678,14 @@ class PreRevenueScenarioEngine(ValuationEngine):
                     + (" and $1 revenue floor (no coherent revenue)" if revenue_assumed else "")
                     + " because no coherent snapshot exists. Not a final fair value; "
                     "resolve missing inputs before publishing."
+                    + (
+                        " Per-share figures are EV/shares, not equity: net_debt is "
+                        "unknown, so assuming zero debt would overstate the equity by "
+                        "net_debt/shares."
+                        if net_debt_missing
+                        else ""
+                    )
                 ),
             },
-        }
+            }
+        )
