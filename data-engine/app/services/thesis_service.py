@@ -428,6 +428,7 @@ class ThesisService:
             invalidation_criteria=invalidation,
             scenario_probabilities=scenario_probabilities,
             narrative_sections=narrative_sections,
+            valuation_basis=self._valuation_basis(valuation),
         )
         db.add(thesis)
         db.flush()
@@ -629,6 +630,27 @@ class ThesisService:
             if isinstance(scenario, dict) and scenario.get("probability") is not None
         }
         return probabilities or None
+
+    @staticmethod
+    def _valuation_basis(valuation: dict) -> dict | None:
+        """Base por accion de los escenarios tal como los dio el motor (F394).
+
+        None si el motor no informo base: una tesis sin evidencia nunca se
+        reescala a otra base.
+        """
+        basis = valuation.get("value_per_share_basis")
+        if not basis:
+            return None
+        listed = valuation.get("listed_share_values")
+        return {
+            "value_per_share_basis": str(basis),
+            "adr_ratio": valuation.get("adr_ratio"),
+            "listed_share_values": (
+                {key: float(value) for key, value in listed.items() if value is not None}
+                if isinstance(listed, dict)
+                else None
+            ),
+        }
 
     def _rating(self, margin_of_safety: float | None, audit_passed: bool, status: str | None) -> str:
         if status == "insufficient_data":
