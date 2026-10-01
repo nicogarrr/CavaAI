@@ -191,6 +191,18 @@ class DriverDimensionValidator:
             facts = fact_cache.get(key) or []
             raw_unit = facts[-1].unit if facts else "unknown"
             explicit = _parse_explicit_unit(raw_unit)
+            history_units = sorted(
+                {(fact.unit or "unknown").strip().lower() for fact in facts}
+            )
+            if len(history_units) > 1:
+                # Validar solo el ultimo hecho oculta cambios de unidad en la serie.
+                errors.append(
+                    {
+                        "driver": key,
+                        "error": "unit_changes_across_history",
+                        "units": history_units,
+                    }
+                )
             validation = "inferred_from_driver_semantics"
             tokens = _unit_tokens(raw_unit)
             for token in tokens:
