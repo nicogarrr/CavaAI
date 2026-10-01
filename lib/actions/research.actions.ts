@@ -229,6 +229,12 @@ export type ResearchThesis = {
     method?: string | null;
     source_fact_ids?: number[];
     confidence?: number | null;
+    /** OFICIAL = fuente primaria verificada (URL + fecha); INFERIDO = estimación con base. */
+    origen?: 'OFICIAL' | 'INFERIDO';
+    fuentes?: Array<{ fact_id: number; url: string | null; fecha: string | null; titulo: string | null; oficial: boolean }>;
+    base_inferencia?: string | null;
+    urls_inferencia?: string[];
+    base_documentada?: boolean;
   }> | null;
   /** Base por acción de los escenarios al generar la tesis; null/ausente = tesis anterior sin evidencia. */
   valuation_basis?: {
