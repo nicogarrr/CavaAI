@@ -1,0 +1,14 @@
+{
+ "origin": "synthetic_fixture",
+ "id": "untagged_report",
+ "lei": "9598SYNTHETIC0000001",
+ "documentInfo": {
+  "documentType": "http://xbrl.org/2021/xbrl-csv",
+  "usesExtendedLinks": true
+ },
+ "report": {
+  "period": "2025-12-31",
+  "entity": "9598SYNTHETIC0000001",
+  "statement": "Este informe se publica en PDF y no lleva etiquetas iXBRL."
+ }
+}

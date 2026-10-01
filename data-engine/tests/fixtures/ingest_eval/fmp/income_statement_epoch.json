@@ -1,0 +1,15 @@
+{
+ "origin": "synthetic_fixture",
+ "endpoint": "income-statement",
+ "rows": [
+  {
+   "symbol": "SYNQ",
+   "date": 1767225600,
+   "period": "FY",
+   "calendarYear": 2025,
+   "fillingDate": "2026-02-12",
+   "revenue": 5000000000,
+   "netIncome": 500000000
+  }
+ ]
+}

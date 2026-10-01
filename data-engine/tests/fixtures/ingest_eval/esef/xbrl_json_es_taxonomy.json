@@ -1,0 +1,42 @@
+{
+ "origin": "synthetic_fixture",
+ "id": "es_taxonomy",
+ "lei": "9598SYNTHETIC0000001",
+ "concepts_declarados": [
+  "ifrs-full:Revenue",
+  "syn-es:IngresosDeExplotacion",
+  "syn-es:ResultadoDelEjercicio"
+ ],
+ "facts": {
+  "fact-1": {
+   "value": "7000000000",
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Revenue",
+    "entity": "scheme:9598SYNTHETIC0000001",
+    "period": "2025-01-01T00:00:00/2025-12-31T00:00:00",
+    "unit": "iso4217:EUR"
+   }
+  },
+  "fact-2": {
+   "value": "7100000000",
+   "decimals": -6,
+   "dimensions": {
+    "concept": "syn-es:IngresosDeExplotacion",
+    "entity": "scheme:9598SYNTHETIC0000001",
+    "period": "2025-01-01T00:00:00/2025-12-31T00:00:00",
+    "unit": "iso4217:EUR"
+   }
+  },
+  "fact-3": {
+   "value": "830000000",
+   "decimals": -6,
+   "dimensions": {
+    "concept": "syn-es:ResultadoDelEjercicio",
+    "entity": "scheme:9598SYNTHETIC0000001",
+    "period": "2025-01-01T00:00:00/2025-12-31T00:00:00",
+    "unit": "iso4217:EUR"
+   }
+  }
+ }
+}
