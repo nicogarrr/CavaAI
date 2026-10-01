@@ -197,6 +197,24 @@ class Settings(BaseSettings):
     # entrando via el mirror HF (sec_hf_mirror_dataset) sincronizado por
     # GitHub Actions. True solo donde la SEC sea alcanzable (dev local).
     sec_document_jobs_enabled: bool = False
+    # Ingesta SEC paralela basada en edgartools (edgartools_ingestion_service).
+    # Apagada por defecto: via nueva con dependencia de bus-factor 1 y el
+    # enchufado al scheduler/Dramatiq es un follow-up cuando BUG-1 cierre.
+    # Env: EDGARTOOLS_ENABLED.
+    edgartools_enabled: bool = False
+    # Snapshot edgartools (manifest.json con synced_at + companyfacts/ +
+    # submissions/ + filings/): mismo patron que sec_snapshot_dir. En
+    # produccion (OCI, IP baneada por la SEC con 403 permanente) es la UNICA
+    # fuente: funciona sin red una vez construido el snapshot. Env:
+    # EDGARTOOLS_SNAPSHOT_DIR.
+    edgartools_snapshot_dir: str | None = None
+    # Identidad para edgar.set_identity ("Nombre email@dominio"): la SEC exige
+    # UA declarado con contacto. Vacio = se deriva de sec_user_agent. Env:
+    # EDGARTOOLS_IDENTITY.
+    edgartools_identity: str | None = None
+    # Tope de peticiones/segundo a la SEC via edgartools (maximo SEC: 10).
+    # Env: EDGARTOOLS_REQUESTS_PER_SECOND.
+    edgartools_requests_per_second: float = Field(default=8, ge=0.1, le=10)
     # Directorio con snapshots ESEF (manifest.json issuers LEI->{ticker,...},
     # snapshots/<LEI>.json normalizados desde filings.xbrl.org). Mismo motivo
     # que SEC: los datos viajan con la app, nunca se piden en caliente.
