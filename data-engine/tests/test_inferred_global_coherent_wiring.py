@@ -109,8 +109,9 @@ def test_coherent_branch_consults_inferred_margin_and_is_not_publishable(engine)
         result = _value(other, company)
         assert result["status"] == "partial"
         assert result["publishable"] is False
-        inferred = result["trace"]["inferred_inputs"]["fcf_margin"]
-        assert inferred["origin"] == "INFERIDO" and inferred["source_urls"] == URLS
+        (inferred,) = result["trace"]["inferred_inputs"]
+        assert inferred["origen"] == "INFERIDO" and inferred["urls_inferencia"] == URLS
+        assert inferred["input_key"] == "fcf_margin" and inferred["inferred_input_id"]
         assert result["base_value"] is not None
 
 
@@ -132,4 +133,4 @@ def test_reported_fcf_wins_over_inferred(engine):
         )
         values = dict(VALUES, free_cash_flow=-80_000_000.0)
         result = _value(db, company, values)
-        assert "inferred_inputs" in result["trace"] and result["trace"]["inferred_inputs"] == {}
+        assert result["trace"]["inferred_inputs"] == []

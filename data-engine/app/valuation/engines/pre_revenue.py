@@ -282,18 +282,22 @@ class PreRevenueScenarioEngine(ValuationEngine):
                 "status": status,
                 "model_version": MODEL_VERSION,
                 "growth_source": growth_source,
+                "valuation_basis": (
+                    "inferred_inputs" if inferred_margin is not None else "reported_facts"
+                ),
                 "inferred_inputs": (
-                    {
-                        "fcf_margin": {
-                            "id": inferred_margin.id,
+                    [
+                        {
+                            "origen": "INFERIDO",
+                            "input_key": inferred_margin.input_key,
                             "value": float(inferred_margin.value),
-                            "base": inferred_margin.base,
-                            "source_urls": list(inferred_margin.source_urls or []),
-                            "origin": "INFERIDO",
+                            "base_inferencia": inferred_margin.base,
+                            "urls_inferencia": list(inferred_margin.source_urls or []),
+                            "inferred_input_id": inferred_margin.id,
                         }
-                    }
+                    ]
                     if inferred_margin is not None
-                    else {}
+                    else []
                 ),
                 "scenario_style": "causal_speculative",
                 "probability_method": "source_confidence_plus_growth_and_funding_risk",

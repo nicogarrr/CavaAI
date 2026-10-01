@@ -111,6 +111,13 @@ def latest_inputs_provenance(
                 "source_type": doc.source_type,
             }
     classified = classify_origin(items, sources)
+    # Politica de Nico: sin base documentada no hay etiqueta INFERIDO "disfrazada";
+    # el input se omite (la seccion de datos pendientes lo declara N/D).
+    classified = [
+        item
+        for item in classified
+        if not (item.get("origen") == "INFERIDO" and item.get("base_documentada") is False)
+    ]
     # Inputs INFERIDO que la valoracion de ESTA tesis consumio (trace persistido
     # en valuation_basis). Se anaden aparte: no sustituyen la historia del modelo
     # (p. ej. la mediana fcf_margin), el usuario ve ambos.
