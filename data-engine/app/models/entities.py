@@ -2263,3 +2263,52 @@ class InferredInput(Base, TimestampMixin):
     base: Mapped[str] = mapped_column(Text)
     source_urls: Mapped[list[str]] = mapped_column(JSON, default=list)
     origin: Mapped[str] = mapped_column(String(20), default="llm")
+
+
+class InstrumentReference(Base, TimestampMixin):
+    """Referencia normalizada de instrumentos (ticker/FIGI/ISIN/sector).
+
+    Seed idempotente desde FinanceDatabase (CSV comunitario, MIT) con
+    normalizacion opcional via OpenFIGI. El resolver la consulta primero;
+    si no hay fila, el fallback de sufijos funciona exacto igual que hoy.
+
+    Honestidad: si FinanceDatabase no trae un campo, la columna es NULL
+    (fuente sin dato), nunca "Unknown" ni cadena vacia. NULL significa
+    "la fuente no lo declara"; los consumidores deben tratarlo como
+    desconocido con motivo explicito, no inventar un sector.
+
+    Unicidad: UNIQUE(ticker_normalized). FIGI/ISIN/composite llevan indices
+    NO unicos a proposito: un FIGI agrupa varios venues (FIGIs distintos
+    por bolsa comparten compositeFIGI) y un renombre por corporate action
+    conserva el FIGI (fila vieja + fila nueva con el mismo FIGI). Un
+    UNIQUE(figi) rechazaria justo el historial de renombres que esta tabla
+    existe para soportar; la identidad estable se resuelve por igualdad de
+    FIGI, no por unicidad.
+    """
+
+    __tablename__ = "instrument_references"
+    __table_args__ = (
+        UniqueConstraint("ticker_normalized", name="uq_instrument_ref_ticker"),
+        Index("ix_instrument_ref_ticker", "ticker_normalized"),
+        Index("ix_instrument_ref_figi", "figi"),
+        Index("ix_instrument_ref_composite_figi", "composite_figi"),
+        Index("ix_instrument_ref_isin", "isin"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ticker_normalized: Mapped[str] = mapped_column(String(40))
+    figi: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    composite_figi: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    shareclass_figi: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    isin: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    cusip: Mapped[str | None] = mapped_column(String(9), nullable=True)
+    sedol: Mapped[str | None] = mapped_column(String(7), nullable=True)
+    name: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    exchange: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    mic: Mapped[str | None] = mapped_column(String(4), nullable=True)
+    sector: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    industry: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    country: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    currency: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    as_of: Mapped[_DateT] = mapped_column(Date, default=date.today)
+    source: Mapped[str] = mapped_column(String(80), default="financedatabase")
