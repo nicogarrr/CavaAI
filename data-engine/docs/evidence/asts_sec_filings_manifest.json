@@ -1,0 +1,67 @@
+[
+ {
+  "url": "https://www.sec.gov/Archives/edgar/data/1780312/000119312526342540/asts-20260810.htm",
+  "index_url": "https://www.sec.gov/Archives/edgar/data/1780312/000119312526342540/0001193125-26-342540-index.htm",
+  "index_sha256": "5d081f066bba95a88a21e6a50d0cad949b5b14dd8d31b2a3e96e4af52c90c5d8",
+  "sha256": "7cd5d6d310270e8fb1d57c631667a7bc51e6910802c389380ee5105f38466a1d",
+  "bytes_served": 48030,
+  "form": "8-K",
+  "accession": "0001193125-26-342540",
+  "cik": "0001780312",
+  "filing_date_from_index": "2026-08-10",
+  "period_of_report": "2026-08-10",
+  "size_delta_vs_index": 114
+ },
+ {
+  "url": "https://www.sec.gov/Archives/edgar/data/1780312/000119312526342540/asts-ex99_1.htm",
+  "index_url": "https://www.sec.gov/Archives/edgar/data/1780312/000119312526342540/0001193125-26-342540-index.htm",
+  "index_sha256": "5d081f066bba95a88a21e6a50d0cad949b5b14dd8d31b2a3e96e4af52c90c5d8",
+  "sha256": "ebfd4742050d1897c5ec01fbaa29424b96318cdc2c30b9f79b6e2367dbc01244",
+  "bytes_served": 825053,
+  "form": "EX-99.1",
+  "accession": "0001193125-26-342540",
+  "cik": "0001780312",
+  "filing_date_from_index": "2026-08-10",
+  "period_of_report": "2026-08-10",
+  "size_delta_vs_index": 2
+ },
+ {
+  "url": "https://www.sec.gov/Archives/edgar/data/1780312/000119312526342540/asts-ex99_2.htm",
+  "index_url": "https://www.sec.gov/Archives/edgar/data/1780312/000119312526342540/0001193125-26-342540-index.htm",
+  "index_sha256": "5d081f066bba95a88a21e6a50d0cad949b5b14dd8d31b2a3e96e4af52c90c5d8",
+  "sha256": "a22486a8365f27ea84203aa64e52ffee22ffc64b23ab1dfd1a397cf49662f6c1",
+  "bytes_served": 25045,
+  "form": "EX-99.2",
+  "accession": "0001193125-26-342540",
+  "cik": "0001780312",
+  "filing_date_from_index": "2026-08-10",
+  "period_of_report": "2026-08-10",
+  "size_delta_vs_index": 2
+ },
+ {
+  "url": "https://www.sec.gov/Archives/edgar/data/1780312/000119312526342550/asts-20260630.htm",
+  "index_url": "https://www.sec.gov/Archives/edgar/data/1780312/000119312526342550/0001193125-26-342550-index.htm",
+  "index_sha256": "ca762b662da0761a492200dde19815d2a799a9e65e0921cac0946a97e1fa2fb1",
+  "sha256": "0657d4ab813a9bfb2716981bf43c24e98e1870f407ccdeca9e44f7b26904af6e",
+  "bytes_served": 3562353,
+  "form": "10-Q",
+  "accession": "0001193125-26-342550",
+  "cik": "0001780312",
+  "filing_date_from_index": "2026-08-10",
+  "period_of_report": "2026-06-30",
+  "size_delta_vs_index": 114
+ },
+ {
+  "url": "https://www.sec.gov/Archives/edgar/data/1780312/000178031226000006/asts-20251231.htm",
+  "index_url": "https://www.sec.gov/Archives/edgar/data/1780312/000178031226000006/0001780312-26-000006-index.htm",
+  "index_sha256": "3ddd8c97a502f19c917b56b4747400d9fd7f27ca8b58cfb77bd0d16559b1c174",
+  "sha256": "1668966ff3f027e7e3a5b5b4d5561184c00a2db3c9a714635efa652b396d2949",
+  "bytes_served": 4397301,
+  "form": "10-K",
+  "accession": "0001780312-26-000006",
+  "cik": "0001780312",
+  "filing_date_from_index": "2026-03-02",
+  "period_of_report": "2025-12-31",
+  "size_delta_vs_index": 114
+ }
+]
