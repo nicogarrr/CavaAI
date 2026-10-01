@@ -121,7 +121,7 @@ export default async function ResearchNewsPage({ searchParams }: PageProps) {
                   ) : null}
                   <span>{event.date.split('T')[0]}</span>
                   {event.date_source === 'gdelt_first_seen' ? (
-                    <span className="rounded-full bg-gray-900 px-2 py-0.5 text-gray-400">vía GDELT</span>
+                    <span className="rounded-full bg-gray-900 px-2 py-0.5 text-gray-400" title="Fecha de primera detección en GDELT, no de publicación">vía GDELT</span>
                   ) : null}
                   {event.date_source === 'ingested_at_fallback' ? (
                     <span className="rounded-full bg-gray-900 px-2 py-0.5 text-gray-400">fecha de ingesta</span>
@@ -202,7 +202,7 @@ export default async function ResearchNewsPage({ searchParams }: PageProps) {
                         <div className="mt-1 text-xs text-gray-500">fecha de ingesta · la fuente no da fecha</div>
                       ) : null}
                       {event.date_source === 'gdelt_first_seen' ? (
-                        <div className="mt-1 text-xs text-gray-500">vía GDELT</div>
+                        <div className="mt-1 text-xs text-gray-500" title="Fecha de primera detección en GDELT, no de publicación">vía GDELT</div>
                       ) : null}
                     </td>
                     <td className="max-w-[360px] py-3 text-gray-300">
