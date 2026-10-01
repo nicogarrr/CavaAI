@@ -6535,6 +6535,18 @@
             "title": "Thesis Markdown",
             "type": "string"
           },
+          "valuation_basis": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valuation Basis"
+          },
           "valuation_risk_score": {
             "title": "Valuation Risk Score",
             "type": "integer"
@@ -6879,6 +6891,17 @@
       },
       "ValuationResponse": {
         "properties": {
+          "adr_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adr Ratio"
+          },
           "base_value": {
             "anyOf": [
               {
@@ -6933,6 +6956,20 @@
               }
             ],
             "title": "Expected Value"
+          },
+          "listed_share_values": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Listed Share Values"
           },
           "margin_of_safety": {
             "anyOf": [
@@ -7002,6 +7039,17 @@
             "default": {},
             "title": "Trace",
             "type": "object"
+          },
+          "value_per_share_basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Per Share Basis"
           }
         },
         "required": [
