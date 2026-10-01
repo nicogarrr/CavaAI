@@ -41,12 +41,19 @@ function enumLabel(map: Record<string, string>, value: string | null | undefined
   return map[value] ?? value.replaceAll('_', ' ');
 }
 
-const PROVENANCE_BADGES: Record<string, { label: string; className: string }> = {
-  dato: { label: 'dato', className: 'border-teal-800 bg-teal-950/40 text-teal-300' },
-  derivado: { label: 'derivado', className: 'border-sky-800 bg-sky-950/40 text-sky-300' },
-  estimacion_llm: { label: 'estimación LLM', className: 'border-amber-800 bg-amber-950/40 text-amber-300' },
-  supuesto: { label: 'supuesto', className: 'border-gray-700 bg-gray-900/60 text-gray-300' },
-};
+type ProvenanceItem = NonNullable<ResearchThesis['inputs_provenance']>[number];
+
+/** Fail-closed: solo es OFICIAL lo que llega marcado OFICIAL con TODAS sus
+ *  fuentes oficiales, https y con fecha. Todo lo demás (payload legacy, sin
+ *  origen, etiquetas derivado/supuesto/estimación) se muestra como INFERIDO. */
+function isVerifiedOficial(item: ProvenanceItem): boolean {
+  const fuentes = item.fuentes ?? [];
+  return (
+    item.origen === 'OFICIAL' &&
+    fuentes.length > 0 &&
+    fuentes.every((f) => f.oficial && !!f.fecha && !!f.url && /^https:\/\//.test(f.url))
+  );
+}
 
 function provenanceValue(value: number | string | null): string {
   if (value === null || value === undefined) return NA;
@@ -208,19 +215,60 @@ export default function ThesisMemo({
           </h3>
           <div className="mt-2 space-y-1.5">
             {thesis.inputs_provenance.map((item) => {
-              const badge = PROVENANCE_BADGES[item.label] ?? PROVENANCE_BADGES.supuesto;
               return (
                 <div key={item.key} className="flex flex-wrap items-baseline gap-x-2 text-sm">
-                  <span
-                    className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${badge.className}`}
-                  >
-                    {badge.label}
-                  </span>
+                  {isVerifiedOficial(item) ? null : (
+                    <span
+                      className="rounded-full border border-amber-800 bg-amber-950/40 px-2 py-0.5 text-[11px] font-medium text-amber-300"
+                    >
+                      INFERIDO
+                    </span>
+                  )}
                   <span className="font-medium text-gray-200">{item.key}</span>
                   <span className="text-gray-400">{provenanceValue(item.value)}</span>
-                  {item.method ? (
-                    <span className="text-xs text-gray-500">· {item.method}</span>
-                  ) : null}
+                  {isVerifiedOficial(item) ? (
+                    <span className="text-xs text-gray-500">
+                      ·{' '}
+                      {(item.fuentes ?? []).map((fuente, index) => (
+                        <span key={fuente.fact_id}>
+                          {index > 0 ? ', ' : ''}
+                          {fuente.url && /^https:\/\//.test(fuente.url) ? (
+                            <a
+                              href={fuente.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-teal-400 underline"
+                            >
+                              {fuente.titulo ?? 'Fuente oficial'}
+                            </a>
+                          ) : (
+                            (fuente.titulo ?? 'Fuente oficial')
+                          )}
+                          {fuente.fecha ? ` (${fuente.fecha})` : ''}
+                        </span>
+                      ))}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-amber-400/90">
+                      · INFERIDO:{' '}
+                      {item.base_documentada !== true || !item.base_inferencia
+                        ? 'base no documentada'
+                        : `dado ${item.base_inferencia}`}
+                      {(item.urls_inferencia ?? []).map((url, index) =>
+                        /^https:\/\//.test(url) ? (
+                          <a
+                            key={url}
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="ml-1 text-amber-300 underline"
+                          >
+                            [{index + 1}]
+                          </a>
+                        ) : null,
+                      )}
+                    </span>
+                  )}
                 </div>
               );
             })}

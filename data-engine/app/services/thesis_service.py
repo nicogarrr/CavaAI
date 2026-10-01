@@ -30,7 +30,11 @@ from app.services.source_auditor import SourceAuditor
 from app.services.source_hierarchy_service import classify_source
 from app.services.thesis_context import retrieve_thesis_context
 from app.services.thesis_narrative_llm import evidence_sections, maybe_narrative, maybe_narrative_sections
-from app.services.thesis_provenance import build_inputs_provenance, inputs_provenance_from_snapshot
+from app.services.thesis_provenance import (
+    build_inputs_provenance,
+    classify_origin,
+    inputs_provenance_from_snapshot,
+)
 from app.services.valuation_service import ValuationService
 from app.valuation.engines.base import MODEL_VERSION
 from app.valuation.financial_snapshot import FinancialSnapshotBuilder
@@ -78,7 +82,31 @@ def latest_inputs_provenance(db: Session, company_id: int) -> list[dict] | None:
     )
     if model is None:
         return None
-    return inputs_provenance_from_snapshot(model.model_snapshot or {})
+    items = inputs_provenance_from_snapshot(model.model_snapshot or {})
+    fact_ids = sorted({fid for it in items for fid in (it.get("source_fact_ids") or [])})
+    sources: dict[int, dict] = {}
+    if fact_ids:
+        rows = db.execute(
+            select(FinancialFact, Document)
+            .join(Document, Document.id == FinancialFact.source_id)
+            .where(
+                FinancialFact.id.in_(fact_ids),
+                FinancialFact.company_id == company_id,
+            )
+        ).all()
+        for fact, doc in rows:
+            sources[fact.id] = {
+                "metric": fact.metric,
+                "fact_value": fact.value,
+                "unit": fact.unit,
+                "period": fact.period,
+                "is_reported": fact.is_reported,
+                "url": doc.source_url,
+                "date": doc.published_at.date().isoformat() if doc.published_at else None,
+                "title": doc.title,
+                "source_type": doc.source_type,
+            }
+    return classify_origin(items, sources)
 
 # Etiquetas es-ES de las métricas que alimentan claims visibles. El fallback
 # humaniza el código (guiones bajos a espacios) sin exponerlo tal cual.
