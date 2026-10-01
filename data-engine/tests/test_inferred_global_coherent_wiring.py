@@ -50,7 +50,7 @@ class _Snap:
         return {}
 
 
-VALUES = {"revenue": 70_918_000.0, "shares_diluted": 255_982_592.0, "operating_cash_flow": -71_517_000.0}
+VALUES = {"revenue": 70_918_000.0, "shares_diluted": 255_982_592.0, "operating_cash_flow": -71_517_000.0, "net_debt": 675_169_000.0}
 
 
 def _company(db):

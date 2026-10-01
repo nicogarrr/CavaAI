@@ -1,6 +1,6 @@
 'use client';
 
-import { formatMoney, formatNumber, formatUserDate } from '@/lib/format';
+import { formatMoney, formatNumber, formatPrice, formatUserDate, isValidCurrencyCode, NA } from '@/lib/format';
 import { useState } from 'react';
 import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -28,6 +28,16 @@ type Props = {
   userId: string;
 };
 
+/**
+ * Divisa del movimiento tal y como la persiste el ledger
+ * (`ResearchPortfolioTransaction.currency`, no null): si aun así llega vacía o
+ * con un código que Intl no acepta, el importe se OMITE (NA) en vez de
+ * sustituirse por USD.
+ */
+function transactionCurrency(currency: string | undefined): string | null {
+  return isValidCurrencyCode(currency) ? currency : null;
+}
+
 export default function PortfolioTransactions({ transactions, userId }: Props) {
   const router = useRouter();
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -54,6 +64,12 @@ export default function PortfolioTransactions({ transactions, userId }: Props) {
           <span className="h-2 w-2 rounded-full bg-blue-500"></span>
           Actividad Reciente
         </CardTitle>
+        {transactions.length > 0 ? (
+          <p className="mt-1 text-[11px] leading-4 text-gray-500">
+            El importe es el nocional del movimiento (cantidad × precio) y no descuenta las
+            comisiones que el ledger guarda aparte.
+          </p>
+        ) : null}
       </CardHeader>
       <CardContent className="p-0 flex-1 overflow-hidden">
         {transactions.length === 0 ? (
@@ -66,59 +82,69 @@ export default function PortfolioTransactions({ transactions, userId }: Props) {
         ) : (
           <div className="overflow-y-auto h-full max-h-[400px] scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent">
             <div className="divide-y divide-gray-800/50">
-              {transactions.map((tx) => (
-                <div key={tx._id} className="p-4 hover:bg-gray-800/30 transition-colors group">
-                  <div className="flex items-start justify-between mb-1">
-                    <div className="flex items-center gap-3">
-                      <div className={`h-8 w-8 rounded-full flex items-center justify-center ${tx.type === 'buy' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-500'
-                        }`}>
-                        {tx.type === 'buy' ? '+' : '-'}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <Link
-                            href={`/research/${tx.symbol}`}
-                            className="font-bold text-gray-200 hover:text-teal-300 transition-colors"
-                          >
-                            {tx.symbol}
-                          </Link>
-                          <span className={`text-xs px-1.5 py-0.5 rounded ${tx.type === 'buy' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
-                            }`}>
-                            {tx.type === 'buy' ? 'Compra' : 'Venta'}
-                          </span>
+              {transactions.map((tx) => {
+                const currency = transactionCurrency(tx.currency);
+                // El backend no manda importe por movimiento (solo cantidad,
+                // precio y comisiones), así que el único número derivable es el
+                // nocional cantidad x precio: se rotula «bruto» porque no
+                // descuenta las comisiones que el ledger guarda aparte. Antes
+                // se pintaba como si fuera el importe del movimiento.
+                const gross = tx.quantity * tx.price;
+                return (
+                  <div key={tx._id} className="p-4 hover:bg-gray-800/30 transition-colors group">
+                    <div className="flex items-start justify-between mb-1">
+                      <div className="flex items-center gap-3">
+                        <div className={`h-8 w-8 rounded-full flex items-center justify-center ${tx.type === 'buy' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-500'
+                          }`}>
+                          {tx.type === 'buy' ? '+' : '-'}
                         </div>
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          {formatUserDate(tx.date)}
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <Link
+                              href={`/research/${tx.symbol}`}
+                              className="font-bold text-gray-200 hover:text-teal-300 transition-colors"
+                            >
+                              {tx.symbol}
+                            </Link>
+                            <span className={`text-xs px-1.5 py-0.5 rounded ${tx.type === 'buy' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
+                              }`}>
+                              {tx.type === 'buy' ? 'Compra' : 'Venta'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            {formatUserDate(tx.date)}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-medium text-gray-200">
+                          {currency ? formatMoney(gross, currency) : NA}
+                          <span className="ml-1.5 text-[10px] uppercase tracking-wide text-gray-500">bruto</span>
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {formatNumber(tx.quantity, { maximumFractionDigits: 4 })} acc @{' '}
+                          {currency ? formatPrice(tx.price, currency) : NA}
                         </p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-medium text-gray-200">
-                        {formatMoney(tx.quantity * tx.price, tx.currency ?? 'USD')}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {formatNumber(tx.quantity, { maximumFractionDigits: 4 })} acc @{' '}
-                        {formatNumber(tx.price, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {tx.currency ?? 'USD'}
-                      </p>
+
+                    {/* Acciones siempre visibles en táctil, solo hover en escritorio */}
+                    <div className="flex justify-end gap-2 mt-2 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                      <EditTransactionDialog transaction={tx} userId={userId} />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDelete(tx._id)}
+                        disabled={deleting === tx._id}
+                        aria-label="Eliminar transacción"
+                        className="h-11 w-11 p-0 text-gray-400 hover:text-red-400 hover:bg-red-950/20 md:h-7 md:w-7"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
                     </div>
                   </div>
-
-                  {/* Acciones siempre visibles en táctil, solo hover en escritorio */}
-                  <div className="flex justify-end gap-2 mt-2 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                    <EditTransactionDialog transaction={tx} userId={userId} />
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDelete(tx._id)}
-                      disabled={deleting === tx._id}
-                      aria-label="Eliminar transacción"
-                      className="h-11 w-11 p-0 text-gray-400 hover:text-red-400 hover:bg-red-950/20 md:h-7 md:w-7"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
