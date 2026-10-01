@@ -177,8 +177,12 @@ class FinancialSnapshotBuilder:
             return
         if not (math.isfinite(d) and math.isfinite(c)):
             return
+        # Both inputs must come from the same source document; otherwise the
+        # derived fact has no single source and the audit keeps it unsupported.
+        shared_source = debt.source_id if debt.source_id == cash.source_id else None
         derived = FinancialFact(
             company_id=debt.company_id,
+            source_id=shared_source,
             metric="net_debt",
             value=Decimal(str(d - c)),
             period=debt.period,
