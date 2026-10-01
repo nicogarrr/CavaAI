@@ -77,3 +77,21 @@ def test_no_derivation_when_one_input_missing_or_period_differs(db):
     _fact(db, c, "cash_and_equivalents", 40, period="2025-12-31:FY")
     snap = FinancialSnapshotBuilder().build(db, c)
     assert snap.value("net_debt") is None
+
+
+def test_derived_fact_is_safe_for_downstream_consumers(db):
+    """Regresion: float(fact.confidence) fallaba (None) en thesis._build_claims."""
+    from app.services.thesis_service import ThesisService
+
+    c = _company(db)
+    _fact(db, c, "revenue", 70_918_000)
+    _fact(db, c, "shares_diluted", 255_982_592)
+    _fact(db, c, "total_debt", 1_000_000_000)
+    _fact(db, c, "cash_and_equivalents", 400_000_000)
+    snap = FinancialSnapshotBuilder().build(db, c)
+    nd = snap.facts["net_debt"]
+    assert nd.confidence is not None and float(nd.confidence) > 0
+    assert nd.is_reported is False and nd.is_adjusted is False
+    claims = ThesisService()._build_claims(c, snap.facts, {"status": "partial"})
+    nd_claim = next(x for x in claims if x["predicate"] == "net_debt")
+    assert nd_claim["verification_state"] == "derived" and nd_claim["object"] == 600_000_000.0
