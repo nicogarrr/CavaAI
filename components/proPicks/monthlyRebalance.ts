@@ -271,16 +271,7 @@ export function diffSnapshots(
     return { entered, exited, kept, hasPrevious: true };
 }
 
-/** Type guard para snapshots cargados desde un archivo JSON. */
-export function isMonthlySnapshot(value: unknown): value is MonthlySnapshot {
-    if (typeof value !== 'object' || value === null) return false;
-    const v = value as Record<string, unknown>;
-    return (
-        v.kind === 'cavaai-propicks-monthly-snapshot' &&
-        Array.isArray(v.picks) &&
-        typeof v.month === 'string'
-    );
-}
+export { isMonthlySnapshot, previousSnapshotError } from './snapshotValidation';
 
 function movementLine(
     symbol: string,
