@@ -225,7 +225,20 @@ class InvestmentPlanService:
         by_label: dict[str, Decimal] = {}
         positions_total = Decimal("0")
         for position, company in positions:
-            value = Decimal(position.market_value_base or 0)
+            if position.market_value_base is None:
+                # F368: una posicion sin valor en divisa base no se descarta en
+                # silencio: se registra y la cobertura pasa a parcial.
+                missing_fx.append(
+                    {
+                        "kind": "position",
+                        "ticker": company.ticker,
+                        "quote_currency": position.currency,
+                        "base_currency": portfolio.base_currency,
+                        "as_of": position.as_of.isoformat() if position.as_of else None,
+                    }
+                )
+                continue
+            value = Decimal(position.market_value_base)
             if value <= 0:
                 continue
             positions_total += value
@@ -297,9 +310,14 @@ class InvestmentPlanService:
                     }
                 )
 
+        if missing_fx:
+            # Con cobertura parcial los pesos y el total no son los de la cartera
+            # real: no se publican importes de compra/venta calculados sobre ellos.
+            suggestions = []
         return {
             "plan_exists": True,
             "status": "incomplete_fx" if missing_fx else "ok",
+            "suggestions_blocked": bool(missing_fx),
             "portfolio_value_base": float(total.quantize(Decimal("0.01"))),
             "cash_base": float(cash_total.quantize(Decimal("0.01"))),
             "missing_fx": missing_fx,
