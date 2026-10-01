@@ -373,7 +373,7 @@ def _table_markdown(item: Any, doc: Any, table_id: str) -> str:
 
 
 def _iter_docling_items(doc: Any) -> list[tuple[Any, int]]:
-    iterate = getattr(doc, "iterate_items", None)
+    iterate: Any = getattr(doc, "iterate_items", None)
     if callable(iterate):
         try:
             return [(item, level) for item, level in iterate()]
