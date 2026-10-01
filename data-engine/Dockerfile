@@ -19,7 +19,7 @@ COPY requirements.txt .
 # sentence-transformers lo exige, y la wheel CUDA por defecto de PyPI son
 # GB inservibles en una maquina CPU-only. Ver --extra-index-url en
 # requirements.txt y data-engine/scripts/sync_requirements.py.
-RUN pip install torch==2.9.1+cpu --index-url https://download.pytorch.org/whl/cpu \
+RUN pip install torch==2.14.1+cpu --index-url https://download.pytorch.org/whl/cpu \
     && pip install --no-cache-dir -r requirements.txt
 
 # Copy source (quantstats package is vendored inside data-engine/)
