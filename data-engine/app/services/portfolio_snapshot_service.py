@@ -249,7 +249,68 @@ class PortfolioSnapshotService:
                 )
             )
         db.flush()
+        if existing:
+            # F363: recapturar un día antiguo cambia su valor; las fotos
+            # posteriores enlazaban con el valor anterior, así que su retorno y
+            # TWR se recalculan desde sus propios datos guardados.
+            self._relink_following(db, portfolio.id, snapshot_date)
         return snapshot
+
+    def _relink_following(self, db: Session, portfolio_id: int, after: date) -> None:
+        following = list(
+            db.scalars(
+                select(PortfolioDailySnapshot)
+                .where(
+                    PortfolioDailySnapshot.portfolio_id == portfolio_id,
+                    PortfolioDailySnapshot.snapshot_date >= after,
+                )
+                .order_by(PortfolioDailySnapshot.snapshot_date)
+            ).all()
+        )
+        for previous, current in zip(following, following[1:], strict=False):
+            meta = current.metadata_ or {}
+            previous_is_base = previous.cumulative_twr is None and (
+                db.scalar(
+                    select(PortfolioDailySnapshot.id)
+                    .where(
+                        PortfolioDailySnapshot.portfolio_id == portfolio_id,
+                        PortfolioDailySnapshot.snapshot_date < previous.snapshot_date,
+                    )
+                    .limit(1)
+                )
+                is None
+            )
+            # Evidencia de ventana: solo las fotos con contador de flujos
+            # intermedios y ventana (after_previous_snapshot_through_as_of)
+            # acreditan que net_external_flow_base cubre todo el intervalo.
+            # Una foto legacy sin esa evidencia no prueba flujo cero: se deja None.
+            intermediate = meta.get("unvalued_intermediate_flows")
+            window_proven = (
+                meta.get("flow_window") == "after_previous_snapshot_through_as_of"
+                and isinstance(intermediate, int)
+                and not isinstance(intermediate, bool)
+                and intermediate == 0
+                and "ambiguous_external_flows" in meta
+            )
+            linkable = (
+                window_proven
+                and previous.total_value_base > 0
+                and previous.pricing_coverage == Decimal("1")
+                and previous.base_currency == current.base_currency
+                and current.pricing_coverage == Decimal("1")
+                and not meta.get("ambiguous_external_flows")
+                and (previous.cumulative_twr is not None or previous_is_base)
+            )
+            if linkable:
+                net_flow = current.net_external_flow_base or Decimal("0")
+                daily = (current.total_value_base - net_flow) / previous.total_value_base - Decimal("1")
+                prior = previous.cumulative_twr or Decimal("0")
+                current.daily_return = daily
+                current.cumulative_twr = (Decimal("1") + prior) * (Decimal("1") + daily) - Decimal("1")
+            else:
+                current.daily_return = None
+                current.cumulative_twr = None
+        db.flush()
 
     def history(
         self,
