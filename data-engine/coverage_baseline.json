@@ -1,11 +1,15 @@
 {
   "version": 1,
-  "generated_at": "2026-10-01T22:32:20+00:00",
+  "generated_at": "2026-10-01T22:51:57+00:00",
   "measurement": {
     "command": "python scripts/run_coverage_gate.py",
     "branch": true,
-    "total": 81.49,
-    "statements": 37310
+    "total": 84.07,
+    "operations": 36139,
+    "covered": 30381,
+    "total_including_exempt": 81.49,
+    "operations_including_exempt": 37310,
+    "covered_including_exempt": 30403
   },
   "policy": {
     "max_drop_points": 0.0

@@ -268,14 +268,49 @@ def load_baseline(path: Path | str = BASELINE_PATH) -> dict[str, Any]:
     return raw
 
 
+def _aggregate(
+    packages: dict[str, PackageCoverage], exempt: set[str]
+) -> tuple[float, int, int]:
+    """(porcentaje, cubiertas, operaciones) de lo que realmente se gatea.
+
+    Los paquetes `exempt` quedan FUERA. Si se dejaran dentro, marcar un paquete
+    como exempt no serviria de nada: seguiria hundiendo el total y el gate
+    seguiria fallando por el paquete que se dijo exento.
+
+    evaluate() y render_baseline() usan ESTA misma funcion a proposito: si cada
+    uno calculara el total por su cuenta, el total guardado en el baseline y el
+    total que se gatea podrian divergir en silencio (y asi fue: 84.07% gateado
+    contra un 81.49% guardado, porque uno contaba alembic y el otro no).
+    """
+    gated = {name: p for name, p in packages.items() if name not in exempt}
+    covered = sum(p.covered for p in gated.values())
+    statements = sum(p.total for p in gated.values())
+    percent = 100.0 if statements == 0 else 100.0 * covered / statements
+    return percent, covered, statements
+
+
+def _aggregate_all(packages: dict[str, PackageCoverage]) -> tuple[float, int, int]:
+    """Igual que _aggregate pero incluyendo los exentos, solo para informar."""
+    covered = sum(p.covered for p in packages.values())
+    statements = sum(p.total for p in packages.values())
+    percent = 100.0 if statements == 0 else 100.0 * covered / statements
+    return percent, covered, statements
+
+
 def render_baseline(
     packages: dict[str, PackageCoverage],
-    total: float,
-    statements: int,
     max_drop_points: float,
     exempt: list[dict[str, str]],
 ) -> dict[str, Any]:
-    """Construye el diccionario que se escribe a coverage_baseline.json."""
+    """Construye el diccionario que se escribe a coverage_baseline.json.
+
+    El total se calcula aqui, con la MISMA regla que evaluate(), para que el
+    numero guardado y el numero gateado no puedan separarse. Se guardan los dos
+    (con y sin exentos) para que el informe sea auditable.
+    """
+    exempt_names = {item["package"] for item in exempt}
+    total, covered, statements = _aggregate(packages, exempt_names)
+    total_all, covered_all, statements_all = _aggregate_all(packages)
     return {
         "version": BASELINE_VERSION,
         "generated_at": _dt.datetime.now(_dt.UTC).replace(microsecond=0).isoformat(),
@@ -283,7 +318,14 @@ def render_baseline(
             "command": "python scripts/run_coverage_gate.py",
             "branch": True,
             "total": round(total, 2),
-            "statements": statements,
+            "operations": statements,
+            "covered": covered,
+            # Lo que seria el total si tambien se gatearan los exentos. Se
+            # guarda para que la cifra que se anuncia no pueda superiorarse
+            # escondiendo paquetes en `exempt`.
+            "total_including_exempt": round(total_all, 2),
+            "operations_including_exempt": statements_all,
+            "covered_including_exempt": covered_all,
         },
         "policy": {"max_drop_points": max_drop_points},
         "exempt": sorted(exempt, key=lambda item: item["package"]),
@@ -312,6 +354,7 @@ class Violation:
 class GateResult:
     total: float
     total_min: float
+    total_including_exempt: float
     rows: list[tuple[str, float | None, float, float | None, float | None, str]]
     violations: list[Violation]
 
@@ -339,15 +382,10 @@ def evaluate(
     base_total = _require_number(baseline["measurement"]["total"], "measurement.total")
     total_drop = default_drop
 
-    # --- agregado: se reconstruye desde los paquetes, no se toma del informe,
-    # para que el numero que se gatea y el que se imprime sean el mismo.
-    # Los paquetes `exempt` quedan FUERA del agregado. Si se dejaran dentro,
-    # marcar un paquete como exempt no serviria de nada: seguiria hundiendo el
-    # total y el gate seguiria fallando por el paquete que se dijo exento.
-    gated = {name: p for name, p in packages.items() if name not in exempt}
-    covered = sum(p.covered for p in gated.values())
-    statements = sum(p.total for p in gated.values())
-    total = 100.0 if statements == 0 else 100.0 * covered / statements
+    # --- agregado: ver _aggregate(). El total que se gatea y el que se imprime
+    # salen de la misma llamada, con los exentos fuera.
+    total, covered, statements = _aggregate(packages, exempt)
+    total_all, _, _ = _aggregate_all(packages)
     total_min = _threshold(base_total, total_drop)
 
     violations: list[Violation] = []
@@ -413,7 +451,13 @@ def evaluate(
             )
         rows.append((name, base_pct, measured.percent if measured else None, minimum, delta, status))
 
-    return GateResult(total=total, total_min=total_min, rows=rows, violations=violations)
+    return GateResult(
+        total=total,
+        total_min=total_min,
+        total_including_exempt=total_all,
+        rows=rows,
+        violations=violations,
+    )
 
 
 # ----------------------------------------------------------------------- report
@@ -444,6 +488,13 @@ def format_report(result: GateResult, *, title: str, exempt: list[dict[str, str]
         f"{result.total_min:>8.2f}  {'PASS' if result.ok else 'FAIL'}"
     )
     lines.append("")
+    # El total de la tabla excluye los exentos. Se dice aqui cuanto seria
+    # incluyendolos, para que mover un paquete a `exempt` no pueda subir el
+    # titular sin que se note en el propio informe.
+    lines.append(
+        f"(total gateado {result.total:.2f}%; incluyendo exentos "
+        f"{result.total_including_exempt:.2f}%)"
+    )
     if result.violations:
         lines.append(f"GATE FALLIDO: {len(result.violations)} violation/es")
         for violation in result.violations:
@@ -546,14 +597,9 @@ def gate(*, report: bool = False, update: bool = False, extra: list[str] | None 
         print("GATE ERROR: la medicion no contiene ningun paquete.", file=sys.stderr)
         return code or 1
 
-    statements = sum(p.total for p in packages.values())
-    total = 100.0 if statements == 0 else 100.0 * sum(p.covered for p in packages.values()) / statements
-
     if update:
         payload = render_baseline(
             packages,
-            total,
-            statements,
             float(baseline["policy"].get("max_drop_points", 0.0)),
             list(baseline.get("exempt", [])),
         )
