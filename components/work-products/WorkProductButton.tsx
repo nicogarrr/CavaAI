@@ -54,7 +54,7 @@ export default function WorkProductButton() {
             const generated = await generateWorkProduct({
                 product_type: productType,
                 ticker: ticker.trim() || null,
-                years: Math.min(50, Math.max(1, Number(years) || 10)),
+                years: Math.min(20, Math.max(1, Number(years) || 10)),
             });
             setResult(generated);
             toast.success('Entregable generado');
@@ -117,7 +117,7 @@ export default function WorkProductButton() {
                             id="wp-years"
                             type="number"
                             min={1}
-                            max={50}
+                            max={20}
                             value={years}
                             onChange={(event) => setYears(event.target.value)}
                             className="bg-gray-900 border-gray-600 text-gray-100"
