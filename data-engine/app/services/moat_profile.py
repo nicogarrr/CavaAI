@@ -39,6 +39,32 @@ def financial_quality_profile(company: Company) -> tuple[str, str]:
     return "mature", "Perfil operativo general; no equivale a demostrar madurez ni foso."
 
 
-# Metrics below are not a validated proxy for moat in these profiles.
-# Preserve their raw values in individual calculated metrics for diagnostics.
+#: Metrics below are not a validated proxy for moat in these profiles.
+#: Preserve their raw values in individual calculated metrics for diagnostics.
 NONCOMPARABLE_PROFILES = frozenset({"early_stage", "financial", "cyclical", "growth", "unknown"})
+
+#: El perfil clasifica la etapa operativa de la empresa. No es un veredicto de
+#: foso: ninguna de estas etiquetas prueba ni descarta una ventaja competitiva,
+#: asi que nunca debe usarse para recortar o bajar puntuaciones de evidencia.
+PROFILE_IS_NOT_A_MOAT_VERDICT = (
+    "El perfil describe la etapa operativa a partir de metadatos explicitos de "
+    "la empresa; no demuestra ni descarta un foso competitivo."
+)
+
+
+def moat_evidence_context(company: Company) -> dict:
+    """Contexto de perfil para acompanar a una evaluacion de foso.
+
+    Aditivo: el perfil se expone como contexto para que el lector sepa si la
+    empresa esta antes de caja, es ciclica, financiera,etc. y lo que eso exige
+    como evidencia. No puntua, no filtra y no baja el score: un foso se
+    demuestra con fuentes, no con la etapa operativa.
+    """
+    profile, reason = financial_quality_profile(company)
+    return {
+        "profile": profile,
+        "profile_label": PROFILE_LABELS.get(profile, profile),
+        "profile_reason": reason,
+        "score_comparable": profile not in NONCOMPARABLE_PROFILES,
+        "note": PROFILE_IS_NOT_A_MOAT_VERDICT,
+    }
