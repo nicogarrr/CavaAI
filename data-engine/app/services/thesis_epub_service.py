@@ -1,13 +1,28 @@
-"""Conversión de tesis de inversión a EPUB sin dependencias externas.
+"""Conversión de tesis de inversión a EPUB con EbookLib.
 
-ebooklib no está disponible en el venv y requirements.txt es de solo lectura,
-así que el EPUB se construye a mano con la stdlib: un EPUB es un ZIP con
-el `mimetype` sin comprimir en primera posición, `META-INF/container.xml`,
-un `content.opf` y capítulos XHTML válidos.
+EbookLib (AGPL-3.0, literalmente la licencia de CavaAI) construye el EPUB
+100 % en Python: sin pandoc, sin binario externo y sin `subprocess`. Este
+módulo solo usa la API pública de EbookLib (`EpubBook`, `EpubHtml`,
+`EpubItem`, `EpubNcx`, `EpubNav`, `Link`, `write_epub`); `lxml`/`six` ya
+estaban en el venv como dependencias transitivas.
 
-Uso:
+Contrato público (lo usa `GET /api/thesis/{ticker}/epub`):
     data = ThesisEpubData(ticker="SAN", ...)
     payload: bytes = build_thesis_epub(data)
+
+Decisiones documentadas:
+- Sin imágenes embebidas: el pipeline actual no las produce
+  (`ThesisEpubData` no tiene campos de imagen, la ruta no pasa
+  sparklines/charts y `ThesisVersion`/`ThesisSection` no guardan
+  binarios). Si el pipeline las añade, el punto de anclaje es
+  `epub.EpubImage` junto a cada `EpubHtml`.
+- Identificador estable `cavaai-thesis-{TICKER}-v{versión}` para que el
+  e-reader no duplique al re-descargar. `dcterms:modified` lo escribe
+  EbookLib con la hora actual (estándar EPUB); la estabilidad
+  garantizada es la del identificador, no byte a byte.
+- Todo el texto de usuario se escapa y solo se generan etiquetas propias,
+  así que el XHTML que recibe EbookLib/lxml siempre es válido (el Kindle
+  rechaza en silencio los EPUB con HTML roto).
 """
 
 from __future__ import annotations
@@ -17,7 +32,8 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 from io import BytesIO
-from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile
+
+from ebooklib import epub
 
 EPUB_MIMETYPE = "application/epub+zip"
 
@@ -66,13 +82,49 @@ def slugify(value: str, fallback: str = "seccion") -> str:
     return slug[:48] or fallback
 
 
+_TABLE_SEP_CELL_RE = re.compile(r"^:?-{1,}:?$")
+
+
+def _split_table_row(line: str) -> list[str]:
+    """Divide una fila de tabla pipe en celdas (sin los pipes de borde)."""
+    text = line.strip()
+    if text.startswith("|"):
+        text = text[1:]
+    if text.endswith("|"):
+        text = text[:-1]
+    return [cell.strip() for cell in text.split("|")]
+
+
+def _is_table_separator(line: str) -> bool:
+    """Detecta la fila `|---|---|` (o `---|---`) de una tabla markdown."""
+    cells = _split_table_row(line)
+    if not cells or any(cell == "" for cell in cells):
+        return False
+    return all(_TABLE_SEP_CELL_RE.match(cell) for cell in cells)
+
+
+def _table_html(header: list[str], rows: list[list[str]]) -> str:
+    """Renderiza cabecera + filas como `<table>` XHTML válido."""
+    head = "".join(f"<th>{_inline(cell)}</th>" for cell in header)
+    body = "".join(
+        "<tr>" + "".join(f"<td>{_inline(cell)}</td>" for cell in row) + "</tr>" for row in rows
+    )
+    return f"<table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>"
+
+
 def markdown_lite_to_html(body: str) -> str:
     """Convierte texto con markdown ligero a HTML escapado y seguro.
 
-    Soporta encabezados (#, ##, ###), listas (-, *, 1.) y párrafos.
-    Todo el texto se escapa; solo se generan etiquetas propias.
+    Soporta encabezados (#, ##, ###), listas (-, *, 1.), tablas pipe
+    (`| a | b |` + fila `|---|---|`) y párrafos. Todo el texto se escapa;
+    solo se generan etiquetas propias, así que EbookLib/lxml siempre
+    recibe XHTML válido.
     """
-    lines = (body or "").replace("\r\n", "\n").split("\n")
+    if body is None:
+        body = ""
+    if not isinstance(body, str):
+        raise TypeError(f"body must be str, got {type(body).__name__}")
+    lines = body.replace("\r\n", "\n").split("\n")
     blocks: list[str] = []
     paragraph: list[str] = []
     list_items: list[str] = []
@@ -89,11 +141,33 @@ def markdown_lite_to_html(body: str) -> str:
             blocks.append(f"<{tag}>" + "".join(f"<li>{item}</li>" for item in list_items) + f"</{tag}>")
             list_items.clear()
 
-    for raw in lines:
+    index = 0
+    total = len(lines)
+    while index < total:
+        raw = lines[index]
         line = raw.strip()
         if not line:
             flush_paragraph()
             flush_list()
+            index += 1
+            continue
+        following = lines[index + 1] if index + 1 < total else ""
+        if (
+            "|" in line
+            and _is_table_separator(following)
+            and (line.lstrip().startswith("|") or "|" in following)
+        ):
+            flush_paragraph()
+            flush_list()
+            header = _split_table_row(line)
+            index += 2
+            rows: list[list[str]] = []
+            while index < total and lines[index].strip() and "|" in lines[index]:
+                rows.append(_split_table_row(lines[index].strip()))
+                index += 1
+            width = len(header)
+            normalized = [row + [""] * (width - len(row)) if len(row) < width else row for row in rows]
+            blocks.append(_table_html(header, normalized))
             continue
         heading = re.match(r"^(#{1,3})\s+(.*)$", line)
         ordered = re.match(r"^\d+[.)]\s+(.*)$", line)
@@ -113,6 +187,7 @@ def markdown_lite_to_html(body: str) -> str:
         else:
             flush_list()
             paragraph.append(line)
+        index += 1
     flush_paragraph()
     flush_list()
     return "\n".join(blocks) if blocks else "<p></p>"
@@ -124,138 +199,139 @@ def _inline(text: str) -> str:
     return re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", escaped)
 
 
-def _chapter(title: str, inner_html: str) -> str:
-    return (
-        '<?xml version="1.0" encoding="utf-8"?>\n'
-        '<!DOCTYPE html>\n'
-        '<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="es" lang="es">\n'
-        "<head><title>" + html.escape(title, quote=True) + "</title>"
-        '<link rel="stylesheet" type="text/css" href="style.css"/></head>\n'
-        "<body><h1>" + html.escape(title, quote=True) + "</h1>\n" + inner_html + "\n</body>\n</html>\n"
-    )
+def _as_text(value: object, *, name: str, default: str | None = None) -> str:
+    """Valida un campo de texto del EPUB con error honesto.
+
+    `None` se sustituye por `default` (dato ausente, no dato roto); otro
+    tipo no-str es un error de programación y se eleva como `TypeError`
+    en vez de corromper el EPUB en silencio.
+    """
+    if value is None and default is not None:
+        return default
+    if not isinstance(value, str):
+        raise TypeError(f"ThesisEpubData.{name} must be str, got {type(value).__name__}")
+    return value
 
 
 _STYLE_CSS = (
     "body{font-family:Georgia,serif;line-height:1.6;margin:5%;color:#111}"
     "h1{font-size:1.5em;border-bottom:1px solid #999;padding-bottom:.3em}"
     "h2{font-size:1.25em}h3,h4{font-size:1.1em}"
+    "table{border-collapse:collapse;width:100%;margin:1em 0}"
+    "th,td{border:1px solid #999;padding:.3em .5em;text-align:left;font-size:.9em}"
+    "th{background:#f0f0f0}"
     ".meta{color:#555;font-size:.9em}.disclaimer{background:#fff8e1;border:1px solid #e0c36a;padding:1em}"
     "ul,ol{margin-left:1.2em}"
 )
 
-_CONTAINER_XML = (
-    '<?xml version="1.0" encoding="utf-8"?>\n'
-    '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">\n'
-    "  <rootfiles>\n"
-    '    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>\n'
-    "  </rootfiles>\n"
-    "</container>\n"
-)
-
 
 def build_thesis_epub(data: ThesisEpubData) -> bytes:
-    """Construye un .epub válido a partir de los datos de la tesis."""
-    ticker = (data.ticker or "UNKNOWN").upper()
+    """Construye un .epub válido con EbookLib a partir de los datos de la tesis.
+
+    Contrato intacto: recibe `ThesisEpubData` y devuelve `bytes` listos para
+    servir como `application/epub+zip`. Metadatos: título, autor `CavaAI`,
+    idioma `es`, identificador estable `cavaai-thesis-{TICKER}-v{versión}` y
+    fecha de generación. El TOC se construye desde las secciones reales.
+    """
+    if not isinstance(data, ThesisEpubData):
+        raise TypeError(f"data must be ThesisEpubData, got {type(data).__name__}")
+    ticker = (_as_text(data.ticker, name="ticker", default="UNKNOWN") or "UNKNOWN").upper()
+    company_name = _as_text(data.company_name, name="company_name", default="")
+    if not isinstance(data.version, int):
+        raise TypeError(f"ThesisEpubData.version must be int, got {type(data.version).__name__}")
+    rating = _as_text(data.rating, name="rating", default="watch") or "watch"
+    status = _as_text(data.status, name="status", default="draft") or "draft"
+    generated = _as_text(data.generated_on, name="generated_on", default="")
+    if not isinstance(data.sections, (list, tuple)):
+        raise TypeError(f"ThesisEpubData.sections must be a list, got {type(data.sections).__name__}")
+    if data.citations is None:
+        citations: list[str] = []
+    elif not isinstance(data.citations, (list, tuple)):
+        raise TypeError(f"ThesisEpubData.citations must be a list, got {type(data.citations).__name__}")
+    else:
+        citations = [_as_text(cite, name="citations[]") for cite in data.citations]
+
     uid = f"cavaai-thesis-{ticker}-v{data.version}"
     title = f"Tesis de inversión: {ticker}"
-    if data.company_name:
-        title += f" — {data.company_name}"
-    generated = data.generated_on or ""
+    if company_name:
+        title += f" — {company_name}"
 
-    chapters: list[tuple[str, str, str]] = []  # (id, filename, xhtml)
+    book = epub.EpubBook()
+    book.set_identifier(uid)
+    book.set_title(title)
+    book.set_language("es")
+    book.add_author("CavaAI")
+    if generated:
+        book.add_metadata("DC", "date", generated)
+
+    css = epub.EpubItem(uid="css", file_name="style.css", media_type="text/css", content=_STYLE_CSS)
+    chapters: list[epub.EpubHtml] = []
+    toc: list[epub.Link] = []
+
+    def _add_chapter(uid_: str, file_name: str, heading: str, inner_html: str) -> None:
+        chapter = epub.EpubHtml(uid=uid_, title=heading, file_name=file_name, lang="es")
+        chapter.content = f"<h1>{html.escape(heading, quote=True)}</h1>\n{inner_html}"
+        chapter.add_item(css)
+        book.add_item(chapter)
+        chapters.append(chapter)
+        toc.append(epub.Link(file_name, heading, uid_))
 
     meta_html = (
-        f'<p class="meta">Versión {data.version} · rating: {html.escape(data.rating)} · '
-        f"estado: {html.escape(data.status)}"
+        f'<p class="meta">Versión {data.version} · rating: {html.escape(rating)} · '
+        f"estado: {html.escape(status)}"
         + (f" · generada el {html.escape(generated)}" if generated else "")
         + "</p>"
     )
-    chapters.append(("portada", "portada.xhtml", _chapter(title, meta_html)))
+    _add_chapter("portada", "portada.xhtml", title, meta_html)
 
-    summary_html = markdown_lite_to_html(data.executive_summary or "Sin resumen ejecutivo disponible.")
-    chapters.append(("resumen", "resumen.xhtml", _chapter("Resumen ejecutivo", summary_html)))
+    summary = _as_text(data.executive_summary, name="executive_summary", default="")
+    _add_chapter(
+        "resumen",
+        "resumen.xhtml",
+        "Resumen ejecutivo",
+        markdown_lite_to_html(summary or "Sin resumen ejecutivo disponible."),
+    )
 
     used_slugs: set[str] = set()
-    for index, section in enumerate(data.sections, start=1):
-        slug = slugify(section.title, fallback=f"seccion-{index}")
+    for position, section in enumerate(data.sections, start=1):
+        if not isinstance(section, EpubSection):
+            raise TypeError(f"sections[{position}] must be EpubSection, got {type(section).__name__}")
+        section_title = _as_text(section.title, name=f"sections[{position}].title", default="")
+        section_body = _as_text(section.body, name=f"sections[{position}].body", default="")
+        heading = section_title or f"Sección {position}"
+        slug = slugify(section_title, fallback=f"seccion-{position}")
         if slug in used_slugs:
-            slug = f"{slug}-{index}"
+            slug = f"{slug}-{position}"
         used_slugs.add(slug)
-        filename = f"seccion-{index:02d}-{slug}.xhtml"
-        chapters.append(
-            (f"sec{index}", filename, _chapter(section.title or f"Sección {index}", markdown_lite_to_html(section.body)))
+        _add_chapter(
+            f"sec{position}",
+            f"seccion-{position:02d}-{slug}.xhtml",
+            heading,
+            markdown_lite_to_html(section_body),
         )
 
-    if data.citations:
-        items = "".join(f"<li>{_inline(cite)}</li>" for cite in data.citations)
-        cites_html = f"<ol>{items}</ol>"
+    if citations:
+        cites_html = "<ol>" + "".join(f"<li>{_inline(cite)}</li>" for cite in citations) + "</ol>"
     else:
         cites_html = "<p>Sin citas registradas para esta tesis.</p>"
-    chapters.append(("citas", "citas.xhtml", _chapter("Citas y evidencia", cites_html)))
+    _add_chapter("citas", "citas.xhtml", "Citas y evidencia", cites_html)
 
-    chapters.append(
-        ("aviso", "aviso.xhtml", _chapter("Aviso legal", f'<div class="disclaimer"><p>{html.escape(DISCLAIMER_ES)}</p></div>'))
-    )
-
-    manifest = ['<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx"/>']
-    manifest.append('<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>')
-    manifest.append('<item id="css" href="style.css" media-type="text/css"/>')
-    for item_id, filename, _ in chapters:
-        manifest.append(f'<item id="{item_id}" href="{html.escape(filename)}" media-type="application/xhtml+xml"/>')
-    spine = "".join(f'<itemref idref="{item_id}"/>' for item_id, _, _ in chapters)
-    manifest_xml = "\n    ".join(manifest)
-
-    opf = (
-        '<?xml version="1.0" encoding="utf-8"?>\n'
-        '<package version="3.0" unique-identifier="uid" xmlns="http://www.idpf.org/2007/opf">\n'
-        "  <metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\">\n"
-        f"    <dc:identifier id=\"uid\">{html.escape(uid)}</dc:identifier>\n"
-        f"    <dc:title>{html.escape(title)}</dc:title>\n"
-        "    <dc:creator>CavaAI</dc:creator>\n"
-        "    <dc:language>es</dc:language>\n"
-        + (f"    <dc:date>{html.escape(generated)}</dc:date>\n" if generated else "")
-        + "    <meta property=\"dcterms:modified\">2026-01-01T00:00:00Z</meta>\n"
-        "  </metadata>\n"
-        f"  <manifest>\n    {manifest_xml}\n  </manifest>\n"
-        f"  <spine toc=\"ncx\">\n    {spine}\n  </spine>\n"
-        "</package>\n"
+    _add_chapter(
+        "aviso",
+        "aviso.xhtml",
+        "Aviso legal",
+        f'<div class="disclaimer"><p>{html.escape(DISCLAIMER_ES)}</p></div>',
     )
 
-    nav_items = "".join(
-        f'<li><a href="{html.escape(filename)}">{html.escape(_nav_label(filename, data, idx))}</a></li>'
-        for idx, (_, filename, _) in enumerate(chapters)
-    )
-    nav = (
-        '<?xml version="1.0" encoding="utf-8"?>\n'
-        '<!DOCTYPE html>\n<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="es" lang="es">\n'
-        "<head><title>Índice</title></head>\n"
-        '<body><nav epub:type="toc"><h1>Índice</h1><ol>' + nav_items + "</ol></nav></body>\n</html>\n"
-    )
-
-    ncx_points = "".join(
-        f'<navPoint id="np{i}" playOrder="{i}"><navLabel><text>{html.escape(_nav_label(filename, data, i))}</text>'
-        f"</navLabel><content src=\"{html.escape(filename)}\"/></navPoint>"
-        for i, (_, filename, _) in enumerate(chapters, start=1)
-    )
-    ncx = (
-        '<?xml version="1.0" encoding="utf-8"?>\n'
-        '<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">\n'
-        f"<head><meta name=\"dtb:uid\" content=\"{html.escape(uid)}\"/></head>\n"
-        f'<docTitle><text>{html.escape(title)}</text></docTitle>\n'
-        f"<navMap>{ncx_points}</navMap>\n</ncx>\n"
-    )
+    book.add_item(css)
+    book.toc = tuple(toc)
+    book.spine = ["nav", *chapters]
+    book.add_item(epub.EpubNcx())
+    book.add_item(epub.EpubNav())
 
     buffer = BytesIO()
-    with ZipFile(buffer, "w") as zf:
-        # El mimetype DEBE ser la primera entrada y SIN comprimir (spec EPUB).
-        zf.writestr("mimetype", EPUB_MIMETYPE, compress_type=ZIP_STORED)
-        zf.writestr("META-INF/container.xml", _CONTAINER_XML, compress_type=ZIP_DEFLATED)
-        zf.writestr("OEBPS/content.opf", opf, compress_type=ZIP_DEFLATED)
-        zf.writestr("OEBPS/toc.ncx", ncx, compress_type=ZIP_DEFLATED)
-        zf.writestr("OEBPS/nav.xhtml", nav, compress_type=ZIP_DEFLATED)
-        zf.writestr("OEBPS/style.css", _STYLE_CSS, compress_type=ZIP_DEFLATED)
-        for _, filename, content in chapters:
-            zf.writestr(f"OEBPS/{filename}", content, compress_type=ZIP_DEFLATED)
+    if not epub.write_epub(buffer, book):
+        raise RuntimeError(f"no se pudo generar el EPUB de {ticker} v{data.version}")
     return buffer.getvalue()
 
 
