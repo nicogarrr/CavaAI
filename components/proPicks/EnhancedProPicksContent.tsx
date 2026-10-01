@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,6 +9,7 @@ import { TrendingUp, Sparkles, ArrowRight, Loader2, RefreshCw, Clock, Plus, Chec
 import EnhancedProPicksFilters, { ProPicksFilters } from './EnhancedProPicksFilters';
 import { generateEnhancedProPicksWithRun, type ProPick } from '@/lib/actions/proPicks.actions';
 import { allNeutralCategory, categoryDisplay } from '@/lib/propicks/category-display';
+import { CATEGORY_KEYS, categoryNeutralNote } from './category-display';
 import { addToWatchlist } from '@/lib/actions/watchlist.actions';
 import { formatNumber, formatPercent, formatPrice, formatUserDate, formatUserDateTime } from '@/lib/format';
 import { etiquetaSector } from '@/lib/labels';
@@ -97,6 +98,14 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt, ini
         return formatUserDateTime(isoString);
     };
 
+    // Estado MEDIDO de las categorías en el run visible: la caja «Sobre
+    // ProPicks IA» ya no afirma en literal qué está neutral, lo deriva de estos
+    // picks (categoryDisplay honra el flag de ausencia de cada categoría).
+    const neutralNote = useMemo(
+        () => categoryNeutralNote(CATEGORY_KEYS.filter((key) => allNeutralCategory(picks, key)), picks.length),
+        [picks],
+    );
+
     const getScoreColor = (score: number) => {
         if (score >= 80) return 'text-green-400 bg-green-500/10 border-green-500/20';
         if (score >= 70) return 'text-teal-400 bg-teal-500/10 border-teal-500/20';
@@ -154,19 +163,30 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt, ini
                     <p className="text-xs text-gray-400 leading-relaxed">
                         El embudo v1 puntúa las métricas de calidad y crecimiento ya
                         persistidas de todo el universo (SEC + ESEF) y las ordena por
-                        percentiles. En los picks actuales sin datos, valoración y
-                        momentum no discriminan: la
-                        valoración necesita CFROI y WACC y el momentum series de
-                        precios, y esos datos aún no cubren todo el universo, así que
+                        percentiles. Una categoría sin datos en el run no discrimina:
+                        la valoración necesita CFROI y WACC y el momentum series de
+                        precios, así que mientras el run no las traiga
                         entran neutras (50) en el score y se muestran n/d en las
-                        tarjetas.
+                        tarjetas. El 50 es «sin dato», no un score: justo debajo se
+                        nombra qué entrada falta en cada categoría, medido en los
+                        picks que estás viendo.
                     </p>
                     <div className="mt-3 pt-3 border-t border-gray-700">
                         <div className="text-xs text-gray-500 space-y-1">
                             <div>✓ Análisis fundamental (calidad y crecimiento)</div>
                             <div>✓ Análisis de salud financiera</div>
                             <div>✓ Ranking por percentiles del universo</div>
-                            <div>~ Valoración y momentum: neutras en los picks actuales sin datos (faltan CFROI/WACC y series de precios para todo el universo)</div>
+                            {/* Lo que se afirma aquí es lo MEDIDO en el run que se
+                                está viendo (neutralNote), no un literal fijo: si
+                                una categoría deja de estar neutra, la caja deja
+                                de decir que lo está. Sin picks no hay nada que
+                                medir y se declara el límite conocido del
+                                embudo, que es un hecho del motor y no del run. */}
+                            {neutralNote ? (
+                                <div>{neutralNote.marker} {neutralNote.text}</div>
+                            ) : (
+                                <div>~ Valoración y momentum: neutras en los picks actuales sin datos (faltan CFROI/WACC y series de precios para todo el universo)</div>
+                            )}
                         </div>
                     </div>
                 </Card>
