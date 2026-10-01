@@ -40,8 +40,12 @@ interface WatchlistEntry {
     created_at?: string;
 }
 
-// Obtener watchlist del usuario actual desde el backend research (/api/watchlist)
-export async function getWatchlist(): Promise<{ symbol: string; addedAt: Date }[]> {
+// Obtener watchlist del usuario actual desde el backend research (/api/watchlist).
+// `unavailable` distingue un fallo del backend de una watchlist realmente vacía (F386).
+export async function getWatchlistState(): Promise<{
+    items: { symbol: string; addedAt: Date }[];
+    unavailable: boolean;
+}> {
     try {
         const userId = await getUserId();
         const items = await cachedFetch(
@@ -49,16 +53,23 @@ export async function getWatchlist(): Promise<{ symbol: string; addedAt: Date }[
             () => researchRequest<WatchlistEntry[]>('/api/watchlist'),
             15,
         );
-        if (!Array.isArray(items)) return [];
-        return items.map((item) => ({
-            symbol: item.symbol,
-            addedAt: item.created_at ? new Date(item.created_at) : new Date()
-        }));
+        if (!Array.isArray(items)) return { items: [], unavailable: true };
+        return {
+            items: items.map((item) => ({
+                symbol: item.symbol,
+                addedAt: item.created_at ? new Date(item.created_at) : new Date()
+            })),
+            unavailable: false,
+        };
     } catch (error) {
-        // Backend no disponible / ruta aún no creada: degrada sin romper.
         console.error('getWatchlist error:', error);
-        return [];
+        return { items: [], unavailable: true };
     }
+}
+
+// Compatibilidad: los consumidores secundarios degradan a lista vacía sin romper.
+export async function getWatchlist(): Promise<{ symbol: string; addedAt: Date }[]> {
+    return (await getWatchlistState()).items;
 }
 
 // Añadir a watchlist

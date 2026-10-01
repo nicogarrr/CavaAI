@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -124,7 +125,8 @@ class ExpectationRealityService:
         facts_by_key: dict[tuple[int, str], FinancialFact] = {}
         for row in fact_rows:
             key = (row.fiscal_year, row.metric)
-            if key in group_keys:
+            # Los forecasts son anuales: un trimestre no es un actual comparable.
+            if key in group_keys and self._is_annual_period(row):
                 facts_by_key.setdefault(key, row)
         metric_rows = db.scalars(
             select(CalculatedMetric)
@@ -139,7 +141,7 @@ class ExpectationRealityService:
         metrics_by_key: dict[tuple[int, str], CalculatedMetric] = {}
         for row in metric_rows:
             key = (row.fiscal_year, row.metric)
-            if key in group_keys:
+            if key in group_keys and self._is_annual_period(row):
                 metrics_by_key.setdefault(key, row)
 
         # First pass: pure eligibility per group against the prefetched
@@ -231,6 +233,14 @@ class ExpectationRealityService:
         db.commit()
         batch_refresh(db, reviews)
         return reviews
+
+    @staticmethod
+    def _is_annual_period(row: FinancialFact | CalculatedMetric) -> bool:
+        quarter = (getattr(row, "fiscal_quarter", None) or "").strip().upper()
+        period = (row.period or "").strip().upper()
+        return quarter == "FY" or bool(
+            re.fullmatch(r"(.*:)?(FY\d{0,4}|ANNUAL|\d{4}:FY)", period)
+        )
 
     @staticmethod
     def _preferred_actual(

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { formatCompact, formatNumber, formatPercent, formatPrice, NA } from '@/lib/format';
-import { getWatchlist, getWatchlistEntryData } from '@/lib/actions/watchlist.actions';
+import { getWatchlistState, getWatchlistEntryData } from '@/lib/actions/watchlist.actions';
 import { Eye, TrendingUp, TrendingDown, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import WatchlistRemoveButton from '@/components/watchlist/WatchlistRemoveButton';
@@ -40,7 +40,7 @@ interface WatchlistStock {
 }
 
 export default async function WatchlistPage() {
-    const watchlistItems = await getWatchlist();
+    const { items: watchlistItems, unavailable } = await getWatchlistState();
 
     // Obtener datos de cada acción
     const watchlistStocks: WatchlistStock[] = await Promise.all(
@@ -116,7 +116,14 @@ export default async function WatchlistPage() {
                 </div>
             </div>
 
-            {watchlistStocks.length === 0 ? (
+            {unavailable ? (
+                <Card className="border-amber-900/60 bg-amber-950/20" role="alert" data-testid="watchlist-unavailable">
+                    <CardContent className="px-4 py-8 text-center text-sm text-amber-200">
+                        No se pudo cargar tu watchlist (servicio no disponible). Esto no significa que
+                        esté vacía: recarga la página o inténtalo más tarde.
+                    </CardContent>
+                </Card>
+            ) : watchlistStocks.length === 0 ? (
                 <Card className="border-gray-700 bg-gray-800/50">
                     <CardContent className="flex flex-col items-center justify-center px-4 py-12 text-center sm:py-16">
                         <Eye className="mb-4 h-12 w-12 text-gray-600 sm:h-16 sm:w-16" aria-hidden="true" />
