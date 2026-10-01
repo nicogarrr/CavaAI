@@ -39,6 +39,9 @@ RUN pip install torch==2.9.1+cpu --index-url https://download.pytorch.org/whl/cp
 # [] en silencio: la tesis corria sin contexto de documentos.
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')" \
     && chmod -R a+rX /opt/hf
+# Carga realmente offline en runtime: el modelo ya esta en /opt/hf; sin esto
+# SentenceTransformer consulta HF Hub y puede necesitar escribir en la cache.
+ENV HF_HUB_OFFLINE=1
 
 # quantstats va vendorizado dentro de data-engine/
 COPY . .
@@ -51,7 +54,7 @@ EXPOSE 8000
 # sin shell y se le entrega la propiedad de /app; los volumenes ya los
 # monta docker-compose, que puede fijar el ownership con `user:`.
 RUN groupadd --system cavaai && useradd --system --gid cavaai --no-create-home cavaai \
-    && chown -R cavaai:cavaai /app
+    && chown -R cavaai:cavaai /app /opt/hf
 # /data es el punto de montaje de duckdb_data en produccion. Un volumen named
 # nuevo se inicializa copiando contenido Y propietario de esta ruta desde la
 # imagen; sin el chown nace root-owned y el backend (USER cavaai) no puede

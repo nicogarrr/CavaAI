@@ -3,7 +3,7 @@ import logging
 from qdrant_client import QdrantClient
 
 from app.core.config import get_settings
-from app.core.errors import redact_secrets
+from app.llm.base import redact_secrets
 
 logger = logging.getLogger(__name__)
 
