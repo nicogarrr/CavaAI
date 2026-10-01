@@ -90,9 +90,10 @@ def test_tenant_isolation_on_read(env):
     company = session_for(1).query(Company).filter_by(ticker="BRN").one()
     assert InferredInputService().latest_valid(session_for(1), company.id, "fcf_margin")
     current["tenant"] = 2
-    assert InferredInputService().latest_valid(session_for(2), company.id, "fcf_margin") is None
-    # La empresa es global; los inputs inferidos son del tenant: lista vacia.
+    # Dato de empresa global (opcion A): visible desde cualquier tenant.
+    assert InferredInputService().latest_valid(session_for(2), company.id, "fcf_margin")
+    # La empresa y sus inputs inferidos son globales: el listado coincide.
     other = client.get("/companies/BRN/inferred-inputs")
-    assert other.status_code == 200 and other.json() == []
+    assert other.status_code == 200 and len(other.json()) == 1
     current["tenant"] = 1
     assert len(client.get("/companies/BRN/inferred-inputs").json()) == 1

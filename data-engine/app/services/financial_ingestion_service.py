@@ -757,6 +757,22 @@ def _recent_fiscal_mode(pairs: list[tuple[str, str]]) -> str:
 
 
 
+def _latest_filed_date(us_gaap: dict[str, Any]):
+    """Fecha `filed` mas reciente de los hechos companyfacts, o None."""
+    latest = None
+    for concept in (us_gaap or {}).values():
+        for entries in ((concept or {}).get("units") or {}).values():
+            for entry in entries or []:
+                raw = str((entry or {}).get("filed") or "")[:10]
+                try:
+                    parsed = date.fromisoformat(raw)
+                except ValueError:
+                    continue
+                if latest is None or parsed > latest:
+                    latest = parsed
+    return latest
+
+
 class FinancialIngestionService:
     """Normalize provider data into auditable financial facts."""
 
@@ -865,6 +881,16 @@ class FinancialIngestionService:
             annual_anchors = {}
 
         document = self._source_document_sec(db, company, ticker)
+        # published_at = presentacion mas reciente (campo `filed` de companyfacts)
+        # para que la procedencia OFICIAL tenga fecha; nunca se inventa.
+        latest_filed = _latest_filed_date(us_gaap)
+        if latest_filed is not None and (
+            document.published_at is None
+            or document.published_at.date() < latest_filed
+        ):
+            document.published_at = datetime(
+                latest_filed.year, latest_filed.month, latest_filed.day, tzinfo=UTC
+            )
 
         facts_imported = 0
         cash_restricted_years: set[int] = set()

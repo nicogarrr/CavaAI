@@ -95,9 +95,21 @@ class PreRevenueScenarioEngine(ValuationEngine):
         assert revenue is not None and shares is not None
 
         margin = snapshot.value("fcf_margin")
+        inferred_margin = None
         if margin is None:
             fcf = snapshot.value("free_cash_flow")
-            if fcf is None or revenue <= 0:
+            if fcf is None and context.db is not None and company.id is not None:
+                # Sin FCF reportado: un margen FCF INFERIDO con base explicita y
+                # URLs https (validado) permite escenarios. Nunca es un fact y el
+                # resultado queda marcado como no publicable.
+                inferred_margin = InferredInputService().latest_valid(
+                    context.db, company.id, "fcf_margin"
+                )
+                if inferred_margin is not None:
+                    margin = float(inferred_margin.value)
+            if margin is not None:
+                pass
+            elif fcf is None or revenue <= 0:
                 result = insufficient_result(
                     ticker=company.ticker,
                     model_type=company.valuation_model,
@@ -111,7 +123,8 @@ class PreRevenueScenarioEngine(ValuationEngine):
                     company.company_type, company.factor_tags or [], company.special_risks or []
                 )
                 return result
-            margin = fcf / revenue
+            else:
+                margin = fcf / revenue
 
         # Near-zero revenue speculative names: still allow but flag low confidence.
         growth = snapshot.value("revenue_growth")
@@ -240,7 +253,7 @@ class PreRevenueScenarioEngine(ValuationEngine):
             wacc_values=[wacc - 0.01, wacc, wacc + 0.02],
         )
 
-        publishable = funding.status != "incomplete"
+        publishable = funding.status != "incomplete" and inferred_margin is None
         status = "ok" if publishable else "partial"
         missing = list(funding.missing_inputs) if funding.status == "incomplete" else []
 
@@ -269,6 +282,23 @@ class PreRevenueScenarioEngine(ValuationEngine):
                 "status": status,
                 "model_version": MODEL_VERSION,
                 "growth_source": growth_source,
+                "valuation_basis": (
+                    "inferred_inputs" if inferred_margin is not None else "reported_facts"
+                ),
+                "inferred_inputs": (
+                    [
+                        {
+                            "origen": "INFERIDO",
+                            "input_key": inferred_margin.input_key,
+                            "value": float(inferred_margin.value),
+                            "base_inferencia": inferred_margin.base,
+                            "urls_inferencia": list(inferred_margin.source_urls or []),
+                            "inferred_input_id": inferred_margin.id,
+                        }
+                    ]
+                    if inferred_margin is not None
+                    else []
+                ),
                 "scenario_style": "causal_speculative",
                 "probability_method": "source_confidence_plus_growth_and_funding_risk",
                 "evidence_confidence": evidence_confidence,
