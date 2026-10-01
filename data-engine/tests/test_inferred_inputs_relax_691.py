@@ -140,21 +140,79 @@ def test_positive_cash_path_unchanged_without_inferred(db):
     assert result["trace"]["inferred_inputs"] == []
 
 
-def test_inferred_margin_appears_in_provenance_as_inferido(db):
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://user.name@localhost/x",
+        "https://user:pass@example.com/a",
+        "https://.",
+        "https://example.com:bad/x",
+        "https://example.com:99999/x",
+        "https://localhost/x",
+        "https://127.0.0.1/x",
+        "https://intranet/x",
+        "http://example.com/x",
+        "https://exa mple.com/x",
+        " https://example.com/x",
+        "https://-bad.example.com/x",
+    ],
+)
+def test_malformed_or_credentialed_urls_are_rejected(db, url):
+    assert validate("fcf_margin", 0.1, BASE, [url])
+    assert validate("fcf_margin", 0.1, BASE, URLS + [url])
+    with pytest.raises(InferredInputError):
+        InferredInputService().create(
+            db, _company(db), input_key="fcf_margin", value=Decimal("0.1"),
+            base=BASE, source_urls=[url],
+        )
+
+
+def test_positive_cash_ignores_existing_inferred_input(db):
+    company = _company(db)
+    InferredInputService().create(
+        db, company, input_key="fcf_margin", value=Decimal("0.05"), base=BASE, source_urls=URLS
+    )
+    result = _value(db, company, {**BURN, "operating_cash_flow": 5_000_000.0})
+    assert result["trace"]["valuation_basis"] == "indicative_assumptions"
+    assert result["trace"]["inferred_inputs"] == []
+    assert result["trace"]["assumed"]["fcf_margin_base"] == pytest.approx(0.15)
+
+
+def test_provenance_binds_to_used_input_and_keeps_history(db):
     from app.models.entities import FundamentalModelVersion
+    from app.services.thesis_service import ThesisService
 
     company = _company(db)
+    snapshot = {
+        "assumptions": {
+            "fcf_margin": {
+                "value": 0.20, "source_type": "financial_facts",
+                "basis": "mediana historica", "source_fact_ids": [], "confidence": 0.5,
+            }
+        }
+    }
     db.add(FundamentalModelVersion(
         company_id=company.id, version=1, engine_version="e1", algorithm_version="a1",
         framework_key="space_network", horizon_years=5, status="ok", publishable=True,
         input_fingerprint="a" * 64, forecast_fingerprint="a" * 64,
         market_snapshot_fingerprint="a" * 64, valuation_snapshot_fingerprint="a" * 64,
-        model_snapshot={},
+        model_snapshot=snapshot,
     ))
-    InferredInputService().create(
+    used = InferredInputService().create(
         db, company, input_key="fcf_margin", value=Decimal("0.05"), base=BASE, source_urls=URLS
     )
-    items = {i["key"]: i for i in latest_inputs_provenance(db, company.id)}
-    assert items["fcf_margin"]["origen"] == "INFERIDO"
-    assert items["fcf_margin"]["urls_inferencia"] == URLS
-
+    basis = ThesisService._valuation_basis(_value(db, company))
+    # Un input posterior NO cambia lo que consumio esta tesis.
+    InferredInputService().create(
+        db, company, input_key="fcf_margin", value=Decimal("0.30"),
+        base=BASE + " (otra)", source_urls=URLS,
+    )
+    items = {i["key"]: i for i in latest_inputs_provenance(db, company.id, basis)}
+    assert items["fcf_margin"]["value"] == 0.20 and items["fcf_margin"]["origen"] == "INFERIDO"
+    usado = items["fcf_margin_usado_en_valoracion"]
+    assert usado["value"] == pytest.approx(0.05)
+    assert usado["inferred_input_id"] == used.id
+    assert usado["urls_inferencia"] == URLS and usado["base_inferencia"] == BASE
+    # Sin valuation_basis (tesis anterior) no se inventa ningun input usado.
+    legacy = {i["key"] for i in latest_inputs_provenance(db, company.id, None)}
+    assert "fcf_margin_usado_en_valoracion" not in legacy

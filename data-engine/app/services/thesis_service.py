@@ -24,7 +24,7 @@ from app.models import (
 )
 from app.services.claim_scope import supersede_claims_of
 from app.services.company_resolver import resolve_company
-from app.services.inferred_input_service import InferredInputService
+from app.services.inferred_input_service import validate as validate_inferred
 from app.services.long_term_model_service import LongTermModelService
 from app.services.number_format import format_compact_es
 from app.services.source_auditor import SourceAuditor
@@ -72,7 +72,9 @@ def latest_missing_inputs(db: Session, company_id: int) -> list[str] | None:
     )
 
 
-def latest_inputs_provenance(db: Session, company_id: int) -> list[dict] | None:
+def latest_inputs_provenance(
+    db: Session, company_id: int, valuation_basis: dict | None = None
+) -> list[dict] | None:
     """Inputs etiquetados (dato/derivado/estimacion_llm/supuesto) del modelo
     fundamental persistido mas reciente. None si no hay modelo persistido."""
     model = db.scalar(
@@ -108,25 +110,33 @@ def latest_inputs_provenance(db: Session, company_id: int) -> list[dict] | None:
                 "source_type": doc.source_type,
             }
     classified = classify_origin(items, sources)
-    # Inputs INFERIDO vigentes (base + URLs): se muestran con su base y enlaces.
-    inferred = InferredInputService().latest_valid(db, company_id, "fcf_margin")
-    if inferred is not None and all(it["key"] != "fcf_margin" for it in classified):
+    # Inputs INFERIDO que la valoracion de ESTA tesis consumio (trace persistido
+    # en valuation_basis). Se anaden aparte: no sustituyen la historia del modelo
+    # (p. ej. la mediana fcf_margin), el usuario ve ambos.
+    for used in (valuation_basis or {}).get("inferred_inputs_used") or []:
+        key = used.get("input_key")
+        value = used.get("value")
+        base = used.get("base_inferencia")
+        urls = list(used.get("urls_inferencia") or [])
+        if validate_inferred(key, value, base, urls):
+            continue
         classified.append(
             {
-                "key": "fcf_margin",
+                "key": f"{key}_usado_en_valoracion",
                 "label": "estimacion_llm",
-                "value": float(inferred.value),
-                "unit": inferred.unit,
-                "method": inferred.base,
+                "value": value,
+                "unit": "decimal",
+                "method": base,
                 "source_fact_ids": [],
                 "confidence": None,
                 "source_type": "inferred_input",
                 "period": None,
                 "origen": "INFERIDO",
                 "fuentes": [],
-                "base_inferencia": inferred.base,
-                "urls_inferencia": list(inferred.source_urls or []),
+                "base_inferencia": base,
+                "urls_inferencia": urls,
                 "base_documentada": True,
+                "inferred_input_id": used.get("inferred_input_id"),
             }
         )
     return classified
@@ -690,11 +700,27 @@ class ThesisService:
         reescala a otra base.
         """
         basis = valuation.get("value_per_share_basis")
-        if not basis:
+        # Inputs INFERIDO que la valoracion REALMENTE consumio (trace del motor),
+        # con la version (id) del input: la procedencia se liga a esto, nunca al
+        # ultimo input guardado.
+        used = [
+            {
+                "inferred_input_id": item.get("inferred_input_id"),
+                "input_key": item.get("input_key"),
+                "value": item.get("value"),
+                "base_inferencia": item.get("base_inferencia"),
+                "urls_inferencia": list(item.get("urls_inferencia") or []),
+            }
+            for item in ((valuation.get("trace") or {}).get("inferred_inputs") or [])
+            if isinstance(item, dict)
+        ]
+        if not basis and not used:
             return None
         listed = valuation.get("listed_share_values")
+        extra = {"inferred_inputs_used": used} if used else {}
         return {
-            "value_per_share_basis": str(basis),
+            **extra,
+            "value_per_share_basis": str(basis) if basis else None,
             "adr_ratio": valuation.get("adr_ratio"),
             "listed_share_values": (
                 {key: float(value) for key, value in listed.items() if value is not None}

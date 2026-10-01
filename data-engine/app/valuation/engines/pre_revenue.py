@@ -323,12 +323,15 @@ class PreRevenueScenarioEngine(ValuationEngine):
         # Relajacion acotada: un margen FCF INFERIDO con base explicita y URLs
         # https permite escenarios (siempre publishable=False y marcados). Sin
         # base valida sigue fail-closed: sin numero.
+        # Solo en la rama quema/sin dato de caja: con caja positiva no se
+        # consulta ni se usa ningun input inferido.
+        needs_inference = bool(observed_burn) or not cash_facts
         inferred = (
             InferredInputService().latest_valid(db, company.id, "fcf_margin")
-            if db is not None and company.id is not None
+            if needs_inference and db is not None and company.id is not None
             else None
         )
-        if (observed_burn or not cash_facts) and inferred is None:
+        if needs_inference and inferred is None:
             result = insufficient_result(
                 ticker=company.ticker,
                 model_type=company.valuation_model,
