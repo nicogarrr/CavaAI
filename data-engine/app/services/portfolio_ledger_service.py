@@ -227,6 +227,11 @@ class PortfolioLedgerService:
             db.add(position)
         existing_price = position.market_price or Decimal("0")
         market_price = existing_price if existing_price > 0 else last_price
+        if existing_price > 0 and as_of is None and position.as_of is not None:
+            # F366: se conserva la cotización guardada, así que su fecha NO se
+            # mueve a la de la última operación del ledger ni se valora el FX
+            # con esa fecha (valor base y snapshots quedarían stale).
+            valuation_date = position.as_of
         position.quantity = quantity
         position.average_cost = cost / quantity
         position.market_price = market_price
