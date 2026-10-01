@@ -37,18 +37,28 @@ function adrLabel(ratio: number | null | undefined): string {
     : ' (por ADR)';
 }
 
+const UNVERIFIED_BASIS = ' (base por acción no verificada)';
+
+/** Hay ratio ADR distinto de 1 pero sin valores listados: la base no se puede afirmar. */
+function unlistedRatioLabel(basis: ValuationBasis): string {
+  const ratio = basis?.adr_ratio;
+  return typeof ratio === 'number' && Number.isFinite(ratio) && ratio > 0 && ratio !== 1
+    ? UNVERIFIED_BASIS
+    : '';
+}
+
 /**
  * Tesis persistida. Sin evidencia de base (tesis anterior) no se escala nada:
- * se etiqueta "por acción ordinaria".
+ * se etiqueta como base no verificada (no se afirma ninguna).
  */
 export function thesisScenarioDisplay(
   original: ScenarioValues,
   basis: ValuationBasis,
 ): ScenarioDisplay {
-  if (!basis) return { values: original, label: ' (por acción ordinaria)' };
+  if (!basis) return { values: original, label: UNVERIFIED_BASIS };
   const listed = pickListed(basis.listed_share_values);
   if (listed) return { values: listed, label: adrLabel(basis.adr_ratio) };
-  return { values: original, label: '' };
+  return { values: original, label: unlistedRatioLabel(basis) };
 }
 
 /** Valoración en vivo: usa los campos de su propia respuesta. */
@@ -58,5 +68,5 @@ export function valuationScenarioDisplay(
 ): ScenarioDisplay {
   const listed = pickListed(basis?.listed_share_values);
   if (listed) return { values: listed, label: adrLabel(basis?.adr_ratio) };
-  return { values: original, label: '' };
+  return { values: original, label: unlistedRatioLabel(basis) };
 }
