@@ -211,14 +211,62 @@ export default function ThesisMemo({
               const badge = PROVENANCE_BADGES[item.label] ?? PROVENANCE_BADGES.supuesto;
               return (
                 <div key={item.key} className="flex flex-wrap items-baseline gap-x-2 text-sm">
-                  <span
-                    className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${badge.className}`}
-                  >
-                    {badge.label}
-                  </span>
+                  {item.origen === 'OFICIAL' ? null : (
+                    <span
+                      className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${
+                        item.origen === 'INFERIDO'
+                          ? 'border-amber-800 bg-amber-950/40 text-amber-300'
+                          : badge.className
+                      }`}
+                    >
+                      {item.origen === 'INFERIDO' ? 'INFERIDO' : badge.label}
+                    </span>
+                  )}
                   <span className="font-medium text-gray-200">{item.key}</span>
                   <span className="text-gray-400">{provenanceValue(item.value)}</span>
-                  {item.method ? (
+                  {item.origen === 'OFICIAL' ? (
+                    <span className="text-xs text-gray-500">
+                      ·{' '}
+                      {(item.fuentes ?? []).map((fuente, index) => (
+                        <span key={fuente.fact_id}>
+                          {index > 0 ? ', ' : ''}
+                          {fuente.url && /^https:\/\//.test(fuente.url) ? (
+                            <a
+                              href={fuente.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-teal-400 underline"
+                            >
+                              {fuente.titulo ?? 'Fuente oficial'}
+                            </a>
+                          ) : (
+                            (fuente.titulo ?? 'Fuente oficial')
+                          )}
+                          {fuente.fecha ? ` (${fuente.fecha})` : ''}
+                        </span>
+                      ))}
+                    </span>
+                  ) : item.origen === 'INFERIDO' ? (
+                    <span className="text-xs text-amber-400/90">
+                      · INFERIDO:{' '}
+                      {item.base_documentada === false || !item.base_inferencia
+                        ? 'base no documentada'
+                        : `dado ${item.base_inferencia}`}
+                      {(item.urls_inferencia ?? []).map((url, index) =>
+                        /^https:\/\//.test(url) ? (
+                          <a
+                            key={url}
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="ml-1 text-amber-300 underline"
+                          >
+                            [{index + 1}]
+                          </a>
+                        ) : null,
+                      )}
+                    </span>
+                  ) : item.method ? (
                     <span className="text-xs text-gray-500">· {item.method}</span>
                   ) : null}
                 </div>
