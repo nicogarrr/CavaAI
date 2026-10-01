@@ -72,6 +72,37 @@ def latest_missing_inputs(db: Session, company_id: int) -> list[str] | None:
     )
 
 
+def resolve_fact_sources(
+    db: Session, company_id: int, fact_ids: list[int]
+) -> dict[int, dict]:
+    """fact_id -> fuente documental (url/fecha/titulo/tipo) resuelta desde
+    FinancialFact.source_id -> Document. Nunca se toma de lo declarado."""
+    sources: dict[int, dict] = {}
+    if not fact_ids:
+        return sources
+    rows = db.execute(
+        select(FinancialFact, Document)
+        .join(Document, Document.id == FinancialFact.source_id)
+        .where(
+            FinancialFact.id.in_(fact_ids),
+            FinancialFact.company_id == company_id,
+        )
+    ).all()
+    for fact, doc in rows:
+        sources[fact.id] = {
+            "metric": fact.metric,
+            "fact_value": fact.value,
+            "unit": fact.unit,
+            "period": fact.period,
+            "is_reported": fact.is_reported,
+            "url": doc.source_url,
+            "date": doc.published_at.date().isoformat() if doc.published_at else None,
+            "title": doc.title,
+            "source_type": doc.source_type,
+        }
+    return sources
+
+
 def latest_inputs_provenance(
     db: Session, company_id: int, valuation_basis: dict | None = None
 ) -> list[dict] | None:
@@ -88,28 +119,7 @@ def latest_inputs_provenance(
         return None
     items = inputs_provenance_from_snapshot(model.model_snapshot if model else {})
     fact_ids = sorted({fid for it in items for fid in (it.get("source_fact_ids") or [])})
-    sources: dict[int, dict] = {}
-    if fact_ids:
-        rows = db.execute(
-            select(FinancialFact, Document)
-            .join(Document, Document.id == FinancialFact.source_id)
-            .where(
-                FinancialFact.id.in_(fact_ids),
-                FinancialFact.company_id == company_id,
-            )
-        ).all()
-        for fact, doc in rows:
-            sources[fact.id] = {
-                "metric": fact.metric,
-                "fact_value": fact.value,
-                "unit": fact.unit,
-                "period": fact.period,
-                "is_reported": fact.is_reported,
-                "url": doc.source_url,
-                "date": doc.published_at.date().isoformat() if doc.published_at else None,
-                "title": doc.title,
-                "source_type": doc.source_type,
-            }
+    sources = resolve_fact_sources(db, company_id, fact_ids)
     classified = classify_origin(items, sources)
     # Politica de Nico: sin base documentada no hay etiqueta INFERIDO "disfrazada";
     # el input se omite (la seccion de datos pendientes lo declara N/D).
@@ -459,6 +469,17 @@ class ThesisService:
             catalysts=catalysts,
             invalidation_criteria=invalidation,
             scenario_probabilities=scenario_probabilities,
+            fact_sources=resolve_fact_sources(
+                db,
+                company.id,
+                sorted(
+                    {
+                        fid
+                        for it in build_inputs_provenance(long_term_model)
+                        for fid in (it.get("source_fact_ids") or [])
+                    }
+                ),
+            ),
         )
 
         thesis_markdown += "\n\n## 23. Contexto y citas documentales\n"
@@ -1246,7 +1267,11 @@ class ThesisService:
         )
 
     def _pendings_markdown(
-        self, valuation: dict, long_term_model: dict, sources: dict
+        self,
+        valuation: dict,
+        long_term_model: dict,
+        sources: dict,
+        fact_sources: dict[int, dict] | None = None,
     ) -> str:
         missing = sorted(
             set(
@@ -1268,7 +1293,7 @@ class ThesisService:
         nd_keys = sorted(
             {
                 str(item.get("key"))
-                for item in classify_origin(build_inputs_provenance(long_term_model), {})
+                for item in classify_origin(build_inputs_provenance(long_term_model), fact_sources or {})
                 if item.get("origen") == "INFERIDO" and item.get("base_documentada") is False
             }
         )
@@ -1310,6 +1335,7 @@ class ThesisService:
         catalysts: list | None = None,
         invalidation_criteria: list | None = None,
         scenario_probabilities: dict | None = None,
+        fact_sources: dict[int, dict] | None = None,
     ) -> str:
         reverse = valuation.get("reverse_dcf") or {}
         required_growth = reverse.get("required_revenue_growth")
@@ -1342,7 +1368,9 @@ class ThesisService:
             if scenario_probabilities
             else "Probabilities: pendiente (el modelo no las ha persistido)."
         )
-        pendings_section = self._pendings_markdown(valuation, long_term_model, sources)
+        pendings_section = self._pendings_markdown(
+            valuation, long_term_model, sources, fact_sources
+        )
         provenance_section = self._provenance_markdown(
             build_inputs_provenance(long_term_model)
         )
