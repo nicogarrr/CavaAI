@@ -101,6 +101,7 @@ class InferredInputService:
         if problems:
             raise InferredInputError("; ".join(problems))
         row = InferredInput(
+            tenant_id=db.info.get("tenant_id"),  # autoria informativa, no filtro
             company_id=company.id,
             input_key=input_key,
             value=value,

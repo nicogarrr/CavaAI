@@ -111,6 +111,13 @@ def latest_inputs_provenance(
                 "source_type": doc.source_type,
             }
     classified = classify_origin(items, sources)
+    # Politica de Nico: sin base documentada no hay etiqueta INFERIDO "disfrazada";
+    # el input se omite (la seccion de datos pendientes lo declara N/D).
+    classified = [
+        item
+        for item in classified
+        if not (item.get("origen") == "INFERIDO" and item.get("base_documentada") is False)
+    ]
     # Inputs INFERIDO que la valoracion de ESTA tesis consumio (trace persistido
     # en valuation_basis). Se anaden aparte: no sustituyen la historia del modelo
     # (p. ej. la mediana fcf_margin), el usuario ve ambos.
@@ -1207,6 +1214,14 @@ class ThesisService:
             "falta el margen FCF normalizado; se deriva de cash-flows reportados "
             "o se aporta como supuesto etiquetado (metodo + fecha)."
         ),
+        "normalized_fcf_or_fcf_margin": (
+            "falta un FCF o margen FCF reportado; si hay un margen INFERIDO "
+            "(base + fuentes https) se usa solo como valor indicativo no publicable."
+        ),
+        "net_debt": (
+            "falta la deuda neta; se deriva de deuda total menos efectivo (mismo "
+            "periodo) cuando ambos constan en un filing."
+        ),
         "shares_diluted": (
             "faltan las acciones diluidas; constan en el ultimo 10-K/10-Q o en "
             "la presentacion de resultados."
@@ -1248,6 +1263,23 @@ class ThesisService:
             )
             for key in missing:
                 lines.append(f"- **{key}**: {self._pending_input_hint(key)}")
+        # Politica de Nico: un supuesto sin base documentada no se muestra como
+        # INFERIDO; se declara N/D (sin datos), igual que cualquier input pendiente.
+        nd_keys = sorted(
+            {
+                str(item.get("key"))
+                for item in classify_origin(build_inputs_provenance(long_term_model), {})
+                if item.get("origen") == "INFERIDO" and item.get("base_documentada") is False
+            }
+        )
+        if nd_keys:
+            if lines:
+                lines.append("")
+            lines.append(
+                "Supuestos sin base documentada (N/D, no se muestran como inferidos):"
+            )
+            for key in nd_keys:
+                lines.append(f"- **{key}**: N/D - falta base (dado X, inferimos Y) con fuente https.")
         pending_sources = [
             (name, block.get("source"), block.get("detail"))
             for name, block in sorted((sources or {}).items())
