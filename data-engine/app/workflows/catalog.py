@@ -1,22 +1,39 @@
+"""Workflow catalog: what ``POST /api/workflows/{name}/run`` REALLY executes.
+
+Honesty rules this file enforces (see tests/test_workflow_truth.py):
+- Every entry in ``WORKFLOW_CATALOG`` is executable through the API
+  (``api_executable: True``) and declares ``implementation_status:
+  "implemented"``. There is no ``partial`` and no ``descriptive`` entry: a
+  concept without an execution route does not belong in a list that a screen
+  renders as "ejecutable".
+- ``steps`` are the steps THIS endpoint executes. ``pipeline_steps`` (when
+  present) are the broader stages of the service or scheduled job it delegates
+  to; they are not steps of ``/run`` and are labelled as such.
+- Anything with no API route lives in ``RETIRED_WORKFLOWS`` with the reason and
+  the real replacement, and disappears from ``GET /api/workflows``.
+"""
+
 WORKFLOW_CATALOG = [
     {
         "name": "ThesisShadowComparisonWorkflow",
         "implementation_status": "implemented",
-        "truth": "POST /run executes the stage-6 shadow comparison: runs the LangGraph thesis graph under a checkpointer (control state + read-side probes), verifies node order + idempotent retry, maps classic THESIS_PHASES to graph nodes, compares every probe observation against the classic persisted state, and records divergences in a durable WorkflowRun. The classic ThesisService path remains the sole LLM/write executor; the shadow never mutates domain artifacts.",
+        "api_executable": True,
+        "truth": "POST /run executes the stage-6 shadow comparison: runs the LangGraph thesis graph under a checkpointer (control state + read-side probes), verifies node order + idempotent retry, maps classic THESIS_PHASES to graph nodes, compares every probe observation against the classic persisted state, and records divergences in a durable WorkflowRun. Every graph node is a real read-side probe or a real approval interrupt: none emits a pending placeholder. The classic ThesisService path remains the sole LLM/write executor; the shadow never mutates domain artifacts.",
         "execution_mode": "shadow",
         "input": "ticker",
         "steps": [
             "run_graph_shadow",
             "verify_idempotent_retry",
             "map_classic_phases",
-            "compare_status_semantics",
+            "compare_probe_observations",
             "persist_comparison",
         ],
     },
     {
         "name": "ThesisApprovalWorkflow",
         "implementation_status": "implemented",
-        "truth": "POST /run executes the stage-6 thesis graph under a durable checkpointer until the real approval_gate interrupt and returns thread_id + approval payload (status awaiting_approval). POST /decide resumes the same thread with approve/request_changes; approve routes to publish, request_changes ends the run as changes_requested. draft_synthesis/debate/assemble/publish artifacts are deliberate control-state placeholders: no domain publish happens inside the graph, and the classic ThesisService path remains the sole LLM/write executor.",
+        "api_executable": True,
+        "truth": "POST /run executes the stage-6 thesis graph under a durable checkpointer until the real approval_gate interrupt and returns thread_id + approval payload (status awaiting_approval). POST /decide resumes the same thread with approve/request_changes. The graph writes control state only: assemble_candidate digests the read-side probe observations and persisted_thesis reports the classic path's publication state, so no domain publish happens inside the graph and the classic ThesisService path remains the sole LLM/write executor. An approval ends the run as approved, or as published only when a published thesis version really exists.",
         "execution_mode": "pilot",
         "input": "ticker",
         "steps": [
@@ -28,11 +45,13 @@ WORKFLOW_CATALOG = [
     },
     {
         "name": "GenerateThesisWorkflow",
-        "implementation_status": "partial",
-        "truth": "POST /run ejecuta ThesisService.generate() sincrono en UNA transaccion; la lista de pasos describe fases internas, no pasos ejecutados separados. Sin resume a mitad de flujo. Langfuse: shadow tracing opcional (flag LANGFUSE_ENABLED), solo metadatos, nunca fuente de verdad.",
+        "implementation_status": "implemented",
+        "api_executable": True,
+        "truth": "POST /run executes ThesisService.generate() synchronously in ONE transaction; the single recorded step is generate_thesis and pipeline_steps are ThesisService's internal phases, not steps of this endpoint. There is no mid-flow resume here: for background generation use POST /api/thesis/generate-async, which enqueues a real WorkflowRun on Dramatiq. Langfuse: shadow tracing is optional (flag LANGFUSE_ENABLED), metadata only, never a source of truth.",
         "execution_mode": "deterministic",
         "input": "ticker",
-        "steps": [
+        "steps": ["generate_thesis"],
+        "pipeline_steps": [
             "resolve_ticker",
             "load_company_master",
             "fetch_SEC/FMP/IR/GDELT",
@@ -53,16 +72,19 @@ WORKFLOW_CATALOG = [
             "write_thesis",
             "save_thesis_version",
         ],
+        "pipeline_owner": "ThesisService.generate (in-process, one transaction)",
     },
     {
         "name": "DailyResearchWorkflow",
-        "implementation_status": "partial",
-        "truth": "POST /run solo ingiere news_items via NewsService; el resto de pasos corren via scheduler/Dramatiq, no por este endpoint. Langfuse: shadow tracing opcional via run envelope, solo metadatos.",
+        "implementation_status": "implemented",
+        "api_executable": True,
+        "truth": "POST /run executes exactly ONE stage: ingesting the supplied news_items via NewsService. The rest of the daily pipeline (portfolio sync, materiality classification, claims, daily brief, risk dashboard) runs as scheduled work (scheduler job_id=daily_research and its Dramatiq actors), not through this endpoint, and is listed as pipeline_steps. Without params.news_items the endpoint answers 422 instead of pretending to run a daily cycle. POST /api/news/ingest does the same ingestion without the workflow envelope.",
         "execution_mode": "deterministic",
-        "input": "portfolio",
-        "steps": [
+        "input": "params.news_items",
+        "steps": ["ingest_news_items"],
+        "pipeline_steps": [
             "sync_IBKR",
-            "fetch_news_for_24_companies",
+            "fetch_news_for_portfolio",
             "deduplicate_news",
             "classify_materiality",
             "extract_claims",
@@ -71,34 +93,20 @@ WORKFLOW_CATALOG = [
             "generate_daily_brief",
             "update_risk_dashboard",
         ],
-    },
-    {
-        "name": "ManualNewsWorkflow",
-        "implementation_status": "descriptive",
-        "truth": "Sin ruta de ejecucion en la API; describe el flujo conceptual de noticias manuales.",
-        "execution_mode": "deterministic",
-        "input": "pasted_news",
-        "steps": [
-            "detect_ticker",
-            "summarize",
-            "extract_claims",
-            "classify_event",
-            "retrieve_current_thesis",
-            "retrieve_assumptions",
-            "retrieve_evidence",
-            "assess_impact",
-            "propose_update",
-            "ask_for_approval",
-            "save_or_discard",
-        ],
+        "pipeline_owner": "scheduler job_id=daily_research (Dramatiq), not POST /run",
     },
     {
         "name": "EarningsWorkflow",
         "implementation_status": "implemented",
-        "truth": "POST /run ejecuta EarningsWorkflowService via un wrapper MAF de 2 nodos (load_context + execute); la lista de pasos describe el servicio, no el grafo. EarningsRun persiste running->completed/failed.",
+        "api_executable": True,
+        "truth": "POST /run executes EarningsWorkflowService via a 2-node MAF wrapper (load_context + execute_earnings_review); pipeline_steps describe the service's stages, not the graph. EarningsRun persists running->completed/failed. POST /api/earnings/{ticker}/run is the same capability outside the workflow envelope.",
         "execution_mode": "microsoft_agent_framework",
         "input": "ticker + earnings docs",
         "steps": [
+            "load_earnings_context",
+            "execute_earnings_review",
+        ],
+        "pipeline_steps": [
             "ingest_earnings_release",
             "extract_reported_numbers",
             "reconcile_SEC/FMP/company_release",
@@ -113,31 +121,20 @@ WORKFLOW_CATALOG = [
             "generate_thesis_diff",
             "save_new_version",
         ],
-    },
-    {
-        "name": "ChatWorkflow",
-        "implementation_status": "descriptive",
-        "truth": "El chat vive en su propia ruta de API, no en este endpoint de workflows. Langfuse: shadow tracing opcional via run envelope, solo metadatos.",
-        "execution_mode": "deterministic_plus_llm_synthesis",
-        "input": "user_question",
-        "steps": [
-            "classify_scope",
-            "detect_ticker/company/portfolio",
-            "retrieve_structured_data",
-            "retrieve_documents",
-            "retrieve_latest_thesis",
-            "call_python_tools_if_needed",
-            "answer_with_sources",
-            "propose_actions_if_relevant",
-        ],
+        "pipeline_owner": "EarningsWorkflowService.run (in-process)",
     },
     {
         "name": "RedTeamWorkflow",
         "implementation_status": "implemented",
-        "truth": "POST /run ejecuta RedTeamService (reglas DETERMINISTAS sobre claims/evidencia/valoracion) via wrapper MAF de 2 nodos. No es un agente autonomo: el modo MAF es solo la envoltura del grafo.",
+        "api_executable": True,
+        "truth": "POST /run executes RedTeamService (DETERMINISTIC rules over claims/evidence/valuation) via a 2-node MAF wrapper; pipeline_steps are the service's checks, not graph nodes. It is not an autonomous agent: the MAF mode is only the wrapper around the graph.",
         "execution_mode": "microsoft_agent_framework",
         "input": "ticker",
         "steps": [
+            "load_review_evidence",
+            "execute_adversarial_review",
+        ],
+        "pipeline_steps": [
             "load_current_thesis",
             "load_supporting_and_contradictory_evidence",
             "check_unsupported_material_claims",
@@ -148,48 +145,50 @@ WORKFLOW_CATALOG = [
             "define_falsification_tests",
             "create_review_and_alert",
         ],
+        "pipeline_owner": "RedTeamService.run (in-process, deterministic)",
+    },
+]
+
+# Concepts that were advertised here without an execution route. They are not
+# in GET /api/workflows any more; the API answers 404 for them with the reason
+# and the replacement below, so a client that still asks gets a true answer.
+RETIRED_WORKFLOWS = [
+    {
+        "name": "ManualNewsWorkflow",
+        "reason": "No execution route of its own: manual news ingestion is served end to end by POST /api/news/manual, with its own real stages (dedup, materiality classification, review). Listing a 12-step pipeline here announced stages that never ran.",
+        "replaced_by": "POST /api/news/manual",
+    },
+    {
+        "name": "ChatWorkflow",
+        "reason": "The chat has its own route and its own synthesis service; it is not a workflow of /api/workflows and never was one.",
+        "replaced_by": "POST /api/chat",
     },
     {
         "name": "ContradictionWorkflow",
-        "implementation_status": "descriptive",
-        "truth": "Los escaneos de contradiccion corren como actors Dramatiq programados; este workflow no tiene ruta de ejecucion en la API.",
-        "execution_mode": "deterministic",
-        "input": "ticker + document/news",
-        "steps": [
-            "extract_material_statements",
-            "retrieve_similar_historical_claims",
-            "classify_relation",
-            "apply_source_hierarchy",
-            "create_evidence_suggestions",
-            "update_claim_state",
-            "create_review_and_alert",
-        ],
+        "reason": "Contradiction scanning is real, but it runs from POST /api/reviews/contradictions/scan and from the scheduled contradiction_scan job, never from POST /run.",
+        "replaced_by": "POST /api/reviews/contradictions/scan",
     },
     {
         "name": "DeepResearchWorkflow",
-        "implementation_status": "descriptive",
-        "truth": "Sin ruta de ejecucion en la API; describe el flujo conceptual.",
-        "execution_mode": "microsoft_agent_framework",
-        "input": "ticker + research question",
-        "steps": [
-            "plan_research",
-            "retrieve_primary_sources",
-            "challenge_source_coverage",
-            "synthesize_with_citations",
-            "evaluate_answer",
-        ],
+        "reason": "There is no deep-research pipeline (plan, primary sources, cited synthesis, evaluation) in this codebase. POST /api/research/assistant answers from persisted structured data only and is NOT equivalent, so it is named as a pointer, not as the same capability.",
+        "replaced_by": "POST /api/research/assistant",
     },
     {
         "name": "ThesisReviewWorkflow",
-        "implementation_status": "descriptive",
-        "truth": "Las revisiones de tesis corren via scheduler; este workflow no tiene ruta de ejecucion en la API.",
-        "execution_mode": "microsoft_agent_framework",
-        "input": "ticker + proposed thesis change",
-        "steps": [
-            "load_current_thesis",
-            "review_evidence_delta",
-            "challenge_assumptions",
-            "propose_review_decision",
-        ],
+        "reason": "Thesis reviews are produced by the real flows that create them (earnings, red team, contradiction scans) and resolved with PATCH /api/reviews/{review_id}; no /run route dispatches a review on its own.",
+        "replaced_by": "PATCH /api/reviews/{review_id}",
     },
 ]
+
+API_EXECUTABLE_WORKFLOWS = frozenset(
+    workflow["name"] for workflow in WORKFLOW_CATALOG if workflow.get("api_executable")
+)
+RETIRED_WORKFLOW_NAMES = frozenset(entry["name"] for entry in RETIRED_WORKFLOWS)
+
+
+def find_workflow(name: str) -> dict | None:
+    return next((w for w in WORKFLOW_CATALOG if w["name"] == name), None)
+
+
+def find_retired(name: str) -> dict | None:
+    return next((w for w in RETIRED_WORKFLOWS if w["name"] == name), None)
