@@ -1,0 +1,91 @@
+{
+  "version": 1,
+  "generated_at": "2026-10-01T22:32:20+00:00",
+  "measurement": {
+    "command": "python scripts/run_coverage_gate.py",
+    "branch": true,
+    "total": 81.49,
+    "statements": 37310
+  },
+  "policy": {
+    "max_drop_points": 0.0
+  },
+  "exempt": [
+    {
+      "package": "alembic",
+      "reason": "Se ejercita en SUBPROCESO (python -m alembic upgrade head) desde tests/test_migrations.py, test_0030_*, test_0017_*, test_tenant_scoped_uniques.py y test_market_context.py, y coverage no instrumenta subprocesos: solo 2 de 46 ficheros registran ejecucion. Gatearlo al 1.88% haria fallar el gate con CADA migracion nueva sin que exista forma legitima de recuperarlo. Se sigue midiendo y reportando."
+    }
+  ],
+  "packages": {
+    "alembic": {
+      "coverage": 1.88,
+      "statements": 1171,
+      "max_drop_points": 0.0
+    },
+    "app": {
+      "coverage": 100.0,
+      "statements": 29,
+      "max_drop_points": 0.0
+    },
+    "app/api": {
+      "coverage": 100.0,
+      "statements": 41,
+      "max_drop_points": 0.0
+    },
+    "app/api/routes": {
+      "coverage": 67.97,
+      "statements": 4112,
+      "max_drop_points": 0.0
+    },
+    "app/core": {
+      "coverage": 87.3,
+      "statements": 764,
+      "max_drop_points": 0.0
+    },
+    "app/data": {
+      "coverage": 100.0,
+      "statements": 1,
+      "max_drop_points": 0.0
+    },
+    "app/llm": {
+      "coverage": 78.93,
+      "statements": 707,
+      "max_drop_points": 0.0
+    },
+    "app/models": {
+      "coverage": 100.0,
+      "statements": 1346,
+      "max_drop_points": 0.0
+    },
+    "app/schemas": {
+      "coverage": 100.0,
+      "statements": 612,
+      "max_drop_points": 0.0
+    },
+    "app/services": {
+      "coverage": 86.45,
+      "statements": 25432,
+      "max_drop_points": 0.0
+    },
+    "app/valuation": {
+      "coverage": 95.25,
+      "statements": 589,
+      "max_drop_points": 0.0
+    },
+    "app/valuation/engines": {
+      "coverage": 87.03,
+      "statements": 794,
+      "max_drop_points": 0.0
+    },
+    "app/workers": {
+      "coverage": 53.9,
+      "statements": 1269,
+      "max_drop_points": 0.0
+    },
+    "app/workflows": {
+      "coverage": 92.55,
+      "statements": 443,
+      "max_drop_points": 0.0
+    }
+  }
+}
