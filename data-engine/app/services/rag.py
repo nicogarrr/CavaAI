@@ -1,7 +1,11 @@
+import logging
+
 from qdrant_client import QdrantClient
 
 from app.core.config import get_settings
 from app.core.errors import redact_secrets
+
+logger = logging.getLogger(__name__)
 
 
 class RAGIndex:
@@ -273,7 +277,10 @@ class RAGIndex:
                 }
                 for r in results
             ]
-        except Exception:
+        except Exception as exc:
+            # Fallar en silencio ocultaba que la busqueda semantica no
+            # funcionaba (embedder o Qdrant caidos): se registra la causa.
+            logger.warning("RAG search failed: %s: %s", type(exc).__name__, redact_secrets(str(exc)))
             return []
 
     def status(self) -> dict:
