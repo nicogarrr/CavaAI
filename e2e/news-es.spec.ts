@@ -92,7 +92,10 @@ test("titular sintético SEC sin prefijo de ticker duplicado", async ({ page, re
   await expect(async () => {
     await page.reload();
     await expect(
-      page.getByText("8-K presentado ante la SEC (strip e2e)", { exact: true })
+      page
+        .getByText("8-K presentado ante la SEC (strip e2e)", { exact: true })
+        .filter({ visible: true })
+        .first()
     ).toBeVisible();
   }).toPass({ intervals: [2_000, 5_000, 10_000], timeout: 30_000 });
   // El compuesto con prefijo nunca se renderiza para esta fila.
