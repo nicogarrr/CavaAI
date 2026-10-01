@@ -1,7 +1,6 @@
 import hashlib
 import os
 import re
-import tempfile
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from html.parser import HTMLParser
@@ -324,13 +323,14 @@ class DocumentIngestionService:
         return {"jev_doc_type": meta} if meta is not None else {}
 
     def _parse(self, content: bytes, filename: str, ext: str, content_type: str | None) -> ParsedDocument:
-        docling = self._parse_with_docling(content, filename, ext)
-        if docling and docling.blocks:
-            return docling
-        docling_warnings = docling.warnings if docling else []
-        parsed = self._parse_native(content, ext)
-        parsed.warnings.extend(docling_warnings)
-        return parsed
+        if ext == ".pdf":
+            # Pipeline en dos carriles (MarkItDown rapido / Docling estructura
+            # solo-worker / pypdf clasico). Sync-safe por defecto: el carril
+            # pesado solo corre dentro del worker (ver docling_pipeline.py).
+            from app.services.docling_pipeline import parse_pdf_two_lane
+
+            return parse_pdf_two_lane(content, filename, ext, content_type=content_type)
+        return self._parse_native(content, ext)
 
     def _parse_native(self, content: bytes, ext: str) -> ParsedDocument:
         if ext in {".txt", ".md", ".csv", ".tsv"}:
@@ -344,43 +344,6 @@ class DocumentIngestionService:
         if ext == ".xlsx":
             return self._parse_xlsx(content)
         return self._parse_text(content, ext)
-
-    def _parse_with_docling(self, content: bytes, filename: str, ext: str) -> ParsedDocument | None:
-        if os.getenv("CAVAAI_USE_DOCLING") != "1":
-            return None
-        try:
-            from docling.document_converter import DocumentConverter
-        except Exception:
-            return ParsedDocument(
-                blocks=[],
-                parser="docling_unavailable",
-                warnings=["CAVAAI_USE_DOCLING=1 but docling is not installed; native parser fallback used."],
-            )
-
-        suffix = ext if ext.startswith(".") else f".{ext}"
-        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as handle:
-            handle.write(content)
-            temp_path = handle.name
-        try:
-            result = DocumentConverter().convert(temp_path)
-            markdown = result.document.export_to_markdown()
-            if markdown.strip():
-                return ParsedDocument(
-                    blocks=[ParsedBlock(text=_compact(markdown), metadata={"docling": True})],
-                    parser="docling",
-                )
-        except Exception as exc:
-            return ParsedDocument(
-                blocks=[],
-                parser="docling_failed",
-                warnings=[f"Docling parser failed: {exc}. Native parser fallback used."],
-            )
-        finally:
-            try:
-                os.unlink(temp_path)
-            except OSError:
-                pass
-        return None
 
     def _parse_text(self, content: bytes, ext: str) -> ParsedDocument:
         text = content.decode("utf-8", errors="replace")

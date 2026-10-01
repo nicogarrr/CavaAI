@@ -197,6 +197,18 @@ class Settings(BaseSettings):
     # entrando via el mirror HF (sec_hf_mirror_dataset) sincronizado por
     # GitHub Actions. True solo donde la SEC sea alcanzable (dev local).
     sec_document_jobs_enabled: bool = False
+    # Pipeline de ingesta en dos carriles (MarkItDown rapido / Docling
+    # estructura / pypdf clasico; ver app/services/docling_pipeline.py).
+    # Activo por defecto SI la dependencia opcional esta instalada; ausente,
+    # degrada con warnings ("docling/markitdown no instalado"), nunca rompe.
+    # docling_async_only=True restringe el conversor ML pesado (0.3-3 s/pag
+    # en CPU) al worker Dramatiq (actor process_document_structured): en la
+    # ruta sincrona de FastAPI un PDF con estructura se sirve con el carril
+    # rapido y queda marcado para reproceso. Solo desactivar puntualmente en
+    # scripts locales, jamas en serving de produccion.
+    docling_lane_enabled: bool = True
+    docling_async_only: bool = True
+    markitdown_enabled: bool = True
     # Ingesta SEC paralela basada en edgartools (edgartools_ingestion_service).
     # Apagada por defecto: via nueva con dependencia de bus-factor 1 y el
     # enchufado al scheduler/Dramatiq es un follow-up cuando BUG-1 cierre.
