@@ -606,6 +606,8 @@ class IBKRImportService:
 
         from app.services.portfolio_snapshot_service import PortfolioSnapshotService
 
+        # SessionLocal usa autoflush=False: sin flush las filas importadas no se ven.
+        db.flush()
         observation_dates = [
             position.as_of for position in db.scalars(select(Position)).all()
         ] + [cash.as_of for cash in db.scalars(select(CashBalance)).all()]

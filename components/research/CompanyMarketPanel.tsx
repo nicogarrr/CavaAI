@@ -2,7 +2,7 @@
 
 import dynamic from 'next/dynamic';
 
-import { formatMoney, formatNumber, formatPercent, NA } from '@/lib/format';
+import { formatMarketDate, formatMoney, formatNumber, formatPercent, isValidCurrencyCode, NA } from '@/lib/format';
 import { exchangeDisplayName } from '@/lib/exchangeName';
 
 import { Badge } from '@/components/ui/badge';
@@ -15,16 +15,11 @@ const CompanyMarketChart = dynamic(() => import('./CompanyMarketChart'), {
     ),
 });
 
-// Intl solo acepta códigos ISO 4217; un valor raro del backend no debe
-// romper el panel (fallback USD, la moneda mayoritaria del universo).
-function safeCurrency(currency: string | null): string {
-    return currency && /^[A-Z]{3}$/.test(currency) ? currency : 'USD';
-}
-
+// Sin divisa ISO 4217 válida el número se muestra sin símbolo: nunca se asume
+// USD (mismo criterio que CompanyHeaderQuote).
 function money(value: number | null, currency: string | null) {
-    return value == null
-        ? NA
-        : formatMoney(value, safeCurrency(currency));
+    if (value == null) return NA;
+    return isValidCurrencyCode(currency) ? formatMoney(value, currency) : formatNumber(value);
 }
 
 export function CompanyMarketPanel({ snapshot }: { snapshot: CompanyMarketSnapshot }) {
@@ -43,6 +38,16 @@ export function CompanyMarketPanel({ snapshot }: { snapshot: CompanyMarketSnapsh
                           </p>
                       </div>
                       <div className="sm:ml-auto sm:text-right">
+                          {/* F381: mismo rotulado de frescura que CompanyHeaderQuote. */}
+                          {snapshot.quote.priceAsOf ? (
+                              <p className="text-[11px] uppercase tracking-wide text-gray-500" data-testid="market-panel-price-freshness">
+                                  Cierre del {formatMarketDate(snapshot.quote.priceAsOf, { day: 'numeric', month: 'short' })}
+                              </p>
+                          ) : snapshot.quote.priceKind === 'close' ? (
+                              <p className="text-[11px] uppercase tracking-wide text-gray-500" data-testid="market-panel-price-freshness">
+                                  Precio de fecha desconocida
+                              </p>
+                          ) : null}
                           <div className="text-2xl font-bold text-gray-100 sm:text-3xl">{money(snapshot.quote.price, snapshot.currency)}</div>
                         <div className={positive ? 'text-teal-300' : 'text-red-300'}>
                             {snapshot.quote.change == null ? NA : formatNumber(snapshot.quote.change, { signDisplay: 'always', maximumFractionDigits: 2 })}
@@ -80,7 +85,7 @@ export function CompanyMarketPanel({ snapshot }: { snapshot: CompanyMarketSnapsh
                                 Serie parcial: {snapshot.history.length} sesiones con precio en el último año. Se muestra el tramo disponible.
                             </p>
                         )}
-                        <CompanyMarketChart history={snapshot.history} />
+                        <CompanyMarketChart history={snapshot.history} currency={snapshot.currency} />
                     </>
                 ) : (
                     <div className="rounded-lg border border-amber-900/60 bg-amber-950/20 p-6 text-sm text-amber-200">

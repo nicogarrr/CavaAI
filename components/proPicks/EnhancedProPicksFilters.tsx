@@ -73,28 +73,6 @@ export default function EnhancedProPicksFilters({ filters, neutralSorts = [], on
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Período de Tiempo */}
-        <div className="space-y-3">
-          <Label className="text-sm font-medium text-gray-200">Período de Rendimiento</Label>
-          <Select 
-            value={filters.timePeriod} 
-            onValueChange={(value: ProPicksFilters['timePeriod']) => updateFilter('timePeriod', value)}
-          >
-            <SelectTrigger className="h-11 w-full border-gray-700 bg-gray-900 text-base md:text-sm">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="week">Última Semana</SelectItem>
-              <SelectItem value="month">Último Mes</SelectItem>
-              <SelectItem value="quarter">Último Trimestre</SelectItem>
-              <SelectItem value="year">Último Año</SelectItem>
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-gray-500">
-            Evalúa el rendimiento de las acciones en el período seleccionado
-          </p>
-        </div>
-
         {/* Cantidad de Resultados */}
         <div className="space-y-3">
           <Label className="text-sm font-medium text-gray-200">
