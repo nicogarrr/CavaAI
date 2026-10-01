@@ -3,9 +3,15 @@ import logging
 from qdrant_client import QdrantClient
 
 from app.core.config import get_settings
-from app.llm.base import redact_secrets
+from app.core.errors import redact_secrets as _redact_core
+from app.llm.base import redact_secrets as _redact_llm
 
 logger = logging.getLogger(__name__)
+
+
+def redact_secrets(text: str) -> str:
+    """Compone ambos redactores: userinfo/password= (core) + Bearer/JSON/token (llm)."""
+    return _redact_llm(_redact_core(text))
 
 
 class RAGIndex:

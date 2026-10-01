@@ -36,3 +36,14 @@ def test_search_log_redacts_bearer_and_json_secrets(monkeypatch, caplog):
     assert "RuntimeError" in text
     for secret in ("sk-live-abc123", "qd-secret-999", "tok-777"):
         assert secret not in text
+
+
+def test_redactor_composes_userinfo_password_and_bearer():
+    from app.services.rag import redact_secrets
+
+    out = redact_secrets(
+        "connection failed http://user:QD_PASS_123@qdrant:6333 password=DB_PASS_456 "
+        'Authorization: Bearer sk-live-abc123 {"api_key": "qd-secret-999"}'
+    )
+    for secret in ("QD_PASS_123", "DB_PASS_456", "sk-live-abc123", "qd-secret-999"):
+        assert secret not in out
