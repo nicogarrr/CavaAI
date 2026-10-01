@@ -320,6 +320,7 @@ def test_reasoning_effort_goes_to_allowlisted_model_only():
                     _env_file=None,
                     opencode_go_api_key="test-secret",
                     opencode_go_base_url="https://opencode.test/zen/go/v1",
+                    opencode_go_fallback_model="muse-spark-1.3-contributor-free",
                 ),
                 client=client,
             )
@@ -444,17 +445,17 @@ def test_factory_wires_fallback_model_from_settings():
         Settings(_env_file=None, opencode_go_api_key="test-secret")
     )
     assert isinstance(provider, OpenAICompatibleProvider)
-    assert provider._fallback_model == "muse-spark-1.3-contributor-free"
+    assert provider._fallback_model is None
 
     provider = create_llm_provider(
         Settings(
             _env_file=None,
             opencode_go_api_key="test-secret",
-            opencode_go_fallback_model="",
+            opencode_go_fallback_model="muse-spark-1.3-contributor-free",
         )
     )
     assert isinstance(provider, OpenAICompatibleProvider)
-    assert provider._fallback_model is None
+    assert provider._fallback_model == "muse-spark-1.3-contributor-free"
 
 
 def test_structured_output_uses_openai_compatible_contract():

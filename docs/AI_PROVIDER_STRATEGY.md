@@ -28,7 +28,7 @@ for the account (403 "Model access is disabled").
 OPENCODE_GO_API_KEY=replace_with_an_opencode_go_key
 OPENCODE_GO_BASE_URL=https://opencode.ai/zen/v1
 OPENCODE_GO_MODEL=space-bunny-free
-OPENCODE_GO_FALLBACK_MODEL=muse-spark-1.3-contributor-free
+OPENCODE_GO_FALLBACK_MODEL=
 OPENCODE_GO_REASONING_EFFORT=max
 ```
 
