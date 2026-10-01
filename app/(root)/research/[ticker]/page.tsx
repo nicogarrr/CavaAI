@@ -883,6 +883,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
             <ThesisMemo
               thesis={data.thesis}
               ticker={ticker}
+              currency={company.currency}
               debateBody={
                 data.sections.find((section) => section.section_key === 'thesis_debate')?.body ?? null
               }

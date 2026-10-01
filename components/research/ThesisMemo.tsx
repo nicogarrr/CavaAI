@@ -1,5 +1,5 @@
 import { thesisScenarioDisplay } from '@/lib/research/listed-share-values';
-import { formatGeneratedDate, formatMoney, formatPercent, NA } from '@/lib/format';
+import { formatGeneratedDate, formatMoney, formatPercent, isValidCurrencyCode, NA } from '@/lib/format';
 import { GlossaryTerm } from '@/components/GlossaryTerm';
 import ScenarioAssumptions from '@/components/research/ScenarioAssumptions';
 import ThesisHumanInputForm from '@/components/research/ThesisHumanInputForm';
@@ -64,10 +64,20 @@ function provenanceValue(value: number | string | null): string {
   return String(value);
 }
 
-function money(value: number | string | null | undefined): string {
+/**
+ * Importes de la tesis en la divisa del LISTADO (la misma que usa
+ * ValuationView). Antes esta función fijaba el dólar: /research/ASML.AS pintaba
+ * los mismos 1.522,60 como «US$» en la tesis y como «€» en la valoración. Sin
+ * divisa válida el importe NO se pinta: NA, nunca una moneda inventada.
+ */
+function money(
+  value: number | string | null | undefined,
+  currency: string | null | undefined,
+): string {
   const parsed = typeof value === 'string' ? Number(value) : value;
   if (parsed === null || parsed === undefined || Number.isNaN(parsed)) return NA;
-  return formatMoney(parsed, 'USD', { maximumFractionDigits: 2 });
+  if (!isValidCurrencyCode(currency)) return NA;
+  return formatMoney(parsed, currency, { maximumFractionDigits: 2 });
 }
 
 function pct(value: number | string | null | undefined): string {
@@ -96,12 +106,14 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
 function ScenarioCell({
   label,
   value,
+  currency,
   probability,
   highlight = false,
   glossaryKey,
 }: {
   label: string;
   value: number | string | null | undefined;
+  currency: string | null | undefined;
   probability?: number | null;
   highlight?: boolean;
   glossaryKey?: GlossaryKey;
@@ -121,7 +133,7 @@ function ScenarioCell({
           label
         )}
       </div>
-      <div className="mt-1 text-base font-semibold text-gray-100">{money(value)}</div>
+      <div className="mt-1 text-base font-semibold text-gray-100">{money(value, currency)}</div>
       {probability !== null && probability !== undefined ? (
         <div className="mt-0.5 text-xs text-gray-500">p = {formatPercent(probability, { digits: 0 })}</div>
       ) : null}
@@ -141,11 +153,15 @@ function ScenarioCell({
 export default function ThesisMemo({
   thesis,
   ticker,
+  currency,
   debateBody,
 }: {
   thesis: ResearchThesis;
   /** Ticker para el debate bull/bear (bloque interactivo de abajo). */
   ticker?: string;
+  /** Divisa del listado (CompanyOut.currency). Sin divisa válida los
+   *  importes de la tesis salen como NA, nunca en USD asumido. */
+  currency?: string | null;
   /** Cuerpo persistido de la seccion thesis_debate (veredicto previo). */
   debateBody?: string | null;
 }) {
@@ -314,11 +330,11 @@ export default function ThesisMemo({
           Escenarios y valoración
         </h3>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
-          <ScenarioCell label="Precio" value={thesis.current_price} />
-          <ScenarioCell label={`Bear${scenarios.label}`} value={scenarios.values.bear} probability={probabilities['bear']} glossaryKey="bear" />
-          <ScenarioCell label={`Base${scenarios.label}`} value={scenarios.values.base} probability={probabilities['base']} highlight glossaryKey="base" />
-          <ScenarioCell label={`Bull${scenarios.label}`} value={scenarios.values.bull} probability={probabilities['bull']} glossaryKey="bull" />
-          <ScenarioCell label={`Valor esperado${scenarios.label}`} value={scenarios.values.expected} />
+          <ScenarioCell label="Precio" value={thesis.current_price} currency={currency} />
+          <ScenarioCell label={`Bear${scenarios.label}`} value={scenarios.values.bear} currency={currency} probability={probabilities['bear']} glossaryKey="bear" />
+          <ScenarioCell label={`Base${scenarios.label}`} value={scenarios.values.base} currency={currency} probability={probabilities['base']} highlight glossaryKey="base" />
+          <ScenarioCell label={`Bull${scenarios.label}`} value={scenarios.values.bull} currency={currency} probability={probabilities['bull']} glossaryKey="bull" />
+          <ScenarioCell label={`Valor esperado${scenarios.label}`} value={scenarios.values.expected} currency={currency} />
           <div className="rounded-lg border border-gray-800 bg-black/20 p-3">
             <div className="text-xs uppercase text-gray-500">
               <GlossaryTerm k="margen_seguridad" icon={false}>
