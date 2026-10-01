@@ -132,7 +132,32 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     qdrant_url: str = "http://localhost:6333"
     duckdb_path: Path = Path("./storage/analytics.duckdb")
-
+    # Retrieval hibrido denso+sparse sobre Qdrant (ver app/services/rag.py y
+    # app/services/hybrid_retrieval.py). Todo aditivo y apagado por defecto:
+    # con los defaults el RAG se comporta exactamente como antes.
+    # backend denso: "fastembed" (ONNX CPU, mismo modelo/dims/vectores que
+    # sentence-transformers) o "sentence-transformers" (legacy).
+    rag_embedding_backend: str = "fastembed"
+    # Modelo denso por defecto: MISMO modelo y dims (384) que produccion.
+    # Cambiar de modelo con mismos dims conserva la coleccion pero mezcla
+    # espacios: reindexar con RAGIndex().rebuild_tenant por tenant.
+    # Cambiar de dims exige coleccion nueva (rag_collection) + rebuild.
+    rag_dense_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    rag_dense_dims: int = Field(default=384, ge=1, le=4096)
+    # Override opt-in de coleccion (None = la historica
+    # "portfolio_research_documents"). Solo para cambios de dims/modelo.
+    rag_collection: str | None = None
+    # Sparse sibling (BM25 estadistico via fastembed, ~10 MB, multilingue).
+    # Apagado por defecto: la ingesta/busqueda densa no cambia.
+    rag_hybrid_enabled: bool = False
+    rag_sparse_model: str = "Qdrant/bm25"
+    rag_sparse_vector_name: str = "bm25"
+    # Fusion RRF (lado cliente, igual semantica que el RRF de Qdrant >= 1.10;
+    # k y pesos configurables sin depender de la version del servidor:
+    # los pesos RRF de servidor exigen Qdrant >= 1.17 y prod va en 1.12.5).
+    rag_rrf_k: int = Field(default=60, ge=1, le=1000)
+    rag_dense_weight: float = Field(default=1.0, ge=0.0, le=100.0)
+    rag_sparse_weight: float = Field(default=1.0, ge=0.0, le=100.0)
     minio_endpoint: str = "localhost:9002"
     minio_access_key: str = "portfolio"
     minio_secret_key: str = "portfoliosecret"

@@ -24,18 +24,101 @@ class RAGIndex:
     def client(self) -> QdrantClient:
         return QdrantClient(url=self.settings.qdrant_url)
 
+    def _setting(self, name: str, default):
+        return getattr(self.settings, name, default)
+
+    def _collection(self) -> str:
+        """Coleccion efectiva: override opt-in o la historica (compat)."""
+        return self._setting("rag_collection", None) or self.collection_name
+
+    def _dims(self) -> int:
+        return int(self._setting("rag_dense_dims", self.vector_size) or self.vector_size)
+
+    def _hybrid_wanted(self, hybrid: bool | None) -> bool:
+        if hybrid is not None:
+            return bool(hybrid)
+        return bool(self._setting("rag_hybrid_enabled", False))
+
     def _embedder(self):
         from sentence_transformers import SentenceTransformer
         return SentenceTransformer("all-MiniLM-L6-v2")
 
+    def _dense_vectors(self, texts: list[str]) -> list[list[float]]:
+        """Vectores densos normalizados: fastembed (ONNX) primero, ST fallback.
+
+        Mismo modelo/dims/espacio que produccion (coseno ~1.0 medido entre
+        ambos backends): cambiar de backend no invalida el indice.
+        """
+        backend = str(self._setting("rag_embedding_backend", "fastembed") or "fastembed")
+        model = str(
+            self._setting("rag_dense_model", "sentence-transformers/all-MiniLM-L6-v2")
+            or "sentence-transformers/all-MiniLM-L6-v2"
+        )
+        if backend.strip().lower() != "sentence-transformers":
+            try:
+                from app.services.hybrid_retrieval import embed_dense
+
+                return embed_dense(texts, model)
+            except Exception as exc:
+                logger.warning(
+                    "fastembed dense backend unavailable (%s: %s); falling back to sentence-transformers",
+                    type(exc).__name__,
+                    redact_secrets(str(exc)),
+                )
+        return self._embedder().encode(texts, normalize_embeddings=True).tolist()
+
+    def _sparse_embeddings(self, texts: list[str]):
+        """Embeddings sparse (BM25) o None si el hibrido esta off/no disponible."""
+        from app.services.hybrid_retrieval import FastembedUnavailable, embed_sparse
+
+        model = str(self._setting("rag_sparse_model", "Qdrant/bm25") or "Qdrant/bm25")
+        try:
+            return embed_sparse(texts, model)
+        except FastembedUnavailable as exc:
+            logger.warning(
+                "Hybrid sparse disabled (fastembed missing): %s; continuing dense-only",
+                redact_secrets(str(exc)),
+            )
+            return None
+        except Exception as exc:
+            logger.warning(
+                "Sparse embedding failed (%s: %s); continuing dense-only",
+                type(exc).__name__,
+                redact_secrets(str(exc)),
+            )
+            return None
+
     def _ensure_collection(self, client: QdrantClient) -> None:
         from qdrant_client.models import Distance, VectorParams
+        collection = self._collection()
         collections = [c.name for c in client.get_collections().collections]
-        if self.collection_name not in collections:
+        if collection not in collections:
+            kwargs: dict = {}
+            if self._hybrid_wanted(None):
+                from qdrant_client.models import SparseVectorParams
+
+                from app.services.hybrid_retrieval import DEFAULT_SPARSE_VECTOR_NAME
+
+                sparse_name = str(
+                    self._setting("rag_sparse_vector_name", DEFAULT_SPARSE_VECTOR_NAME)
+                    or DEFAULT_SPARSE_VECTOR_NAME
+                )
+                kwargs["sparse_vectors_config"] = {sparse_name: SparseVectorParams()}
             client.create_collection(
-                self.collection_name,
-                vectors_config=VectorParams(size=self.vector_size, distance=Distance.COSINE),
+                collection,
+                vectors_config=VectorParams(size=self._dims(), distance=Distance.COSINE),
+                **kwargs,
             )
+            return
+        if self._hybrid_wanted(None):
+            from app.services import hybrid_retrieval as _hybrid
+
+            sparse_name = str(
+                self._setting("rag_sparse_vector_name", _hybrid.DEFAULT_SPARSE_VECTOR_NAME)
+                or _hybrid.DEFAULT_SPARSE_VECTOR_NAME
+            )
+            if not _hybrid.collection_has_sparse(client, collection, sparse_name):
+                _hybrid.ensure_sparse_vector(client, collection, sparse_name)
 
     def ingest_document(self, db, document) -> dict:
         import uuid
@@ -56,11 +139,34 @@ class RAGIndex:
         ).all())
 
         if not chunks:
-            return {"chunks_indexed": 0, "collection": self.collection_name}
+            return {"chunks_indexed": 0, "collection": self._collection()}
 
         texts = [c.text for c in chunks]
-        embedder = self._embedder()
-        vectors = embedder.encode(texts, normalize_embeddings=True).tolist()
+        vectors = self._dense_vectors(texts)
+        expected_dims = self._dims()
+        if any(len(vector) != expected_dims for vector in vectors):
+            return {
+                "chunks_indexed": 0,
+                "error": (
+                    f"Dense embedding dims mismatch: got {len(vectors[0]) if vectors else 0}, "
+                    f"collection expects {expected_dims} "
+                    "(rag_dense_dims/rag_collection opt-in + rebuild_tenant required)"
+                ),
+                "collection": self._collection(),
+            }
+
+        hybrid = self._hybrid_wanted(None)
+        sparse_vectors = self._sparse_embeddings(texts) if hybrid else None
+        sparse_skipped = bool(hybrid and sparse_vectors is None)
+        if hybrid and sparse_vectors is not None:
+            from app.services import hybrid_retrieval as _hybrid
+
+            sparse_name = str(
+                self._setting("rag_sparse_vector_name", _hybrid.DEFAULT_SPARSE_VECTOR_NAME)
+                or _hybrid.DEFAULT_SPARSE_VECTOR_NAME
+            )
+        else:
+            sparse_name = ""
 
         ticker = None
         if document.company_id:
@@ -69,15 +175,21 @@ class RAGIndex:
             ticker = company.ticker if company else None
 
         points = []
-        for chunk, vector in zip(chunks, vectors):
+        for index, (chunk, vector) in enumerate(zip(chunks, vectors)):
             if chunk.qdrant_point_id:
                 point_id = chunk.qdrant_point_id
             else:
                 point_id = str(uuid.uuid4())
                 chunk.qdrant_point_id = point_id
+            if sparse_vectors is not None:
+                from app.services.hybrid_retrieval import hybrid_point_vector
+
+                point_vector = hybrid_point_vector(vector, sparse_vectors[index], sparse_name)
+            else:
+                point_vector = vector
             points.append(PointStruct(
                 id=point_id,
-                vector=vector,
+                vector=point_vector,
                 payload={
                     "text": chunk.text,
                     "ticker": ticker,
@@ -94,12 +206,15 @@ class RAGIndex:
         try:
             client = self.client()
             self._ensure_collection(client)
-            client.upsert(collection_name=self.collection_name, points=points)
+            client.upsert(collection_name=self._collection(), points=points)
             db.commit()
         except Exception as exc:
-            return {"chunks_indexed": 0, "error": redact_secrets(str(exc)), "collection": self.collection_name}
+            return {"chunks_indexed": 0, "error": redact_secrets(str(exc)), "collection": self._collection()}
 
-        return {"chunks_indexed": len(points), "collection": self.collection_name}
+        result: dict = {"chunks_indexed": len(points), "collection": self._collection()}
+        if sparse_skipped:
+            result["sparse_skipped"] = True
+        return result
 
     def ingest_knowledge_document(self, db, document) -> dict:
         import uuid
@@ -120,18 +235,45 @@ class RAGIndex:
             ).all()
         )
         if not chunks:
-            return {"chunks_indexed": 0, "collection": self.collection_name}
-        vectors = self._embedder().encode(
-            [chunk.content for chunk in chunks], normalize_embeddings=True
-        ).tolist()
+            return {"chunks_indexed": 0, "collection": self._collection()}
+        vectors = self._dense_vectors([chunk.content for chunk in chunks])
+        expected_dims = self._dims()
+        if any(len(vector) != expected_dims for vector in vectors):
+            return {
+                "chunks_indexed": 0,
+                "error": (
+                    f"Dense embedding dims mismatch: got {len(vectors[0]) if vectors else 0}, "
+                    f"collection expects {expected_dims} "
+                    "(rag_dense_dims/rag_collection opt-in + rebuild_tenant required)"
+                ),
+                "collection": self._collection(),
+            }
+        hybrid = self._hybrid_wanted(None)
+        sparse_vectors = self._sparse_embeddings([chunk.content for chunk in chunks]) if hybrid else None
+        sparse_skipped = bool(hybrid and sparse_vectors is None)
+        if hybrid and sparse_vectors is not None:
+            from app.services import hybrid_retrieval as _hybrid
+
+            sparse_name = str(
+                self._setting("rag_sparse_vector_name", _hybrid.DEFAULT_SPARSE_VECTOR_NAME)
+                or _hybrid.DEFAULT_SPARSE_VECTOR_NAME
+            )
+        else:
+            sparse_name = ""
         points = []
-        for chunk, vector in zip(chunks, vectors):
+        for index, (chunk, vector) in enumerate(zip(chunks, vectors)):
             point_id = chunk.qdrant_point_id or str(uuid.uuid4())
             chunk.qdrant_point_id = point_id
+            if sparse_vectors is not None:
+                from app.services.hybrid_retrieval import hybrid_point_vector
+
+                point_vector = hybrid_point_vector(vector, sparse_vectors[index], sparse_name)
+            else:
+                point_vector = vector
             points.append(
                 PointStruct(
                     id=point_id,
-                    vector=vector,
+                    vector=point_vector,
                     payload={
                         "text": chunk.content,
                         "title": document.title,
@@ -149,15 +291,18 @@ class RAGIndex:
         try:
             client = self.client()
             self._ensure_collection(client)
-            client.upsert(collection_name=self.collection_name, points=points)
+            client.upsert(collection_name=self._collection(), points=points)
             db.commit()
         except Exception as exc:
             return {
                 "chunks_indexed": 0,
                 "error": redact_secrets(str(exc)),
-                "collection": self.collection_name,
+                "collection": self._collection(),
             }
-        return {"chunks_indexed": len(points), "collection": self.collection_name}
+        result = {"chunks_indexed": len(points), "collection": self._collection()}
+        if sparse_skipped:
+            result["sparse_skipped"] = True
+        return result
 
     def rebuild_tenant(self, db) -> dict:
         """Recreate one tenant's disposable Qdrant index from PostgreSQL chunks."""
@@ -178,7 +323,7 @@ class RAGIndex:
         client = self.client()
         self._ensure_collection(client)
         client.delete(
-            collection_name=self.collection_name,
+            collection_name=self._collection(),
             points_selector=FilterSelector(
                 filter=Filter(
                     must=[
@@ -226,8 +371,47 @@ class RAGIndex:
             "knowledge_documents": len(knowledge_documents),
             "chunks_indexed": indexed,
             "errors": errors,
-            "collection": self.collection_name,
+            "collection": self._collection(),
         }
+
+    @staticmethod
+    def _row(point, score: float, scores: dict | None = None) -> dict:
+        """Mapea un ScoredPoint al dict de contrato (estable desde el origen)."""
+        row = {
+            "text": point.payload.get("text", ""),
+            "ticker": point.payload.get("ticker"),
+            "document_id": point.payload.get("document_id"),
+            "knowledge_document_id": point.payload.get("knowledge_document_id"),
+            "collection_id": point.payload.get("collection_id"),
+            "page_number": point.payload.get("page_number"),
+            "source_type": point.payload.get("source_type"),
+            "title": point.payload.get("title"),
+            "score": score,
+            "point_id": point.id,
+            "entity_type": point.payload.get("entity_type"),
+            "entity_id": point.payload.get("entity_id"),
+            "chunk_index": point.payload.get("chunk_index"),
+        }
+        if scores is not None:
+            row["scores"] = scores
+        return row
+
+    def _query_filter(self, ticker: str | None, tenant_id: int):
+        from qdrant_client.models import FieldCondition, Filter, MatchValue
+        conditions = []
+        if ticker:
+            conditions.append(
+                FieldCondition(
+                    key="ticker", match=MatchValue(value=ticker)
+                )
+            )
+        conditions.append(
+            FieldCondition(
+                key="tenant_id",
+                match=MatchValue(value=tenant_id),
+            )
+        )
+        return Filter(must=conditions) if conditions else None
 
     def search(
         self,
@@ -235,63 +419,114 @@ class RAGIndex:
         ticker: str | None = None,
         limit: int = 5,
         tenant_id: int | None = None,
+        hybrid: bool | None = None,
     ) -> list[dict]:
-        from qdrant_client.models import FieldCondition, Filter, MatchValue
+        """Busqueda semantica densa (default, contrato intacto) o hibrida RRF.
+
+        ``hybrid=None`` respeta ``rag_hybrid_enabled``; ``hybrid=False``
+        fuerza el path denso historico (sin campo ``scores``). En modo
+        hibrido cada hit suma ``scores`` = {dense, sparse, rrf} y ``score``
+        es la fusion RRF. Ante cualquier fallo devuelve [] con warning.
+        """
         if tenant_id is None:
             return []
         try:
-            embedder = self._embedder()
-            vector = embedder.encode([query], normalize_embeddings=True)[0].tolist()
+            vector = self._dense_vectors([query])[0]
             client = self.client()
             self._ensure_collection(client)
-            conditions = []
-            if ticker:
-                conditions.append(
-                    FieldCondition(
-                        key="ticker", match=MatchValue(value=ticker)
-                    )
+            query_filter = self._query_filter(ticker, tenant_id)
+            if not self._hybrid_wanted(hybrid):
+                results = client.search(
+                    collection_name=self._collection(),
+                    query_vector=vector,
+                    query_filter=query_filter,
+                    limit=limit,
+                    with_payload=True,
                 )
-            conditions.append(
-                FieldCondition(
-                    key="tenant_id",
-                    match=MatchValue(value=tenant_id),
-                )
-            )
-            query_filter = Filter(must=conditions) if conditions else None
-            results = client.search(
-                collection_name=self.collection_name,
-                query_vector=vector,
-                query_filter=query_filter,
-                limit=limit,
-                with_payload=True,
-            )
-            return [
-                {
-                    "text": r.payload.get("text", ""),
-                    "ticker": r.payload.get("ticker"),
-                    "document_id": r.payload.get("document_id"),
-                    "knowledge_document_id": r.payload.get("knowledge_document_id"),
-                    "collection_id": r.payload.get("collection_id"),
-                    "page_number": r.payload.get("page_number"),
-                    "source_type": r.payload.get("source_type"),
-                    "title": r.payload.get("title"),
-                    "score": r.score,
-                    "point_id": r.id,
-                    "entity_type": r.payload.get("entity_type"),
-                    "entity_id": r.payload.get("entity_id"),
-                    "chunk_index": r.payload.get("chunk_index"),
-                }
-                for r in results
-            ]
+                return [self._row(r, r.score) for r in results]
+            return self._hybrid_search(client, query, vector, query_filter, limit)
         except Exception as exc:
             # Fallar en silencio ocultaba que la busqueda semantica no
             # funcionaba (embedder o Qdrant caidos): se registra la causa.
             logger.warning("RAG search failed: %s: %s", type(exc).__name__, redact_secrets(str(exc)))
             return []
 
+    def _hybrid_search(self, client, query: str, dense_vector: list[float], query_filter, limit: int) -> list[dict]:
+        """Denso + BM25 con fusion RRF (lado cliente). Degrada a denso-only."""
+        from app.services import hybrid_retrieval as _hybrid
+
+        sparse_vectors = self._sparse_embeddings([query])
+        if sparse_vectors is None:
+            results = client.search(
+                collection_name=self._collection(),
+                query_vector=dense_vector,
+                query_filter=query_filter,
+                limit=limit,
+                with_payload=True,
+            )
+            return [self._row(r, r.score) for r in results]
+
+        fetch = _hybrid.prefetch_limit(limit)
+        dense_hits = client.search(
+            collection_name=self._collection(),
+            query_vector=dense_vector,
+            query_filter=query_filter,
+            limit=fetch,
+            with_payload=True,
+        )
+        sparse_name = str(
+            self._setting("rag_sparse_vector_name", _hybrid.DEFAULT_SPARSE_VECTOR_NAME)
+            or _hybrid.DEFAULT_SPARSE_VECTOR_NAME
+        )
+        try:
+            sparse_hits = _hybrid.sparse_search_points(
+                client,
+                self._collection(),
+                _hybrid.to_qdrant_sparse(sparse_vectors[0]),
+                sparse_name=sparse_name,
+                query_filter=query_filter,
+                limit=fetch,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Hybrid sparse search failed (%s: %s); continuing dense-only",
+                type(exc).__name__,
+                redact_secrets(str(exc)),
+            )
+            return [self._row(r, r.score) for r in dense_hits[:limit]]
+
+        payloads: dict[str, object] = {}
+        for point in list(dense_hits) + list(sparse_hits):
+            payloads.setdefault(str(point.id), point)
+        fused = _hybrid.rrf_fuse(
+            [_hybrid.RankedId(str(p.id), float(p.score)) for p in dense_hits],
+            [_hybrid.RankedId(str(p.id), float(p.score)) for p in sparse_hits],
+            k=int(self._setting("rag_rrf_k", _hybrid.DEFAULT_RRF_K) or _hybrid.DEFAULT_RRF_K),
+            dense_weight=float(self._setting("rag_dense_weight", 1.0)),
+            sparse_weight=float(self._setting("rag_sparse_weight", 1.0)),
+        )
+        rows = []
+        for hit in fused[:limit]:
+            point = payloads[hit.point_id]
+            rows.append(self._row(
+                point,
+                hit.fused_score,
+                {"dense": hit.dense_score, "sparse": hit.sparse_score, "rrf": hit.fused_score},
+            ))
+        return rows
+
     def status(self) -> dict:
         try:
             collections = self.client().get_collections()
-            return {"configured": True, "collections": [c.name for c in collections.collections]}
+            return {
+                "configured": True,
+                "collections": [c.name for c in collections.collections],
+                "collection": self._collection(),
+                "embedding_backend": self._setting("rag_embedding_backend", "fastembed"),
+                "dense_model": self._setting(
+                    "rag_dense_model", "sentence-transformers/all-MiniLM-L6-v2"
+                ),
+                "hybrid_enabled": self._hybrid_wanted(None),
+            }
         except Exception as exc:
             return {"configured": False, "error": redact_secrets(str(exc))}
