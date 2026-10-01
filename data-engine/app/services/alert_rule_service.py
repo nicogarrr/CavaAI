@@ -170,7 +170,13 @@ class AlertRuleService:
                 severity=rule.severity,
                 title=rule.name,
                 message=alert_message,
-                fingerprint_parts=["alert_rule", str(rule.id)],
+                fingerprint_parts=[
+                    "alert_rule",
+                    str(rule.id),
+                    # Una huella por ocurrencia: tras el cooldown, un nuevo cruce
+                    # crea una alerta nueva y se entrega otra vez.
+                    str((rule.trigger_count or 0) + 1),
+                ],
                 channels=rule.channels,
                 metadata=alert_metadata,
             )
