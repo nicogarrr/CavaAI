@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from typing import Any
 
@@ -17,6 +18,30 @@ from app.llm.routing import TaskModelRouter
 logger = logging.getLogger(__name__)
 
 _ERROR_BODY_PREVIEW_CHARS = 200
+_REDACTED = "[REDACTED]"
+_SECRET_PATTERNS = (
+    re.compile(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]+"),
+    re.compile(r"\bsk-[A-Za-z0-9_-]{6,}"),
+    re.compile(
+        r"(?i)((?:api[_-]?key|x-api-key|authorization|token|secret)[\"']?\s*[:=]\s*[\"']?)"
+        r"[^\s\"',;}&]+"
+    ),
+    re.compile(r"(?i)(incorrect api key provided:\s*)\S+"),
+    re.compile(r"(?i)(invalid api key:?\s*)\S+"),
+)
+
+
+def redact_secrets(text: str, known_secrets: Sequence[str] = ()) -> str:
+    """Quita credenciales conocidas y patrones habituales antes de truncar o loguear."""
+    for pattern in _SECRET_PATTERNS:
+        if pattern.groups:
+            text = pattern.sub(lambda m: m.group(1) + _REDACTED, text)
+        else:
+            text = pattern.sub(_REDACTED, text)
+    for secret in known_secrets:
+        if secret and len(secret) >= 4:
+            text = text.replace(secret, _REDACTED)
+    return text
 
 
 class LLMProvider(ABC):
@@ -76,7 +101,7 @@ class LLMProvider(ABC):
 
             if response.status_code < 400:
                 return response
-            self._log_http_error(response, payload, attempt)
+            self._log_http_error(response, headers, payload, attempt)
             if response.status_code not in {408, 409, 429} and response.status_code < 500:
                 raise ProviderHTTPError(self.name, response.status_code)
             if attempt >= self._max_retries:
@@ -86,11 +111,19 @@ class LLMProvider(ABC):
         raise LLMError(f"{self.name} request failed")
 
     def _log_http_error(
-        self, response: httpx.Response, payload: Mapping[str, Any], attempt: int
+        self,
+        response: httpx.Response,
+        headers: Mapping[str, str],
+        payload: Mapping[str, Any],
+        attempt: int,
     ) -> None:
         """Deja evidencia del rechazo (estado, modelo, inicio del cuerpo) sin credenciales."""
         try:
-            body = response.text[:_ERROR_BODY_PREVIEW_CHARS]
+            known = [str(getattr(self, "_api_key", "") or "")]
+            for value in headers.values():
+                known.append(str(value))
+                known.append(str(value).split()[-1] if str(value).split() else "")
+            body = redact_secrets(response.text, known)[:_ERROR_BODY_PREVIEW_CHARS]
         except Exception:  # pragma: no cover - cuerpo ilegible
             body = "<unreadable>"
         logger.warning(
