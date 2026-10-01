@@ -33,6 +33,12 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+*.log
+# scripts de exploracion de un solo uso que se dejaban en la raiz
+/dbg.js
+/dbg2.js
+/dbg3.js
+dbg*.js
 
 # env (todos los locales; solo se versionan los .example)
 .env*
