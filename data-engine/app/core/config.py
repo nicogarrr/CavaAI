@@ -225,6 +225,19 @@ class Settings(BaseSettings):
     langfuse_sample_rate: float = Field(default=0.1, ge=0.0, le=1.0)
     fmp_api_key: str | None = None
     fred_api_key: str | None = None
+    # Referencia de instrumentos: seed FinanceDatabase + normalizacion OpenFIGI.
+    # Sin key por defecto (25 req/min); key gratuita opcional via env.
+    # Env: OPENFIGI_API_KEY / OPENFIGI_REQUESTS_PER_MINUTE /
+    # OPENFIGI_CACHE_TTL_SECONDS / OPENFIGI_BASE_URL /
+    # FINANCEDATABASE_EQUITIES_BASE_URL / INSTRUMENT_SNAPSHOT_DIR.
+    openfigi_api_key: str | None = Field(default=None, repr=False)
+    openfigi_requests_per_minute: int = Field(default=25, ge=1, le=600)
+    openfigi_cache_ttl_seconds: int = Field(default=86400, ge=60)
+    openfigi_base_url: str = "https://api.openfigi.com/v3/mapping"
+    financedatabase_equities_base_url: str = (
+        "https://raw.githubusercontent.com/JerBouma/FinanceDatabase/main/database/equities"
+    )
+    instrument_snapshot_dir: str = "./data/instruments"
     opencode_go_api_key: str | None = Field(default=None, repr=False)
     opencode_go_base_url: str = "https://opencode.ai/zen/v1"
     # Default cheap-but-good model. Overridable WITHOUT code change via env
