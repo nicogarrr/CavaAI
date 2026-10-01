@@ -1,0 +1,7 @@
+symbol,name,currency,sector,industry,exchange,market,country,isin,cusip,figi,composite_figi,shareclass_figi,mic_code
+SAN.MC,Banco Santander EUR,EUR,Financials,Banks,MCE,Bolsa de Madrid,Spain,ES0113900J37,,BBG000BSAN01,BBG000BSAN02,BBG000BSAN03,XMAD
+AAPL,Apple Inc,USD,Technology,Consumer Electronics,NMS,NASDAQ,United States,US0378331005,037833100,BBG000B9XRY4,BBG000B9XRY5,BBG000B9XRY6,XNAS
+FAKEOLD,Fake Old Corp,USD,Industrials,Machinery,NYQ,New York Stock Exchange,United States,US0000000001,000000001,BBG000RENA01,BBG000RENA02,BBG000RENA03,XNYS
+FAKENEW,Fake New Corp,USD,Industrials,Machinery,NYQ,New York Stock Exchange,United States,US0000000001,000000001,BBG000RENA01,BBG000RENA02,BBG000RENA03,XNYS
+MYST,Mystery Inc,USD,,,NMS,NASDAQ,United States,,,,,,XNAS
+,Sin simbolo,USD,Technology,Software,NMS,NASDAQ,United States,,,,,,
