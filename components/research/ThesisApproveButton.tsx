@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { CheckCheck, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { approveThesis } from '@/lib/actions/thesis-jobs.actions';
@@ -21,6 +22,7 @@ export default function ThesisApproveButton({
     /** Sin versiones de tesis no hay nada que aprobar/rechazar (B17). */
     disabled?: boolean;
 }) {
+    const router = useRouter();
     const [pending, setPending] = useState<'approved' | 'rejected' | null>(null);
 
     const decide = async (decision: 'approved' | 'rejected') => {
@@ -32,6 +34,8 @@ export default function ThesisApproveButton({
                     ? `Tesis v${result.version} aprobada`
                     : `Tesis v${result.version} rechazada`,
             );
+            // F391: sin refresh el memo y el historial siguen mostrando el estado anterior.
+            router.refresh();
         } catch (exc) {
             if (isNextRedirectError(exc)) throw exc;
             showErrorToast(exc, { onRetry: () => decide(decision) });
