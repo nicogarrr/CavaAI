@@ -183,7 +183,8 @@ class Settings(BaseSettings):
     # scripts locales, jamas en serving de produccion.
     docling_lane_enabled: bool = True
     docling_async_only: bool = True
-    markitdown_enabled: bool = True    # Directorio con snapshots ESEF (manifest.json issuers LEI->{ticker,...},
+    markitdown_enabled: bool = True
+    # Directorio con snapshots ESEF (manifest.json issuers LEI->{ticker,...},
     # snapshots/<LEI>.json normalizados desde filings.xbrl.org). Mismo motivo
     # que SEC: los datos viajan con la app, nunca se piden en caliente.
     esef_snapshot_dir: str | None = None
