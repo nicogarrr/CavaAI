@@ -96,3 +96,50 @@ def test_redaction_happens_before_truncation(caplog):
 def test_non_secret_diagnostic_text_survives(caplog):
     text = _log_for("error code: 1010", caplog)
     assert "error code: 1010" in text
+
+
+from app.llm.base import redact_secrets  # noqa: E402
+
+
+def test_known_secret_with_colon_is_fully_redacted_not_fragmented():
+    out = redact_secrets("Bearer alpha:betasecret", ["alpha:betasecret"])
+    assert "betasecret" not in out
+    assert "alpha" not in out
+
+
+def test_known_secret_with_unicode_is_redacted():
+    out = redact_secrets("clave rechazada: llavé-ñandú-ß9", ["llavé-ñandú-ß9"])
+    assert "llavé" not in out and "ñandú" not in out
+
+
+def test_short_known_secret_is_redacted_without_length_gate():
+    out = redact_secrets("bad key ab1", ["ab1"])
+    assert "ab1" not in out
+
+
+def test_longer_known_secret_wins_over_its_prefix():
+    out = redact_secrets("k=abcd1234 and abcd", ["abcd", "abcd1234"])
+    assert "1234" not in out
+
+
+def test_reflected_key_in_model_field_and_short_key_are_sanitized(caplog):
+    provider = OpenAICompatibleProvider(
+        api_key="k-9",
+        base_url="https://example.test/v1",
+        default_model="m",
+        provider_name="opencode-go",
+        client=httpx.AsyncClient(
+            transport=httpx.MockTransport(lambda r: httpx.Response(403, text="nope k-9"))
+        ),
+        max_retries=0,
+    )
+    with caplog.at_level(logging.WARNING, logger="app.llm.base"):
+        with pytest.raises(ProviderHTTPError):
+            asyncio.run(
+                provider._post_json(
+                    "https://example.test/v1/chat/completions",
+                    headers={"Authorization": "Bearer k-9"},
+                    payload={"model": "model-k-9-x"},
+                )
+            )
+    assert "k-9" not in caplog.text

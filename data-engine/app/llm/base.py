@@ -33,14 +33,13 @@ _SECRET_PATTERNS = (
 
 def redact_secrets(text: str, known_secrets: Sequence[str] = ()) -> str:
     """Quita credenciales conocidas y patrones habituales antes de truncar o loguear."""
+    for secret in sorted({str(x) for x in known_secrets if x}, key=len, reverse=True):
+        text = text.replace(secret, _REDACTED)
     for pattern in _SECRET_PATTERNS:
         if pattern.groups:
             text = pattern.sub(lambda m: m.group(1) + _REDACTED, text)
         else:
             text = pattern.sub(_REDACTED, text)
-    for secret in known_secrets:
-        if secret and len(secret) >= 4:
-            text = text.replace(secret, _REDACTED)
     return text
 
 
@@ -118,19 +117,22 @@ class LLMProvider(ABC):
         attempt: int,
     ) -> None:
         """Deja evidencia del rechazo (estado, modelo, inicio del cuerpo) sin credenciales."""
+        known = [str(getattr(self, "_api_key", "") or "")]
         try:
-            known = [str(getattr(self, "_api_key", "") or "")]
             for value in headers.values():
-                known.append(str(value))
-                known.append(str(value).split()[-1] if str(value).split() else "")
+                value = str(value)
+                known.append(value)
+                parts = value.split(None, 1)
+                if len(parts) == 2 and parts[0].lower() in {"bearer", "basic", "token"}:
+                    known.append(parts[1])
             body = redact_secrets(response.text, known)[:_ERROR_BODY_PREVIEW_CHARS]
         except Exception:  # pragma: no cover - cuerpo ilegible
             body = "<unreadable>"
         logger.warning(
             "LLM provider %s HTTP %s model=%s attempt=%s body=%r",
-            self.name,
+            redact_secrets(str(self.name), known),
             response.status_code,
-            payload.get("model"),
+            redact_secrets(str(payload.get("model")), known),
             attempt + 1,
             body,
         )
