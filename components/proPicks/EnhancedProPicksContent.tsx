@@ -109,13 +109,6 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt, ini
         return 'bg-yellow-500';
     };
 
-    const timePeriodLabels = {
-        week: 'Semana',
-        month: 'Mes',
-        quarter: 'Trimestre',
-        year: 'Año'
-    };
-
     return (
         <div className="grid w-full min-w-0 grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-4">
             {/* Sidebar con filtros */}
@@ -188,9 +181,6 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt, ini
                             <Badge variant="outline" className="text-teal-400 border-teal-400">
                                 Top {formatNumber(picks.length, { maximumFractionDigits: 0 })}
                             </Badge>
-                            <span className="text-sm text-gray-400">
-                                {timePeriodLabels[filters.timePeriod]}
-                            </span>
                         </div>
                         {loading && (
                             <div aria-busy="true" className="flex items-center gap-2 text-sm text-gray-400">
