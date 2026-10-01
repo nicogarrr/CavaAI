@@ -1,0 +1,11 @@
+{
+ "origin": "synthetic_fixture",
+ "endpoints": {
+  "income-statement": [],
+  "balance-sheet-statement": [],
+  "cash-flow-statement": [],
+  "ratios": [],
+  "profile": [],
+  "quote": []
+ }
+}
