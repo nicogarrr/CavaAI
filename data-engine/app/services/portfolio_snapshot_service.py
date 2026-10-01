@@ -33,6 +33,7 @@ class PortfolioSnapshotService:
     ) -> PortfolioDailySnapshot:
         snapshot_date = as_of or date.today()
         portfolio = self.fx.ensure_portfolio(db)
+        db.flush()  # autoflush=False: incluir posiciones/caja pendientes del caller
         positions = list(
             db.scalars(
                 select(Position)
@@ -122,16 +123,6 @@ class PortfolioSnapshotService:
             cash_values.append((cash, rate, base))
 
         total_value = positions_value + cash_value
-        net_flow, ambiguous_flows = self._external_flows(
-            db,
-            portfolio_id=portfolio.id,
-            as_of=snapshot_date,
-            base_currency=portfolio.base_currency,
-        )
-        observations = len(position_values) + len(cash_values)
-        pricing_coverage = Decimal(observations - len(missing_pricing)) / Decimal(
-            observations or 1
-        )
         previous = db.scalar(
             select(PortfolioDailySnapshot)
             .where(
@@ -141,13 +132,58 @@ class PortfolioSnapshotService:
             .order_by(desc(PortfolioDailySnapshot.snapshot_date))
             .limit(1)
         )
+        net_flow, ambiguous_flows = self._external_flows(
+            db,
+            portfolio_id=portfolio.id,
+            as_of=snapshot_date,
+            base_currency=portfolio.base_currency,
+            after=previous.snapshot_date if previous else None,
+        )
+        observations = len(position_values) + len(cash_values)
+        pricing_coverage = Decimal(observations - len(missing_pricing)) / Decimal(
+            observations or 1
+        )
         daily_return: Decimal | None = None
         cumulative_twr: Decimal | None = None
+        interval_days = (snapshot_date - previous.snapshot_date).days if previous else None
+        intermediate_flows = 0
+        if previous is not None and interval_days and interval_days > 1:
+            # Flujos en dias sin foto: sin valoracion en ese punto no se puede
+            # enlazar sub-periodos; se bloquea el retorno en vez de aproximarlo.
+            intermediate_flows = len(
+                db.scalars(
+                    select(Transaction.id).where(
+                        Transaction.portfolio_id == portfolio.id,
+                        Transaction.trade_date > previous.snapshot_date,
+                        Transaction.trade_date < snapshot_date,
+                        Transaction.action.in_(["deposit", "withdrawal", "cash_misc"]),
+                    )
+                ).all()
+            )
+        previous_is_base = False
+        if previous is not None and previous.cumulative_twr is None:
+            # Solo la primera foto de la serie es una base genuina; si hay fotos
+            # anteriores y falta el acumulado, la serie esta rota y no se reinicia.
+            previous_is_base = (
+                db.scalar(
+                    select(PortfolioDailySnapshot.id)
+                    .where(
+                        PortfolioDailySnapshot.portfolio_id == portfolio.id,
+                        PortfolioDailySnapshot.snapshot_date < previous.snapshot_date,
+                    )
+                    .limit(1)
+                )
+                is None
+            )
         if (
             previous
             and previous.total_value_base > 0
+            and previous.pricing_coverage == Decimal("1")
+            and previous.base_currency == portfolio.base_currency
             and pricing_coverage == Decimal("1")
             and not ambiguous_flows
+            and not intermediate_flows
+            and (previous.cumulative_twr is not None or previous_is_base)
         ):
             daily_return = (
                 total_value - net_flow
@@ -171,6 +207,11 @@ class PortfolioSnapshotService:
             "missing_pricing": missing_pricing,
             "ambiguous_external_flows": ambiguous_flows,
             "flow_timing": "end_of_day",
+            "interval_days": interval_days,
+            "unvalued_intermediate_flows": intermediate_flows,
+            "twr_blocked_by_gap_flows": bool(intermediate_flows),
+            "flow_window": "after_previous_snapshot_through_as_of",
+            "flow_fx_policy": "rate_at_as_of",
             "position_as_of_dates": sorted(
                 {position.as_of.isoformat() for position, _, _ in position_values}
             ),
@@ -238,14 +279,19 @@ class PortfolioSnapshotService:
         portfolio_id: int,
         as_of: date,
         base_currency: str,
+        after: date | None = None,
     ) -> tuple[Decimal, list[int]]:
-        transactions = db.scalars(
-            select(Transaction).where(
-                Transaction.portfolio_id == portfolio_id,
-                Transaction.trade_date == as_of,
-                Transaction.action.in_(["deposit", "withdrawal", "cash_misc"]),
-            )
-        ).all()
+        conditions = [
+            Transaction.portfolio_id == portfolio_id,
+            Transaction.trade_date <= as_of,
+            Transaction.action.in_(["deposit", "withdrawal", "cash_misc"]),
+        ]
+        # Ventana (anterior, as_of]: si falta una foto intermedia, todos los
+        # flujos del intervalo se descuentan, no solo los del dia actual.
+        conditions.append(
+            Transaction.trade_date > after if after is not None else Transaction.trade_date == as_of
+        )
+        transactions = db.scalars(select(Transaction).where(*conditions)).all()
         total = Decimal("0")
         ambiguous: list[int] = []
         # Lote FX: 1 query para todos los flujos (anti N+1).
