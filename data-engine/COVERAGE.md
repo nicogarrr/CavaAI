@@ -26,13 +26,21 @@ cualquier entorno que no lo tenga instalado. La medicion es opt-in.
 Medido con `branch = True` y `include_namespace_packages = True`, sobre la suite
 completa en el commit base de este trabajo.
 
-**Cobertura total: 81.49 %** — 30403 de 37310 operaciones (sentencias + ramas).
+Hay **dos totales**, y conviene no confundirlos:
+
+- **81.49 %** — todo lo medido, `percent_covered` de coverage.py
+  (30403/37310 operaciones, con `alembic` incluido). Es contra este numero
+  contra el que comprueba `fail_under` en `.coveragerc`, porque coverage.py no
+  sabe nada de exentos.
+- **84.07 %** — lo que el ratchet gatea de verdad, con `alembic` excluido por
+  estar exento (30381/36139). El gate imprime **los dos** en cada informe, para
+  que mover un paquete a `exempt` no pueda subir el titular en silencio.
 
 Desglose de coverage.py: sentencias **83.39 %** (24179/28996), ramas **74.86 %**
-(6224/8314), 22 lineas excluidas por `exclude_lines`. El gate usa el
-combinado **81.49 %**, que es el mismo `percent_covered` que publica coverage.py.
-Gatear solo sentencias daria 83.39 %, mas alto y menos honesto: se pagaria el
-coste de `branch = True` y no se gatearian las ramas.
+(6224/8314), 22 lineas excluidas por `exclude_lines`. El gate usa el combinado
+(sentencias + ramas) con la misma definición de `percent_covered` de coverage.py.
+Gatear solo sentencias daría 83.39 % de statements-only: más alto y menos
+honesto, porque se pagaría el coste de `branch = True` sin gatear las ramas.
 
 | Paquete | % (sent+ramas) | Operaciones | Umbral (minimo) |
 |---|---:|---:|---:|
@@ -50,7 +58,8 @@ coste de `branch = True` y no se gatearian las ramas.
 | `app/llm` | 78.93 % | 707 | 78 |
 | `app/workers` | 53.90 % | 1269 | 53 |
 | `alembic` | 1.88 % | 1171 | **exento** (ver abajo) |
-| **TOTAL** | **81.49 %** | **37310** | **81** |
+| **TOTAL gateado** | **84.07 %** | **36139** | **84** |
+| **TOTAL con exentos** | **81.49 %** | **37310** | 81 (`fail_under`) |
 
 Tiempo de suite con cobertura: **12 min** de reloj (724 s) en Windows con 16
 agentes mas corriendo en la misma maquina; el `--collect-only` pelado son 89 s, y
@@ -67,10 +76,12 @@ la cobertura caiga de verdad.
 
 Dos redes, y las dos hacen falta:
 
-1. `fail_under = 83` en `.coveragerc` ([report]). Es la red simple: `coverage
-   report` y `pytest --cov` fallan por debajo de 83 sin mirar el baseline.
+1. `fail_under = 81` en `.coveragerc` ([report]). Es la red simple: `coverage
+   report` y `pytest --cov` fallan por debajo de 81 sin mirar el baseline. Usa el
+   total con exentos (81.49 %) porque es el único que coverage.py sabe calcular.
 2. Ratchet por paquete en `scripts/run_coverage_gate.py`, leyendo
-   `coverage_baseline.json`. Es la red que nombra al culpable.
+   `coverage_baseline.json`. Usa el total gateado (84.07 %, mínimo 84) y es la
+   red que nombra al culpable.
 
 Consecuencia asumida de los umbrales a 100 % (`app/models`, `app/schemas`,
 `app/api`, `app/data`, `app`): **anadir una sola linea sin cubrir en cualquiera

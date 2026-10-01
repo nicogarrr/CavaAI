@@ -236,9 +236,8 @@ def test_update_baseline_promociona_la_subida_y_el_gate_vuelve_a_pasar():
         "app/services": _pkg(88.0, 6100),
         "app/core": _pkg(74.0, 2100),
     }
-    statements = sum(p.total for p in measured.values())
-    total = 100.0 * sum(p.covered for p in measured.values()) / statements
-    payload = gate.render_baseline(measured, total, statements, 0.0, [])
+    payload = gate.render_baseline(measured, 0.0, [])
+    total = 100.0 * sum(p.covered for p in measured.values()) / sum(p.total for p in measured.values())
 
     refreshed = _load(payload)
     result = gate.evaluate(measured, refreshed)
@@ -250,9 +249,32 @@ def test_update_baseline_promociona_la_subida_y_el_gate_vuelve_a_pasar():
     assert payload["version"] == gate.BASELINE_VERSION
 
 
+def test_baseline_guardado_y_total_gateado_no_pueden_separarse():
+    """El total guardado usa la MISMA regla que el gate: sin exentos.
+
+    Si divergieran, el gate compararia 84.07% contra un 81.49% guardado y
+    'pasaria' sin que nadie supiera porque. Este test cierra esa puerta.
+    """
+    measured = dict(_at_baseline())
+    measured["app/workers"] = _pkg(0.0, 5000)
+    payload = gate.render_baseline(measured, 0.0, _exempt("app/workers"))
+    baseline = _load(payload)
+
+    assert payload["measurement"]["total"] == pytest.approx(_TOTAL, abs=0.01)
+    result = gate.evaluate(measured, baseline)
+    assert result.total == pytest.approx(payload["measurement"]["total"], abs=0.01)
+    # Y el titular sin exentos se guarda aparte, para que no se pueda inflar.
+    including = 100.0 * sum(p.covered for p in measured.values()) / sum(
+        p.total for p in measured.values()
+    )
+    assert payload["measurement"]["total_including_exempt"] == pytest.approx(
+        round(including, 2), abs=0.01
+    )
+
+
 def test_update_baseline_conserva_los_exempt():
     measured = _at_baseline()
-    payload = gate.render_baseline(measured, _TOTAL, 8000, 0.0, _exempt("app/llm"))
+    payload = gate.render_baseline(measured, 0.0, _exempt("app/llm"))
     assert [item["package"] for item in payload["exempt"]] == ["app/llm"]
     assert payload["exempt"][0]["reason"]
 
@@ -352,6 +374,13 @@ def test_paquete_nuevo_explicitamente_exempt_pasa():
     assert ("app/workers", None, 0.0, None, None, "exempt") in result.rows
     # Y el agregado no se ha enterado del paquete exento.
     assert result.total == pytest.approx(_TOTAL, abs=0.01)
+    # Pero el informe dice cuanto seria si se gateara tambien.
+    including = 100.0 * sum(p.covered for p in measured.values()) / sum(
+        p.total for p in measured.values()
+    )
+    assert result.total_including_exempt == pytest.approx(including, abs=0.01)
+    text = gate.format_report(result, title="t", exempt=baseline.get("exempt", []))
+    assert f"{result.total_including_exempt:.2f}" in text
 
 
 def test_paquete_del_baseline_que_no_se_mide_falla_cerrado():
