@@ -2,7 +2,7 @@
  * F394: los escenarios (por acción ordinaria) no pueden mostrarse junto al
  * precio ADR sin convertir. Repro: adr:8, base 32,0375 por ordinaria -> 256,30 por ADR.
  * El cliente no multiplica: usa listed_share_values del backend; cada tesis
- * usa SU valuation_basis persistida; sin evidencia se etiqueta "por acción ordinaria".
+ * usa SU valuation_basis persistida; sin evidencia se etiqueta base no verificada.
  * Ejecución: node --experimental-strip-types --test scripts/adr-scenario-basis-guard.test.ts
  */
 import { describe, it } from 'node:test';
@@ -36,11 +36,11 @@ describe('escenarios y base por acción', () => {
         assert.equal(out.values.base, 256.3);
         assert.equal(out.values.bear, null);
     });
-    it('tesis sin evidencia de base no escala: etiqueta por acción ordinaria', () => {
+    it('tesis sin evidencia de base no escala: etiqueta base no verificada', () => {
         for (const basis of [null, undefined]) {
             const out = thesisScenarioDisplay(original, basis);
             assert.equal(out.values.base, '32.0375');
-            assert.equal(out.label, ' (por acción ordinaria)');
+            assert.equal(out.label, ' (base por acción no verificada)');
         }
     });
     it('no ADR con base persistida (sin valores convertidos): originales sin etiqueta', () => {
