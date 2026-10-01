@@ -17,6 +17,7 @@ o rechazar solo decide que se persiste.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from urllib.parse import urlsplit
 
@@ -210,6 +211,24 @@ def _validated_selection(
     return [fragments[fid] for fid in fragment_ids]
 
 
+logger = logging.getLogger(__name__)
+
+
+async def _call_with_empty_retry(provider, build_request):
+    """Una llamada, con UN reintento solo si el modelo devolvio contenido
+    vacio (space-bunny-free es de razonamiento y a veces no emite contenido).
+    Cualquier otro error se propaga sin reintentar."""
+    from app.llm import ProviderResponseError
+
+    try:
+        return await provider.complete(build_request())
+    except ProviderResponseError as exc:
+        if "empty" not in str(exc).lower():
+            raise
+        logger.warning("narrativa LLM: contenido vacio, reintento unico")
+        return await provider.complete(build_request())
+
+
 async def _complete(provider, fragments: dict[str, str], valuation: dict):
     system = (
         "Compone el resumen ejecutivo de una tesis de inversion en espanol "
@@ -243,7 +262,7 @@ async def _complete(provider, fragments: dict[str, str], valuation: dict):
             _OUTPUT_SCHEMA, name="thesis_narrative"
         ),
     )
-    return await provider.complete(request)
+    return await _call_with_empty_retry(provider, lambda: request)
 
 
 def maybe_narrative(
@@ -292,7 +311,8 @@ def maybe_narrative(
         return baseline
     try:
         response = run_from_any_context(_complete(provider, fragments, valuation))
-    except Exception:  # noqa: BLE001 - el fallo del proveedor no degrada la capa 1
+    except Exception as exc:  # noqa: BLE001 - el fallo del proveedor no degrada la capa 1
+        logger.warning("narrativa LLM: fallo del proveedor (%s), capa 1", type(exc).__name__)
         return baseline
     # La llamada consumio tokens: se registra siempre, aceptemos o no la
     # seleccion. commit=False para no romper el savepoint de generate().
@@ -317,11 +337,13 @@ def maybe_narrative(
     try:
         parsed = parse_json_response(response.text)
         fragment_ids = parsed.get("fragment_ids") if isinstance(parsed, dict) else None
-    except Exception:  # noqa: BLE001 - JSON invalido: capa 1
+    except Exception as exc:  # noqa: BLE001 - JSON invalido: capa 1
+        logger.warning("narrativa LLM: respuesta no parseable (%s), capa 1", type(exc).__name__)
         return baseline
     try:
         sentences = _validated_selection(fragment_ids, fragments, valuation)
         if sentences is None:
+            logger.warning("narrativa LLM: seleccion rechazada por validacion, capa 1")
             return baseline
         return " ".join(sentences)
     except Exception:  # noqa: BLE001 - una seleccion patologica nunca rompe la generacion
@@ -553,7 +575,7 @@ async def _complete_sections(provider, sections: dict[str, dict]):
             _SECTIONS_OUTPUT_SCHEMA, name="thesis_narrative_sections"
         ),
     )
-    return await provider.complete(request)
+    return await _call_with_empty_retry(provider, lambda: request)
 
 
 def maybe_narrative_sections(
@@ -600,7 +622,8 @@ def maybe_narrative_sections(
         return None
     try:
         response = run_from_any_context(_complete_sections(provider, sections))
-    except Exception:  # noqa: BLE001 - el fallo del proveedor no degrada la tesis
+    except Exception as exc:  # noqa: BLE001 - el fallo del proveedor no degrada la tesis
+        logger.warning("secciones LLM: fallo del proveedor (%s), sin secciones", type(exc).__name__)
         return None
     try:
         budget.record(
@@ -623,9 +646,13 @@ def maybe_narrative_sections(
     try:
         parsed = parse_json_response(response.text)
         section_ids = parsed.get("section_ids") if isinstance(parsed, dict) else None
-    except Exception:  # noqa: BLE001 - JSON invalido: sin secciones
+    except Exception as exc:  # noqa: BLE001 - JSON invalido: sin secciones
+        logger.warning("secciones LLM: respuesta no parseable (%s), sin secciones", type(exc).__name__)
         return None
     try:
-        return _validated_section_selection(section_ids, sections)
+        selected = _validated_section_selection(section_ids, sections)
+        if selected is None:
+            logger.warning("secciones LLM: seleccion rechazada por validacion")
+        return selected
     except Exception:  # noqa: BLE001 - una seleccion patologica nunca rompe la tesis
         return None
