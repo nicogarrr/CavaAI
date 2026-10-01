@@ -311,12 +311,13 @@ class PreRevenueScenarioEngine(ValuationEngine):
         # contradice el dato y el rango resultante (p. ej. ASTS: 0,80 USD/accion
         # con precio 58,86 y OCF -71,5M) seria un numero inventado presentado
         # como valoracion. Fail closed: sin valor por accion, con la causa.
-        observed_burn = {
+        cash_facts = {
             metric: float(value)
             for metric in ("operating_cash_flow", "free_cash_flow")
-            if (value := snapshot.value(metric)) is not None and float(value) < 0
+            if (value := snapshot.value(metric)) is not None
         }
-        if observed_burn:
+        observed_burn = {k: v for k, v in cash_facts.items() if v < 0}
+        if observed_burn or not cash_facts:
             result = insufficient_result(
                 ticker=company.ticker,
                 model_type=company.valuation_model,
@@ -325,10 +326,15 @@ class PreRevenueScenarioEngine(ValuationEngine):
                 missing_inputs=list(snapshot.missing_inputs)
                 + ["normalized_fcf_or_fcf_margin"],
                 reason=(
-                    "Los facts reportan quema de caja ("
-                    + ", ".join(f"{k}={v:.0f}" for k, v in observed_burn.items())
-                    + "); un margen FCF base positivo supuesto contradice el dato. "
-                    "No se publica rango por accion hasta tener un margen FCF "
+                    (
+                        "Los facts reportan quema de caja ("
+                        + ", ".join(f"{k}={v:.0f}" for k, v in observed_burn.items())
+                        + "); un margen FCF base positivo supuesto contradice el dato. "
+                        if observed_burn
+                        else "Sin dato reportado de flujo de caja (operating_cash_flow / "
+                        "free_cash_flow): el margen FCF seria un supuesto sin base. "
+                    )
+                    + "No se publica rango por accion hasta tener un margen FCF "
                     "normalizado o una curva de despliegue/financiacion con fuente."
                 ),
                 snapshot=snapshot,

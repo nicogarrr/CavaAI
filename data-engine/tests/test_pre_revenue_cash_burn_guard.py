@@ -63,3 +63,12 @@ def test_positive_cash_flow_keeps_indicative_path():
     )
     assert result["status"] == "partial"
     assert result["trace"]["valuation_basis"] == "indicative_assumptions"
+
+
+def test_no_cash_flow_data_also_blocks_assumed_margin_range():
+    result = _run({"revenue": 70_918_000.0, "shares_diluted": 255_982_592.0})
+    assert result["status"] == "insufficient_data"
+    assert result["base_value"] is None and result["expected_value"] is None
+    assert result["margin_of_safety"] is None
+    assert "normalized_fcf_or_fcf_margin" in result["missing_inputs"]
+    assert result["trace"]["observed_cash_burn"] == {}
