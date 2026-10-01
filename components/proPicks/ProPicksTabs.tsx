@@ -12,7 +12,7 @@ import StrategySelector from './StrategySelector';
 import WalkForwardResults from './WalkForwardResults';
 import { STRATEGY_CATALOG, mergeStrategies } from './monthlyRebalance';
 import { runWalkForwardBacktest, type WalkForwardBacktestResult } from '@/lib/actions/propicks-backtest.actions';
-import type { ProPick } from '@/lib/actions/proPicks.actions';
+import { generateProPicksForStrategy, type ProPick } from '@/lib/actions/proPicks.actions';
 
 interface ProPicksTabsProps {
     strategies: Array<{ id: string; name: string; description: string }>;
@@ -32,6 +32,11 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt, pa
     // que se abre la pestaña de Backtesting (o con «Ejecutar backtest»).
     // Antes costaba una corrida completa a quien solo quería ver los Picks.
     const [backtestStarted, setBacktestStarted] = useState(false);
+    // F383: los picks iniciales (ranking global del embudo) NO se asocian a
+    // ninguna estrategia; cada estrategia, también la inicial, carga los suyos
+    // por la ruta strategy-aware. Nunca se exportan picks de otra estrategia.
+    const [picksByStrategy, setPicksByStrategy] = useState<Record<string, ProPick[]>>({});
+    const [strategyPicksError, setStrategyPicksError] = useState<string | null>(null);
 
     const availableIds = new Set(strategies.map((s) => s.id));
     const currentMerged = merged.find((s) => s.id === currentStrategy) ?? merged[0];
@@ -71,7 +76,24 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt, pa
 
     const handleStrategyChange = (strategyId: string) => {
         setCurrentStrategy(strategyId);
+        setStrategyPicksError(null);
     };
+
+    const strategyPicks = picksByStrategy[currentStrategy];
+    useEffect(() => {
+        if (picksByStrategy[currentStrategy] !== undefined) return;
+        let cancelled = false;
+        generateProPicksForStrategy(currentStrategy)
+            .then((picks) => {
+                if (!cancelled) setPicksByStrategy((prev) => ({ ...prev, [currentStrategy]: picks }));
+            })
+            .catch(() => {
+                if (!cancelled) setStrategyPicksError('No se pudieron cargar los picks de esta estrategia.');
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [currentStrategy, picksByStrategy]);
 
     return (
         <Tabs value={activeTab} onValueChange={handleTabChange} className="mt-6 w-full min-w-0">
@@ -124,7 +146,10 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt, pa
                 )}
 
                 <MonthlyRebalanceView
-                    currentPicks={initialPicks}
+                    key={currentStrategy}
+                    currentPicks={strategyPicks ?? []}
+                    picksStatus={strategyPicks !== undefined ? 'ready' : strategyPicksError ? 'error' : 'loading'}
+                    picksError={strategyPicksError}
                     strategyId={currentStrategy}
                     strategyName={currentMerged?.name}
                 />
