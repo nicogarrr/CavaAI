@@ -105,6 +105,13 @@ export default function CorporateActionsView({ initialActions }: CorporateAction
                         </span>
                     );
                 }
+                // Split anterior a tu primera operación: tus acciones ya se
+                // compraron después, así que está reflejado y no se aplica.
+                if (record.historical === true) {
+                    return (
+                        <span className="text-xs text-gray-500">Histórico, ya reflejado</span>
+                    );
+                }
                 return (
                     <Button
                         size="sm"
