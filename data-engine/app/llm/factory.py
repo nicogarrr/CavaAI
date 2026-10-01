@@ -11,6 +11,9 @@ def _has_key(value: str | None) -> bool:
     return bool(value and value.strip())
 
 
+OPENCODE_USER_AGENT = "CavaAI/1.0 (+https://cavaai.vercel.app)"
+
+
 def create_llm_provider(
     settings: Settings | None = None,
     *,
@@ -39,7 +42,12 @@ def create_llm_provider(
         base_url=settings.opencode_go_base_url,
         default_model=settings.opencode_go_model,
         provider_name="opencode-go",
-        extra_headers={"x-opencode-session": settings.opencode_go_session},
+        extra_headers={
+            "x-opencode-session": settings.opencode_go_session,
+            # Cloudflare (opencode.ai) rechaza con 403 "error code: 1010" los User-Agent
+            # por defecto de librerias Python; sin este header la peticion desde OCI falla.
+            "User-Agent": OPENCODE_USER_AGENT,
+        },
         model_overrides=settings.llm_model_overrides,
         fallback_model=settings.opencode_go_fallback_model,
         reasoning_effort=settings.opencode_go_reasoning_effort,
