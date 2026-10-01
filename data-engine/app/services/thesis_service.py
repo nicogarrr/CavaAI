@@ -24,6 +24,7 @@ from app.models import (
 )
 from app.services.claim_scope import supersede_claims_of
 from app.services.company_resolver import resolve_company
+from app.services.inferred_input_service import InferredInputService
 from app.services.long_term_model_service import LongTermModelService
 from app.services.number_format import format_compact_es
 from app.services.source_auditor import SourceAuditor
@@ -106,7 +107,29 @@ def latest_inputs_provenance(db: Session, company_id: int) -> list[dict] | None:
                 "title": doc.title,
                 "source_type": doc.source_type,
             }
-    return classify_origin(items, sources)
+    classified = classify_origin(items, sources)
+    # Inputs INFERIDO vigentes (base + URLs): se muestran con su base y enlaces.
+    inferred = InferredInputService().latest_valid(db, company_id, "fcf_margin")
+    if inferred is not None and all(it["key"] != "fcf_margin" for it in classified):
+        classified.append(
+            {
+                "key": "fcf_margin",
+                "label": "estimacion_llm",
+                "value": float(inferred.value),
+                "unit": inferred.unit,
+                "method": inferred.base,
+                "source_fact_ids": [],
+                "confidence": None,
+                "source_type": "inferred_input",
+                "period": None,
+                "origen": "INFERIDO",
+                "fuentes": [],
+                "base_inferencia": inferred.base,
+                "urls_inferencia": list(inferred.source_urls or []),
+                "base_documentada": True,
+            }
+        )
+    return classified
 
 # Etiquetas es-ES de las métricas que alimentan claims visibles. El fallback
 # humaniza el código (guiones bajos a espacios) sin exponerlo tal cual.

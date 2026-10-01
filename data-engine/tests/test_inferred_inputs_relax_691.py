@@ -1,0 +1,160 @@
+"""Relajacion acotada de #691: escenarios solo con un margen FCF INFERIDO que
+lleve base explicita + URL https; sin base valida sigue fail-closed."""
+
+from decimal import Decimal
+
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+from sqlalchemy.pool import StaticPool
+
+from app.models.entities import Base, Company, InferredInput
+from app.services.inferred_input_service import (
+    InferredInputError,
+    InferredInputService,
+    validate,
+)
+from app.services.thesis_service import latest_inputs_provenance
+from app.valuation.engines.base import ValuationContext
+from app.valuation.engines.pre_revenue import PreRevenueScenarioEngine
+
+BASE = "Dado el guidance de despliegue y los contratos firmados, inferimos margen FCF negativo"
+URLS = ["https://www.sec.gov/Archives/edgar/data/1780312/x.htm"]
+
+
+@pytest.fixture()
+def db():
+    engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        yield session
+    engine.dispose()
+
+
+class _Snap:
+    coherent = False
+    as_of_period = None
+    income_statement = None
+    balance_sheet = None
+    shares_period = None
+    warnings: list = []
+    facts: dict = {}
+    missing_inputs = ["revenue_history_two_periods"]
+
+    def __init__(self, values):
+        self._v = values
+
+    def value(self, metric):
+        return self._v.get(metric)
+
+    def fact_ids(self):
+        return {}
+
+    def periods(self):
+        return {}
+
+
+BURN = {"revenue": 70_918_000.0, "shares_diluted": 255_982_592.0, "operating_cash_flow": -71_517_000.0}
+
+
+def _company(db):
+    company = Company(
+        ticker="BRN", name="Burn", exchange="NASDAQ", company_type="growth",
+        valuation_model="pre_revenue", factor_tags=["pre_fcf"],
+    )
+    db.add(company)
+    db.commit()
+    return company
+
+
+def _value(db, company, values=None):
+    ctx = ValuationContext(
+        db=db, company=company, snapshot=_Snap(values or BURN),
+        current_price=58.86, engine_key="pre_revenue",
+    )
+    return PreRevenueScenarioEngine().value(ctx)
+
+
+def test_validation_requires_base_urls_and_range():
+    assert validate("fcf_margin", 0.1, BASE, URLS) == []
+    assert validate("fcf_margin", 0.1, "corta", URLS)
+    assert validate("fcf_margin", 0.1, BASE, [])
+    assert validate("fcf_margin", 0.1, BASE, ["http://insecure.example.com/a"])
+    assert validate("fcf_margin", 5, BASE, URLS)
+    assert validate("fcf_margin", -1.0, BASE, URLS)
+    assert validate("otra_clave", 0.1, BASE, URLS)
+
+
+def test_service_rejects_invalid_and_stores_valid(db):
+    company = _company(db)
+    with pytest.raises(InferredInputError):
+        InferredInputService().create(
+            db, company, input_key="fcf_margin", value=Decimal("0.1"), base="x", source_urls=URLS
+        )
+    row = InferredInputService().create(
+        db, company, input_key="fcf_margin", value=Decimal("-0.3"), base=BASE, source_urls=URLS
+    )
+    assert InferredInputService().latest_valid(db, company.id, "fcf_margin").id == row.id
+
+
+def test_without_inferred_input_still_fail_closed(db):
+    result = _value(db, _company(db))
+    assert result["status"] == "insufficient_data"
+    assert result["base_value"] is None
+
+
+def test_invalid_stored_inferred_input_is_ignored(db):
+    company = _company(db)
+    db.add(InferredInput(company_id=company.id, input_key="fcf_margin",
+                         value=Decimal("0.1"), base="", source_urls=[], origin="llm"))
+    db.commit()
+    result = _value(db, company)
+    assert result["status"] == "insufficient_data"
+    assert result["base_value"] is None
+
+
+def test_valid_inferred_input_allows_marked_non_publishable_scenarios(db):
+    company = _company(db)
+    InferredInputService().create(
+        db, company, input_key="fcf_margin", value=Decimal("0.05"), base=BASE, source_urls=URLS
+    )
+    result = _value(db, company)
+    assert result["status"] == "partial"
+    assert result["publishable"] is False
+    assert result["base_value"] is not None
+    trace = result["trace"]
+    assert trace["valuation_basis"] == "inferred_inputs"
+    mark = trace["inferred_inputs"][0]
+    assert mark["origen"] == "INFERIDO"
+    assert mark["base_inferencia"] == BASE and mark["urls_inferencia"] == URLS
+    assert mark["observed_cash_burn"] == {"operating_cash_flow": -71_517_000.0}
+    assert trace["assumed"]["fcf_margin_base"] == pytest.approx(0.05)
+
+
+def test_positive_cash_path_unchanged_without_inferred(db):
+    company = _company(db)
+    result = _value(db, company, {**BURN, "operating_cash_flow": 5_000_000.0})
+    assert result["trace"]["valuation_basis"] == "indicative_assumptions"
+    assert result["trace"]["inferred_inputs"] == []
+
+
+def test_inferred_margin_appears_in_provenance_as_inferido(db):
+    from app.models.entities import FundamentalModelVersion
+
+    company = _company(db)
+    db.add(FundamentalModelVersion(
+        company_id=company.id, version=1, engine_version="e1", algorithm_version="a1",
+        framework_key="space_network", horizon_years=5, status="ok", publishable=True,
+        input_fingerprint="a" * 64, forecast_fingerprint="a" * 64,
+        market_snapshot_fingerprint="a" * 64, valuation_snapshot_fingerprint="a" * 64,
+        model_snapshot={},
+    ))
+    InferredInputService().create(
+        db, company, input_key="fcf_margin", value=Decimal("0.05"), base=BASE, source_urls=URLS
+    )
+    items = {i["key"]: i for i in latest_inputs_provenance(db, company.id)}
+    assert items["fcf_margin"]["origen"] == "INFERIDO"
+    assert items["fcf_margin"]["urls_inferencia"] == URLS
+

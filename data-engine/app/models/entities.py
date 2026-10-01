@@ -2234,3 +2234,23 @@ class ProPickCandidate(TenantOwnedMixin, Base, TimestampMixin):
     coverage: Mapped[dict] = mapped_column(JSON, default=dict)
 
     run: Mapped["ProPickRun"] = relationship(back_populates="candidates")
+
+
+class InferredInput(TenantOwnedMixin, Base, TimestampMixin):
+    """Input INFERIDO: estimacion con base explicita y URLs web.
+
+    Nunca es un fact ni un dato oficial. El motor solo lo usa si trae base y al
+    menos una URL https; lo validan el servicio y el motor.
+    """
+
+    __tablename__ = "inferred_inputs"
+    __table_args__ = (Index("ix_inferred_inputs_company_key", "company_id", "input_key"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    input_key: Mapped[str] = mapped_column(String(80))
+    value: Mapped[Decimal] = mapped_column(Numeric(24, 8))
+    unit: Mapped[str] = mapped_column(String(40), default="decimal")
+    base: Mapped[str] = mapped_column(Text)
+    source_urls: Mapped[list[str]] = mapped_column(JSON, default=list)
+    origin: Mapped[str] = mapped_column(String(20), default="llm")
