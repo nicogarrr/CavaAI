@@ -7,7 +7,7 @@ domain artifacts: the graph writes control state only, and this service
 reads the classic path's persisted outputs.
 
 Comparison contract (honest by construction):
-- graph_execution: did all 12 nodes commit in order under the checkpointer
+- graph_execution: did all graph nodes commit in order under the checkpointer
   (resuming the 6c approval interrupt with an explicit synthetic shadow
   decision), and does an idempotent re-invoke on the same thread add zero
   new nodes (crash-safe retry).
@@ -15,15 +15,17 @@ Comparison contract (honest by construction):
   unmapped phases are listed, never silently dropped.
 - status_semantics: graph lifecycle status vs the latest persisted
   ThesisVersion status, with divergences listed explicitly.
-- probe_comparison (6d/6e): the real read-side probes (resolve_company,
+- probe_comparison (6d/6e): the read-side probes (resolve_company,
   ensure_ingestion_complete, build_fundamental_model,
-  deterministic_valuation, source_audit, deterministic_red_team) are
-  compared against the classic persisted state they observe -
-  match/divergent/skeleton per node. The write-side nodes
-  (draft_synthesis, optional_bull_bear_debate, assemble_candidate,
-  publish) remain pending skeleton references while the classic path
-  produces real artifacts; this is an expected divergence at this stage
-  and is reported as such, not hidden.
+  deterministic_valuation, draft_synthesis, source_audit,
+  deterministic_red_team) are compared against the classic persisted state
+  they observe - match/divergent/unobserved per node. No probe emits a
+  ``pending:<node>`` reference: a graph that cannot verify something reports
+  it as unobserved instead of pretending it is on its way.
+- The classic ThesisService path owns every write. The graph's write-side
+  stages (assemble_candidate, persisted_thesis) only observe what was
+  already persisted, so the write asymmetry is recorded as a standing,
+  expected divergence instead of being hidden.
 """
 
 from __future__ import annotations
@@ -51,6 +53,11 @@ from app.workflows.thesis_graph.checkpointer import sqlite_checkpointer
 WORKFLOW_NAME = "ThesisShadowComparisonWorkflow"
 
 # Classic phase -> owning graph node (6b mapping; every phase must appear).
+# compose_thesis -> draft_synthesis: the node observes the thesis version the
+# classic path composed and persisted. persist_thesis -> persisted_thesis: the
+# node observes the publication state of that version (the graph never
+# publishes). optional_bull_bear_debate is not here because the debate is an
+# LLM call that persists nothing; it is served by POST /api/thesis/{ticker}/debate.
 PHASE_TO_NODE: dict[str, str] = {
     "collect_evidence": "ensure_ingestion_complete",
     "build_fundamental_model": "build_fundamental_model",
@@ -58,14 +65,18 @@ PHASE_TO_NODE: dict[str, str] = {
     "persist_valuation_snapshot": "deterministic_valuation",
     "source_audit": "source_audit",
     "compose_thesis": "draft_synthesis",
-    "persist_thesis": "publish",
+    "persist_thesis": "persisted_thesis",
 }
 
 
 def _probe_entry(node: str, graph_artifact: str | None, classic_observed: str) -> dict[str, Any]:
-    """One probe comparison row: graph-observed artifact vs classic state."""
-    if graph_artifact is None or graph_artifact.startswith("pending:"):
-        status = "skeleton"
+    """One probe comparison row: graph-observed artifact vs classic state.
+
+    A probe that reported nothing is ``unobserved``, never ``match``: an
+    absent observation must not read as agreement.
+    """
+    if graph_artifact is None:
+        status = "unobserved"
     else:
         status = "match" if graph_artifact == classic_observed else "divergent"
     return {
@@ -77,12 +88,18 @@ def _probe_entry(node: str, graph_artifact: str | None, classic_observed: str) -
 
 
 def _compare_probes(db: Session, company: Company, artifacts: dict[str, str]) -> list[dict[str, Any]]:
-    """Compare the graph's real read-side probes against classic persisted state.
+    """Compare the graph's read-side probes against classic persisted state.
 
     The classic path owns every write; the probes are read-only
     observations taken during the graph run. A divergence means the graph
     observed different state than the classic side sees now, which the
     caller records explicitly.
+
+    The probe set is the fixed read-side probe contract: the six nodes whose
+    artifact is a direct observation of classic-owned tables. ``draft_synthesis``
+    and ``persisted_thesis`` read the thesis version too, but they are covered
+    by ``status_semantics`` (graph status vs latest ThesisVersion) and by the
+    graph's own artifacts, so they are not duplicated here.
     """
     from sqlalchemy import desc, func, select
 
@@ -285,10 +302,17 @@ class ThesisShadowService:
                     f"probe {entry['node']} diverged: graph observed "
                     f"{entry['graph_artifact']}, classic persisted {entry['classic_observed']}"
                 )
+        for entry in probe_comparison:
+            if entry["status"] == "unobserved":
+                divergences.append(
+                    f"probe {entry['node']} reported no observation; the graph cannot be "
+                    "compared with the classic path on this node"
+                )
         divergences.append(
-            "expected at 6d: draft_synthesis, optional_bull_bear_debate, "
-            "assemble_candidate and publish remain pending skeleton references; "
-            "the classic path owns real write artifacts"
+            "expected at 6d: the graph is a read-side control plane and the classic "
+            "ThesisService path is the sole LLM/write executor, so every write-side "
+            "stage (assemble_candidate, persisted_thesis) differs from the classic path "
+            "by construction: the graph never publishes domain artifacts"
         )
 
         status_semantics = {
