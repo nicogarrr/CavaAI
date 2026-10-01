@@ -109,9 +109,12 @@ def compute_metrics(
         sortino = None
 
     wealth = np.cumprod(1.0 + values)
-    peak = np.maximum.accumulate(wealth)
+    # F367: el patrimonio inicial (1.0) cuenta como pico; sin él una caída en
+    # el primer periodo no se registraba como drawdown.
+    wealth_path = np.concatenate(([1.0], wealth))
+    peak = np.maximum.accumulate(wealth_path)
     with np.errstate(divide="ignore", invalid="ignore"):
-        drawdown = np.where(peak > 0, (wealth - peak) / peak, 0.0)
+        drawdown = np.where(peak > 0, (wealth_path - peak) / peak, 0.0)
     max_drawdown = float(np.min(drawdown))
 
     return {
