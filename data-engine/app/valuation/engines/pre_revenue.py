@@ -306,6 +306,47 @@ class PreRevenueScenarioEngine(ValuationEngine):
         crecimiento y WACC tag-default. El reverse DCF usa los supuestos
         base. Status ``partial`` y ``publishable=False``: orientativo, no final.
         """
+        # Un margen FCF base de +15% es un SUPUESTO. Si los propios facts
+        # reportan quema de caja (flujo operativo o FCF negativo), el supuesto
+        # contradice el dato y el rango resultante (p. ej. ASTS: 0,80 USD/accion
+        # con precio 58,86 y OCF -71,5M) seria un numero inventado presentado
+        # como valoracion. Fail closed: sin valor por accion, con la causa.
+        observed_burn = {
+            metric: float(value)
+            for metric in ("operating_cash_flow", "free_cash_flow")
+            if (value := snapshot.value(metric)) is not None and float(value) < 0
+        }
+        if observed_burn:
+            result = insufficient_result(
+                ticker=company.ticker,
+                model_type=company.valuation_model,
+                engine_key=self.key,
+                current_price=current_price,
+                missing_inputs=list(snapshot.missing_inputs)
+                + ["normalized_fcf_or_fcf_margin"],
+                reason=(
+                    "Los facts reportan quema de caja ("
+                    + ", ".join(f"{k}={v:.0f}" for k, v in observed_burn.items())
+                    + "); un margen FCF base positivo supuesto contradice el dato. "
+                    "No se publica rango por accion hasta tener un margen FCF "
+                    "normalizado o una curva de despliegue/financiacion con fuente."
+                ),
+                snapshot=snapshot,
+                extra_trace={
+                    "observed_cash_burn": observed_burn,
+                    "required_operational_inputs": [
+                        "satellites_or_capacity_deployed",
+                        "revenue_ramp",
+                        "constellation_capex",
+                        "financing_and_dilution",
+                    ],
+                },
+            )
+            result["moat"] = empty_moat_framework(
+                company.company_type, company.factor_tags or [], company.special_risks or []
+            )
+            return result
+
         revenue = snapshot.value("revenue")
         revenue_assumed = revenue is None or revenue <= 0
         if revenue_assumed:
