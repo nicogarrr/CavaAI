@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import { EmptyLink, EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { PageHeader } from '@/components/ui/page-header';
-import { Stat } from '@/components/ui/stat';
 import { Textarea } from '@/components/ui/textarea';
 import { MutationForm } from '@/components/forms/MutationForm';
 import { analyzeManualNews, getResearchNews, ingestResearchNewsFeed } from '@/lib/actions/research.actions';
@@ -49,17 +48,10 @@ export default async function ResearchNewsPage({ searchParams }: PageProps) {
     : lane === 'empresa'
       ? events.filter((event) => event.ticker !== null)
       : events;
-  const requireUpdate = events.filter((e) => e.requires_update).length;
-  const highMateriality = events.filter((e) => e.materiality_score >= 7).length;
 
   return (
     <main id="content" tabIndex={-1} className="mx-auto flex max-w-7xl flex-col gap-6">
       <PageHeader
-        actions={
-          <div className="rounded-lg border border-gray-800 bg-surface-1 px-4 py-3 text-sm text-gray-300">
-            {events.length} eventos
-          </div>
-        }
         back={
           <Button asChild size="sm" variant="ghost">
             <Link href="/research">
@@ -68,16 +60,9 @@ export default async function ResearchNewsPage({ searchParams }: PageProps) {
             </Link>
           </Button>
         }
-        description="Eventos de noticias clasificados por materialidad. Los de empresa muestran impacto sobre posiciones de cartera; el carril macro GDELT no tiene vínculo directo con posiciones."
         kicker="Inteligencia de mercado"
         title="Eventos de noticias"
       />
-
-      <section className="grid gap-4 md:grid-cols-3">
-        <Stat label="Eventos totales" value={String(events.length)} />
-        <Stat label="Requieren actualización" value={String(requireUpdate)} tone={requireUpdate > 0 ? 'bad' : 'good'} />
-        <Stat label="Alta materialidad" value={String(highMateriality)} tone={highMateriality > 0 ? 'warn' : 'good'} />
-      </section>
 
       <section className="rounded-lg border border-gray-800 bg-surface-1 p-5">
         <div className="mb-4 flex items-center gap-2">
@@ -162,9 +147,6 @@ export default async function ResearchNewsPage({ searchParams }: PageProps) {
                       <div>{event.date.split('T')[0]}</div>
                       {event.date_source === 'ingested_at_fallback' ? (
                         <div className="mt-1 text-xs text-gray-500">fecha de ingesta · la fuente no da fecha</div>
-                      ) : null}
-                      {event.date_source === 'gdelt_first_seen' ? (
-                        <div className="mt-1 text-xs text-gray-500">primera detección de GDELT · no es la fecha de publicación</div>
                       ) : null}
                     </td>
                     <td className="max-w-[360px] py-3 text-gray-300">
