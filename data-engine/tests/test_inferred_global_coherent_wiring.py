@@ -134,3 +134,31 @@ def test_reported_fcf_wins_over_inferred(engine):
         values = dict(VALUES, free_cash_flow=-80_000_000.0)
         result = _value(db, company, values)
         assert result["trace"]["inferred_inputs"] == []
+
+
+def test_tenant_owned_company_data_stays_isolated_while_inputs_are_global(engine):
+    """Aislamiento multi-tenant: solo el dato publico/canonico de empresa
+    (InferredInput) es global; hechos y documentos (opiniones, PDFs del usuario)
+    siguen filtrados por tenant."""
+    from app.models.entities import Document, FinancialFact
+
+    with Session(engine) as t2:
+        t2.info["tenant_id"] = 2
+        company = _company(t2)
+        InferredInputService().create(
+            t2, company, input_key="fcf_margin", value=Decimal("0.25"), base=BASE, source_urls=URLS
+        )
+        t2.add(Document(company_id=company.id, title="opinion privada", source_type="user_opinion",
+                        source_url="https://example.com/x"))
+        t2.add(FinancialFact(company_id=company.id, metric="revenue", value=Decimal("1"),
+                             period="2026-06-30:Q2", source_type="SEC"))
+        t2.commit()
+        cid = company.id
+    with Session(engine) as t5:
+        t5.info["tenant_id"] = 5
+        assert InferredInputService().latest_valid(t5, cid, "fcf_margin") is not None
+        assert t5.scalars(select(Document).where(Document.company_id == cid)).all() == []
+        assert t5.scalars(select(FinancialFact).where(FinancialFact.company_id == cid)).all() == []
+    with Session(engine) as t2b:
+        t2b.info["tenant_id"] = 2
+        assert len(t2b.scalars(select(Document).where(Document.company_id == cid)).all()) == 1
