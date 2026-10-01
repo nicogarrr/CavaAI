@@ -159,7 +159,7 @@ def entries_from_edgartools_facts(entity_facts: Any, concepts: list[str]) -> dic
     """
     wanted = set(concepts)
     get_all = getattr(entity_facts, "get_all_facts", None)
-    facts = get_all() if callable(get_all) else entity_facts
+    facts: Any = get_all() if callable(get_all) else entity_facts
     by_concept: dict[str, dict[str, dict[str, Any]]] = {}
     for fact in facts or []:
         concept = getattr(fact, "concept", None) or (fact.get("concept") if isinstance(fact, dict) else None)
