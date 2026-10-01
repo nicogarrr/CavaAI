@@ -23,15 +23,26 @@ from app.services.thesis_provenance import (
 from app.services.thesis_service import latest_inputs_provenance
 
 SEC = "https://www.sec.gov/Archives/edgar/data/1/x/doc.htm"
-OFFICIAL = {"url": SEC, "date": "2026-08-10", "title": "10-Q", "source_type": "primary_official"}
+OFFICIAL = {
+    "url": SEC,
+    "date": "2026-08-10",
+    "title": "10-Q",
+    "source_type": "primary_official",
+    "metric": "revenue",
+    "fact_value": Decimal("1.0"),
+    "unit": "USD",
+    "period": "FY2025",
+    "is_reported": True,
+}
 
 
-def _item(key, label, facts, source_type=None, method="m"):
+def _item(key, label, facts, source_type="driver_sourced", method="m", value=1.0):
     return {
         "key": key,
         "label": label,
-        "value": 1.0,
-        "unit": None,
+        "value": value,
+        "unit": "USD",
+        "period": "FY2025",
         "method": method,
         "source_fact_ids": facts,
         "confidence": 0.9,
@@ -78,9 +89,41 @@ def test_policy_estimate_and_calculated_are_inferido_with_honest_base_flag():
     assert x["base_inferencia"] is None and x["base_documentada"] is False
 
 
-def test_derivado_from_financial_facts_only_is_oficial():
-    out = classify_origin([_item("m", "derivado", [1], "financial_facts")], {1: OFFICIAL})[0]
-    assert out["origen"] == ORIGEN_OFICIAL
+def test_median_ratio_clamp_from_financial_facts_is_inferido():
+    # ratio_assumption: mediana de ratios derivados de varios facts, con clamp.
+    item = _item("effective_tax_rate", "derivado", [1, 2], "financial_facts")
+    out = classify_origin([item], {1: OFFICIAL, 2: OFFICIAL})[0]
+    assert out["origen"] == ORIGEN_INFERIDO
+    one = _item("fcf_margin", "derivado", [1], "financial_facts")
+    assert classify_origin([one], {1: OFFICIAL})[0]["origen"] == ORIGEN_INFERIDO
+
+
+def test_snapshot_value_not_matching_fact_is_inferido():
+    out = classify_origin([_item("revenue", "dato", [1], value=999.0)], {1: OFFICIAL})[0]
+    assert out["origen"] == ORIGEN_INFERIDO
+
+
+def test_unit_period_metric_mismatch_or_not_reported_is_inferido():
+    for patch in (
+        {"unit": "EUR"},
+        {"period": "FY2024"},
+        {"metric": "net_income"},
+        {"is_reported": False},
+    ):
+        out = classify_origin([_item("revenue", "dato", [1])], {1: {**OFFICIAL, **patch}})[0]
+        assert out["origen"] == ORIGEN_INFERIDO, patch
+
+
+def test_override_policy_llm_with_label_dato_is_inferido():
+    for st in ("assumption_override", "model_policy", "llm_estimate", "user_provided"):
+        out = classify_origin([_item("revenue", "dato", [1], st, value=1.0)], {1: OFFICIAL})[0]
+        assert out["origen"] == ORIGEN_INFERIDO, st
+
+
+def test_legacy_item_without_origin_fields_is_inferido():
+    legacy = {"key": "wacc", "label": "dato", "value": 1.0, "source_fact_ids": [1]}
+    out = classify_origin([legacy], {1: OFFICIAL})[0]
+    assert out["origen"] == ORIGEN_INFERIDO
 
 
 def test_latest_inputs_provenance_resolves_sources_from_persisted_documents():
@@ -105,6 +148,7 @@ def test_latest_inputs_provenance_resolves_sources_from_persisted_documents():
             company_id=company.id,
             metric="revenue",
             value=Decimal("5"),
+            unit="USD",
             period="FY2025",
             source_id=doc.id,
             source_type="sec",
@@ -118,10 +162,21 @@ def test_latest_inputs_provenance_resolves_sources_from_persisted_documents():
                     "status": "sourced",
                     "value": 5,
                     "driver_type": "kpi",
+                    "unit": "USD",
                     "source_fact_ids": [fact.id],
                     "confidence": 0.9,
-                    "trace": {},
-                }
+                    "trace": {"period": "FY2025"},
+                },
+                {
+                    "key": "revenue_wrong_value",
+                    "status": "sourced",
+                    "value": 999,
+                    "unit": "USD",
+                    "driver_type": "kpi",
+                    "source_fact_ids": [fact.id],
+                    "confidence": 0.9,
+                    "trace": {"period": "FY2025"},
+                },
             ],
             # Un id declarado que no existe en la BD no puede ser OFICIAL.
             "assumptions": {
@@ -144,3 +199,4 @@ def test_latest_inputs_provenance_resolves_sources_from_persisted_documents():
     assert by_key["revenue"]["origen"] == ORIGEN_OFICIAL
     assert by_key["revenue"]["fuentes"][0]["url"] == SEC
     assert by_key["ghost"]["origen"] == ORIGEN_INFERIDO
+    assert by_key["revenue_wrong_value"]["origen"] == ORIGEN_INFERIDO

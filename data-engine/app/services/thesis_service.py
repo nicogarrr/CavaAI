@@ -87,15 +87,20 @@ def latest_inputs_provenance(db: Session, company_id: int) -> list[dict] | None:
     sources: dict[int, dict] = {}
     if fact_ids:
         rows = db.execute(
-            select(FinancialFact.id, Document)
+            select(FinancialFact, Document)
             .join(Document, Document.id == FinancialFact.source_id)
             .where(
                 FinancialFact.id.in_(fact_ids),
                 FinancialFact.company_id == company_id,
             )
         ).all()
-        for fid, doc in rows:
-            sources[fid] = {
+        for fact, doc in rows:
+            sources[fact.id] = {
+                "metric": fact.metric,
+                "fact_value": fact.value,
+                "unit": fact.unit,
+                "period": fact.period,
+                "is_reported": fact.is_reported,
                 "url": doc.source_url,
                 "date": doc.published_at.date().isoformat() if doc.published_at else None,
                 "title": doc.title,

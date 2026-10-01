@@ -10,6 +10,8 @@ seccion de datos pendientes.
 
 from __future__ import annotations
 
+import math
+import re
 from typing import Any
 
 LABEL_DATO = "dato"
@@ -25,9 +27,11 @@ OFFICIAL_HOSTS = frozenset(
     {"www.sec.gov", "sec.gov", "www.itu.int", "itu.int", "www.fcc.gov", "fcc.gov"}
 )
 OFFICIAL_DOC_SOURCE_TYPE = "primary_official"
-# Solo estos origenes del motor son lectura directa de hechos reportados;
-# cualquier calculo con politica/supuestos (p. ej. wacc) es INFERIDO.
-_OFFICIAL_ASSUMPTION_SOURCE_TYPES = frozenset({"financial_facts"})
+# Unica lectura directa de un hecho reportado: linea de driver_model con
+# status sourced (valor = FinancialFact.value de UN fact). Las assumptions
+# (medianas de ratios, clamps, politica, overrides, LLM) son siempre calculo o
+# supuesto => INFERIDO, sea cual sea su label/source_type declarado.
+DIRECT_READING_SOURCE_TYPE = "driver_sourced"
 
 LABELS = (LABEL_DATO, LABEL_DERIVADO, LABEL_ESTIMACION_LLM, LABEL_SUPUESTO)
 
@@ -61,9 +65,11 @@ def _item(
     source_fact_ids: list[int],
     confidence: Any,
     source_type: str | None = None,
+    period: str | None = None,
 ) -> dict[str, Any]:
     return {
         "source_type": source_type,
+        "period": period,
         "key": key,
         "label": label,
         "value": value,
@@ -117,7 +123,8 @@ def build_inputs_provenance(long_term_model: dict[str, Any]) -> list[dict[str, A
                 method,
                 list(driver.get("source_fact_ids") or []),
                 driver.get("confidence"),
-                "driver_sourced",
+                DIRECT_READING_SOURCE_TYPE,
+                period,
             )
         )
     return items
@@ -138,6 +145,28 @@ def _is_official_source(src: dict[str, Any] | None) -> bool:
         return False
     host = url.split("/", 3)[2].lower() if url.count("/") >= 2 else ""
     return host in OFFICIAL_HOSTS
+
+
+def _metric_key(metric: str) -> str:
+    return re.sub(r"\s+", "_", metric.strip().lower().replace("&", "and").replace("/", "_").replace("-", "_"))
+
+
+def _matches_fact(item: dict[str, Any], src: dict[str, Any] | None) -> bool:
+    """El input debe ser el propio fact: misma metrica, valor, unidad y periodo."""
+    if not src or src.get("fact_value") is None or not src.get("is_reported"):
+        return False
+    try:
+        item_value = float(item.get("value"))
+        fact_value = float(src["fact_value"])
+    except (TypeError, ValueError):
+        return False
+    return (
+        _metric_key(str(src.get("metric") or "")) == _metric_key(str(item.get("key") or ""))
+        and math.isclose(item_value, fact_value, rel_tol=1e-9, abs_tol=1e-9)
+        and (item.get("unit") or "") == (src.get("unit") or "")
+        and bool(item.get("period"))
+        and item.get("period") == src.get("period")
+    )
 
 
 def classify_origin(
@@ -166,14 +195,12 @@ def classify_origin(
             for fid, src in zip(fact_ids, resolved)
             if src
         ]
-        direct_reading = item.get("label") == LABEL_DATO or (
-            item.get("source_type") in _OFFICIAL_ASSUMPTION_SOURCE_TYPES
-        )
         official = (
-            direct_reading
-            and bool(fact_ids)
-            and len(cited) == len(fact_ids)
-            and all(c["oficial"] for c in cited)
+            item.get("source_type") == DIRECT_READING_SOURCE_TYPE
+            and len(fact_ids) == 1
+            and len(cited) == 1
+            and cited[0]["oficial"]
+            and _matches_fact(item, resolved[0])
         )
         enriched = dict(item)
         if official:
