@@ -80,3 +80,22 @@ def test_recapture_that_breaks_the_link_blanks_following_twr(setup):
     assert snaps[D1].pricing_coverage != Decimal("1")
     assert snaps[D2].daily_return is None
     assert snaps[D2].cumulative_twr is None
+
+
+def test_legacy_following_snapshot_without_window_evidence_is_not_relinked(setup):
+    """Foto previa a #663: sin contador ni ventana no se prueba flujo cero en el gap."""
+    db, _, position = setup
+    _snap(db, D0, position, "100")           # 1000
+    _snap(db, D1, position, "110")
+    third = _snap(db, D2, position, "176")   # 1760
+    third.metadata_ = {"flow_timing": "end_of_day", "ambiguous_external_flows": []}
+    third.net_external_flow_base = Decimal("0")
+    third.daily_return = Decimal("0.21")
+    third.cumulative_twr = Decimal("0.21")
+    db.commit()
+
+    _snap(db, D1, position, "110")           # recaptura del día intermedio
+    db.expire_all()
+    snaps = {s.snapshot_date: s for s in db.query(PortfolioDailySnapshot).all()}
+    assert snaps[D2].daily_return is None
+    assert snaps[D2].cumulative_twr is None

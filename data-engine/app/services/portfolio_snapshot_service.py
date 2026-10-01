@@ -280,13 +280,25 @@ class PortfolioSnapshotService:
                 )
                 is None
             )
+            # Evidencia de ventana: solo las fotos con contador de flujos
+            # intermedios y ventana (after_previous_snapshot_through_as_of)
+            # acreditan que net_external_flow_base cubre todo el intervalo.
+            # Una foto legacy sin esa evidencia no prueba flujo cero: se deja None.
+            intermediate = meta.get("unvalued_intermediate_flows")
+            window_proven = (
+                meta.get("flow_window") == "after_previous_snapshot_through_as_of"
+                and isinstance(intermediate, int)
+                and not isinstance(intermediate, bool)
+                and intermediate == 0
+                and "ambiguous_external_flows" in meta
+            )
             linkable = (
-                previous.total_value_base > 0
+                window_proven
+                and previous.total_value_base > 0
                 and previous.pricing_coverage == Decimal("1")
                 and previous.base_currency == current.base_currency
                 and current.pricing_coverage == Decimal("1")
                 and not meta.get("ambiguous_external_flows")
-                and not meta.get("unvalued_intermediate_flows")
                 and (previous.cumulative_twr is not None or previous_is_base)
             )
             if linkable:
