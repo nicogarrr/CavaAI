@@ -10,6 +10,15 @@ from app.seed import seed
 from tests import test_thesis_auto_ingest as base
 
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _cleanup_asts_evidence():
+    yield
+    base._clean_asts_evidence()
+
+
 def test_positive_ocf_keeps_partial_indicative_range(monkeypatch):
     init_db()
     seed()
