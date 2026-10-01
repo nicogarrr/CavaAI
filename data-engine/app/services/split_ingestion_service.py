@@ -62,6 +62,19 @@ class SplitIngestionService:
             return None
         return numerator / denominator
 
+    @staticmethod
+    def _description(source: str, ratio: float | Decimal, fetched_at: datetime) -> str:
+        ratio = float(ratio)  # en BD llega como Decimal; :g sobre Decimal sale roto
+        proveedor = "Yahoo Finance" if source == "yahoo_finance" else source.upper()
+        if ratio > 1:
+            tipo = f"División de acciones {ratio:g} por 1"
+        else:
+            tipo = f"Agrupación de acciones 1 por {1 / ratio:g}"
+        return (
+            f"{tipo}. Dato de {proveedor}, importado el {fetched_at.date()}. "
+            "Aplicar ajusta tus acciones y el precio medio; el valor de la posición no cambia."
+        )
+
     async def _fetch_rows(
         self, company: Company
     ) -> tuple[list[dict[str, Any]], str]:
@@ -132,7 +145,7 @@ class SplitIngestionService:
                     action_type="split" if ratio > 1 else "reverse_split",
                     effective_date=effective,
                     ratio=ratio,
-                    description=f"Ingested from {source} on {fetched_at.date()}; review and apply explicitly.",
+                    description=self._description(source, ratio, fetched_at),
                     applied=False,
                     source=source,
                     fetched_at=fetched_at,
