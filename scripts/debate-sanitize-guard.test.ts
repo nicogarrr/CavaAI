@@ -24,3 +24,7 @@ assert.ok(/timeoutMs: DEBATE_TIMEOUT_MS/.test(body), 'debate needs its own timeo
 assert.ok(!/\bthrow\b/.test(body), 'runThesisDebate must not throw (React #441 in prod)');
 assert.ok(/sanitizeDebate\(raw\)/.test(body), 'LLM output must be sanitized');
 console.log('debate-sanitize-guard ok');
+
+const maxDuration = Number(/maxDuration = (\d+)/.exec(readFileSync('app/(root)/research/[ticker]/page.tsx', 'utf8'))?.[1]);
+const debateTimeout = Number(/DEBATE_TIMEOUT_MS = ([\d_]+)/.exec(action)?.[1].replace(/_/g, ''));
+assert.ok(maxDuration > 0 && debateTimeout > 0 && debateTimeout < maxDuration * 1000, 'debate timeout must stay below the route maxDuration');
