@@ -222,6 +222,11 @@ def compute_momentum_metrics(
             )
             if existing is not None:
                 existing.value = value
+                existing.calculation_trace = {
+                    "window_days": days,
+                    "as_of": as_of.isoformat(),
+                    "last_bar_date": series[-1][0].isoformat(),
+                }
             else:
                 db.add(
                     CalculatedMetric(

@@ -37,3 +37,24 @@ def test_historical_as_of_ignores_future_bars():
     assert metric is not None
     assert metric.calculation_trace["last_bar_date"] == as_of.isoformat()
     assert metric.value < Decimal("1")  # con datos futuros seria > 5
+
+
+def test_rerun_refreshes_trace_of_existing_metric():
+    db = _db()
+    start = date(2024, 1, 1)
+    company = _seed(db, start, 400, lambda i: 100 + i * 0.1 if i < 300 else 1000)
+    as_of = start + timedelta(days=299)
+    compute_momentum_metrics(db, [company], as_of=as_of)
+    metric = db.scalar(
+        select(CalculatedMetric).where(
+            CalculatedMetric.company_id == company.id,
+            CalculatedMetric.metric == "momentum_6m",
+        )
+    )
+    metric.value = Decimal("9")  # cifra legacy contaminada
+    metric.calculation_trace = {"window_days": 182, "as_of": as_of.isoformat()}
+    db.flush()
+    compute_momentum_metrics(db, [company], as_of=as_of)
+    db.refresh(metric)
+    assert metric.value < Decimal("1")
+    assert metric.calculation_trace["last_bar_date"] == as_of.isoformat()
