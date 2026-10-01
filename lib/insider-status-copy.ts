@@ -53,3 +53,25 @@ export function analyzedCountCopy(
     }
     return `${countText(fields.filings_scanned)} analizados`;
 }
+
+/**
+ * Copy de la lectura DURABLE (`GET /api/insider/filings`).
+ *
+ * Esa lectura no va a EDGAR: consulta la tabla de filings ya persistidos por el
+ * monitor. Si falla, el `count` que llega es 0 con `status` distinto de `ok`,
+ * así que ese 0 no es un recuento sino un «no se pudo leer». Decirlo es lo que
+ * separa un fallo de lectura de «no hay Form 4 guardados»; y decir por qué
+ * importa lo segundo: las señales de arriba se leen de SEC EDGAR directamente y
+ * no dependen de ese histórico.
+ */
+export function durableReadCopy(fields: InsiderStatusFields): {
+    header: string;
+    detail: string | null;
+} {
+    const header =
+        'No se ha podido leer el histórico de filings guardados por el monitor, así que su número es ' +
+        'desconocido y no cero: es un fallo de esa lectura, no una ausencia de Form 4. Las señales de ' +
+        'arriba se leen de SEC EDGAR directamente y no dependen de ese histórico.';
+    const detail = typeof fields.reason === 'string' && fields.reason ? fields.reason : null;
+    return { header, detail };
+}

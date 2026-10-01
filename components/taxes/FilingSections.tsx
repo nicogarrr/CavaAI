@@ -34,8 +34,28 @@ function money(value: unknown): string {
     return formatMoney(value as number | string, 'EUR');
 }
 
-/** Descarga el fichero 720 en ISO-8859-1 (la spec AEAT; el backend ya
- *  sanea el contenido a caracteres latin-1). */
+/**
+ * Descarga el fichero 720 tal cual lo genera el backend.
+ *
+ * El backend lo devuelve ya en ISO-8859-1 (spec AEAT) y saneado a caracteres
+ * latin-1, así que cada carácter es un byte: se reconstruye el Uint8Array con
+ * `charCodeAt & 0xff` en vez de dejar que el navegador lo guarde en UTF-8 y
+ * corrompa el diseño de 500 bytes por registro.
+ */
+function downloadFile720(content: string, fileName: string) {
+    const bytes = new Uint8Array(content.length);
+    for (let index = 0; index < content.length; index += 1) {
+        bytes[index] = content.charCodeAt(index) & 0xff;
+    }
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+}
 
 function Section({ title, description, icon, children }: {
     title: string;
@@ -98,7 +118,14 @@ export function FilingSection({ filing }: { filing: DataRecord | null }) {
                 description="Casillas orientativas del IRPF calculadas desde tu cartera."
                 icon={<Landmark className="h-5 w-5 text-teal-400" />}
             >
-                <p className="text-sm text-gray-400">{String(filing.reason ?? 'No disponible para este ejercicio.')}</p>
+                {/* El backend explica el bloqueo (hoy: la cartera no usa EUR
+                    como divisa base). El texto de reserva NO dice «no
+                    disponible»: dice qué se necesita para que se pueda calcular. */}
+                <p className="text-sm text-gray-400">
+                    {typeof filing.reason === 'string' && filing.reason
+                        ? filing.reason
+                        : 'CavaAI no ha calculado las casillas del Modelo 100 para esta cartera y el motor no ha devuelto el motivo del bloqueo. Las casillas son importes en euros: hace falta que la cartera use EUR como divisa base y que el ejercicio tenga su mapeo verificado contra la orden ministerial vigente.'}
+                </p>
             </Section>
         );
     }
@@ -111,7 +138,9 @@ export function FilingSection({ filing }: { filing: DataRecord | null }) {
                 icon={<Landmark className="h-5 w-5 text-teal-400" />}
             >
                 <p className="text-sm text-gray-400">
-                    Casillas no disponibles: {String(casillas.unavailable_reason ?? 'mapeo no verificado para este ejercicio')}.
+                    {typeof casillas.unavailable_reason === 'string' && casillas.unavailable_reason
+                        ? casillas.unavailable_reason
+                        : 'Las casillas solo se publican para ejercicios cuyo mapeo está verificado contra la orden ministerial de ese año. Para el resto no se muestran números: haría falta verificar ese mapeo antes de darlos por buenos.'}
                 </p>
             </Section>
         );
@@ -146,7 +175,7 @@ export function FilingSection({ filing }: { filing: DataRecord | null }) {
                     label="0588 · Deducción por doble imposición"
                     value={
                         dt.status === 'pendiente_tme'
-                            ? 'Pendiente: introduce el tipo medio efectivo de tu borrador para calcularla'
+                            ? 'Falta el tipo medio efectivo: introduce el de tu borrador para calcular la deducción'
                             : money(dt.total_deduction_base)
                     }
                 />
@@ -190,6 +219,12 @@ export function Modelo720Section({ thresholds, file720, unavailable }: {
     const foreignUnverified = (thresholds.foreign_unverified ?? []) as DataRecord[];
     const shortPositions = (thresholds.short_positions ?? []) as DataRecord[];
     const unvalued = (thresholds.unvalued ?? []) as DataRecord[];
+    // El generador devuelve el contenido del fichero junto al recuento de
+    // registros: la descarga es del contenido real, no de una reconstrucción.
+    const content720 =
+        typeof file720?.content === 'string' && file720.content.length > 0 ? file720.content : null;
+    const fiscalYear = thresholds.fiscal_year;
+    const file720Name = `modelo720-${typeof fiscalYear === 'number' ? String(fiscalYear) : 'ejercicio'}.720`;
     const warnings: string[] = [
         ...(missingIsin.length > 0 ? [`Sin ISIN (necesario para declarar el valor): ${missingIsin.join(', ')}`] : []),
         ...foreignUnverified.map((item) => `${String(item.ticker ?? '')}: ${String(item.reason ?? '')}`),
@@ -231,18 +266,42 @@ export function Modelo720Section({ thresholds, file720, unavailable }: {
                     {file720.available === true ? (
                         <div className="space-y-3">
                             <p className="text-sm text-gray-400">
-                                Borrador de fichero generado ({String(file720.detail_records)} registros de detalle). Es una ayuda de cómputo, NO un fichero oficial listo: la descarga se habilitará cuando el generador supere la revisión de veracidad.
+                                Borrador de fichero generado ({String(file720.detail_records)} registros de
+                                detalle
+                                {typeof file720.record_length === 'number' ? ` de ${String(file720.record_length)} bytes` : ''}
+                                {typeof file720.encoding === 'string' ? `, en ${file720.encoding}` : ''}). Es el
+                                contenido real que produce el generador, no una estimación: puedes descargarlo y
+                                revisarlo, pero es una ayuda de cómputo y no un fichero oficial listo para
+                                presentar.
                             </p>
-                            <Button
-                                size="sm"
-                                variant="outline"
-                                disabled
-                                title="Deshabilitado hasta que el generador pase la revisión de veracidad"
-                                className="gap-2 border-gray-700 text-gray-500"
-                            >
-                                <FileDown className="h-4 w-4" />
-                                Descarga pendiente de validación
-                            </Button>
+                            {content720 ? (
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => downloadFile720(content720, file720Name)}
+                                    className="gap-2 border-teal-800 text-teal-300 hover:border-teal-600"
+                                >
+                                    <FileDown className="h-4 w-4" />
+                                    Descargar borrador del 720
+                                </Button>
+                            ) : (
+                                <p className="text-sm text-amber-200/80">
+                                    El generador informa del número de registros ({String(file720.detail_records)}) pero
+                                    no su contenido, así que no hay nada que descargar: es una lectura fallida, no
+                                    un fichero esperando permiso. Vuelve a cargar la página; si el contador
+                                    aparece sin contenido otra vez, no hay forma de obtenerlo desde aquí.
+                                </p>
+                            )}
+                            {Array.isArray(file720.notas) && (file720.notas as string[]).length > 0 && (
+                                <div>
+                                    <p className="text-xs font-semibold uppercase text-gray-500">Lo que hay que revisar antes de usarlo</p>
+                                    <ul className="mt-1 space-y-1 text-xs leading-5 text-gray-400">
+                                        {(file720.notas as string[]).map((nota, i) => (
+                                            <li key={`nota-${i}`}>{nota}</li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
                             {Array.isArray(file720.excluded) && (file720.excluded as DataRecord[]).length > 0 && (
                                 <div>
                                     <p className="text-xs font-semibold uppercase text-gray-500">Registros excluidos del fichero</p>
@@ -270,7 +329,9 @@ export function Modelo720Section({ thresholds, file720, unavailable }: {
                         </div>
                     ) : (
                         <p className="text-sm text-gray-400">
-                            Fichero no disponible: {String(file720.reason ?? 'faltan datos')}.
+                            {typeof file720.reason === 'string' && file720.reason
+                                ? file720.reason
+                                : 'El generador no ha producido fichero y no ha devuelto el motivo del bloqueo; revisa los registros excluidos y la revisión manual de arriba para saber qué falta.'}
                         </p>
                     )}
                 </div>
