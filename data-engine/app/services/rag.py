@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 def redact_secrets(text: str) -> str:
     """Compone ambos redactores: userinfo/password= (core) + Bearer/JSON/token (llm)."""
-    return _redact_llm(_redact_core(text))
+    return _redact_core(_redact_llm(text))
 
 
 class RAGIndex:
