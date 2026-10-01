@@ -79,7 +79,7 @@ def _assert_strong_credentials(url: str, *, label: str) -> None:
 
 
 class Settings(BaseSettings):
-    # extra=ignore a propósito: .env comparte claves de frontend
+    # extra=ignore a propÃ³sito: .env comparte claves de frontend
     # (BETTER_AUTH_*, TWELVE_DATA_*, etc.) que el backend no modela.
     # Los typos de claves backend se cubren con tests de contrato
     # (test_settings_hermeticity) en vez de forbid global.
@@ -119,8 +119,8 @@ class Settings(BaseSettings):
     # uso normal. Tier propio y alto; son lecturas baratas cacheadas.
     rate_limit_market_requests_per_minute: int = Field(default=900, ge=10, le=100000)
     rate_limit_expensive_requests_per_minute: int = Field(default=20, ge=1, le=1000)
-    # Suelo del limite SOLO en local. Antes se deducía de app_env in
-    # {"local","test"} dentro de app/core/rate_limit.py, así que 'dev', 'ci' y
+    # Suelo del limite SOLO en local. Antes se deducÃ­a de app_env in
+    # {"local","test"} dentro de app/core/rate_limit.py, asÃ­ que 'dev', 'ci' y
     # 'development' se quedaban sin limite real (10000/min) mientras si
     # exigian Redis. Ahora es un valor explicito y la prediccion es una sola.
     rate_limit_local_request_floor: int = Field(default=10000, ge=0)
@@ -172,7 +172,18 @@ class Settings(BaseSettings):
     # entrando via el mirror HF (sec_hf_mirror_dataset) sincronizado por
     # GitHub Actions. True solo donde la SEC sea alcanzable (dev local).
     sec_document_jobs_enabled: bool = False
-    # Directorio con snapshots ESEF (manifest.json issuers LEI->{ticker,...},
+    # Pipeline de ingesta en dos carriles (MarkItDown rapido / Docling
+    # estructura / pypdf clasico; ver app/services/docling_pipeline.py).
+    # Activo por defecto SI la dependencia opcional esta instalada; ausente,
+    # degrada con warnings ("docling/markitdown no instalado"), nunca rompe.
+    # docling_async_only=True restringe el conversor ML pesado (0.3-3 s/pag
+    # en CPU) al worker Dramatiq (actor process_document_structured): en la
+    # ruta sincrona de FastAPI un PDF con estructura se sirve con el carril
+    # rapido y queda marcado para reproceso. Solo desactivar puntualmente en
+    # scripts locales, jamas en serving de produccion.
+    docling_lane_enabled: bool = True
+    docling_async_only: bool = True
+    markitdown_enabled: bool = True    # Directorio con snapshots ESEF (manifest.json issuers LEI->{ticker,...},
     # snapshots/<LEI>.json normalizados desde filings.xbrl.org). Mismo motivo
     # que SEC: los datos viajan con la app, nunca se piden en caliente.
     esef_snapshot_dir: str | None = None
@@ -181,8 +192,8 @@ class Settings(BaseSettings):
     telegram_chat_id: str | None = None
     telegram_api_base_url: str = "https://api.telegram.org"
     telegram_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
-    # Aprobación de tesis por Telegram (human-in-the-loop mínimo viable).
-    # Apagado por defecto: sin este flag no se envía nada ni se sondea nada.
+    # AprobaciÃ³n de tesis por Telegram (human-in-the-loop mÃ­nimo viable).
+    # Apagado por defecto: sin este flag no se envÃ­a nada ni se sondea nada.
     # Env: TELEGRAM_APPROVAL_ENABLED.
     telegram_approval_enabled: bool = False
     # Fichero donde el poller persiste el offset de getUpdates.
@@ -210,7 +221,7 @@ class Settings(BaseSettings):
     opencode_go_api_key: str | None = Field(default=None, repr=False)
     opencode_go_base_url: str = "https://opencode.ai/zen/v1"
     # Default cheap-but-good model. Overridable WITHOUT code change via env
-    # OPENCODE_GO_MODEL (e.g. OPENCODE_GO_MODEL=qwen3.7-plus). Ver también
+    # OPENCODE_GO_MODEL (e.g. OPENCODE_GO_MODEL=qwen3.7-plus). Ver tambiÃ©n
     # default_model_from_env() en app/llm/model_aliases.py.
     opencode_go_model: str = "space-bunny-free"
     # Fallback automatico: si el modelo resuelto falla (cualquier error de
