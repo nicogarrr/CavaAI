@@ -79,7 +79,8 @@ export default function PlanSetupDialog({
             setError('La aportación mensual debe ser un número mayor que 0.');
             return;
         }
-        const horizonYears = Number.parseInt(horizon, 10);
+        // parseInt truncaba "30,5" a 30 en silencio: solo se aceptan enteros exactos (F388).
+        const horizonYears = /^\d+$/.test(horizon.trim()) ? Number(horizon.trim()) : Number.NaN;
         if (!Number.isInteger(horizonYears) || horizonYears < 1 || horizonYears > 80) {
             setError('El horizonte debe ser un entero entre 1 y 80 años.');
             return;
