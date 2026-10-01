@@ -83,9 +83,10 @@ def latest_inputs_provenance(
         .order_by(desc(FundamentalModelVersion.version))
         .limit(1)
     )
-    if model is None:
+    used_inputs = (valuation_basis or {}).get("inferred_inputs_used") or []
+    if model is None and not used_inputs:
         return None
-    items = inputs_provenance_from_snapshot(model.model_snapshot or {})
+    items = inputs_provenance_from_snapshot(model.model_snapshot if model else {})
     fact_ids = sorted({fid for it in items for fid in (it.get("source_fact_ids") or [])})
     sources: dict[int, dict] = {}
     if fact_ids:

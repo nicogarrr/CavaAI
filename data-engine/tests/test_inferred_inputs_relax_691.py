@@ -216,3 +216,30 @@ def test_provenance_binds_to_used_input_and_keeps_history(db):
     # Sin valuation_basis (tesis anterior) no se inventa ningun input usado.
     legacy = {i["key"] for i in latest_inputs_provenance(db, company.id, None)}
     assert "fcf_margin_usado_en_valoracion" not in legacy
+
+
+@pytest.mark.parametrize("margin", ["-0.9", "-0.3", "-0.01", "0", "0.05", "0.35", "0.5", "0.6"])
+def test_scenarios_are_ordered_by_construction_across_allowed_range(db, margin):
+    company = _company(db)
+    InferredInputService().create(
+        db, company, input_key="fcf_margin", value=Decimal(margin), base=BASE, source_urls=URLS
+    )
+    result = _value(db, company)
+    assert result["status"] == "partial" and result["publishable"] is False
+    assert result["bear_value"] < result["base_value"] < result["bull_value"], margin
+    band = result["trace"]["assumed"]["fcf_margin_band"]
+    assert band[0] < band[1] <= band[2]
+
+
+def test_used_inputs_are_shown_even_without_fundamental_model(db):
+    company = _company(db)
+    InferredInputService().create(
+        db, company, input_key="fcf_margin", value=Decimal("0.05"), base=BASE, source_urls=URLS
+    )
+    from app.services.thesis_service import ThesisService
+
+    basis = ThesisService._valuation_basis(_value(db, company))
+    items = latest_inputs_provenance(db, company.id, basis)
+    assert [i["key"] for i in items] == ["fcf_margin_usado_en_valoracion"]
+    assert items[0]["origen"] == "INFERIDO"
+    assert latest_inputs_provenance(db, company.id, None) is None

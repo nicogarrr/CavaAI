@@ -157,7 +157,9 @@ def speculative_causal_scenarios(
             probability=probabilities["bull"],
             assumptions={
                 "revenue_growth": growth if burn else growth + 0.10,
-                "fcf_margin": min(margin + 0.05, 0.35),
+                # Tope 0.35 para margenes normales, pero nunca por debajo del
+                # base: con un base alto el bull no puede ser peor que el base.
+                "fcf_margin": max(min(margin + 0.05, 0.35), margin),
                 "wacc": wacc if burn else max(wacc - 0.015, terminal + 0.015),
                 "terminal_growth": terminal,
                 "extra_dilution_pct": max(dilution_pct * 0.5, 0.0),
