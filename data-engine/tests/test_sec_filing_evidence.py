@@ -45,9 +45,10 @@ def _wrap(body: bytes) -> bytes:
     )
 
 
-def _submissions(filing_date="2026-08-10", primary=NAME, cik="1780312"):
+def _submissions(filing_date="2026-08-10", primary=NAME, cik="1780312", tickers=("TSTSEC",)):
     return json.dumps({
         "cik": cik,
+        "tickers": list(tickers),
         "filings": {"recent": {
             "accessionNumber": [ACC], "filingDate": [filing_date],
             "primaryDocument": [primary],
@@ -66,7 +67,7 @@ def _make(tmp_path, *, raw=None, index=INDEX_HTML, url=None, sha=None, sub=None,
         "file": "f.htm",
         "index_file": "idx.htm",
         "url": url or f"https://www.sec.gov/Archives/edgar/data/1780312/{FOLDER}/{NAME}",
-        "index_url": "https://www.sec.gov/idx",
+        "index_url": f"https://www.sec.gov/Archives/edgar/data/1780312/{FOLDER}/{ACC}-index.htm",
         "index_sha256": hashlib.sha256(idx).hexdigest(),
         "sha256": sha or hashlib.sha256(raw).hexdigest(),
         "capture": {
@@ -95,7 +96,7 @@ def test_parse_index_reads_cik_accession_date_and_documents():
 def test_verified_entry_takes_date_from_index_not_manifest(tmp_path):
     entry = _make(tmp_path)
     entry["published_at"] = "2020-01-01"  # declarado por el operador: se ignora
-    filing = verify_entry(entry, tmp_path, "1780312")
+    filing = verify_entry(entry, tmp_path, "1780312", "TSTSEC")
     assert filing.filing_date == date(2026, 8, 10)
     assert filing.body == BODY
     assert filing.size_delta == 7
@@ -103,48 +104,48 @@ def test_verified_entry_takes_date_from_index_not_manifest(tmp_path):
 
 def test_wrong_company_cik_is_rejected(tmp_path):
     with pytest.raises(EvidenceError, match="CIK"):
-        verify_entry(_make(tmp_path), tmp_path, "1234567")
+        verify_entry(_make(tmp_path), tmp_path, "1234567", "TSTSEC")
     with pytest.raises(EvidenceError, match="CIK"):
-        verify_entry(_make(tmp_path), tmp_path, None)
+        verify_entry(_make(tmp_path), tmp_path, None, "TSTSEC")
 
 
 def test_tampered_index_or_document_is_rejected(tmp_path):
     entry = _make(tmp_path)
     (tmp_path / "idx.htm").write_bytes(INDEX_HTML.replace("2026-08-10", "2026-08-11").encode())
     with pytest.raises(EvidenceError, match="index_sha256"):
-        verify_entry(entry, tmp_path, "1780312")
+        verify_entry(entry, tmp_path, "1780312", "TSTSEC")
     entry = _make(tmp_path, sha="0" * 64)
     with pytest.raises(EvidenceError, match="sha256"):
-        verify_entry(entry, tmp_path, "1780312")
+        verify_entry(entry, tmp_path, "1780312", "TSTSEC")
 
 
 def test_url_must_hang_from_index_accession_and_be_listed(tmp_path):
     other = "https://www.sec.gov/Archives/edgar/data/1780312/000119312526000001/doc.htm"
     with pytest.raises(EvidenceError, match="accession"):
-        verify_entry(_make(tmp_path, url=other), tmp_path, "1780312")
+        verify_entry(_make(tmp_path, url=other), tmp_path, "1780312", "TSTSEC")
     unlisted = f"https://www.sec.gov/Archives/edgar/data/1780312/{FOLDER}/other.htm"
     with pytest.raises(EvidenceError, match="no lista"):
-        verify_entry(_make(tmp_path, url=unlisted), tmp_path, "1780312")
+        verify_entry(_make(tmp_path, url=unlisted), tmp_path, "1780312", "TSTSEC")
     evil = f"https://evil.example/Archives/edgar/data/1780312/{FOLDER}/{NAME}"
     with pytest.raises(EvidenceError, match="sec.gov"):
-        verify_entry(_make(tmp_path, url=evil), tmp_path, "1780312")
+        verify_entry(_make(tmp_path, url=evil), tmp_path, "1780312", "TSTSEC")
 
 
 def test_size_far_from_index_is_rejected(tmp_path):
     big = _wrap(BODY + b"y" * 1000)
     with pytest.raises(EvidenceError, match="incoherente"):
-        verify_entry(_make(tmp_path, raw=big), tmp_path, "1780312")
+        verify_entry(_make(tmp_path, raw=big), tmp_path, "1780312", "TSTSEC")
 
 
 def test_missing_or_unverified_capture_is_rejected(tmp_path):
     entry = _make(tmp_path)
     entry.pop("capture")
     with pytest.raises(EvidenceError, match="capture"):
-        verify_entry(entry, tmp_path, "1780312")
+        verify_entry(entry, tmp_path, "1780312", "TSTSEC")
     with pytest.raises(EvidenceError, match="Captura"):
         verify_entry(
             _make(tmp_path, capture=lambda c: c | {"second_fetch_identical": False}),
-            tmp_path, "1780312",
+            tmp_path, "1780312", "TSTSEC",
         )
     with pytest.raises(EvidenceError, match="Captura"):
         verify_entry(
@@ -154,15 +155,38 @@ def test_missing_or_unverified_capture_is_rejected(tmp_path):
 
 def test_submissions_cross_check_catches_date_cik_and_primary(tmp_path):
     with pytest.raises(EvidenceError, match="Filing Date"):
-        verify_entry(_make(tmp_path, sub=_submissions("2026-08-12")), tmp_path, "1780312")
+        verify_entry(_make(tmp_path, sub=_submissions("2026-08-12")), tmp_path, "1780312", "TSTSEC")
     with pytest.raises(EvidenceError, match="otro CIK"):
-        verify_entry(_make(tmp_path, sub=_submissions(cik="999")), tmp_path, "1780312")
+        verify_entry(_make(tmp_path, sub=_submissions(cik="999")), tmp_path, "1780312", "TSTSEC")
     with pytest.raises(EvidenceError, match="principal"):
-        verify_entry(_make(tmp_path, sub=_submissions(primary="other.htm")), tmp_path, "1780312")
+        verify_entry(_make(tmp_path, sub=_submissions(primary="other.htm")), tmp_path, "1780312", "TSTSEC")
     entry = _make(tmp_path)
     (tmp_path / "sub.json").write_bytes(_submissions("2026-08-12"))
     with pytest.raises(EvidenceError, match="submissions_sha256"):
-        verify_entry(entry, tmp_path, "1780312")
+        verify_entry(entry, tmp_path, "1780312", "TSTSEC")
+
+
+def test_primary_document_check_is_not_disabled_by_declared_flag(tmp_path):
+    entry = _make(
+        tmp_path, sub=_submissions(primary="other.htm"),
+        capture=lambda c: c | {"is_primary_document": False},
+    )
+    with pytest.raises(EvidenceError, match="principal"):
+        verify_entry(entry, tmp_path, "1780312", "TSTSEC")
+
+
+def test_index_url_must_match_cik_and_accession(tmp_path):
+    entry = _make(tmp_path)
+    entry["index_url"] = "https://www.sec.gov/idx"
+    with pytest.raises(EvidenceError, match="index_url"):
+        verify_entry(entry, tmp_path, "1780312", "TSTSEC")
+
+
+def test_ticker_must_belong_to_cik_in_submissions(tmp_path):
+    with pytest.raises(EvidenceError, match="ticker"):
+        verify_entry(_make(tmp_path, sub=_submissions(tickers=("OTHER",))), tmp_path, "1780312", "TSTSEC")
+    with pytest.raises(EvidenceError, match="ticker"):
+        verify_entry(_make(tmp_path), tmp_path, "1780312", None)
 
 
 def test_strip_wrapper_roundtrip_and_unwrapped_passthrough():

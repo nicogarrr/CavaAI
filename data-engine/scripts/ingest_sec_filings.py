@@ -30,7 +30,7 @@ from app.core.database import SessionLocal
 from app.models import Company, Document, DocumentChunk, Tenant
 from app.services.document_ingestion_service import DocumentIngestionService
 from app.services.document_store import DocumentStore
-from app.services.sec_filing_evidence import EvidenceError, verify_entry
+from app.services.sec_filing_evidence import EvidenceError, derive_index_url, verify_entry
 
 
 def ingest_filings(db, company: Company, entries: list[dict], base_dir: Path, *, dry_run: bool) -> list[dict]:
@@ -39,7 +39,7 @@ def ingest_filings(db, company: Company, entries: list[dict], base_dir: Path, *,
     results: list[dict] = []
     for entry in entries:
         try:
-            filing = verify_entry(entry, base_dir, company.cik)
+            filing = verify_entry(entry, base_dir, company.cik, company.ticker)
         except (EvidenceError, OSError, KeyError) as exc:
             results.append({"url": entry.get("url"), "status": "rejected", "reason": str(exc)})
             continue
@@ -80,7 +80,7 @@ def ingest_filings(db, company: Company, entries: list[dict], base_dir: Path, *,
                 "cik": filing.cik,
                 "period_of_report": filing.period.isoformat() if filing.period else None,
                 "date_source": "sec_filing_index",
-                "index_url": entry.get("index_url"),
+                "index_url": derive_index_url(filing.cik, filing.accession),
                 "index_sha256": entry["index_sha256"],
                 "size_delta_vs_index": filing.size_delta,
                 "raw_sha256": filing.sha256,

@@ -112,7 +112,21 @@ class VerifiedFiling:
     cik: str
 
 
-def _check_capture(entry: dict, base_dir: Path, index: IndexEvidence, filename: str) -> None:
+def derive_index_url(cik: str, accession: str) -> str:
+    return (
+        f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/"
+        f"{accession.replace('-', '')}/{accession}-index.htm"
+    )
+
+
+def _check_capture(
+    entry: dict,
+    base_dir: Path,
+    index: IndexEvidence,
+    filename: str,
+    index_type: str,
+    company_ticker: str | None,
+) -> None:
     """Exige la captura hecha por build_sec_evidence con comprobaciones vivas
     contra sec.gov: segunda descarga identica y cruce con data.sec.gov/submissions
     (ticker, CIK, accession, Filing Date y documento principal). Falla cerrado si
@@ -132,6 +146,10 @@ def _check_capture(entry: dict, base_dir: Path, index: IndexEvidence, filename: 
     sub = json.loads(sub_bytes)
     if str(sub.get("cik", "")).lstrip("0") != index.cik.lstrip("0"):
         raise EvidenceError("submissions de otro CIK")
+    if not company_ticker or company_ticker.upper() not in [
+        str(t).upper() for t in sub.get("tickers", [])
+    ]:
+        raise EvidenceError("El ticker de la empresa no figura en submissions del CIK")
     recent = sub.get("filings", {}).get("recent", {})
     try:
         position = recent["accessionNumber"].index(index.accession)
@@ -139,11 +157,16 @@ def _check_capture(entry: dict, base_dir: Path, index: IndexEvidence, filename: 
         raise EvidenceError("submissions no lista ese accession") from exc
     if date.fromisoformat(recent["filingDate"][position]) != index.filing_date:
         raise EvidenceError("Filing Date de submissions distinto del indice")
-    if capture.get("is_primary_document") and recent["primaryDocument"][position] != filename:
+    # La obligacion de cruzar el documento principal la fija el TIPO del
+    # filing segun el indice SEC (todo lo que no sea un exhibit EX-*), nunca un
+    # flag declarado en el manifiesto.
+    if not index_type.upper().startswith("EX-") and recent["primaryDocument"][position] != filename:
         raise EvidenceError("El documento no es el principal que dice submissions")
 
 
-def verify_entry(entry: dict, base_dir: Path, company_cik: str | None) -> VerifiedFiling:
+def verify_entry(
+    entry: dict, base_dir: Path, company_cik: str | None, company_ticker: str | None = None
+) -> VerifiedFiling:
     """Valida una entrada del manifiesto contra el indice SEC guardado."""
     index_bytes = (base_dir / entry["index_file"]).read_bytes()
     if hashlib.sha256(index_bytes).hexdigest() != entry["index_sha256"]:
@@ -179,7 +202,9 @@ def verify_entry(entry: dict, base_dir: Path, company_cik: str | None) -> Verifi
     sha = hashlib.sha256(raw).hexdigest()
     if sha != entry["sha256"]:
         raise EvidenceError("sha256 de los bytes servidos distinto del manifiesto")
-    _check_capture(entry, base_dir, index, filename)
+    if entry.get("index_url") != derive_index_url(index.cik, index.accession):
+        raise EvidenceError("index_url no corresponde al CIK/accession del indice")
+    _check_capture(entry, base_dir, index, filename, index_type, company_ticker)
     return VerifiedFiling(
         raw=raw,
         body=body,
