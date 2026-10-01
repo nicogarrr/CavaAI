@@ -25,7 +25,18 @@ export default async function SecurityPage() {
                 </p>
             </div>
 
-            <TwoFactorSettings initiallyEnabled={status.success ? Boolean(status.enabled) : false} />
+            {status.success ? (
+                <TwoFactorSettings initiallyEnabled={Boolean(status.enabled)} />
+            ) : (
+                <section
+                    role="alert"
+                    data-testid="two-factor-unavailable"
+                    className="rounded-lg border border-amber-900/60 bg-amber-950/20 p-4 text-sm text-amber-200"
+                >
+                    No se pudo comprobar el estado de la verificación en dos pasos (2FA). No
+                    es lo mismo que tenerla desactivada: recarga la página o inténtalo más tarde.
+                </section>
+            )}
         </main>
     );
 }
