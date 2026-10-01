@@ -95,3 +95,27 @@ def test_derived_fact_is_safe_for_downstream_consumers(db):
     claims = ThesisService()._build_claims(c, snap.facts, {"status": "partial"})
     nd_claim = next(x for x in claims if x["predicate"] == "net_debt")
     assert nd_claim["verification_state"] == "derived" and nd_claim["object"] == 600_000_000.0
+
+
+def test_derived_net_debt_carries_shared_source_or_none(db):
+    """Sin source_id el auditor marca el claim material como no soportado."""
+    from app.services.source_auditor import SourceAuditor
+    from app.services.thesis_service import ThesisService
+
+    c = _company(db)
+    _fact(db, c, "revenue", 70_918_000)
+    _fact(db, c, "shares_diluted", 255_982_592)
+    debt = _fact(db, c, "total_debt", 1_000_000_000)
+    cash = _fact(db, c, "cash_and_equivalents", 400_000_000)
+    debt.source_id = cash.source_id = 4242
+    db.commit()
+    snap = FinancialSnapshotBuilder().build(db, c)
+    assert snap.facts["net_debt"].source_id == 4242
+    claims = ThesisService()._build_claims(c, snap.facts, {"status": "partial"})
+    audit = SourceAuditor().audit(claims, {"x": 1})
+    assert not any("deuda neta" in u.lower() or "net debt" in u.lower() for u in audit.unsupported_claims)
+
+    cash.source_id = 4343
+    db.commit()
+    snap2 = FinancialSnapshotBuilder().build(db, c)
+    assert snap2.facts["net_debt"].source_id is None
