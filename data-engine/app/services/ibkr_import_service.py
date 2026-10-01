@@ -481,6 +481,11 @@ class IBKRImportService:
                     external_id=external_id,
                     raw_payload=dict(element.attrib),
                 )
+                if external_id:
+                    # F364: se registra SOLO tras validar y crear la fila; un id
+                    # repetido dentro del XML se importa una vez, y una fila
+                    # inválida no oculta a una válida posterior con el mismo id.
+                    existing_ids.add(external_id)
                 db.add(transaction)
                 trades_imported += 1
 
@@ -548,6 +553,11 @@ class IBKRImportService:
                     external_id=external_id,
                     raw_payload=dict(element.attrib),
                 )
+                if external_id:
+                    # F364: se registra SOLO tras validar y crear la fila; un id
+                    # repetido dentro del XML se importa una vez, y una fila
+                    # inválida no oculta a una válida posterior con el mismo id.
+                    existing_ids.add(external_id)
                 db.add(transaction)
                 if action == "dividend":
                     dividends_imported += 1
@@ -586,6 +596,11 @@ class IBKRImportService:
                     external_id=external_id,
                     raw_payload=dict(element.attrib),
                 )
+                if external_id:
+                    # F364: se registra SOLO tras validar y crear la fila; un id
+                    # repetido dentro del XML se importa una vez, y una fila
+                    # inválida no oculta a una válida posterior con el mismo id.
+                    existing_ids.add(external_id)
                 db.add(transaction)
                 dividends_imported += 1
 
