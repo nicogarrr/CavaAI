@@ -5,6 +5,7 @@ import httpx
 from app.core.config import Settings, get_settings
 from app.llm.adapters import DisabledProvider, OpenAICompatibleProvider
 from app.llm.base import LLMProvider
+from app.llm.response_cache import build_response_cache
 
 
 def _has_key(value: str | None) -> bool:
@@ -48,6 +49,7 @@ def create_llm_provider(
             for model in settings.opencode_go_reasoning_effort_models.split(",")
             if model.strip()
         },
+        response_cache=build_response_cache(settings),
         client=client,
         timeout_seconds=settings.llm_timeout_seconds,
         max_retries=settings.llm_max_retries,
