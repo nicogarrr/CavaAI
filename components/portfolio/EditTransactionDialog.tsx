@@ -158,7 +158,7 @@ export default function EditTransactionDialog({ transaction, userId }: Props) {
                             <Input
                                 id="quantity"
                                 type="number"
-                                step="0.01"
+                                step="any"
                                 min="0"
                                 value={formData.quantity}
                                 onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
@@ -175,7 +175,7 @@ export default function EditTransactionDialog({ transaction, userId }: Props) {
                             <Input
                                 id="price"
                                 type="number"
-                                step="0.01"
+                                step="any"
                                 min="0"
                                 value={formData.price}
                                 onChange={(e) => setFormData({ ...formData, price: e.target.value })}
