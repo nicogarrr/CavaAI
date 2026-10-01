@@ -465,10 +465,6 @@ class IBKRImportService:
                 external_id = _attr(element, "tradeID", "transactionID", "ibExecID")
                 if external_id and external_id in existing_ids:
                     continue
-                if external_id:
-                    # F364: un id repetido dentro del mismo XML se importa una vez
-                    # (si no, el UNIQUE aborta la importación entera).
-                    existing_ids.add(external_id)
                 company = self._company(db, companies, symbol)
                 self._capture_isin(company, element)
                 action = self._action(_attr(element, "buySell", "transactionType", "tradeType"))
@@ -485,6 +481,11 @@ class IBKRImportService:
                     external_id=external_id,
                     raw_payload=dict(element.attrib),
                 )
+                if external_id:
+                    # F364: se registra SOLO tras validar y crear la fila; un id
+                    # repetido dentro del XML se importa una vez, y una fila
+                    # inválida no oculta a una válida posterior con el mismo id.
+                    existing_ids.add(external_id)
                 db.add(transaction)
                 trades_imported += 1
 
@@ -529,10 +530,6 @@ class IBKRImportService:
                 external_id = _attr(element, "trxID", "transactionID", "id")
                 if external_id and external_id in existing_ids:
                     continue
-                if external_id:
-                    # F364: un id repetido dentro del mismo XML se importa una vez
-                    # (si no, el UNIQUE aborta la importación entera).
-                    existing_ids.add(external_id)
                 amount = _decimal(_attr(element, "amount", "netCash", "proceeds"))
                 # CashTransaction carries the symbol in most Flex exports. The
                 # row used to be written with company_id=None, and the tax
@@ -556,6 +553,11 @@ class IBKRImportService:
                     external_id=external_id,
                     raw_payload=dict(element.attrib),
                 )
+                if external_id:
+                    # F364: se registra SOLO tras validar y crear la fila; un id
+                    # repetido dentro del XML se importa una vez, y una fila
+                    # inválida no oculta a una válida posterior con el mismo id.
+                    existing_ids.add(external_id)
                 db.add(transaction)
                 if action == "dividend":
                     dividends_imported += 1
@@ -572,10 +574,6 @@ class IBKRImportService:
                 external_id = _attr(element, "transactionID", "id")
                 if external_id and external_id in existing_ids:
                     continue
-                if external_id:
-                    # F364: un id repetido dentro del mismo XML se importa una vez
-                    # (si no, el UNIQUE aborta la importación entera).
-                    existing_ids.add(external_id)
                 raw_date = _attr(element, "dateTime", "date", "tradeDate")
                 if raw_date is None or not _is_date(raw_date):
                     rows_skipped += 1
@@ -598,6 +596,11 @@ class IBKRImportService:
                     external_id=external_id,
                     raw_payload=dict(element.attrib),
                 )
+                if external_id:
+                    # F364: se registra SOLO tras validar y crear la fila; un id
+                    # repetido dentro del XML se importa una vez, y una fila
+                    # inválida no oculta a una válida posterior con el mismo id.
+                    existing_ids.add(external_id)
                 db.add(transaction)
                 dividends_imported += 1
 
