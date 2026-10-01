@@ -58,7 +58,7 @@ def _publish(db: Session, ticker: str) -> None:
 
 def test_decisions_match_graph_contract():
     assert set(DECISIONS) == {"approve", "request_changes"}
-    assert DECIDED_STATUSES == {"published", "approved", "changes_requested"}
+    assert {"published", "approved", "changes_requested"} == DECIDED_STATUSES
 
 
 def test_start_unknown_company(db, service):
