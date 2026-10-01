@@ -150,6 +150,11 @@ def begin_run(
     carries the stored run with replayed=True and the caller returns its
     stored result. A key matching a failed run starts a fresh attempt.
     """
+    if tenant_id is None:
+        # La sesion real lleva el tenant activo; sin este valor el replay busca
+        # tenant_id IS NULL y nunca encuentra la ejecucion previa (F393).
+        active_tenant = db.info.get("tenant_id")
+        tenant_id = active_tenant if isinstance(active_tenant, int) else None
     if idempotency_key:
         existing = db.scalar(
             select(WorkflowRun).where(
