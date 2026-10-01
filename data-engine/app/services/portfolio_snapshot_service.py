@@ -33,6 +33,7 @@ class PortfolioSnapshotService:
     ) -> PortfolioDailySnapshot:
         snapshot_date = as_of or date.today()
         portfolio = self.fx.ensure_portfolio(db)
+        db.flush()  # autoflush=False: incluir posiciones/caja pendientes del caller
         positions = list(
             db.scalars(
                 select(Position)
