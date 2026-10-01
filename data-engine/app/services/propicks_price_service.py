@@ -196,9 +196,11 @@ def compute_momentum_metrics(
     for company in companies:
         rows = db.execute(
             select(MarketPrice.date, MarketPrice.adj_close)
-            .where(MarketPrice.company_id == company.id)
+            .where(MarketPrice.company_id == company.id, MarketPrice.date <= as_of)
             .order_by(MarketPrice.date)
         ).all()
+        # F370: solo barras hasta as_of; un as_of historico no puede usar datos
+        # posteriores etiquetados con la fecha pedida.
         series = [(d, Decimal(str(p))) for d, p in rows if p is not None and p > 0]
         if len(series) < MIN_BARS_6M:
             stats["skipped"] += 1
@@ -236,7 +238,11 @@ def compute_momentum_metrics(
                         numerator=None,
                         denominator=None,
                         source_fact_ids=[],
-                        calculation_trace={"window_days": days, "as_of": as_of.isoformat()},
+                        calculation_trace={
+                            "window_days": days,
+                            "as_of": as_of.isoformat(),
+                            "last_bar_date": series[-1][0].isoformat(),
+                        },
                     )
                 )
             stats[metric] += 1
