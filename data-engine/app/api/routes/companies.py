@@ -18,6 +18,7 @@ from app.models import (
     DecisionLesson,
     FinancialFact,
     FundamentalDriver,
+    InferredInput,
     ManagementPromise,
     ThesisVersion,
 )
@@ -51,6 +52,11 @@ from app.services.fundamental_review_service import (
     DecisionJournalService,
     ExpectationRealityService,
 )
+from app.services.inferred_input_service import (
+    InferredInputError,
+    InferredInputService,
+)
+from app.services.inferred_input_service import payload as inferred_input_payload
 from app.services.kpi_extraction_service import CompanyKPIRegistryService
 from app.services.long_term_model_service import LongTermModelService
 from app.services.management_credibility_service import ManagementCredibilityService
@@ -173,6 +179,16 @@ class DriverAssumptionCreate(BaseModel):
     user_override: bool = True
     confidence: Decimal = Field(default=Decimal("1"), ge=0, le=1)
     rationale: str = Field(min_length=1, max_length=5000)
+
+
+class InferredInputCreate(BaseModel):
+    """Input INFERIDO: base explicita ("dado X, inferimos Y") + URLs https."""
+
+    input_key: Literal["fcf_margin"]
+    value: Decimal
+    base: str = Field(min_length=20, max_length=5000)
+    source_urls: list[str] = Field(min_length=1, max_length=10)
+    origin: Literal["llm", "user"] = "llm"
 
 
 class DecisionLessonUpdate(BaseModel):
@@ -495,6 +511,44 @@ def create_driver_assumption(
         "assumption": driver_assumption_payload(version, driver_key=payload.driver_key),
         "model_version": model.get("persistence"),
     }
+
+
+@router.get("/{ticker}/inferred-inputs")
+def list_inferred_inputs(ticker: str, db: Session = Depends(get_db)) -> list[dict]:
+    company = resolve_company(db, ticker)
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    rows = db.scalars(
+        select(InferredInput)
+        .where(InferredInput.company_id == company.id)
+        .order_by(desc(InferredInput.id))
+        .limit(50)
+    ).all()
+    return [inferred_input_payload(row) for row in rows]
+
+
+@router.post("/{ticker}/inferred-inputs", status_code=201)
+def create_inferred_input(
+    ticker: str,
+    payload: InferredInputCreate,
+    db: Session = Depends(get_db),
+) -> dict:
+    company = resolve_company(db, ticker)
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    try:
+        row = InferredInputService().create(
+            db,
+            company,
+            input_key=payload.input_key,
+            value=payload.value,
+            base=payload.base,
+            source_urls=payload.source_urls,
+            origin=payload.origin,
+        )
+    except InferredInputError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return inferred_input_payload(row)
 
 
 @router.get("/{ticker}/snapshot", response_model=CompanySnapshotOut)

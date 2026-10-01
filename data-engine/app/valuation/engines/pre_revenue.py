@@ -13,6 +13,7 @@ sin ingresos coherentes devuelve insufficient_data (no bootstrap).
 
 from __future__ import annotations
 
+from app.services.inferred_input_service import InferredInputService
 from app.valuation.dcf_fcff import DCFInputs, run_dcf
 from app.valuation.engines.base import (
     MODEL_VERSION,
@@ -56,7 +57,9 @@ class PreRevenueScenarioEngine(ValuationEngine):
                 # pero sin margen/FCF: rango indicativo con supuestos
                 # documentados en vez de NO VALUATION. Nunca final.
                 # Sin acciones no hay matematica por-accion posible.
-                return self._indicative_partial(company, snapshot, current_price)
+                return self._indicative_partial(
+                    company, snapshot, current_price, context.db
+                )
             result = insufficient_result(
                 ticker=company.ticker,
                 model_type=company.valuation_model,
@@ -298,7 +301,7 @@ class PreRevenueScenarioEngine(ValuationEngine):
             },
         }
 
-    def _indicative_partial(self, company, snapshot, current_price: float) -> dict:
+    def _indicative_partial(self, company, snapshot, current_price: float, db=None) -> dict:
         """Rango indicativo cuando hay precio + acciones sin snapshot coherente.
 
         Supuestos documentados (nunca facts): revenue floor $1 si no hay
@@ -317,7 +320,18 @@ class PreRevenueScenarioEngine(ValuationEngine):
             if (value := snapshot.value(metric)) is not None
         }
         observed_burn = {k: v for k, v in cash_facts.items() if v < 0}
-        if observed_burn or not cash_facts:
+        # Relajacion acotada: un margen FCF INFERIDO con base explicita y URLs
+        # https permite escenarios (siempre publishable=False y marcados). Sin
+        # base valida sigue fail-closed: sin numero.
+        # Solo en la rama quema/sin dato de caja: con caja positiva no se
+        # consulta ni se usa ningun input inferido.
+        needs_inference = bool(observed_burn) or not cash_facts
+        inferred = (
+            InferredInputService().latest_valid(db, company.id, "fcf_margin")
+            if needs_inference and db is not None and company.id is not None
+            else None
+        )
+        if needs_inference and inferred is None:
             result = insufficient_result(
                 ticker=company.ticker,
                 model_type=company.valuation_model,
@@ -365,7 +379,7 @@ class PreRevenueScenarioEngine(ValuationEngine):
         if growth is None:
             growth = default_growth(company)
         growth = max(min(growth, 0.60), -0.15)
-        assumed_margin_base = 0.15
+        assumed_margin_base = float(inferred.value) if inferred is not None else 0.15
         wacc = default_wacc(company)
         terminal = default_terminal_growth(company)
         net_debt = snapshot.value("net_debt") or 0.0
@@ -485,7 +499,24 @@ class PreRevenueScenarioEngine(ValuationEngine):
                 "method": company.valuation_model,
                 "engine": self.key,
                 "input_source": "financial_facts",
-                "valuation_basis": "indicative_assumptions",
+                "valuation_basis": (
+                    "inferred_inputs" if inferred is not None else "indicative_assumptions"
+                ),
+                "inferred_inputs": (
+                    [
+                        {
+                            "origen": "INFERIDO",
+                            "input_key": inferred.input_key,
+                            "value": float(inferred.value),
+                            "base_inferencia": inferred.base,
+                            "urls_inferencia": list(inferred.source_urls or []),
+                            "inferred_input_id": inferred.id,
+                            "observed_cash_burn": observed_burn,
+                        }
+                    ]
+                    if inferred is not None
+                    else []
+                ),
                 "publishable": False,
                 "status": "partial",
                 "model_version": MODEL_VERSION,
@@ -498,7 +529,7 @@ class PreRevenueScenarioEngine(ValuationEngine):
                     "revenue_floor_used": revenue_assumed,
                     "revenue_base": revenue,
                     "fcf_margin_base": assumed_margin_base,
-                    "fcf_margin_band": [0.01, assumed_margin_base, 0.35],
+                    "fcf_margin_band": [float(sc.assumptions["fcf_margin"]) for sc in scenarios],
                     "revenue_growth": growth,
                     "wacc": wacc,
                     "terminal_growth": terminal,

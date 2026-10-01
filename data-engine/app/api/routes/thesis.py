@@ -67,7 +67,9 @@ def generate_thesis(payload: ThesisGenerateRequest, db: Session = Depends(get_db
         raise _safe_generate_error(exc) from exc
     out = ThesisOut.model_validate(thesis).model_dump()
     out["missing_inputs"] = latest_missing_inputs(db, thesis.company_id)
-    out["inputs_provenance"] = latest_inputs_provenance(db, thesis.company_id)
+    out["inputs_provenance"] = latest_inputs_provenance(
+        db, thesis.company_id, thesis.valuation_basis
+    )
     return out
 
 
@@ -218,7 +220,9 @@ def latest_thesis(ticker: str, db: Session = Depends(get_db)) -> dict:
     payload["stale"] = stale
     payload["latest_data_at"] = latest_data_at
     payload["missing_inputs"] = latest_missing_inputs(db, thesis.company_id)
-    payload["inputs_provenance"] = latest_inputs_provenance(db, thesis.company_id)
+    payload["inputs_provenance"] = latest_inputs_provenance(
+        db, thesis.company_id, thesis.valuation_basis
+    )
     return payload
 
 
