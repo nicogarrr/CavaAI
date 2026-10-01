@@ -8,9 +8,21 @@ from app.core.errors import safe_detail
 from app.models import Company
 from app.models.entities import WorkflowRun
 from app.services.workflow_run_service import WorkflowEnvelope, begin_run
-from app.workflows.catalog import WORKFLOW_CATALOG
+from app.workflows.catalog import (
+    RETIRED_WORKFLOWS,
+    WORKFLOW_CATALOG,
+    find_retired,
+    find_workflow,
+)
 
 router = APIRouter()
+
+# Status codes of POST /api/workflows/{name}/run (see README of this module):
+#   200 the workflow really executed (or replayed a stored result)
+#   404 unknown workflow; for a retired one the detail says why and what replaced it
+#   422 the workflow is executable but its required input is missing
+#   501 the workflow is in the catalog but has no execution route via the API
+#   500 the work itself failed; the detail never claims "queued"
 
 
 class WorkflowRunRequest(BaseModel):
@@ -20,15 +32,47 @@ class WorkflowRunRequest(BaseModel):
 
 @router.get("")
 def workflows() -> dict:
-    return {"workflows": WORKFLOW_CATALOG}
+    # Sin docstring a proposito: FastAPI lo copia a OpenAPI como `description`
+    # y el job openapi-drift regenera el contrato. La verdad del catalogo va
+    # en los propios campos (implementation_status + api_executable) y en
+    # `retired_workflows`, que es la parte aditiva: los nombres retirados ya no
+    # se ejecutan aqui y la API lo dice en vez de devolver un 200 vacío.
+    return {"workflows": WORKFLOW_CATALOG, "retired_workflows": RETIRED_WORKFLOWS}
+
+
+def _unknown_workflow(name: str) -> HTTPException:
+    retired = find_retired(name)
+    if retired is not None:
+        return HTTPException(
+            status_code=404,
+            detail=(
+                f"Workflow '{name}' was retired from the catalog: {retired['reason']} "
+                f"Use {retired['replaced_by']} instead."
+            ),
+        )
+    return HTTPException(status_code=404, detail=f"Workflow '{name}' not found")
 
 
 @router.get("/{name}")
 def get_workflow(name: str) -> dict:
-    workflow = next((w for w in WORKFLOW_CATALOG if w["name"] == name), None)
+    workflow = find_workflow(name)
     if not workflow:
-        raise HTTPException(status_code=404, detail=f"Workflow '{name}' not found")
+        raise _unknown_workflow(name)
     return workflow
+
+
+def _require_ticker(payload: WorkflowRunRequest, name: str) -> str:
+    """Ticker is a required input of these workflows; say so instead of faking a run."""
+    ticker = (payload.ticker or "").strip().upper()
+    if not ticker:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Workflow '{name}' requires a ticker. POST /run executes this workflow "
+                "for real; nothing runs without its input."
+            ),
+        )
+    return ticker
 
 
 def _replay_response(envelope: WorkflowEnvelope, workflow: dict, ticker: str | None) -> dict:
@@ -52,9 +96,19 @@ async def run_workflow(
     db: Session = Depends(get_db),
     idempotency_key: str | None = Header(default=None),
 ) -> dict:
-    workflow = next((w for w in WORKFLOW_CATALOG if w["name"] == name), None)
+    workflow = find_workflow(name)
     if not workflow:
-        raise HTTPException(status_code=404, detail=f"Workflow '{name}' not found")
+        raise _unknown_workflow(name)
+    if not workflow.get("api_executable"):
+        # Honest and actionable: the entry exists but nothing consumes the
+        # request. A 200 with a "not_implemented" body was a fake success.
+        raise HTTPException(
+            status_code=501,
+            detail=(
+                f"Workflow '{name}' has no execution route via the API "
+                f"(execution_mode={workflow.get('execution_mode')}). {workflow.get('truth', '')}"
+            ),
+        )
 
     key = idempotency_key or payload.params.get("idempotency_key")
 
@@ -67,10 +121,10 @@ async def run_workflow(
             idempotency_key=key,
         )
 
-    if name == "ThesisShadowComparisonWorkflow" and payload.ticker:
+    if name == "ThesisShadowComparisonWorkflow":
         from app.services.thesis_shadow_service import ThesisShadowService
 
-        ticker = payload.ticker.upper()
+        ticker = _require_ticker(payload, name)
         envelope_check = db.scalar(select(Company).where(Company.ticker == ticker))
         if not envelope_check:
             raise HTTPException(status_code=404, detail=f"Company {ticker} not found")
@@ -108,10 +162,10 @@ async def run_workflow(
             "estimated_minutes": 0,
         }
 
-    if name == "ThesisApprovalWorkflow" and payload.ticker:
+    if name == "ThesisApprovalWorkflow":
         from app.services.thesis_graph_approval_service import ThesisGraphApprovalService
 
-        ticker = payload.ticker.upper()
+        ticker = _require_ticker(payload, name)
         if not db.scalar(select(Company).where(Company.ticker == ticker)):
             raise HTTPException(status_code=404, detail=f"Company {ticker} not found")
         tenant_id = db.info.get("tenant_id")
@@ -139,8 +193,8 @@ async def run_workflow(
             "estimated_minutes": 0,
         }
 
-    if name == "GenerateThesisWorkflow" and payload.ticker:
-        ticker = payload.ticker.upper()
+    if name == "GenerateThesisWorkflow":
+        ticker = _require_ticker(payload, name)
         company = db.scalar(select(Company).where(Company.ticker == ticker))
         if not company:
             raise HTTPException(status_code=404, detail=f"Company {ticker} not found")
@@ -176,14 +230,24 @@ async def run_workflow(
         except Exception as exc:
             raise HTTPException(status_code=500, detail=safe_detail(exc, 500)) from exc
 
-    if name == "DailyResearchWorkflow" and payload.params.get("news_items"):
+    if name == "DailyResearchWorkflow":
         from app.schemas import NewsFeedItem
         from app.services.news_service import NewsService
 
+        news_items = payload.params.get("news_items")
+        if not news_items:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "DailyResearchWorkflow executes exactly one stage: news ingestion. "
+                    "Send params.news_items (non-empty) or use POST /api/news/ingest. "
+                    "The remaining daily stages run in the daily_research scheduled job."
+                ),
+            )
         envelope = open_envelope({"ticker": payload.ticker, "params": payload.params})
         if envelope.replayed:
             return _replay_response(envelope, workflow, payload.ticker)
-        items = [NewsFeedItem.model_validate(item) for item in payload.params["news_items"]]
+        items = [NewsFeedItem.model_validate(item) for item in news_items]
 
         def ingest() -> dict:
             result = NewsService().ingest_news_items(
@@ -206,16 +270,17 @@ async def run_workflow(
             "result": result,
         }
 
-    if name == "EarningsWorkflow" and payload.ticker:
+    if name == "EarningsWorkflow":
         from datetime import datetime
 
         from app.services.earnings_service import EarningsWorkflowService
         from app.workflows.maf_runtime import NativeMAFStep, NativeMAFWorkflowRunner
 
-        ticker = payload.ticker.upper()
+        ticker = _require_ticker(payload, name)
         company = db.scalar(select(Company).where(Company.ticker == ticker))
         if not company:
             raise HTTPException(status_code=404, detail=f"Company {ticker} not found")
+
         def load_context(state: dict) -> dict:
             return {
                 "ticker": ticker,
@@ -249,7 +314,7 @@ async def run_workflow(
         if envelope.replayed:
             return _replay_response(envelope, workflow, ticker)
         maf_result = await NativeMAFWorkflowRunner(
-            "EarningsWorkflow",
+            name,
             [
                 NativeMAFStep("load_earnings_context", load_context),
                 NativeMAFStep("execute_earnings_review", execute_review),
@@ -284,14 +349,15 @@ async def run_workflow(
             "result": result,
         }
 
-    if name == "RedTeamWorkflow" and payload.ticker:
+    if name == "RedTeamWorkflow":
         from app.services.red_team_service import RedTeamService
         from app.workflows.maf_runtime import NativeMAFStep, NativeMAFWorkflowRunner
 
-        ticker = payload.ticker.upper()
+        ticker = _require_ticker(payload, name)
         company = db.scalar(select(Company).where(Company.ticker == ticker))
         if not company:
             raise HTTPException(status_code=404, detail=f"Company {ticker} not found")
+
         def load_evidence(state: dict) -> dict:
             return {"ticker": ticker, "review_scope": "thesis_evidence_and_assumptions"}
 
@@ -310,7 +376,7 @@ async def run_workflow(
         if envelope.replayed:
             return _replay_response(envelope, workflow, ticker)
         maf_result = await NativeMAFWorkflowRunner(
-            "RedTeamWorkflow",
+            name,
             [
                 NativeMAFStep("load_review_evidence", load_evidence),
                 NativeMAFStep("execute_adversarial_review", execute_red_team),
@@ -336,20 +402,15 @@ async def run_workflow(
             "result": result,
         }
 
-    # Verdad por encima de apariencia: ningun worker generico consume una
-    # peticion "queued". Si no hay ruta de ejecucion, se dice claro.
-    return {
-        "status": "not_implemented",
-        "workflow": name,
-        "ticker": payload.ticker,
-        "message": (
-            f"Workflow {name} no tiene ejecucion via API: es una entrada "
-            f"{workflow.get('implementation_status', 'descriptive')} del catalogo. "
-            "Los trabajos periodicos equivalentes corren via scheduler/Dramatiq."
+    # Every catalog entry has a branch above. If one is ever added without it,
+    # say so instead of returning a 200 that ran nothing.
+    raise HTTPException(
+        status_code=501,
+        detail=(
+            f"Workflow '{name}' is in the catalog but has no execution branch in this route. "
+            "Nothing was executed and no run was recorded."
         ),
-        "steps": workflow["steps"],
-        "estimated_minutes": 0,
-    }
+    )
 
 
 class WorkflowDecisionRequest(BaseModel):
