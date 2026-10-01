@@ -45,19 +45,43 @@ def _wrap(body: bytes) -> bytes:
     )
 
 
-def _make(tmp_path, *, raw=None, index=INDEX_HTML, url=None, sha=None):
+def _submissions(filing_date="2026-08-10", primary=NAME, cik="1780312"):
+    return json.dumps({
+        "cik": cik,
+        "filings": {"recent": {
+            "accessionNumber": [ACC], "filingDate": [filing_date],
+            "primaryDocument": [primary],
+        }},
+    }).encode()
+
+
+def _make(tmp_path, *, raw=None, index=INDEX_HTML, url=None, sha=None, sub=None, capture=None):
     raw = raw if raw is not None else _wrap(BODY)
     idx = index.encode()
+    sub = sub if sub is not None else _submissions()
     (tmp_path / "idx.htm").write_bytes(idx)
     (tmp_path / "f.htm").write_bytes(raw)
-    return {
+    (tmp_path / "sub.json").write_bytes(sub)
+    entry = {
         "file": "f.htm",
         "index_file": "idx.htm",
         "url": url or f"https://www.sec.gov/Archives/edgar/data/1780312/{FOLDER}/{NAME}",
         "index_url": "https://www.sec.gov/idx",
         "index_sha256": hashlib.sha256(idx).hexdigest(),
         "sha256": sha or hashlib.sha256(raw).hexdigest(),
+        "capture": {
+            "fetched_at_utc": "2026-10-01T08:50:00+00:00",
+            "host": "www.sec.gov",
+            "http_status": 200,
+            "second_fetch_identical": True,
+            "submissions_file": "sub.json",
+            "submissions_sha256": hashlib.sha256(sub).hexdigest(),
+            "is_primary_document": True,
+        },
     }
+    if capture is not None:
+        entry["capture"] = capture(entry["capture"]) if callable(capture) else capture
+    return entry
 
 
 def test_parse_index_reads_cik_accession_date_and_documents():
@@ -110,6 +134,35 @@ def test_size_far_from_index_is_rejected(tmp_path):
     big = _wrap(BODY + b"y" * 1000)
     with pytest.raises(EvidenceError, match="incoherente"):
         verify_entry(_make(tmp_path, raw=big), tmp_path, "1780312")
+
+
+def test_missing_or_unverified_capture_is_rejected(tmp_path):
+    entry = _make(tmp_path)
+    entry.pop("capture")
+    with pytest.raises(EvidenceError, match="capture"):
+        verify_entry(entry, tmp_path, "1780312")
+    with pytest.raises(EvidenceError, match="Captura"):
+        verify_entry(
+            _make(tmp_path, capture=lambda c: c | {"second_fetch_identical": False}),
+            tmp_path, "1780312",
+        )
+    with pytest.raises(EvidenceError, match="Captura"):
+        verify_entry(
+            _make(tmp_path, capture=lambda c: c | {"http_status": 403}), tmp_path, "1780312"
+        )
+
+
+def test_submissions_cross_check_catches_date_cik_and_primary(tmp_path):
+    with pytest.raises(EvidenceError, match="Filing Date"):
+        verify_entry(_make(tmp_path, sub=_submissions("2026-08-12")), tmp_path, "1780312")
+    with pytest.raises(EvidenceError, match="otro CIK"):
+        verify_entry(_make(tmp_path, sub=_submissions(cik="999")), tmp_path, "1780312")
+    with pytest.raises(EvidenceError, match="principal"):
+        verify_entry(_make(tmp_path, sub=_submissions(primary="other.htm")), tmp_path, "1780312")
+    entry = _make(tmp_path)
+    (tmp_path / "sub.json").write_bytes(_submissions("2026-08-12"))
+    with pytest.raises(EvidenceError, match="submissions_sha256"):
+        verify_entry(entry, tmp_path, "1780312")
 
 
 def test_strip_wrapper_roundtrip_and_unwrapped_passthrough():
@@ -167,4 +220,22 @@ def test_ingest_dry_run_idempotency_and_rejection(tmp_path, company, monkeypatch
         assert doc.metadata_["size_delta_vs_index"] == 7
         chunks = db.scalars(select(DocumentChunk).where(DocumentChunk.document_id == doc.id)).all()
         assert chunks and "31,520" in " ".join(c.text for c in chunks)
+        # Integridad: lo guardado y el checksum son los MISMOS bytes (raw con SGML).
+        stored = []
+        monkeypatch.setattr(
+            ingest_mod.DocumentStore, "put_bytes",
+            lambda self, t, k, name, content, **kw: stored.append(content) or "memory://x",
+        )
+        other = dict(entry)
+        (tmp_path / "f2.htm").write_bytes(_wrap(BODY))
+        other["file"] = "f2.htm"
+        db.delete(doc)
+        for chunk in chunks:
+            db.delete(chunk)
+        db.commit()
+        ingest_mod.ingest_filings(db, row, [other], tmp_path, dry_run=False)
+        assert hashlib.sha256(stored[0]).hexdigest() == entry["sha256"]
+        saved = db.scalars(select(Document).where(Document.company_id == company)).one()
+        assert saved.checksum == entry["sha256"]
+        assert saved.metadata_["body_sha256"] == hashlib.sha256(BODY).hexdigest()
     json.dumps(first)  # resultados serializables

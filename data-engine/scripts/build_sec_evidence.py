@@ -15,6 +15,7 @@ import argparse
 import hashlib
 import json
 import os
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -31,6 +32,7 @@ def main() -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     entries = []
+    submissions_cache: dict[str, tuple[str, str]] = {}
     with httpx.Client(headers={"User-Agent": USER_AGENT}, timeout=60, follow_redirects=False) as client:
         for spec in args.filing:
             cik, accession, *docs = spec.split(":")
@@ -40,9 +42,25 @@ def main() -> int:
             index = client.get(f"{base}/{accession}-index.htm")
             index.raise_for_status()
             (out / index_name).write_bytes(index.content)
+            if cik not in submissions_cache:
+                sub = client.get(f"https://data.sec.gov/submissions/CIK{int(cik):010d}.json")
+                sub.raise_for_status()
+                sub_name = f"submissions-{int(cik):010d}.json"
+                (out / sub_name).write_bytes(sub.content)
+                submissions_cache[cik] = (sub_name, hashlib.sha256(sub.content).hexdigest())
+                recent = sub.json()["filings"]["recent"]
+            else:
+                recent = json.loads((out / submissions_cache[cik][0]).read_bytes())["filings"]["recent"]
+            primary = (
+                recent["primaryDocument"][recent["accessionNumber"].index(accession)]
+                if accession in recent["accessionNumber"]
+                else None
+            )
             for doc in docs:
                 response = client.get(f"{base}/{doc}")
                 response.raise_for_status()
+                second = client.get(f"{base}/{doc}")
+                second.raise_for_status()
                 file_name = f"{folder}-{doc}"
                 (out / file_name).write_bytes(response.content)
                 entries.append({
@@ -53,6 +71,16 @@ def main() -> int:
                     "index_sha256": hashlib.sha256(index.content).hexdigest(),
                     "sha256": hashlib.sha256(response.content).hexdigest(),
                     "bytes_served": len(response.content),
+                    "capture": {
+                        "fetched_at_utc": datetime.now(UTC).isoformat(timespec="seconds"),
+                        "host": "www.sec.gov",
+                        "http_status": response.status_code,
+                        "second_fetch_identical": second.content == response.content,
+                        "last_modified": response.headers.get("last-modified"),
+                        "submissions_file": submissions_cache[cik][0],
+                        "submissions_sha256": submissions_cache[cik][1],
+                        "is_primary_document": doc == primary,
+                    },
                 })
     (out / "manifest.json").write_text(json.dumps(entries, indent=1), encoding="utf-8")
     print(f"{len(entries)} documentos; manifiesto en {out / 'manifest.json'}")

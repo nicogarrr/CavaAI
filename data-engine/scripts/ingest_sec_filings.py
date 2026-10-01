@@ -63,7 +63,7 @@ def ingest_filings(db, company: Company, entries: list[dict], base_dir: Path, *,
             results.append({"url": filing.url, "status": "dry_run", "chunks": len(chunks)})
             continue
         storage_uri = DocumentStore().put_bytes(
-            company.ticker, "primary_official", f"{filing.sha256[:12]}-{filing.filename}", filing.body,
+            company.ticker, "primary_official", f"{filing.sha256[:12]}-{filing.filename}", filing.raw,
             tenant_id=tenant_id, content_type="text/html",
         )
         document = Document(
@@ -83,6 +83,11 @@ def ingest_filings(db, company: Company, entries: list[dict], base_dir: Path, *,
                 "index_url": entry.get("index_url"),
                 "index_sha256": entry["index_sha256"],
                 "size_delta_vs_index": filing.size_delta,
+                "raw_sha256": filing.sha256,
+                "body_sha256": filing.body_sha256,
+                "checksum_semantics": "Document.checksum y storage = bytes servidos por sec.gov (raw, con envoltorio SGML si lo trae); body_sha256 = raw sin envoltorio, usado para parsear",
+                "origin_verification": "captura con cruce vivo contra sec.gov (indice, submissions, doble descarga); no es una firma criptografica de la SEC",
+                "capture": entry["capture"],
                 "parser": parsed.parser,
                 "warnings": parsed.warnings,
             },

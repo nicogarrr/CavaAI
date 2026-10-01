@@ -98,7 +98,9 @@ def strip_sgml_wrapper(raw: bytes) -> tuple[bytes, str | None, str | None]:
 
 @dataclass(frozen=True)
 class VerifiedFiling:
-    body: bytes
+    raw: bytes  # bytes servidos por sec.gov: lo que se guarda y lo que cubre sha256
+    body: bytes  # raw sin envoltorio SGML: solo para parsear
+    body_sha256: str
     sha256: str
     url: str
     filename: str
@@ -108,6 +110,37 @@ class VerifiedFiling:
     period: date | None
     accession: str
     cik: str
+
+
+def _check_capture(entry: dict, base_dir: Path, index: IndexEvidence, filename: str) -> None:
+    """Exige la captura hecha por build_sec_evidence con comprobaciones vivas
+    contra sec.gov: segunda descarga identica y cruce con data.sec.gov/submissions
+    (ticker, CIK, accession, Filing Date y documento principal). Falla cerrado si
+    falta: sin captura completa no hay primary_official."""
+    import json
+
+    capture = entry.get("capture")
+    if not isinstance(capture, dict):
+        raise EvidenceError("Falta el bloque capture del builder")
+    if capture.get("http_status") != 200 or capture.get("second_fetch_identical") is not True:
+        raise EvidenceError("Captura no verificada (estado HTTP o segunda descarga)")
+    if capture.get("host") != "www.sec.gov" or not capture.get("fetched_at_utc"):
+        raise EvidenceError("Captura sin host sec.gov o sin fecha de descarga")
+    sub_bytes = (base_dir / capture["submissions_file"]).read_bytes()
+    if hashlib.sha256(sub_bytes).hexdigest() != capture.get("submissions_sha256"):
+        raise EvidenceError("submissions guardado no coincide con submissions_sha256")
+    sub = json.loads(sub_bytes)
+    if str(sub.get("cik", "")).lstrip("0") != index.cik.lstrip("0"):
+        raise EvidenceError("submissions de otro CIK")
+    recent = sub.get("filings", {}).get("recent", {})
+    try:
+        position = recent["accessionNumber"].index(index.accession)
+    except ValueError as exc:
+        raise EvidenceError("submissions no lista ese accession") from exc
+    if date.fromisoformat(recent["filingDate"][position]) != index.filing_date:
+        raise EvidenceError("Filing Date de submissions distinto del indice")
+    if capture.get("is_primary_document") and recent["primaryDocument"][position] != filename:
+        raise EvidenceError("El documento no es el principal que dice submissions")
 
 
 def verify_entry(entry: dict, base_dir: Path, company_cik: str | None) -> VerifiedFiling:
@@ -146,8 +179,11 @@ def verify_entry(entry: dict, base_dir: Path, company_cik: str | None) -> Verifi
     sha = hashlib.sha256(raw).hexdigest()
     if sha != entry["sha256"]:
         raise EvidenceError("sha256 de los bytes servidos distinto del manifiesto")
+    _check_capture(entry, base_dir, index, filename)
     return VerifiedFiling(
+        raw=raw,
         body=body,
+        body_sha256=hashlib.sha256(body).hexdigest(),
         sha256=sha,
         url=entry["url"],
         filename=filename,
