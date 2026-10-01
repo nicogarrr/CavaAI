@@ -129,8 +129,46 @@ class InvestmentPlanService:
         plan = self.get_plan(db)
         if plan is None:
             return {"plan_exists": False}
-        contributions = self.list_contributions(db)
-        total_actual = sum((c.amount for c in contributions), Decimal("0"))
+        # F369: sin tope silencioso de filas y con cada aportacion convertida a la
+        # divisa base con el FX de su fecha; sin FX no se suma a la par.
+        contributions = list(
+            db.scalars(
+                select(PlanContribution)
+                .where(PlanContribution.plan_id == plan.id)
+                .order_by(PlanContribution.date)
+            )
+        )
+        portfolio = self.fx.portfolio(db)
+        base_currency = portfolio.base_currency.upper() if portfolio else None
+        total_actual = Decimal("0")
+        missing_fx: list[dict] = []
+        for contribution in contributions:
+            currency = (contribution.currency or "").upper()
+            if base_currency is not None and currency == base_currency:
+                total_actual += contribution.amount
+                continue
+            rate = (
+                self.fx.rate(
+                    db,
+                    quote_currency=currency,
+                    base_currency=base_currency,
+                    as_of=contribution.date,
+                )
+                if base_currency is not None
+                else None
+            )
+            if rate is None:
+                missing_fx.append(
+                    {
+                        "contribution_id": contribution.id,
+                        "quote_currency": currency,
+                        "base_currency": base_currency,
+                        "as_of": contribution.date.isoformat(),
+                    }
+                )
+                continue
+            total_actual += contribution.amount * rate
+        complete = not missing_fx
         months_elapsed = self._months_between(plan.start_date, date.today())
         total_expected = plan.monthly_contribution * Decimal(months_elapsed)
         return {
@@ -140,9 +178,12 @@ class InvestmentPlanService:
             "horizon_years": plan.horizon_years,
             "months_elapsed": months_elapsed,
             "expected_contributions_base": float(total_expected),
-            "actual_contributions_base": float(total_actual),
-            "gap_base": float(total_expected - total_actual),
-            "on_track": total_actual >= total_expected,
+            "actual_contributions_base": float(total_actual) if complete else None,
+            "actual_contributions_converted_base": float(total_actual),
+            "contributions_complete": complete,
+            "contributions_missing_fx": missing_fx,
+            "gap_base": float(total_expected - total_actual) if complete else None,
+            "on_track": (total_actual >= total_expected) if complete else None,
             "target_allocations": plan.target_allocations,
         }
 
