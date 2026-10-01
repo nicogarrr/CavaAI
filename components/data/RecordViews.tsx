@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -348,6 +348,12 @@ export function RecordDetail({
     columnLabels,
 }: RecordDetailProps) {
     const [data, setData] = useState<DataRecord | null>(record);
+
+    // F387: router.refresh() entrega un `record` nuevo; sin este sync la tarjeta
+    // conserva el estado copiado una sola vez y no refleja el plan guardado.
+    useEffect(() => {
+        setData(record);
+    }, [record]);
 
     const refresh = async () => {
         if (!fetchRecord) return;
