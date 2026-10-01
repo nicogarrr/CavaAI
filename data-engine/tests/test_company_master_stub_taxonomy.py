@@ -1,0 +1,51 @@
+"""Un stub del buscador (research_candidate/unassigned) recibe la taxonomia del
+maestro; una ficha ya decidida no se sobrescribe. Evita que ASTS caiga en
+standard_dcf en produccion, donde el seed completo no corre."""
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+from sqlalchemy.pool import StaticPool
+
+from app.core.database import Base
+from app.models import Company
+from app.seed import apply_master_taxonomy_to_stubs
+from app.valuation.engines.registry import resolve_engine_key
+
+
+def _db() -> Session:
+    engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
+    Base.metadata.create_all(engine, tables=[Company.__table__])
+    return Session(engine)
+
+
+def _stub(ticker: str, **over) -> Company:
+    data = dict(
+        ticker=ticker, name=ticker, exchange="UNKNOWN", currency="USD", sector="Unknown",
+        industry="Unknown", company_type="research_candidate", valuation_model="unassigned",
+        special_sources=[], special_risks=[], factor_tags=[],
+    )
+    data.update(over)
+    return Company(**data)
+
+
+def test_stub_in_master_gets_pre_revenue_engine():
+    db = _db()
+    db.add(_stub("ASTS"))
+    db.commit()
+    company = db.query(Company).filter_by(ticker="ASTS").one()
+    assert resolve_engine_key(company) == "standard_dcf"
+    assert apply_master_taxonomy_to_stubs(db) == ["ASTS"]
+    db.commit()
+    db.refresh(company)
+    assert company.company_type == "space_telecom_pre_fcf"
+    assert resolve_engine_key(company) == "pre_revenue"
+
+
+def test_decided_company_is_not_overwritten_and_unknown_ticker_untouched():
+    db = _db()
+    db.add(_stub("ASTS", valuation_model="sotp"))
+    db.add(_stub("ZZZZ"))
+    db.commit()
+    assert apply_master_taxonomy_to_stubs(db) == []
+    assert db.query(Company).filter_by(ticker="ASTS").one().valuation_model == "sotp"
+    assert db.query(Company).filter_by(ticker="ZZZZ").one().valuation_model == "unassigned"

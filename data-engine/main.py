@@ -17,7 +17,7 @@ from app.core.rate_limit import enforce_rate_limit
 from app.core.raw_body import RawBodyMiddleware
 from app.llm.factory import validate_llm_configuration
 from app.llm.model_aliases import configure_model_aliases
-from app.seed import ensure_company_master
+from app.seed import apply_master_taxonomy_to_stubs, ensure_company_master
 
 try:  # preload optional probe modules during process startup, not in a request
     import urllib.request  # noqa: F401
@@ -39,6 +39,10 @@ async def lifespan(_: FastAPI):
     validate_llm_configuration(settings)
     if settings.app_env.lower() != "production":
         ensure_company_master()
+    else:
+        with SessionLocal() as db:
+            apply_master_taxonomy_to_stubs(db)
+            db.commit()
 
     # Schedule the worker jobs (Dramatiq enqueues) in the background without
     # blocking startup. Flagged off in tests via WORKERS_ENABLED=false.
