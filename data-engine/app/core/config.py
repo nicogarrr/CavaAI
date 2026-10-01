@@ -189,7 +189,8 @@ class Settings(BaseSettings):
     edgartools_identity: str | None = None
     # Tope de peticiones/segundo a la SEC via edgartools (maximo SEC: 10).
     # Env: EDGARTOOLS_REQUESTS_PER_SECOND.
-    edgartools_requests_per_second: float = Field(default=8, ge=0.1, le=10)    # Directorio con snapshots ESEF (manifest.json issuers LEI->{ticker,...},
+    edgartools_requests_per_second: float = Field(default=8, ge=0.1, le=10)
+    # Directorio con snapshots ESEF (manifest.json issuers LEI->{ticker,...},
     # snapshots/<LEI>.json normalizados desde filings.xbrl.org). Mismo motivo
     # que SEC: los datos viajan con la app, nunca se piden en caliente.
     esef_snapshot_dir: str | None = None
