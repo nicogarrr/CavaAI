@@ -1,0 +1,3346 @@
+{
+  "dataset": "llm_layers_v1",
+  "date": "2026-10-01",
+  "note": "Evals de las 4 capas LLM con judge determinista. NADA de esto se ha ejecutado contra un LLM real: cada `model_output` es una fixture SINTETICA escrita a mano y declarada como tal con `output_origin: synthetic_fixture`. El proveedor nunca se llama, ni en el dataset ni en el runner. Los controles negativos (`expect_gate_failure`) demuestran que las puertas muerden: deben FALLAR y el runner falla si pasan.",
+  "shape": {
+    "input": "el texto/entrada que se habria dado al LLM",
+    "frozen_facts": "las unicas cifras permitidas en la salida (normalizadas con evals/gates._norm_number)",
+    "model_output": "salida congelada y sintetica; `null` en los casos de fallo de proveedor, que entonces declaran `provider`",
+    "layer_output": "lo que la capa devuelve al llamante tras resolver el caso (incluye `degraded`, `abstained` y `answer_source`)",
+    "expected.degraded": "obligatorio en todo caso: la capa tiene que decir si degrado",
+    "expected.abstain": "obligatorio en todo caso: la capa tiene que decir si se callo",
+    "expected.tolerated_numbers": "cifras que SI son correctas y no estan en frozen_facts (p.ej. una confianza calibrada)"
+  },
+  "cases": [
+    {
+      "id": "kpi-happy-001",
+      "layer": "kpi_extraction",
+      "category": "happy_path",
+      "input": "chunk 3: ACME cerro el ejercicio con ingresos de 1.234,5 M EUR y un margen bruto alto.",
+      "frozen_facts": {
+        "revenue_eur_m": 1234.5,
+        "gross_margin_pct": 42.0
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_metric_keys": [
+        "revenue",
+        "gross_margin"
+      ],
+      "input_chunk_ids": [
+        3,
+        4
+      ],
+      "model_output": {
+        "observations": [
+          {
+            "metric_key": "revenue",
+            "raw_label": "Ingresos consolidados",
+            "raw_value": "1.234,5 M EUR",
+            "raw_unit": "EUR millions",
+            "period": "FY2025",
+            "fiscal_year": 2025,
+            "fiscal_quarter": "FY",
+            "chunk_id": 3,
+            "quote": "ingresos de 1.234,5 M EUR",
+            "confidence": 0.91
+          }
+        ]
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "model",
+        "scenario_probabilities": {
+          "bear": 0.2,
+          "base": 0.55,
+          "bull": 0.25
+        },
+        "evidence": [
+          {
+            "id": "ev-1"
+          }
+        ],
+        "claims": [
+          {
+            "text": "Ingresos consolidados de 1.234,5 M EUR",
+            "material": true,
+            "evidence_ids": [
+              "ev-1"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "kpi-happy-002",
+      "layer": "kpi_extraction",
+      "category": "happy_path",
+      "input": "chunk 4: el flujo de caja libre del ejercicio fue 99,585 M EUR.",
+      "frozen_facts": {
+        "fcf_eur_m": 99585.0
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_metric_keys": [
+        "fcf",
+        "revenue"
+      ],
+      "input_chunk_ids": [
+        4,
+        5
+      ],
+      "model_output": {
+        "observations": [
+          {
+            "metric_key": "fcf",
+            "raw_label": "Flujo de caja libre",
+            "raw_value": "99,585 M EUR",
+            "raw_unit": "EUR millions",
+            "period": "FY2025",
+            "fiscal_year": 2025,
+            "fiscal_quarter": "FY",
+            "chunk_id": 4,
+            "quote": "flujo de caja libre del ejercicio fue 99,585 M EUR",
+            "confidence": 1.0
+          }
+        ]
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "model",
+        "scenario_probabilities": {
+          "bear": 0.25,
+          "base": 0.5,
+          "bull": 0.25
+        },
+        "evidence": [
+          {
+            "id": "ev-2"
+          }
+        ],
+        "claims": [
+          {
+            "text": "Flujo de caja libre de 99,585 M EUR",
+            "material": true,
+            "evidence_ids": [
+              "ev-2"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "kpi-malformed-001",
+      "layer": "kpi_extraction",
+      "category": "malformed_output",
+      "input": "chunk 3: ingresos del ejercicio de 1.234,5 M EUR.",
+      "frozen_facts": {
+        "revenue_eur_m": 1234.5
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_metric_keys": [
+        "revenue"
+      ],
+      "input_chunk_ids": [
+        3
+      ],
+      "model_output": "Ingresos del ejercicio: 1.234,5 M EUR.",
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "model",
+        "scenario_probabilities": {
+          "bear": 0.2,
+          "base": 0.6,
+          "bull": 0.2
+        },
+        "evidence": [],
+        "claims": []
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "expect_gate_failure": "output_schema_valid",
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "kpi-malformed-002",
+      "layer": "kpi_extraction",
+      "category": "malformed_output",
+      "input": "chunk 3: ingresos del ejercicio de 1.234,5 M EUR.",
+      "frozen_facts": {
+        "revenue_eur_m": 1234.5
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_metric_keys": [
+        "revenue"
+      ],
+      "input_chunk_ids": [
+        3
+      ],
+      "model_output": {
+        "observations": [
+          {
+            "metric_key": "revenue",
+            "raw_label": "Ingresos consolidados",
+            "raw_value": "1.234,5 M EUR",
+            "raw_unit": "EUR millions",
+            "period": "FY2025",
+            "fiscal_year": 2025,
+            "fiscal_quarter": "FY",
+            "chunk_id": 3,
+            "confidence": 0.8,
+            "notes": "estimado por el modelo"
+          }
+        ]
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "model",
+        "scenario_probabilities": {
+          "bear": 0.2,
+          "base": 0.6,
+          "bull": 0.2
+        },
+        "evidence": [],
+        "claims": []
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "expect_gate_failure": "output_schema_valid",
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "kpi-unknown-label-001",
+      "layer": "kpi_extraction",
+      "category": "unknown_label",
+      "input": "chunk 3: ingresos del ejercicio de 1.234,5 M EUR.",
+      "frozen_facts": {
+        "revenue_eur_m": 1234.5
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_metric_keys": [
+        "revenue"
+      ],
+      "input_chunk_ids": [
+        3
+      ],
+      "model_output": {
+        "observations": [
+          {
+            "metric_key": "revenue_margins",
+            "raw_label": "Ingresos consolidados",
+            "raw_value": "1.234,5 M EUR",
+            "raw_unit": "EUR millions",
+            "period": "FY2025",
+            "fiscal_year": 2025,
+            "fiscal_quarter": "FY",
+            "chunk_id": 3,
+            "quote": "ingresos del ejercicio de 1.234,5 M EUR",
+            "confidence": 0.8
+          }
+        ]
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "model",
+        "scenario_probabilities": {
+          "bear": 0.2,
+          "base": 0.6,
+          "bull": 0.2
+        },
+        "evidence": [],
+        "claims": []
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "expect_gate_failure": "no_unknown_labels",
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "kpi-confidence-001",
+      "layer": "kpi_extraction",
+      "category": "out_of_range_confidence",
+      "input": "chunk 3: ingresos del ejercicio de 1.234,5 M EUR.",
+      "frozen_facts": {
+        "revenue_eur_m": 1234.5
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_metric_keys": [
+        "revenue"
+      ],
+      "input_chunk_ids": [
+        3
+      ],
+      "model_output": {
+        "observations": [
+          {
+            "metric_key": "revenue",
+            "raw_label": "Ingresos consolidados",
+            "raw_value": "1.234,5 M EUR",
+            "raw_unit": "EUR millions",
+            "period": "FY2025",
+            "fiscal_year": 2025,
+            "fiscal_quarter": "FY",
+            "chunk_id": 3,
+            "quote": "ingresos del ejercicio de 1.234,5 M EUR",
+            "confidence": 1.4
+          }
+        ]
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "model",
+        "scenario_probabilities": {
+          "bear": 0.2,
+          "base": 0.6,
+          "bull": 0.2
+        },
+        "evidence": [],
+        "claims": []
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "expect_gate_failure": "confidence_in_range",
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "kpi-confidence-002",
+      "layer": "kpi_extraction",
+      "category": "out_of_range_confidence",
+      "input": "chunk 3: ingresos del ejercicio de 1.234,5 M EUR y margen bruto del 42%.",
+      "frozen_facts": {
+        "revenue_eur_m": 1234.5,
+        "gross_margin_pct": 42.0
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_metric_keys": [
+        "revenue",
+        "gross_margin"
+      ],
+      "input_chunk_ids": [
+        3
+      ],
+      "model_output": {
+        "observations": [
+          {
+            "metric_key": "revenue",
+            "raw_label": "Ingresos consolidados",
+            "raw_value": "1.234,5 M EUR",
+            "raw_unit": "EUR millions",
+            "period": "FY2025",
+            "fiscal_year": 2025,
+            "fiscal_quarter": "FY",
+            "chunk_id": 3,
+            "quote": "ingresos del ejercicio de 1.234,5 M EUR",
+            "confidence": 0.0
+          },
+          {
+            "metric_key": "gross_margin",
+            "raw_label": "Margen bruto",
+            "raw_value": "42%",
+            "raw_unit": "percent",
+            "period": "FY2025",
+            "fiscal_year": 2025,
+            "fiscal_quarter": "FY",
+            "chunk_id": 3,
+            "quote": "margen bruto del 42%",
+            "confidence": 1.0
+          }
+        ]
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "model",
+        "scenario_probabilities": {
+          "bear": 0.15,
+          "base": 0.6,
+          "bull": 0.25
+        },
+        "evidence": [],
+        "claims": []
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "kpi-hallucinated-001",
+      "layer": "kpi_extraction",
+      "category": "hallucinated_number",
+      "input": "chunk 3: ingresos del ejercicio de 1.234,5 M EUR.",
+      "frozen_facts": {
+        "revenue_eur_m": 1234.5
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_metric_keys": [
+        "revenue"
+      ],
+      "input_chunk_ids": [
+        3
+      ],
+      "model_output": {
+        "observations": [
+          {
+            "metric_key": "revenue",
+            "raw_label": "Ingresos consolidados",
+            "raw_value": "1.500,0 M EUR",
+            "raw_unit": "EUR millions",
+            "period": "FY2025",
+            "fiscal_year": 2025,
+            "fiscal_quarter": "FY",
+            "chunk_id": 3,
+            "quote": "ingresos del ejercicio de 1.500,0 M EUR",
+            "confidence": 0.75
+          }
+        ]
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "model",
+        "scenario_probabilities": {
+          "bear": 0.2,
+          "base": 0.6,
+          "bull": 0.2
+        },
+        "evidence": [],
+        "claims": []
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "expect_gate_failure": "no_hallucinated_numbers",
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "kpi-hallucinated-002-coma",
+      "layer": "kpi_extraction",
+      "category": "hallucinated_number",
+      "input": "chunk 5: el margen bruto del ejercicio fue del 12,5%.",
+      "frozen_facts": {
+        "gross_margin_pct": 12.5
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_metric_keys": [
+        "gross_margin"
+      ],
+      "input_chunk_ids": [
+        5
+      ],
+      "model_output": {
+        "observations": [
+          {
+            "metric_key": "gross_margin",
+            "raw_label": "Margen bruto",
+            "raw_value": "1,25%",
+            "raw_unit": "percent",
+            "period": "FY2025",
+            "fiscal_year": 2025,
+            "fiscal_quarter": "FY",
+            "chunk_id": 5,
+            "quote": "margen bruto del 1,25%",
+            "confidence": 0.8
+          }
+        ]
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "model",
+        "scenario_probabilities": {
+          "bear": 0.2,
+          "base": 0.6,
+          "bull": 0.2
+        },
+        "evidence": [],
+        "claims": []
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "expect_gate_failure": "no_hallucinated_numbers",
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "kpi-decimal-comma-001",
+      "layer": "kpi_extraction",
+      "category": "happy_path",
+      "input": "chunk 5: el margen bruto del ejercicio fue del 12,5%.",
+      "frozen_facts": {
+        "gross_margin_pct": 12.5
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_metric_keys": [
+        "gross_margin"
+      ],
+      "input_chunk_ids": [
+        5
+      ],
+      "model_output": {
+        "observations": [
+          {
+            "metric_key": "gross_margin",
+            "raw_label": "Margen bruto",
+            "raw_value": "12,5%",
+            "raw_unit": "percent",
+            "period": "FY2025",
+            "fiscal_year": 2025,
+            "fiscal_quarter": "FY",
+            "chunk_id": 5,
+            "quote": "margen bruto del 12,5%",
+            "confidence": 0.87
+          }
+        ]
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "model",
+        "scenario_probabilities": {
+          "bear": 0.2,
+          "base": 0.5,
+          "bull": 0.3
+        },
+        "evidence": [],
+        "claims": []
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "kpi-evidence-leak-001",
+      "layer": "kpi_extraction",
+      "category": "evidence_leak",
+      "input": "chunk 3: ingresos del ejercicio de 1.234,5 M EUR.",
+      "frozen_facts": {
+        "revenue_eur_m": 1234.5
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_metric_keys": [
+        "revenue"
+      ],
+      "input_chunk_ids": [
+        3,
+        4
+      ],
+      "model_output": {
+        "observations": [
+          {
+            "metric_key": "revenue",
+            "raw_label": "Ingresos consolidados",
+            "raw_value": "1.234,5 M EUR",
+            "raw_unit": "EUR millions",
+            "period": "FY2025",
+            "fiscal_year": 2025,
+            "fiscal_quarter": "FY",
+            "chunk_id": 99,
+            "quote": "ingresos del ejercicio de 1.234,5 M EUR",
+            "confidence": 0.9
+          }
+        ]
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "model",
+        "scenario_probabilities": {
+          "bear": 0.2,
+          "base": 0.6,
+          "bull": 0.2
+        },
+        "evidence": [],
+        "claims": []
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "expect_gate_failure": "claims_have_evidence",
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "kpi-evidence-leak-002",
+      "layer": "kpi_extraction",
+      "category": "evidence_leak",
+      "input": "chunk 3: ingresos del ejercicio de 1.234,5 M EUR.",
+      "frozen_facts": {
+        "revenue_eur_m": 1234.5
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_metric_keys": [
+        "revenue"
+      ],
+      "input_chunk_ids": [
+        3
+      ],
+      "model_output": {
+        "observations": [
+          {
+            "metric_key": "revenue",
+            "raw_label": "Ingresos consolidados",
+            "raw_value": "1.234,5 M EUR",
+            "raw_unit": "EUR millions",
+            "period": "FY2025",
+            "fiscal_year": 2025,
+            "fiscal_quarter": "FY",
+            "chunk_id": 3,
+            "quote": "ingresos del ejercicio de 1.234,5 M EUR",
+            "confidence": 0.9
+          }
+        ]
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "model",
+        "scenario_probabilities": {
+          "bear": 0.2,
+          "base": 0.6,
+          "bull": 0.2
+        },
+        "evidence": [
+          {
+            "id": "ev-1"
+          }
+        ],
+        "claims": [
+          {
+            "text": "Ingresos de 1.234,5 M EUR",
+            "material": true,
+            "evidence_ids": [
+              "ev-9"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "expect_gate_failure": "claims_have_evidence",
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "kpi-provider-failure-001",
+      "layer": "kpi_extraction",
+      "category": "provider_failure_shape",
+      "input": "chunk 3: ingresos del ejercicio de 1.234,5 M EUR.",
+      "frozen_facts": {
+        "revenue_eur_m": 1234.5
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_metric_keys": [
+        "revenue"
+      ],
+      "input_chunk_ids": [
+        3
+      ],
+      "model_output": null,
+      "provider": {
+        "failure": "http_error",
+        "detail": "HTTP 503 del proveedor de modelos"
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": true,
+        "abstained": true,
+        "answer_source": "abstained",
+        "scenario_probabilities": {
+          "bear": 0.2,
+          "base": 0.4,
+          "bull": 0.4
+        },
+        "evidence": [],
+        "claims": []
+      },
+      "expected": {
+        "degraded": true,
+        "abstain": true
+      },
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "kpi-provider-failure-002",
+      "layer": "kpi_extraction",
+      "category": "provider_failure_shape",
+      "input": "chunk 3: ingresos del ejercicio de 1.234,5 M EUR.",
+      "frozen_facts": {
+        "revenue_eur_m": 1234.5
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_metric_keys": [
+        "revenue"
+      ],
+      "input_chunk_ids": [
+        3
+      ],
+      "model_output": null,
+      "provider": {
+        "failure": "empty_content",
+        "detail": "respuesta vacia tras el reintento unico"
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": true,
+        "abstained": true,
+        "answer_source": "abstained",
+        "scenario_probabilities": {
+          "bear": 0.33,
+          "base": 0.34,
+          "bull": 0.33
+        },
+        "evidence": [],
+        "claims": []
+      },
+      "expected": {
+        "degraded": true,
+        "abstain": true
+      },
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "kpi-provider-failure-003",
+      "layer": "kpi_extraction",
+      "category": "provider_failure_shape",
+      "input": "chunk 3: ingresos del ejercicio de 1.234,5 M EUR.",
+      "frozen_facts": {
+        "revenue_eur_m": 1234.5
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_metric_keys": [
+        "revenue"
+      ],
+      "input_chunk_ids": [
+        3
+      ],
+      "model_output": null,
+      "provider": {
+        "failure": "malformed_json",
+        "detail": "JSON truncado a mitad de observations"
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": true,
+        "abstained": true,
+        "answer_source": "abstained",
+        "scenario_probabilities": {
+          "bear": 0.3,
+          "base": 0.4,
+          "bull": 0.3
+        },
+        "evidence": [],
+        "claims": []
+      },
+      "expected": {
+        "degraded": true,
+        "abstain": true
+      },
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "kpi-refusal-001",
+      "layer": "kpi_extraction",
+      "category": "refusal_correcto",
+      "input": "chunk 3: ingresos del ejercicio de 1.234,5 M EUR, sin desglose por segmento.",
+      "frozen_facts": {
+        "revenue_eur_m": 1234.5
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_metric_keys": [
+        "revenue",
+        "backlog"
+      ],
+      "input_chunk_ids": [
+        3
+      ],
+      "model_output": {
+        "observations": []
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": true,
+        "answer_source": "model",
+        "scenario_probabilities": {
+          "bear": 0.1,
+          "base": 0.5,
+          "bull": 0.4
+        },
+        "evidence": [],
+        "claims": []
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": true
+      },
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "kpi-contradiction-001",
+      "layer": "kpi_extraction",
+      "category": "contradiction",
+      "input": "chunk 3: ingresos del ejercicio de 1.234,5 M EUR.",
+      "frozen_facts": {
+        "revenue_eur_m": 1234.5
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_metric_keys": [
+        "revenue"
+      ],
+      "input_chunk_ids": [
+        3
+      ],
+      "model_output": {
+        "observations": [
+          {
+            "metric_key": "revenue",
+            "raw_label": "Ingresos consolidados",
+            "raw_value": "1.234,5 M EUR",
+            "raw_unit": "EUR millions",
+            "period": "FY2025",
+            "fiscal_year": 2025,
+            "fiscal_quarter": "FY",
+            "chunk_id": 3,
+            "quote": "ingresos del ejercicio de 1.234,5 M EUR",
+            "confidence": 0.9
+          }
+        ]
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "model",
+        "scenario_probabilities": {
+          "bear": 0.6,
+          "base": 0.3,
+          "bull": 0.1
+        },
+        "evidence": [],
+        "claims": []
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "expect_gate_failure": "scenario_ordering",
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "princ-happy-001",
+      "layer": "principles",
+      "category": "happy_path",
+      "input": "chunk 12: our enterprise moat is switching costs; renewals are contractual and churn stays low.",
+      "frozen_facts": {
+        "net_retention": 1.12
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_labels": [
+        "moat",
+        "pricing_power",
+        "capital_allocation"
+      ],
+      "input_chunk_ids": [
+        12,
+        13
+      ],
+      "model_output": {
+        "principles": [
+          {
+            "principle": "El foso de versiones empresarial se apoya en costes de cambio",
+            "category": "moat",
+            "application_conditions": [
+              "contratos anuales de renovacion"
+            ],
+            "exceptions": [
+              "segmento de consumo"
+            ],
+            "company_tickers": [
+              "ACME"
+            ],
+            "exact_fragment": "our enterprise moat is switching costs",
+            "chunk_id": 12,
+            "confidence": 0.88
+          }
+        ]
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "model",
+        "scenario_probabilities": {
+          "bear": 0.2,
+          "base": 0.55,
+          "bull": 0.25
+        },
+        "evidence": [
+          {
+            "id": "ev-1"
+          }
+        ],
+        "claims": [
+          {
+            "text": "Foso de versiones con costes de cambio",
+            "material": true,
+            "evidence_ids": [
+              "ev-1"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "princ-happy-002",
+      "layer": "principles",
+      "category": "happy_path",
+      "input": "chunk 40: capital allocation is disciplined; we reinvest only above a hurdle rate and return the rest. chunk 41: pricing power comes from renewal uplift rather than list price.",
+      "frozen_facts": {
+        "reinvestment_rate": 0.18
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_labels": [
+        "moat",
+        "pricing_power",
+        "capital_allocation"
+      ],
+      "input_chunk_ids": [
+        40,
+        41
+      ],
+      "model_output": {
+        "principles": [
+          {
+            "principle": "La asignacion de capital solo reinvierte por encima de una barrera",
+            "category": "capital_allocation",
+            "application_conditions": [
+              "barrera de rentabilidad superada"
+            ],
+            "exceptions": [
+              "integraciones obligatorias"
+            ],
+            "company_tickers": [
+              "ACME"
+            ],
+            "exact_fragment": "we reinvest only above a hurdle rate and return the rest",
+            "chunk_id": 40,
+            "confidence": 0.79
+          },
+          {
+            "principle": "El poder de precios viene de la subida en la renovacion",
+            "category": "pricing_power",
+            "application_conditions": [
+              "cartera con renovacion anual"
+            ],
+            "exceptions": [],
+            "company_tickers": [
+              "ACME"
+            ],
+            "exact_fragment": "pricing power comes from renewal uplift rather than list price",
+            "chunk_id": 41,
+            "confidence": 0.84
+          }
+        ]
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "model",
+        "scenario_probabilities": {
+          "bear": 0.25,
+          "base": 0.5,
+          "bull": 0.25
+        },
+        "evidence": [
+          {
+            "id": "ev-1"
+          }
+        ],
+        "claims": [
+          {
+            "text": "Reinversion solo por encima de la barrera",
+            "material": true,
+            "evidence_ids": [
+              "ev-1"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "princ-decimal-comma-001",
+      "layer": "principles",
+      "category": "happy_path",
+      "input": "chunk 55: our growth engine compounds at 18,4% per year in the enterprise segment.",
+      "frozen_facts": {
+        "revenue_growth_pct": 18.4
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_labels": [
+        "growth",
+        "moat"
+      ],
+      "input_chunk_ids": [
+        55
+      ],
+      "model_output": {
+        "principles": [
+          {
+            "principle": "El motor de crecimiento compone al 18,4% anual en la division empresarial",
+            "category": "growth",
+            "application_conditions": [
+              "cartera empresarial en expansion"
+            ],
+            "exceptions": [
+              "divisiones regulatorias"
+            ],
+            "company_tickers": [
+              "ACME"
+            ],
+            "exact_fragment": "our growth engine compounds at 18,4% per year",
+            "chunk_id": 55,
+            "confidence": 0.82
+          }
+        ]
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "model",
+        "scenario_probabilities": {
+          "bear": 0.25,
+          "base": 0.45,
+          "bull": 0.3
+        },
+        "evidence": [],
+        "claims": []
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "princ-malformed-001",
+      "layer": "principles",
+      "category": "malformed_output",
+      "input": "chunk 12: our enterprise moat is switching costs.",
+      "frozen_facts": {
+        "net_retention": 1.12
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_labels": [
+        "moat"
+      ],
+      "input_chunk_ids": [
+        12
+      ],
+      "model_output": "El principio dominante es el foso competitivo de la suite.",
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "model",
+        "scenario_probabilities": {
+          "bear": 0.25,
+          "base": 0.5,
+          "bull": 0.25
+        },
+        "evidence": [],
+        "claims": []
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "expect_gate_failure": "output_schema_valid",
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "princ-unknown-label-001",
+      "layer": "principles",
+      "category": "unknown_label",
+      "input": "chunk 12: our enterprise moat is switching costs.",
+      "frozen_facts": {
+        "net_retention": 1.12
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_labels": [
+        "moat",
+        "pricing_power"
+      ],
+      "input_chunk_ids": [
+        12
+      ],
+      "model_output": {
+        "principles": [
+          {
+            "principle": "El principio de gestion dominante",
+            "category": "gestion",
+            "application_conditions": [],
+            "exceptions": [],
+            "company_tickers": [
+              "ACME"
+            ],
+            "exact_fragment": "our enterprise moat is switching costs",
+            "chunk_id": 12,
+            "confidence": 0.7
+          }
+        ]
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "model",
+        "scenario_probabilities": {
+          "bear": 0.25,
+          "base": 0.5,
+          "bull": 0.25
+        },
+        "evidence": [],
+        "claims": []
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "expect_gate_failure": "no_unknown_labels",
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "princ-confidence-001",
+      "layer": "principles",
+      "category": "out_of_range_confidence",
+      "input": "chunk 12: our enterprise moat is switching costs.",
+      "frozen_facts": {
+        "net_retention": 1.12
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_labels": [
+        "moat"
+      ],
+      "input_chunk_ids": [
+        12
+      ],
+      "model_output": {
+        "principles": [
+          {
+            "principle": "El foso se apoya en costes de cambio",
+            "category": "moat",
+            "application_conditions": [],
+            "exceptions": [],
+            "company_tickers": [
+              "ACME"
+            ],
+            "exact_fragment": "our enterprise moat is switching costs",
+            "chunk_id": 12,
+            "confidence": -0.2
+          }
+        ]
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "model",
+        "scenario_probabilities": {
+          "bear": 0.25,
+          "base": 0.5,
+          "bull": 0.25
+        },
+        "evidence": [],
+        "claims": []
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "expect_gate_failure": "confidence_in_range",
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "princ-evidence-leak-001",
+      "layer": "principles",
+      "category": "evidence_leak",
+      "input": "chunk 12: our enterprise moat is switching costs.",
+      "frozen_facts": {
+        "net_retention": 1.12
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_labels": [
+        "moat"
+      ],
+      "input_chunk_ids": [
+        12
+      ],
+      "model_output": {
+        "principles": [
+          {
+            "principle": "La innovacion sostiene una ventaja durable",
+            "category": "moat",
+            "application_conditions": [],
+            "exceptions": [],
+            "company_tickers": [
+              "ACME"
+            ],
+            "exact_fragment": "innovation drives durable advantage",
+            "chunk_id": 12,
+            "confidence": 0.8
+          }
+        ]
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "model",
+        "scenario_probabilities": {
+          "bear": 0.25,
+          "base": 0.5,
+          "bull": 0.25
+        },
+        "evidence": [],
+        "claims": []
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "expect_gate_failure": "claims_have_evidence",
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "princ-evidence-leak-002",
+      "layer": "principles",
+      "category": "evidence_leak",
+      "input": "chunk 12: our enterprise moat is switching costs.",
+      "frozen_facts": {
+        "net_retention": 1.12
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_labels": [
+        "moat"
+      ],
+      "input_chunk_ids": [
+        12
+      ],
+      "model_output": {
+        "principles": [
+          {
+            "principle": "El foso se apoya en costes de cambio",
+            "category": "moat",
+            "application_conditions": [],
+            "exceptions": [],
+            "company_tickers": [
+              "ACME"
+            ],
+            "exact_fragment": "our enterprise moat is switching costs",
+            "chunk_id": 12,
+            "confidence": 0.8
+          }
+        ]
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "model",
+        "scenario_probabilities": {
+          "bear": 0.25,
+          "base": 0.5,
+          "bull": 0.25
+        },
+        "evidence": [],
+        "claims": [
+          {
+            "text": "El principio no lleva evidencia vinculada",
+            "material": true,
+            "evidence_ids": []
+          }
+        ]
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "expect_gate_failure": "claims_have_evidence",
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "princ-hallucinated-001",
+      "layer": "principles",
+      "category": "hallucinated_number",
+      "input": "chunk 12: our enterprise moat is switching costs and retention stays high.",
+      "frozen_facts": {
+        "net_retention": 1.12
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_labels": [
+        "moat"
+      ],
+      "input_chunk_ids": [
+        12
+      ],
+      "model_output": {
+        "principles": [
+          {
+            "principle": "La retencion neta del 142% sostiene el foso",
+            "category": "moat",
+            "application_conditions": [],
+            "exceptions": [],
+            "company_tickers": [
+              "ACME"
+            ],
+            "exact_fragment": "retention stays high",
+            "chunk_id": 12,
+            "confidence": 0.8
+          }
+        ]
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "model",
+        "scenario_probabilities": {
+          "bear": 0.25,
+          "base": 0.5,
+          "bull": 0.25
+        },
+        "evidence": [],
+        "claims": []
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "expect_gate_failure": "no_hallucinated_numbers",
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "princ-provider-failure-001",
+      "layer": "principles",
+      "category": "provider_failure_shape",
+      "input": "chunk 12: our enterprise moat is switching costs.",
+      "frozen_facts": {
+        "net_retention": 1.12
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_labels": [
+        "moat"
+      ],
+      "input_chunk_ids": [
+        12
+      ],
+      "model_output": null,
+      "provider": {
+        "failure": "credit_exhausted",
+        "detail": "Jev sin credito y LLM alternativo caido"
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": true,
+        "abstained": true,
+        "answer_source": "abstained",
+        "scenario_probabilities": {
+          "bear": 0.2,
+          "base": 0.45,
+          "bull": 0.35
+        },
+        "evidence": [],
+        "claims": []
+      },
+      "expected": {
+        "degraded": true,
+        "abstain": true
+      },
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "princ-fallback-001",
+      "layer": "principles",
+      "category": "fallback_degraded",
+      "input": "chunk 12: our enterprise moat is switching costs.",
+      "frozen_facts": {
+        "net_retention": 1.12
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_labels": [
+        "moat"
+      ],
+      "input_chunk_ids": [
+        12
+      ],
+      "model_output": null,
+      "provider": {
+        "failure": "provider_raises",
+        "detail": "el proveedor lanzo una excepcion"
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": true,
+        "abstained": true,
+        "answer_source": "abstained",
+        "caveat": "LLM no disponible: no se extrajeron principios y no se han sustituido por conocimiento del modelo.",
+        "scenario_probabilities": {
+          "bear": 0.2,
+          "base": 0.5,
+          "bull": 0.3
+        },
+        "evidence": [],
+        "claims": []
+      },
+      "expected": {
+        "degraded": true,
+        "abstain": true
+      },
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "princ-refusal-001",
+      "layer": "principles",
+      "category": "refusal_correcto",
+      "input": "chunk 12: fragmento generico sin ninguna afirmacion duradera sobre el negocio.",
+      "frozen_facts": {
+        "net_retention": 1.12
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_labels": [
+        "moat",
+        "growth"
+      ],
+      "input_chunk_ids": [
+        12
+      ],
+      "model_output": {
+        "principles": []
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": true,
+        "answer_source": "model",
+        "scenario_probabilities": {
+          "bear": 0.2,
+          "base": 0.4,
+          "bull": 0.4
+        },
+        "evidence": [],
+        "claims": []
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": true
+      },
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "princ-contradiction-001",
+      "layer": "principles",
+      "category": "contradiction",
+      "input": "chunk 12: our enterprise moat is switching costs.",
+      "frozen_facts": {
+        "net_retention": 1.12
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_labels": [
+        "moat"
+      ],
+      "input_chunk_ids": [
+        12
+      ],
+      "model_output": {
+        "principles": [
+          {
+            "principle": "El foso se apoya en costes de cambio",
+            "category": "moat",
+            "application_conditions": [],
+            "exceptions": [],
+            "company_tickers": [
+              "ACME"
+            ],
+            "exact_fragment": "our enterprise moat is switching costs",
+            "chunk_id": 12,
+            "confidence": 0.8
+          }
+        ]
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "model",
+        "scenario_probabilities": {
+          "bear": 0.55,
+          "base": 0.35,
+          "bull": 0.1
+        },
+        "evidence": [],
+        "claims": []
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "expect_gate_failure": "scenario_ordering",
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "narr-happy-001",
+      "layer": "narrative",
+      "category": "happy_path",
+      "input": "ACME cotiza a 82,50 EUR con un escenario base de 96,40 EUR.",
+      "frozen_facts": {
+        "current_price": 82.5,
+        "base_value": 96.4
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_section_ids": [
+        "lo_que_sabemos",
+        "hipotesis",
+        "titulares",
+        "salvedad"
+      ],
+      "model_output": {
+        "section_ids": [
+          "lo_que_sabemos",
+          "salvedad"
+        ]
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "model",
+        "scenario_probabilities": {
+          "bear": 0.2,
+          "base": 0.6,
+          "bull": 0.2
+        },
+        "evidence": [
+          {
+            "id": "doc-1"
+          }
+        ],
+        "claims": [
+          {
+            "text": "Escenario base por encima del precio actual",
+            "material": true,
+            "evidence_ids": [
+              "doc-1"
+            ]
+          }
+        ],
+        "sections": [
+          {
+            "section_id": "lo_que_sabemos",
+            "paragraphs": [
+              "ACME cotiza a 82,50 EUR frente a un escenario base de 96,40 EUR."
+            ],
+            "citations": [
+              "doc-1"
+            ]
+          },
+          {
+            "section_id": "salvedad",
+            "paragraphs": [
+              "Esto no es recomendacion de inversion."
+            ],
+            "citations": []
+          }
+        ]
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "narr-happy-002",
+      "layer": "narrative",
+      "category": "happy_path",
+      "input": "ACME publico un comunicado con un crecimiento del 18,5% y mantiene su guidance previa.",
+      "frozen_facts": {
+        "revenue_growth_pct": 18.5
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_section_ids": [
+        "lo_que_sabemos",
+        "hipotesis",
+        "titulares",
+        "salvedad"
+      ],
+      "model_output": {
+        "section_ids": [
+          "lo_que_sabemos",
+          "titulares",
+          "salvedad"
+        ]
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "model",
+        "scenario_probabilities": {
+          "bear": 0.25,
+          "base": 0.5,
+          "bull": 0.25
+        },
+        "evidence": [
+          {
+            "id": "doc-2"
+          },
+          {
+            "id": "news-1"
+          }
+        ],
+        "claims": [
+          {
+            "text": "Crecimiento del 18,5% anunciado",
+            "material": true,
+            "evidence_ids": [
+              "news-1"
+            ]
+          }
+        ],
+        "sections": [
+          {
+            "section_id": "lo_que_sabemos",
+            "paragraphs": [
+              "El crecimiento del 18,5% proviene del comunicado y no de una estimacion propia."
+            ],
+            "citations": [
+              "news-1"
+            ]
+          },
+          {
+            "section_id": "titulares",
+            "paragraphs": [
+              "Un titular acredita publicacion, no verdad."
+            ],
+            "citations": [
+              "doc-2"
+            ]
+          },
+          {
+            "section_id": "salvedad",
+            "paragraphs": [
+              "Esto no es recomendacion de inversion."
+            ],
+            "citations": []
+          }
+        ]
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "narr-malformed-001",
+      "layer": "narrative",
+      "category": "malformed_output",
+      "input": "ACME cotiza a 82,50 EUR con un escenario base de 96,40 EUR.",
+      "frozen_facts": {
+        "current_price": 82.5,
+        "base_value": 96.4
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_section_ids": [
+        "lo_que_sabemos",
+        "hipotesis",
+        "salvedad"
+      ],
+      "model_output": "Las secciones relevantes son lo_que_sabemos y hipotesis.",
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "model",
+        "scenario_probabilities": {
+          "bear": 0.2,
+          "base": 0.6,
+          "bull": 0.2
+        },
+        "evidence": [
+          {
+            "id": "doc-1"
+          }
+        ],
+        "claims": [],
+        "sections": [
+          {
+            "section_id": "lo_que_sabemos",
+            "paragraphs": [
+              "ACME cotiza a 82,50 EUR frente a un escenario base de 96,40 EUR."
+            ],
+            "citations": [
+              "doc-1"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "expect_gate_failure": "output_schema_valid",
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "narr-malformed-002",
+      "layer": "narrative",
+      "category": "malformed_output",
+      "input": "ACME cotiza a 82,50 EUR con un escenario base de 96,40 EUR.",
+      "frozen_facts": {
+        "current_price": 82.5,
+        "base_value": 96.4
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_section_ids": [
+        "lo_que_sabemos",
+        "hipotesis",
+        "titulares",
+        "salvedad",
+        "datos",
+        "fuentes",
+        "riesgos",
+        "catalizadores",
+        "preguntas"
+      ],
+      "model_output": {
+        "section_ids": [
+          "lo_que_sabemos",
+          "hipotesis",
+          "titulares",
+          "salvedad",
+          "datos",
+          "fuentes",
+          "riesgos",
+          "catalizadores",
+          "preguntas"
+        ]
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "model",
+        "scenario_probabilities": {
+          "bear": 0.2,
+          "base": 0.6,
+          "bull": 0.2
+        },
+        "evidence": [
+          {
+            "id": "doc-1"
+          }
+        ],
+        "claims": [],
+        "sections": [
+          {
+            "section_id": "lo_que_sabemos",
+            "paragraphs": [
+              "ACME cotiza a 82,50 EUR frente a un escenario base de 96,40 EUR."
+            ],
+            "citations": [
+              "doc-1"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "expect_gate_failure": "output_schema_valid",
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "narr-unknown-label-001",
+      "layer": "narrative",
+      "category": "unknown_label",
+      "input": "ACME cotiza a 82,50 EUR con un escenario base de 96,40 EUR.",
+      "frozen_facts": {
+        "current_price": 82.5,
+        "base_value": 96.4
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_section_ids": [
+        "lo_que_sabemos",
+        "hipotesis",
+        "salvedad"
+      ],
+      "model_output": {
+        "section_ids": [
+          "lo_que_sabemos",
+          "valoracion"
+        ]
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "model",
+        "scenario_probabilities": {
+          "bear": 0.2,
+          "base": 0.6,
+          "bull": 0.2
+        },
+        "evidence": [
+          {
+            "id": "doc-1"
+          }
+        ],
+        "claims": [],
+        "sections": [
+          {
+            "section_id": "lo_que_sabemos",
+            "paragraphs": [
+              "ACME cotiza a 82,50 EUR frente a un escenario base de 96,40 EUR."
+            ],
+            "citations": [
+              "doc-1"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "expect_gate_failure": "no_unknown_labels",
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "narr-confidence-001",
+      "layer": "narrative",
+      "category": "out_of_range_confidence",
+      "input": "ACME cotiza a 82,50 EUR con un escenario base de 96,40 EUR.",
+      "frozen_facts": {
+        "current_price": 82.5,
+        "base_value": 96.4
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_section_ids": [
+        "lo_que_sabemos",
+        "salvedad"
+      ],
+      "model_output": {
+        "section_ids": [
+          "lo_que_sabemos",
+          "salvedad"
+        ]
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "model",
+        "confidence": 1.2,
+        "scenario_probabilities": {
+          "bear": 0.2,
+          "base": 0.6,
+          "bull": 0.2
+        },
+        "evidence": [
+          {
+            "id": "doc-1"
+          }
+        ],
+        "claims": [],
+        "sections": [
+          {
+            "section_id": "lo_que_sabemos",
+            "paragraphs": [
+              "ACME cotiza a 82,50 EUR frente a un escenario base de 96,40 EUR."
+            ],
+            "citations": [
+              "doc-1"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "expect_gate_failure": "confidence_in_range",
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "narr-hallucinated-001",
+      "layer": "narrative",
+      "category": "hallucinated_number",
+      "input": "ACME cotiza a 82,50 EUR con un escenario base de 96,40 EUR.",
+      "frozen_facts": {
+        "current_price": 82.5,
+        "base_value": 96.4,
+        "margin_of_safety": 0.17
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_section_ids": [
+        "lo_que_sabemos",
+        "salvedad"
+      ],
+      "model_output": {
+        "section_ids": [
+          "lo_que_sabemos",
+          "salvedad"
+        ]
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "model",
+        "scenario_probabilities": {
+          "bear": 0.2,
+          "base": 0.6,
+          "bull": 0.2
+        },
+        "evidence": [
+          {
+            "id": "doc-1"
+          }
+        ],
+        "claims": [],
+        "sections": [
+          {
+            "section_id": "lo_que_sabemos",
+            "paragraphs": [
+              "ACME cotiza a 82,50 EUR y el margen de seguridad alcanza el 34%."
+            ],
+            "citations": [
+              "doc-1"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "expect_gate_failure": "no_hallucinated_numbers",
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "narr-evidence-leak-001",
+      "layer": "narrative",
+      "category": "evidence_leak",
+      "input": "ACME cotiza a 82,50 EUR con un escenario base de 96,40 EUR.",
+      "frozen_facts": {
+        "current_price": 82.5,
+        "base_value": 96.4
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_section_ids": [
+        "lo_que_sabemos",
+        "salvedad"
+      ],
+      "model_output": {
+        "section_ids": [
+          "lo_que_sabemos"
+        ]
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "model",
+        "scenario_probabilities": {
+          "bear": 0.2,
+          "base": 0.6,
+          "bull": 0.2
+        },
+        "evidence": [
+          {
+            "id": "doc-1"
+          }
+        ],
+        "claims": [],
+        "sections": [
+          {
+            "section_id": "lo_que_sabemos",
+            "paragraphs": [
+              "ACME cotiza a 82,50 EUR."
+            ],
+            "citations": [
+              "doc-9"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "expect_gate_failure": "claims_have_evidence",
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "narr-provider-failure-001",
+      "layer": "narrative",
+      "category": "provider_failure_shape",
+      "input": "ACME cotiza a 82,50 EUR con un escenario base de 96,40 EUR.",
+      "frozen_facts": {
+        "current_price": 82.5,
+        "base_value": 96.4
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_section_ids": [
+        "lo_que_sabemos",
+        "salvedad"
+      ],
+      "model_output": null,
+      "provider": {
+        "failure": "timeout",
+        "detail": "la llamada excedio el timeout configurado"
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": true,
+        "abstained": true,
+        "answer_source": "abstained",
+        "scenario_probabilities": {
+          "bear": 0.33,
+          "base": 0.34,
+          "bull": 0.33
+        },
+        "evidence": [],
+        "claims": [],
+        "sections": []
+      },
+      "expected": {
+        "degraded": true,
+        "abstain": true
+      },
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "narr-fallback-001",
+      "layer": "narrative",
+      "category": "fallback_degraded",
+      "input": "ACME cotiza a 82,50 EUR con un escenario base de 96,40 EUR.",
+      "frozen_facts": {
+        "current_price": 82.5,
+        "base_value": 96.4
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_section_ids": [
+        "lo_que_sabemos",
+        "salvedad"
+      ],
+      "model_output": null,
+      "provider": {
+        "failure": "empty_content",
+        "detail": "contenido vacio tras el reintento unico"
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": true,
+        "abstained": true,
+        "answer_source": "deterministic_fallback",
+        "caveat": "LLM no disponible: seccion de valoracion sin redactar.",
+        "scenario_probabilities": {
+          "bear": 0.3,
+          "base": 0.4,
+          "bull": 0.3
+        },
+        "evidence": [],
+        "claims": [],
+        "sections": []
+      },
+      "expected": {
+        "degraded": true,
+        "abstain": true
+      },
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "narr-provider-answer-001",
+      "layer": "narrative",
+      "category": "fallback_degraded",
+      "input": "ACME cotiza a 82,50 EUR con un escenario base de 96,40 EUR.",
+      "frozen_facts": {
+        "current_price": 82.5,
+        "base_value": 96.4
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_section_ids": [
+        "lo_que_sabemos",
+        "salvedad"
+      ],
+      "model_output": null,
+      "provider": {
+        "failure": "timeout",
+        "detail": "la llamada excedio el timeout configurado"
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "model",
+        "confidence": 0.88,
+        "scenario_probabilities": {
+          "bear": 0.2,
+          "base": 0.6,
+          "bull": 0.2
+        },
+        "evidence": [
+          {
+            "id": "doc-1"
+          }
+        ],
+        "claims": [
+          {
+            "text": "Escenario base por encima del precio actual",
+            "material": true,
+            "evidence_ids": [
+              "doc-1"
+            ]
+          }
+        ],
+        "sections": [
+          {
+            "section_id": "lo_que_sabemos",
+            "paragraphs": [
+              "ACME cotiza a 82,50 EUR frente a un escenario base de 96,40 EUR."
+            ],
+            "citations": [
+              "doc-1"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "expect_gate_failure": "provider_failure_is_degraded_not_answered",
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "narr-refusal-001",
+      "layer": "narrative",
+      "category": "refusal_correcto",
+      "input": "Sin contexto determinista suficiente para redactar ninguna seccion.",
+      "frozen_facts": {
+        "current_price": 82.5
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_section_ids": [
+        "lo_que_sabemos",
+        "salvedad"
+      ],
+      "model_output": null,
+      "provider": {
+        "skipped": "no_candidate_sections",
+        "detail": "sin secciones candidatas no se llama al modelo"
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": true,
+        "abstained": true,
+        "answer_source": "abstained",
+        "scenario_probabilities": {
+          "bear": 0.2,
+          "base": 0.4,
+          "bull": 0.4
+        },
+        "evidence": [],
+        "claims": [],
+        "sections": []
+      },
+      "expected": {
+        "degraded": true,
+        "abstain": true
+      },
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "narr-contradiction-001",
+      "layer": "narrative",
+      "category": "contradiction",
+      "input": "ACME cotiza a 82,50 EUR con un escenario base de 96,40 EUR.",
+      "frozen_facts": {
+        "current_price": 82.5,
+        "base_value": 96.4
+      },
+      "output_origin": "synthetic_fixture",
+      "allowed_section_ids": [
+        "lo_que_sabemos",
+        "salvedad"
+      ],
+      "model_output": {
+        "section_ids": [
+          "lo_que_sabemos"
+        ]
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "model",
+        "scenario_probabilities": {
+          "bear": 0.7,
+          "base": 0.2,
+          "bull": 0.1
+        },
+        "evidence": [
+          {
+            "id": "doc-1"
+          }
+        ],
+        "claims": [],
+        "sections": [
+          {
+            "section_id": "lo_que_sabemos",
+            "paragraphs": [
+              "ACME cotiza a 82,50 EUR."
+            ],
+            "citations": [
+              "doc-1"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "expect_gate_failure": "scenario_ordering",
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "debate-happy-001",
+      "layer": "debate",
+      "category": "happy_path",
+      "input": "Tesis ACME: el foso de versiones sostiene el margen mientras crece la suite empresarial.",
+      "frozen_facts": {
+        "gross_margin_pct": 42.0,
+        "revenue_growth_pct": 18.5
+      },
+      "output_origin": "synthetic_fixture",
+      "model_output": {
+        "bull_case": "El margen bruto del 42% y el crecimiento del 18,5% respaldan la tesis: el foso de versiones frena a la competencia.",
+        "bear_case": "El margen bruto del 42% es vulnerable a una normalizacion de costes y el crecimiento del 18,5% puede frenar.",
+        "judge_text": "VEREDICTO: neutral | El margen del 42% compensa el riesgo del crecimiento del 18,5%."
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "llm_judge",
+        "verdict": "neutral",
+        "verdict_rationale": "El margen del 42% compensa el riesgo del crecimiento del 18,5%.",
+        "scenario_probabilities": {
+          "bear": 0.25,
+          "base": 0.45,
+          "bull": 0.3
+        },
+        "evidence": [
+          {
+            "id": "ev-1"
+          }
+        ],
+        "claims": [
+          {
+            "text": "El margen del 42% sostiene la tesis",
+            "material": true,
+            "evidence_ids": [
+              "ev-1"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "debate_verdict_allowed",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "debate-happy-002",
+      "layer": "debate",
+      "category": "happy_path",
+      "input": "Tesis ACME: el poder de precios se sostiene en la renovacion.",
+      "frozen_facts": {
+        "revenue_growth_pct": 18.5
+      },
+      "output_origin": "synthetic_fixture",
+      "model_output": {
+        "bull_case": "El crecimiento del 18,5% con renovacion casi total sostiene el poder de precios.",
+        "bear_case": "Una sola cliente grande concentra la renovacion y puede presionar el precio.",
+        "judge_text": "VEREDICTO: bullish | El caso alcista domina con el crecimiento del 18,5%."
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "llm_judge",
+        "verdict": "bullish",
+        "verdict_rationale": "El caso alcista domina con el crecimiento del 18,5%.",
+        "scenario_probabilities": {
+          "bear": 0.2,
+          "base": 0.5,
+          "bull": 0.3
+        },
+        "evidence": [],
+        "claims": []
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "debate_verdict_allowed",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "debate-jev-001",
+      "layer": "debate",
+      "category": "happy_path",
+      "input": "Tesis ACME: el margen del 42% es sostenible segun la direccion.",
+      "frozen_facts": {
+        "gross_margin_pct": 42.0
+      },
+      "output_origin": "synthetic_fixture",
+      "expected": {
+        "degraded": false,
+        "abstain": false,
+        "tolerated_numbers": [
+          0.88
+        ]
+      },
+      "model_output": {
+        "bull_case": "El margen bruto del 42% es defendible con la nueva cadena de suministro.",
+        "bear_case": "El margen bruto del 42% puede caer si se normalizan los costes logisticos.",
+        "judge_text": "VEREDICTO: bearish | El riesgo de coste domina segun el caso bajista."
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "jev_judge",
+        "confidence": 0.88,
+        "verdict": "bearish",
+        "verdict_rationale": "Juez Jev para ACME: bearish (confianza 0.88) a partir del caso alcista y el bajista.",
+        "scenario_probabilities": {
+          "bear": 0.2,
+          "base": 0.45,
+          "bull": 0.35
+        },
+        "evidence": [],
+        "claims": []
+      },
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "debate_verdict_allowed",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "debate-malformed-001",
+      "layer": "debate",
+      "category": "malformed_output",
+      "input": "Tesis ACME: el margen del 42% es sostenible.",
+      "frozen_facts": {
+        "gross_margin_pct": 42.0
+      },
+      "output_origin": "synthetic_fixture",
+      "model_output": {
+        "bull_case": "El margen bruto del 42% es defendible.",
+        "judge_text": "VEREDICTO: neutral | Sin informacion adicional."
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "llm_judge",
+        "verdict": "neutral",
+        "verdict_rationale": "Sin informacion adicional.",
+        "scenario_probabilities": {
+          "bear": 0.25,
+          "base": 0.45,
+          "bull": 0.3
+        },
+        "evidence": [],
+        "claims": []
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "expect_gate_failure": "output_schema_valid",
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "debate_verdict_allowed",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "debate-unknown-label-001",
+      "layer": "debate",
+      "category": "unknown_label",
+      "input": "Tesis ACME: el margen del 42% es sostenible.",
+      "frozen_facts": {
+        "gross_margin_pct": 42.0
+      },
+      "output_origin": "synthetic_fixture",
+      "model_output": {
+        "bull_case": "El margen bruto del 42% es defendible.",
+        "bear_case": "El margen bruto del 42% es vulnerable a costes.",
+        "judge_text": "The bullishness of the moat is doubtful here."
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "llm_judge",
+        "verdict": "bullish",
+        "verdict_rationale": "The bullishness of the moat is doubtful here.",
+        "scenario_probabilities": {
+          "bear": 0.25,
+          "base": 0.45,
+          "bull": 0.3
+        },
+        "evidence": [],
+        "claims": []
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "expect_gate_failure": "no_unknown_labels",
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "debate_verdict_allowed",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "debate-confidence-001",
+      "layer": "debate",
+      "category": "out_of_range_confidence",
+      "input": "Tesis ACME: el margen del 42% es sostenible.",
+      "frozen_facts": {
+        "gross_margin_pct": 42.0
+      },
+      "output_origin": "synthetic_fixture",
+      "model_output": {
+        "bull_case": "El margen bruto del 42% es defendible.",
+        "bear_case": "El margen bruto del 42% es vulnerable a costes.",
+        "judge_text": "VEREDICTO: neutral | Margen y coste se compensan."
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "llm_judge",
+        "confidence": 1.7,
+        "verdict": "neutral",
+        "verdict_rationale": "Margen y coste se compensan.",
+        "scenario_probabilities": {
+          "bear": 0.25,
+          "base": 0.45,
+          "bull": 0.3
+        },
+        "evidence": [],
+        "claims": []
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "expect_gate_failure": "confidence_in_range",
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "debate_verdict_allowed",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "debate-hallucinated-001",
+      "layer": "debate",
+      "category": "hallucinated_number",
+      "input": "Tesis ACME: el margen del 42% es sostenible.",
+      "frozen_facts": {
+        "gross_margin_pct": 42.0
+      },
+      "output_origin": "synthetic_fixture",
+      "model_output": {
+        "bull_case": "El margen bruto del 42% es defendible.",
+        "bear_case": "El margen bruto cayo al 39% el trimestre pasado segun el informe del competidor.",
+        "judge_text": "VEREDICTO: bearish | El deterioro del margen pesa mas."
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "llm_judge",
+        "verdict": "bearish",
+        "verdict_rationale": "El deterioro del margen pesa mas.",
+        "scenario_probabilities": {
+          "bear": 0.2,
+          "base": 0.45,
+          "bull": 0.35
+        },
+        "evidence": [],
+        "claims": []
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "expect_gate_failure": "no_hallucinated_numbers",
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "debate_verdict_allowed",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "debate-evidence-leak-001",
+      "layer": "debate",
+      "category": "evidence_leak",
+      "input": "Tesis ACME: el margen del 42% es sostenible.",
+      "frozen_facts": {
+        "gross_margin_pct": 42.0
+      },
+      "output_origin": "synthetic_fixture",
+      "model_output": {
+        "bull_case": "El margen bruto del 42% es defendible.",
+        "bear_case": "El margen bruto del 42% es vulnerable a costes.",
+        "judge_text": "VEREDICTO: neutral | Sin dato limpio."
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "llm_judge",
+        "verdict": "neutral",
+        "verdict_rationale": "Sin dato limpio.",
+        "scenario_probabilities": {
+          "bear": 0.25,
+          "base": 0.45,
+          "bull": 0.3
+        },
+        "evidence": [
+          {
+            "id": "ev-1"
+          }
+        ],
+        "claims": [
+          {
+            "text": "El margen del 42% es el hecho central",
+            "material": true,
+            "evidence_ids": [
+              "ev-7"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "expect_gate_failure": "claims_have_evidence",
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "debate_verdict_allowed",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "debate-provider-failure-001",
+      "layer": "debate",
+      "category": "provider_failure_shape",
+      "input": "Tesis ACME: hay mas riesgos que catalizadores sin cuantificar.",
+      "frozen_facts": {
+        "gross_margin_pct": 42.0
+      },
+      "output_origin": "synthetic_fixture",
+      "expected": {
+        "degraded": true,
+        "abstain": false,
+        "tolerated_numbers": [
+          4
+        ]
+      },
+      "model_output": null,
+      "provider": {
+        "failure": "credit_exhausted",
+        "detail": "Jev sin credito y juez LLM caido"
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": true,
+        "abstained": false,
+        "answer_source": "deterministic_fallback",
+        "verdict": "bearish",
+        "verdict_rationale": "Veredicto determinista para ACME: 4 senales bajistas frente a 1 alcistas. Juez LLM no disponible; no aumentar exposicion sin mas evidencia.",
+        "scenario_probabilities": {
+          "bear": 0.2,
+          "base": 0.4,
+          "bull": 0.4
+        },
+        "evidence": [],
+        "claims": []
+      },
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "debate_verdict_allowed",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "debate-fallback-regex-001",
+      "layer": "debate",
+      "category": "fallback_degraded",
+      "input": "Tesis ACME: hay mas riesgos que catalizadores sin cuantificar.",
+      "frozen_facts": {
+        "gross_margin_pct": 42.0
+      },
+      "output_origin": "synthetic_fixture",
+      "expected": {
+        "degraded": true,
+        "abstain": false
+      },
+      "model_output": {
+        "bull_case": "El margen bruto del 42% ofrece colchon.",
+        "bear_case": "La deuda y la competencia presionan el margen bruto del 42%.",
+        "judge_text": "No me decido entre las dos posturas: faltan datos para decantarse."
+      },
+      "provider": {
+        "failure": "empty_content",
+        "detail": "el juez Jev devolvio contenido vacio"
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": true,
+        "abstained": false,
+        "answer_source": "deterministic_fallback",
+        "verdict": "neutral",
+        "verdict_rationale": "Veredicto determinista para ACME: senales equilibradas (2/2). Juez LLM no disponible; faltan datos para decantarse.",
+        "scenario_probabilities": {
+          "bear": 0.33,
+          "base": 0.34,
+          "bull": 0.33
+        },
+        "evidence": [],
+        "claims": []
+      },
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "debate_verdict_allowed",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "debate-provider-answer-001",
+      "layer": "debate",
+      "category": "fallback_degraded",
+      "input": "Tesis ACME: hay mas riesgos que catalizadores sin cuantificar.",
+      "frozen_facts": {
+        "gross_margin_pct": 42.0
+      },
+      "output_origin": "synthetic_fixture",
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "model_output": null,
+      "provider": {
+        "failure": "provider_raises",
+        "detail": "las tres llamadas del debate fallaron"
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "llm_judge",
+        "confidence": 0.91,
+        "verdict": "bearish",
+        "verdict_rationale": "Veredicto determinista para ACME: 3 senales bajistas frente a 1 alcistas.",
+        "scenario_probabilities": {
+          "bear": 0.2,
+          "base": 0.4,
+          "bull": 0.4
+        },
+        "evidence": [],
+        "claims": []
+      },
+      "expect_gate_failure": "provider_failure_is_degraded_not_answered",
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "debate_verdict_allowed",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "debate-refusal-001",
+      "layer": "debate",
+      "category": "refusal_correcto",
+      "input": "Tesis ACME: sin informacion suficiente para discutir a favor y en contra.",
+      "frozen_facts": {
+        "gross_margin_pct": 42.0
+      },
+      "output_origin": "synthetic_fixture",
+      "expected": {
+        "degraded": true,
+        "abstain": true
+      },
+      "model_output": null,
+      "provider": {
+        "skipped": "bear_case_vacio",
+        "detail": "sin caso bajista el juez no puede decidir"
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": true,
+        "abstained": true,
+        "answer_source": "abstained",
+        "verdict": null,
+        "verdict_rationale": "No hay caso bajista: el juez se abstiene en vez de inventar un veredicto.",
+        "scenario_probabilities": {
+          "bear": 0.2,
+          "base": 0.4,
+          "bull": 0.4
+        },
+        "evidence": [],
+        "claims": []
+      },
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "debate_verdict_allowed",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    },
+    {
+      "id": "debate-contradiction-001",
+      "layer": "debate",
+      "category": "contradiction",
+      "input": "Tesis ACME: el margen del 42% es sostenible.",
+      "frozen_facts": {
+        "gross_margin_pct": 42.0
+      },
+      "output_origin": "synthetic_fixture",
+      "model_output": {
+        "bull_case": "El margen bruto del 42% es defendible.",
+        "bear_case": "El margen bruto del 42% es vulnerable a costes.",
+        "judge_text": "VEREDICTO: neutral | Sin dato limpio."
+      },
+      "layer_output": {
+        "ticker": "ACME",
+        "degraded": false,
+        "abstained": false,
+        "answer_source": "llm_judge",
+        "verdict": "neutral",
+        "verdict_rationale": "Sin dato limpio.",
+        "scenario_probabilities": {
+          "bear": 0.45,
+          "base": 0.35,
+          "bull": 0.2
+        },
+        "evidence": [],
+        "claims": []
+      },
+      "expected": {
+        "degraded": false,
+        "abstain": false
+      },
+      "expect_gate_failure": "scenario_ordering",
+      "applies_to": [
+        "output_schema_valid",
+        "no_unknown_labels",
+        "confidence_in_range",
+        "no_hallucinated_numbers",
+        "claims_have_evidence",
+        "debate_verdict_allowed",
+        "probabilities_sum_to_one",
+        "scenario_ordering",
+        "provider_failure_is_degraded_not_answered",
+        "abstained_when_insufficient"
+      ]
+    }
+  ]
+}
