@@ -63,7 +63,8 @@ class SplitIngestionService:
         return numerator / denominator
 
     @staticmethod
-    def _description(source: str, ratio: float, fetched_at: datetime) -> str:
+    def _description(source: str, ratio: float | Decimal, fetched_at: datetime) -> str:
+        ratio = float(ratio)  # en BD llega como Decimal; :g sobre Decimal sale roto
         proveedor = "Yahoo Finance" if source == "yahoo_finance" else source.upper()
         if ratio > 1:
             tipo = f"División de acciones {ratio:g} por 1"

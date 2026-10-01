@@ -1,6 +1,7 @@
 """La descripcion de un split importado va en espanol y explica que hace Aplicar."""
 
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from app.services.split_ingestion_service import SplitIngestionService
 
@@ -16,3 +17,16 @@ def test_split_description_is_spanish_and_explains_apply():
 def test_reverse_split_description():
     text = SplitIngestionService._description("fmp", 0.1, datetime(2026, 9, 25, tzinfo=UTC))
     assert text.startswith("Agrupación de acciones 1 por 10.")
+
+
+def test_reverse_split_description_with_decimal_ratio():
+    when = datetime(2026, 9, 25, tzinfo=UTC)
+    assert SplitIngestionService._description("fmp", Decimal("0.1"), when).startswith(
+        "Agrupación de acciones 1 por 10."
+    )
+    assert SplitIngestionService._description("fmp", Decimal("0.333333"), when).startswith(
+        "Agrupación de acciones 1 por 3."
+    )
+    assert SplitIngestionService._description("yahoo_finance", Decimal("2.0000"), when).startswith(
+        "División de acciones 2 por 1."
+    )
