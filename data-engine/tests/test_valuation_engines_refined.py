@@ -234,6 +234,12 @@ def test_all_engines_expose_bear_base_bull_and_sensitivity():
             company = db.scalar(select(Company).where(Company.ticker == ticker))
             result = ValuationService().value_company(db, company)
             engine = result["trace"]["engine"]
+            if engine == "pre_revenue" and result["status"] == "insufficient_data":
+                # Quema de caja reportada (OCF < 0): no hay rango por accion con
+                # margen FCF supuesto; estado honesto, sin bear/base/bull.
+                assert result["base_value"] is None, ticker
+                assert result["trace"].get("observed_cash_burn"), ticker
+                continue
             assert result["status"] in ("ok", "partial"), (ticker, result["status"])
             assert result["publishable"] is True or engine == "pre_revenue", ticker
             sens_vals = _assert_range_and_sensitivity(result, engine)

@@ -268,7 +268,14 @@ def _seed_evidence_rows():
         db.close()
 
 
-def test_generate_with_mocked_sources_persists_facts_and_goes_partial(monkeypatch):
+def test_generate_with_mocked_sources_persists_facts_and_blocks_range_on_cash_burn(monkeypatch):
+    """OCF reportado -200M: el margen FCF base positivo supuesto lo contradice.
+
+    Ya no hay rango indicativo por accion (bear/base/bull/margen de seguridad
+    None): insufficient_data con causa e inputs pendientes. Las fuentes y los
+    hechos reales se siguen persistiendo y mostrando. El camino con caja
+    positiva (sigue indicativo) esta en test_thesis_indicative_positive_cash.py.
+    """
     init_db()
     seed()
     _clean_asts_evidence()
@@ -279,28 +286,18 @@ def test_generate_with_mocked_sources_persists_facts_and_goes_partial(monkeypatc
     response = client.post("/api/thesis/generate", json={"ticker": "ASTS", "force_new_version": True})
     assert response.status_code == 200
     thesis = response.json()
-    # Parcial-publicable: ya no insufficient_data, con rango y reverse DCF.
-    assert thesis["status"] == "draft"
-    assert thesis["bear_value"] is not None
-    assert thesis["base_value"] is not None
-    assert thesis["bull_value"] is not None
-    assert thesis["expected_value"] is not None
+    assert thesis["status"] == "insufficient_data"
+    assert thesis["bear_value"] is None
+    assert thesis["base_value"] is None
+    assert thesis["bull_value"] is None
+    assert thesis["expected_value"] is None
     assert thesis["current_price"] is not None and float(thesis["current_price"]) == 25.50
-    assert "parcial-indicativa" in thesis["executive_summary"]
+    assert "no publicable" in thesis["executive_summary"]
+    assert "normalized_fcf_or_fcf_margin" in thesis["executive_summary"]
 
     markdown = thesis["thesis_markdown"]
-    assert "PARTIAL-INDICATIVE RANGE" in markdown
-    # El reverse DCF ya no inventa un "required growth": cuando el precio cae
-    # fuera del rango valorable por los supuestos del modelo, la bisección
-    # saturaba en el límite del buscador y el memo publicaba un crecimiento
-    # imposible como si fuera una expectativa del mercado. Ahora el valor se
-    # retiene (ver test_valuation_honesty_contracts) y el memo declara que no
-    # hay un crecimiento que explique el precio.
-    assert (
-        "Required revenue growth:" in markdown
-        or "Reverse DCF unavailable" in markdown
-    ), "el memo debe o bien declarar el crecimiento exigido o bien su ausencia"
-    assert "NO VALUATION" not in markdown
+    assert "NO VALUATION — insufficient data" in markdown
+    assert "PARTIAL-INDICATIVE RANGE" not in markdown
     # Fuentes: conseguido con detalle, sin datos inventados.
     assert "Fundamentals: conseguido" in markdown
     assert "revenue" in markdown and "shares_diluted" in markdown
@@ -335,7 +332,7 @@ def test_generate_with_mocked_sources_persists_facts_and_goes_partial(monkeypatc
         assert price is not None and float(price.close) == 25.50 and price.source == "Finnhub"
         # Sin missing criticos financieros (revenue/shares resueltos).
         missing = " ".join(thesis["executive_summary"].split())
-        assert "parcial-indicativa" in missing
+        assert "normalized_fcf_or_fcf_margin" in missing
     finally:
         db.close()
 
