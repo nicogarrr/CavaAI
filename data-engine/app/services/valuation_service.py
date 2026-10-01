@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, MutableMapping
 from datetime import date
 from decimal import Decimal
 
@@ -62,7 +62,7 @@ def _assert_no_lookahead_guard(valuation: dict, *, as_of: date | None = None) ->
     valoracion persistida.
     """
     trace = valuation.get("trace")
-    if not isinstance(trace, Mapping):
+    if not isinstance(trace, MutableMapping):
         # Sin `or {}`: un trace vacio es un Mapping valido y hay que auditarlo
         # sobre el dict de verdad, no sobre una copia que se pierde al salir.
         return
