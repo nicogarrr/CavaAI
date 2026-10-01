@@ -216,10 +216,12 @@ class Settings(BaseSettings):
     # Fallback automatico: si el modelo resuelto falla (cualquier error de
     # capa LLM tras sus reintentos internos), la llamada se reintenta UNA
     # vez con este modelo antes de propagar el error. Cadena vacia = sin
-    # fallback. Env: OPENCODE_GO_FALLBACK_MODEL. Decision de Nico (30/9):
-    # muse-spark-1.3-contributor-free (gratis en Zen) como respaldo de
-    # space-bunny-free, con conocimiento de la cesion de prompts del plan.
-    opencode_go_fallback_model: str = "muse-spark-1.3-contributor-free"
+    # fallback. Env: OPENCODE_GO_FALLBACK_MODEL. Por defecto SIN fallback:
+    # verificado en produccion (1/10/2026, OCI) que todos los modelos free de
+    # Zen salvo space-bunny-free devuelven 403 FreeTierError ("free tier can
+    # only be used from within OpenCode"), asi que muse-spark como respaldo
+    # solo duplicaba el fallo.
+    opencode_go_fallback_model: str = ""
     # OpenCode Go exige cabecera x-opencode-session en todas las llamadas
     # (sin ella: MissingSessionID). ID estable por despliegue, mejora el
     # enrutado/cacheo del proveedor. Env: OPENCODE_GO_SESSION.
