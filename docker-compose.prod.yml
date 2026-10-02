@@ -169,9 +169,12 @@ services:
       - SEC_SNAPSHOT_DIR=${SEC_SNAPSHOT_DIR:-}
       - SEC_HF_MIRROR_DATASET=${SEC_HF_MIRROR_DATASET:-}
       - ESEF_SNAPSHOT_DIR=${ESEF_SNAPSHOT_DIR:-/data/esef-snapshots}
+      # Opt-in (#726): sin snapshot montado el endpoint responde 'sin datos' con motivo.
+      - SP500_FACTSHEET_SNAPSHOT_DIR=${SP500_FACTSHEET_SNAPSHOT_DIR:-/data/sp500-factsheet-snapshots}
     volumes:
       - duckdb_data:/data
       - ./data-esef-snapshots:/data/esef-snapshots:ro
+      - ./data-sp500-factsheet-snapshots:/data/sp500-factsheet-snapshots:ro
     healthcheck:
       # python:3.12-slim no trae curl: sonda equivalente a `curl -f http://localhost:8000/health/ready`.
       test:
