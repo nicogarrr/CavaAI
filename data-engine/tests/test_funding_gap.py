@@ -74,7 +74,7 @@ def test_sin_capex_ni_ocf_es_incompleto():
         _snapshot(cash_and_equivalents=10.0), current_price=5.0, value_per_share=5.0
     )
     assert result.status == "incomplete"
-    assert result.missing_inputs == ["capital_expenditure_or_operating_cash_flow"]
+    assert result.missing_inputs == ["capital_expenditure", "operating_cash_flow"]
     assert result.available_cash == 10.0
 
 
@@ -83,7 +83,8 @@ def test_snapshot_totalmente_vacio_reporta_los_dos_huecos():
     assert result.status == "incomplete"
     assert result.missing_inputs == [
         "cash_and_equivalents",
-        "capital_expenditure_or_operating_cash_flow",
+        "capital_expenditure",
+        "operating_cash_flow",
     ]
 
 
@@ -125,19 +126,19 @@ def test_caja_suficiente_no_hueco():
 
 def test_solo_ocf_negativo_basta_para_estimar():
     result = estimate_funding_gap(
-        _snapshot(cash_and_equivalents=0.0, operating_cash_flow=-10.0),
+        _snapshot(cash_and_equivalents=0.0, operating_cash_flow=-10.0, capital_expenditure=0.0),
         current_price=2.0,
         value_per_share=2.0,
     )
     assert result.status == "estimated"
-    assert result.planned_capex is None
+    assert result.planned_capex == 0.0
     # burn 10*2 = 20 + buffer 50 - caja 0 = 70.
     assert result.funding_gap == pytest.approx(70.0)
 
 
 def test_buffer_minimo_configurable():
     result = estimate_funding_gap(
-        _snapshot(cash_and_equivalents=0.0, operating_cash_flow=0.0),
+        _snapshot(cash_and_equivalents=0.0, operating_cash_flow=0.0, capital_expenditure=0.0),
         current_price=2.0,
         value_per_share=2.0,
         min_cash_buffer=250.0,

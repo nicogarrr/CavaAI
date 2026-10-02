@@ -130,7 +130,9 @@ class PreRevenueScenarioEngine(ValuationEngine):
         margin = min(margin, 0.40)
         wacc = default_wacc(company)
         terminal = default_terminal_growth(company)
-        net_debt = snapshot.value("net_debt") or 0.0
+        raw_net_debt = snapshot.value("net_debt")
+        net_debt = 0.0 if raw_net_debt is None else raw_net_debt
+        net_debt_source = "financial_facts" if raw_net_debt is not None else "missing_assumed_zero"
 
         # Preliminary base for funding-gap dilution estimate.
         base_preview = run_dcf(
@@ -274,6 +276,8 @@ class PreRevenueScenarioEngine(ValuationEngine):
                 "evidence_confidence": evidence_confidence,
                 "fact_ids": snapshot.fact_ids(),
                 "periods": snapshot.periods(),
+                "net_debt": net_debt,
+                "net_debt_source": net_debt_source,
                 "snapshot": {
                     "as_of": snapshot.as_of_period,
                     "income_statement": snapshot.income_statement,
@@ -382,7 +386,9 @@ class PreRevenueScenarioEngine(ValuationEngine):
         assumed_margin_base = float(inferred.value) if inferred is not None else 0.15
         wacc = default_wacc(company)
         terminal = default_terminal_growth(company)
-        net_debt = snapshot.value("net_debt") or 0.0
+        raw_net_debt = snapshot.value("net_debt")
+        net_debt = 0.0 if raw_net_debt is None else raw_net_debt
+        net_debt_source = "financial_facts" if raw_net_debt is not None else "missing_assumed_zero"
 
         preview = run_dcf(
             DCFInputs(
@@ -525,6 +531,8 @@ class PreRevenueScenarioEngine(ValuationEngine):
                 "probability_method": "source_confidence_plus_growth_and_funding_risk",
                 "fact_ids": snapshot.fact_ids(),
                 "periods": snapshot.periods(),
+                "net_debt": net_debt,
+                "net_debt_source": net_debt_source,
                 "assumed": {
                     "revenue_floor_used": revenue_assumed,
                     "revenue_base": revenue,

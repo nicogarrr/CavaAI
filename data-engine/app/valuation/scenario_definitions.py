@@ -93,7 +93,7 @@ def mechanical_dcf_scenarios(
             assumptions={
                 "revenue_growth": growth if burn else growth + 0.08,
                 "fcf_margin": min(margin + 0.06, 0.45),
-                "wacc": wacc if burn else max(wacc - 0.01, terminal + 0.01),
+                "wacc": wacc if burn else max(min(wacc - 0.01, max(terminal + 0.01, wacc - 0.005)), terminal + 0.001),
                 "terminal_growth": terminal,
             },
             drivers=["mechanical_growth_up", "mechanical_margin_up", "mechanical_wacc_down"],
@@ -160,7 +160,7 @@ def speculative_causal_scenarios(
                 # Tope 0.35 para margenes normales, pero nunca por debajo del
                 # base: con un base alto el bull no puede ser peor que el base.
                 "fcf_margin": max(min(margin + 0.05, 0.35), margin),
-                "wacc": wacc if burn else max(wacc - 0.015, terminal + 0.015),
+                "wacc": wacc if burn else max(min(wacc - 0.015, max(terminal + 0.015, wacc - 0.005)), terminal + 0.001),
                 "terminal_growth": terminal,
                 "extra_dilution_pct": max(dilution_pct * 0.5, 0.0),
             },
