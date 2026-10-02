@@ -13,7 +13,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { formatRecordValue, type DataRecord } from '@/components/data/RecordViews';
 import type { InsiderFilingsResult, InsiderSignalsResult } from '@/lib/actions/insider.actions';
-import { getInsiderSignals } from '@/lib/actions/insider.actions';
+import { getInsiderSignals, loadMoreInsiderFilings } from '@/lib/actions/insider.actions';
+import type { InsiderFilingEntry } from '@/lib/actions/insider.actions';
 import { analyzedCountCopy, degradedCopy, durableReadCopy } from '@/lib/insider-status-copy';
 import { toast } from 'sonner';
 
@@ -125,6 +126,29 @@ export default function InsiderSignalsView({ initialTicker, initialResult, initi
 
     // Copy de la lectura durable degradada, resuelto una vez: el `reason` del
     // backend es el nombre de la excepción (`OperationalError`), opaco a pelo.
+    const [extraFilings, setExtraFilings] = useState<InsiderFilingEntry[]>([]);
+    const [filingsLoading, setFilingsLoading] = useState(false);
+    const [filingsError, setFilingsError] = useState(false);
+    const baseFilings = initialFilings?.filings ?? [];
+    const knownAccessions = new Set(baseFilings.map((filing) => filing.accession_number));
+    const filings = [...baseFilings, ...extraFilings.filter((filing) => !knownAccessions.has(filing.accession_number))];
+    const filingsTotal = initialFilings?.total ?? initialFilings?.count ?? filings.length;
+
+    async function loadMoreFilings() {
+        if (filingsLoading || !initialTicker) return;
+        setFilingsLoading(true);
+        setFilingsError(false);
+        try {
+            const next = await loadMoreInsiderFilings(initialTicker, filings.length);
+            if (next.status !== 'ok') throw new Error(next.reason ?? next.status);
+            setExtraFilings((current) => [...current, ...next.filings]);
+        } catch {
+            setFilingsError(true);
+        } finally {
+            setFilingsLoading(false);
+        }
+    }
+
     const durable = initialFilings && initialFilings.status !== 'ok'
         ? durableReadCopy(initialFilings)
         : null;
@@ -175,7 +199,7 @@ export default function InsiderSignalsView({ initialTicker, initialResult, initi
                         «no se pudo leer» y no debe mostrarse como número. */}
                     {initialFilings && initialFilings.status === 'ok' ? (
                         <Badge variant="default">
-                            Monitor cada 15 min · {countText(initialFilings.count)} filings persistidos
+                            Monitor cada 15 min · {countText(initialFilings.total ?? initialFilings.count)} filings persistidos
                         </Badge>
                     ) : (
                         <Badge variant="outline" className="border-amber-700 text-amber-300">
@@ -394,7 +418,7 @@ export default function InsiderSignalsView({ initialTicker, initialResult, initi
                 <Card className="rounded-lg border border-gray-700 bg-gray-800/50">
                     <CardHeader className="border-b border-gray-700/50 pb-4">
                         <CardTitle className="text-lg font-semibold text-gray-100">
-                            Filings persistidos · {initialFilings.count}
+                            Filings persistidos · {initialFilings.total ?? initialFilings.count}
                         </CardTitle>
                         <CardDescription className="mt-0.5 text-sm text-gray-500">
                             Lectura durable (Form 4/4-A inmutables; las enmiendas son filas propias)
@@ -402,7 +426,7 @@ export default function InsiderSignalsView({ initialTicker, initialResult, initi
                     </CardHeader>
                     <CardContent className="pt-4">
                         <ul className="space-y-2">
-                            {initialFilings.filings.slice(0, 10).map((filing) => (
+                            {filings.map((filing) => (
                                 <li
                                     key={filing.accession_number}
                                     className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm"
@@ -428,6 +452,27 @@ export default function InsiderSignalsView({ initialTicker, initialResult, initi
                                 </li>
                             ))}
                         </ul>
+                        <div className="mt-4 flex flex-col items-center gap-2 text-xs text-gray-500">
+                            <span>
+                                Mostrando {filings.length} de {filingsTotal}
+                            </span>
+                            {filingsError ? (
+                                <span className="text-red-400" role="alert">
+                                    No se pudieron cargar más filings.
+                                </span>
+                            ) : null}
+                            {filings.length < filingsTotal ? (
+                                <Button
+                                    disabled={filingsLoading}
+                                    onClick={() => void loadMoreFilings()}
+                                    size="sm"
+                                    type="button"
+                                    variant="outline"
+                                >
+                                    {filingsLoading ? 'Cargando…' : filingsError ? 'Reintentar' : 'Cargar más'}
+                                </Button>
+                            ) : null}
+                        </div>
                     </CardContent>
                 </Card>
             ) : null}
