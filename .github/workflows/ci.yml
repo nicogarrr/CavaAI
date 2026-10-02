@@ -383,6 +383,31 @@ jobs:
       # corre contra librerias resueltas distinto cada run no es un round trip
       # reproducible.
       - run: uv sync --frozen --extra test --extra dev --no-install-project
+      # Gate de cadena de Alembic, ANTES de tocar la base de datos.
+      #
+      # Sin este paso, el unico sintoma de una cadena rota es el efecto
+      # secundario críptico del paso siguiente: `alembic upgrade head` aborta
+      # con "Multiple head revisions are present for given argument 'head'" y
+      # `Dockerfile.prod` (que hace upgrade antes de uvicorn) deja el contenedor
+      # sin arrancar. El mensaje no dice que fichero duplica el prefijo, ni que
+      # hay que renombrar; este gate lo dice antes y en el sitio.
+      #
+      # Doble cinturon a proposito:
+      #   1. `alembic heads | wc -l` sobre la herramienta real, que es la que
+      #      aborta en produccion.
+      #   2. `test_alembic_chain.py`, que ademas caza lo que `heads` no ve
+      #      (prefijo de 4 digitos duplicado, revision != stem, down_revision
+      #      huerfano, ciclo, rama colgante) y explica el por que.
+      - name: Gate de cadena de Alembic (un solo head)
+        run: |
+          set -euo pipefail
+          heads=$(uv run --frozen python -m alembic heads | wc -l)
+          if [ "$heads" -ne 1 ]; then
+            echo "::error::alembic tiene $heads heads; la cadena debe ser lineal"
+            uv run --frozen python -m alembic heads
+            exit 1
+          fi
+          uv run --frozen python -m pytest tests/test_alembic_chain.py -q
       - name: Empty database to head
         run: uv run --frozen python -m alembic upgrade head
       - name: 0032 rejects a clean downgrade (forward-only)
