@@ -277,6 +277,75 @@ def detect_signals(transactions: list[dict]) -> list[dict]:
     return signals
 
 
+def _persisted_filing_transactions(
+    db, accession: str, tenant_id: int | None, ticker: str, filing: dict
+) -> tuple[list[dict], str | None] | None:
+    """Transacciones ya persistidas de un filing (Form 4/4-A son inmutables).
+
+    Devuelve ``(transacciones, filing_date)`` o ``None`` si ese accession no
+    esta persistido. Se usa SOLO cuando la lectura live del XML falla (la IP
+    de salida puede estar baneada por la SEC): los datos son los mismos que
+    se leyeron de EDGAR en su dia, y el resultado lo declara.
+    """
+    if db is None or not accession:
+        return None
+    try:
+        from sqlalchemy import select
+
+        from app.models.entities import InsiderFiling, InsiderTransaction
+
+        # Sin tenant explicito se confia en el alcance de la sesion (igual que
+        # la ruta /filings): la fila persistida es la misma que esa pantalla lista.
+        def _tenant_filters(column) -> list:
+            return [] if tenant_id is None else [column == tenant_id]
+
+        record = db.scalar(
+            select(InsiderFiling).where(
+                *_tenant_filters(InsiderFiling.tenant_id),
+                InsiderFiling.accession_number == accession,
+            )
+        )
+        if record is None:
+            return None
+        rows = db.scalars(
+            select(InsiderTransaction)
+            .where(
+                *_tenant_filters(InsiderTransaction.tenant_id),
+                InsiderTransaction.filing_id == record.id,
+            )
+            .order_by(InsiderTransaction.id)
+        ).all()
+        transactions: list[dict] = []
+        for line_index, row in enumerate(rows):
+            transactions.append(
+                {
+                    "ticker": row.issuer_ticker or ticker,
+                    "insider": row.insider,
+                    "insider_cik": row.insider_cik,
+                    "role": row.role,
+                    "officer_title": row.officer_title,
+                    "multi_reporter": bool(row.multi_reporter),
+                    "attribution": row.attribution,
+                    "type": row.code,
+                    "acquired_disposed": row.acquired_disposed,
+                    "shares": row.shares,
+                    "price": row.price,
+                    "value": row.value,
+                    "date": row.tx_date or record.filing_date,
+                    "is_derivative": bool(row.is_derivative),
+                    "accession_number": accession,
+                    "tx_line": line_index,
+                    "filing_date": record.filing_date,
+                    "source_url": row.source_url or record.source_url,
+                    "form": row.form or record.form,
+                    "from_persisted": True,
+                }
+            )
+        return transactions, (str(record.filing_date) if record.filing_date else None)
+    except Exception:  # noqa: BLE001 - el fallback nunca rompe la lectura
+        return None
+
+
 def get_signals_for_ticker(
     ticker: str,
     *,
@@ -303,6 +372,8 @@ def get_signals_for_ticker(
         )
         transactions: list[dict] = []
         errors: list[str] = []
+        persisted_dates: list[str] = []
+        persisted_count = 0
         for filing in filings[:limit]:
             try:
                 if fetcher is not None:
@@ -336,6 +407,18 @@ def get_signals_for_ticker(
                         tx["date"] = filing.get("filing_date")
                 transactions.extend(parsed.get("transactions", []))
             except Exception as exc:  # noqa: BLE001 — best-effort por filing
+                # Lectura live fallida: si el filing ya esta persistido (inmutable)
+                # se usa esa copia y se declara; solo sin copia es un error.
+                fallback = _persisted_filing_transactions(
+                    db, str(filing.get("accession_number") or ""), tenant_id, wanted, filing
+                )
+                if fallback is not None:
+                    persisted_txs, persisted_filing_date = fallback
+                    transactions.extend(persisted_txs)
+                    persisted_count += 1
+                    if persisted_filing_date:
+                        persisted_dates.append(persisted_filing_date)
+                    continue
                 # El tipo solo («ValueError») no diagnostica nada: el detalle
                 # redactado permite distinguir parseo de red sin filtrar datos.
                 errors.append(
@@ -381,6 +464,17 @@ def get_signals_for_ticker(
                 ),
             ),
         }
+        if persisted_count:
+            latest = max(persisted_dates) if persisted_dates else None
+            result["filings_from_persisted"] = persisted_count
+            result["latest_persisted_filing_date"] = latest
+            result["source_note"] = (
+                f"{persisted_count} de {scanned} filing(s) desde filings persistidos "
+                f"(ultimo filing: {latest or 's/d'}); la lectura live de EDGAR fallo."
+            )
+            result["provenance"]["note"] = (
+                str(result["provenance"].get("note") or "") + " " + result["source_note"]
+            ).strip()
         if errors:
             result["filing_errors"] = errors
         return result

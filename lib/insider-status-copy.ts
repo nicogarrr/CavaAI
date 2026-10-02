@@ -15,6 +15,8 @@ export type InsiderStatusFields = {
     filings_scanned?: unknown;
     filings_parsed?: unknown;
     filings_failed?: unknown;
+    filings_from_persisted?: unknown;
+    latest_persisted_filing_date?: unknown;
 };
 
 type CountText = (value: unknown) => string;
@@ -74,4 +76,26 @@ export function durableReadCopy(fields: InsiderStatusFields): {
         'arriba se leen de SEC EDGAR directamente y no dependen de ese histórico.';
     const detail = typeof fields.reason === 'string' && fields.reason ? fields.reason : null;
     return { header, detail };
+}
+
+/**
+ * Etiqueta de procedencia cuando la lectura live de EDGAR falló y las señales
+ * salen de filings ya persistidos (Form 4/4-A inmutables). Sin esta línea el
+ * usuario creería que la lectura live funcionó. Devuelve null si ningún filing
+ * vino de la copia persistida.
+ */
+export function persistedSourceCopy(
+    ticker: string,
+    fields: InsiderStatusFields,
+    countText: CountText,
+): string | null {
+    const fromPersisted = asNumber(fields.filings_from_persisted);
+    if (fromPersisted === null || fromPersisted <= 0) return null;
+    const scanned = asNumber(fields.filings_scanned);
+    const latest =
+        typeof fields.latest_persisted_filing_date === 'string' && fields.latest_persisted_filing_date
+            ? fields.latest_persisted_filing_date
+            : 's/d';
+    const of = scanned !== null ? ` de ${countText(scanned)}` : '';
+    return `${ticker}: ${countText(fromPersisted)}${of} Form 4 desde filings persistidos (último filing: ${latest}); la lectura en vivo de SEC EDGAR falló. Los datos son los de esos filings, no de hoy.`;
 }
