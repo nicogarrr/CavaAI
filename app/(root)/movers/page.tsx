@@ -63,10 +63,10 @@ function MoversTable({ rows, caption, tickerSets, showVolume = false }: { rows: 
                   watchlistTickers={tickerSets.watchlistTickers}
                 />
               </th>
-              <td className="py-3 px-2 text-right whitespace-nowrap text-gray-300">
-                {formatPrice(row.price, safeCurrency(row.currency))}
+              <td className="py-3 px-2 text-right text-gray-300">
+                <span className="whitespace-nowrap">{formatPrice(row.price, safeCurrency(row.currency))}</span>
                 {row.date ? (
-                  <div className="text-xs text-gray-500">
+                  <div className="ml-auto max-w-[7.5rem] text-xs text-gray-500">
                     del {row.date}
                     {row.registered_at ? ` · ${formatUserDateTime(row.registered_at, { hour: '2-digit', minute: '2-digit' })}` : ''}
                   </div>
