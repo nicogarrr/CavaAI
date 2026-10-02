@@ -16,6 +16,7 @@ from app.services.connectors import sec_edgar as sec_edgar_connector
 from app.services.connectors.fmp import FMPClient
 from app.services.connectors.sec import ANNUAL_REPORT_FORMS, SECClient
 from app.services.fact_chunk_service import sync_company_fact_chunks
+from app.services.fact_deletion import delete_financial_facts
 
 MetricSpec = tuple[str, str, str]
 
@@ -789,6 +790,7 @@ def _latest_filed_date(us_gaap: dict[str, Any]):
     return latest
 
 
+
 class FinancialIngestionService:
     """Normalize provider data into auditable financial facts."""
 
@@ -1368,12 +1370,11 @@ class FinancialIngestionService:
             if tenant_id is not None
             else FinancialStatement.tenant_id.is_(None)
         )
-        db.execute(
-            delete(FinancialFact).where(
-                FinancialFact.company_id == company.id,
-                FinancialFact.source_type == "FMP",
-                fact_tenant,
-            )
+        delete_financial_facts(
+            db,
+            FinancialFact.company_id == company.id,
+            FinancialFact.source_type == "FMP",
+            fact_tenant,
         )
         db.execute(
             delete(FinancialStatement).where(
@@ -1696,12 +1697,11 @@ class FinancialIngestionService:
             if tenant_id is not None
             else FinancialFact.tenant_id.is_(None)
         )
-        db.execute(
-            delete(FinancialFact).where(
-                FinancialFact.company_id == company.id,
-                FinancialFact.source_id == document.id,
-                tenant_filter,
-            )
+        delete_financial_facts(
+            db,
+            FinancialFact.company_id == company.id,
+            FinancialFact.source_id == document.id,
+            tenant_filter,
         )
 
     def _replace_sec_data(
@@ -1751,13 +1751,12 @@ class FinancialIngestionService:
             conditions.append(
                 tuple_(FinancialFact.metric, FinancialFact.period).in_(restated_fy_keys)
             )
-        db.execute(
-            delete(FinancialFact).where(
-                FinancialFact.company_id == company.id,
-                FinancialFact.source_id == document.id,
-                tenant_filter,
-                or_(*conditions),
-            )
+        delete_financial_facts(
+            db,
+            FinancialFact.company_id == company.id,
+            FinancialFact.source_id == document.id,
+            tenant_filter,
+            or_(*conditions),
         )
         db.flush()
 

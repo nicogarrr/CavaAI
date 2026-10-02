@@ -28,7 +28,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.errors import redact_secrets
@@ -44,6 +44,7 @@ from app.services.connectors.edgartools_ownership import (
     ownership_transactions,
 )
 from app.services.connectors.edgartools_thirteenf import infotable_holdings
+from app.services.fact_deletion import delete_financial_facts
 from app.services.financial_ingestion_service import BANK_REVENUE_TICKERS
 from app.services.provenance import Coverage, SourceKind, provenance
 
@@ -107,12 +108,11 @@ def _source_document(db: Session, company: Company, ticker: str) -> Document:
 
 def _replace_own_facts(db: Session, company: Company, document: Document) -> None:
     """Borra solo lo escrito por ESTE documento (frontera como _replace_esef_data)."""
-    db.execute(
-        delete(FinancialFact).where(
-            FinancialFact.company_id == company.id,
-            FinancialFact.source_id == document.id,
-            _tenant_filter(db, FinancialFact),
-        )
+    delete_financial_facts(
+        db,
+        FinancialFact.company_id == company.id,
+        FinancialFact.source_id == document.id,
+        _tenant_filter(db, FinancialFact),
     )
 
 
