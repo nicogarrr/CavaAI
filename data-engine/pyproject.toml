@@ -73,7 +73,7 @@ dependencies = [
     "minio>=7.2.7,<8",
     "dramatiq[redis]>=1.17.0,<2",
     "apscheduler>=3.10.4,<4",
-    "langfuse>=3.0.0,<4",
+    "langfuse>=3.0.0,<5",
     # Thesis lifecycle shadow pilot (stage 6): usados en app/workflows/ y
     # app/services/thesis_*_service.py. Solo estado de control en esquema
     # separado; la verdad de negocio sigue en Postgres.
