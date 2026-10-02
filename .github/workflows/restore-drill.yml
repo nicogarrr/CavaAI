@@ -52,7 +52,8 @@ jobs:
           --health-timeout 5s
           --health-retries 12
       minio:
-        image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+        # La imagen oficial quay.io/minio/minio ya no es publica (401 anonimo, ver PR); solo para este drill de CI.
+        image: bitnamilegacy/minio:2025.7.23-debian-12-r5
         env:
           MINIO_ROOT_USER: drilluser
           MINIO_ROOT_PASSWORD: drillpassword123
