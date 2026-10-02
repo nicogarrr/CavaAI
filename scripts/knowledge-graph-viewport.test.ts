@@ -147,22 +147,48 @@ describe('zoomAtPoint', () => {
     const base: Viewport = { x: 100, y: 50, scale: 1 };
 
     it('mantiene fijo el punto de pantalla ancla', () => {
+        // La invariante real es sobre dos vistas DISTINTAS: el punto de grafo
+        // que estaba bajo el ancla con la vista anterior tiene que seguir
+        // bajo el ancla con la vista posterior. La identidad
+        // toScreenPoint(v, toGraphPoint(v, x)) === x vale para cualquier
+        // viewport —tambien para un zoomAtPoint con el signo invertido—, asi
+        // que una prueba que solo la reafirma no muerde nada.
         const anchor = { x: 400, y: 300 };
-        const before = toScreenPoint(base, toGraphPoint(base, anchor));
+        const pinned = toGraphPoint(base, anchor);
         const next = zoomAtPoint(base, 2, anchor);
-        const after = toScreenPoint(next, toGraphPoint(next, anchor));
-        assert.deepEqual(before, anchor);
-        assert.deepEqual(after, anchor);
+        const after = toScreenPoint(next, pinned);
         near(after.x, anchor.x);
         near(after.y, anchor.y);
     });
 
     it('el punto ancla sigue fijo tambien al alejar', () => {
         const anchor = { x: 120, y: 480 };
+        const pinned = toGraphPoint(base, anchor);
         const next = zoomAtPoint(base, 0.5, anchor);
-        const projected = toScreenPoint(next, toGraphPoint(next, anchor));
+        const projected = toScreenPoint(next, pinned);
         near(projected.x, anchor.x);
         near(projected.y, anchor.y);
+    });
+
+    it('20 zoom-ins encadenados no mueven el punto de grafo bajo el ancla', () => {
+        // Un paso puede quedar redondeado a cero por la aritmetica de coma
+        // flotante; veinte encadenados no. Si zoomAtPoint arrastra deriva,
+        // aqui se acumula y el punto escapa del ancla.
+        //
+        // La invariante se comprueba tras CADA zoom, no solo al final: la
+        // mutacion clasica del signo refleja el offset en cada paso
+        // (g -> -g), asi que tras un numero PAR de zooms el punto vuelve al
+        // ancla por casualidad y una comprobacion unica al final pasaria en
+        // verde con el zoom roto.
+        let v: Viewport = { x: 137, y: -42, scale: 1 };
+        const anchor = { x: 613, y: 271 };
+        const pinned = toGraphPoint(v, anchor);
+        for (let i = 0; i < 20; i++) {
+            v = zoomAtPoint(v, 1.25, anchor);
+            const back = toScreenPoint(v, pinned);
+            near(back.x, anchor.x, 1e-6);
+            near(back.y, anchor.y, 1e-6);
+        }
     });
 
     it('mueve el resto del grafo en el sentido correcto', () => {
@@ -198,8 +224,9 @@ describe('zoomAtPoint', () => {
 
     it('zoomCentered ancla en el centro del lienzo', () => {
         const anchor = { x: SIZE.width / 2, y: SIZE.height / 2 };
+        const pinned = toGraphPoint(base, anchor);
         const next = zoomCentered(base, ZOOM_STEP, SIZE);
-        const projected = toScreenPoint(next, toGraphPoint(next, anchor));
+        const projected = toScreenPoint(next, pinned);
         near(projected.x, anchor.x);
         near(projected.y, anchor.y);
     });
