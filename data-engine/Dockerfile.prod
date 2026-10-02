@@ -42,7 +42,12 @@ RUN pip install torch==2.9.1+cpu --index-url https://download.pytorch.org/whl/cp
 # no-root). Sin esto el HOME de `cavaai` (--no-create-home) no es escribible,
 # SentenceTransformer lanza PermissionError y la busqueda semantica devolvia
 # [] en silencio: la tesis corria sin contexto de documentos.
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')" \
+# Revision del modelo fijada por SHA del Hub: sin ella, `all-MiniLM-L6-v2` es
+# una referencia movible (el pin no es reproducible) y si HF Hub esta caido no
+# se puede construir sin saber QUE revision bajo. El SHA es el de
+# huggingface.co/api/models/sentence-transformers/all-MiniLM-L6-v2 (campo sha).
+ARG SENTENCE_TRANSFORMERS_REV=1110a243fdf4706b3f48f1d95db1a4f5529b4d41
+RUN SENTENCE_TRANSFORMERS_REV="${SENTENCE_TRANSFORMERS_REV}" python -c "import os; from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2', revision=os.environ['SENTENCE_TRANSFORMERS_REV'])" \
     && chmod -R a+rX /opt/hf
 # Carga realmente offline en runtime: el modelo ya esta en /opt/hf; sin esto
 # SentenceTransformer consulta HF Hub y puede necesitar escribir en la cache.
@@ -58,7 +63,10 @@ EXPOSE 8000
 # root sobre esos volumenes para cualquier RCE de la app. Se crea un usuario
 # sin shell y se le entrega la propiedad de /app; los volumenes ya los
 # monta docker-compose, que puede fijar el ownership con `user:`.
-RUN groupadd --system cavaai && useradd --system --gid cavaai --no-create-home cavaai \
+# Sin shell de login: --no-create-home dejaba /bin/sh como shell de
+# depuración para `su cavaai` o cualquier login. El usuario solo necesita
+# ejecutar el CMD (que invoca `sh -c` directamente, sin pasar por passwd).
+RUN groupadd --system cavaai && useradd --system --gid cavaai --no-create-home --shell /usr/sbin/nologin cavaai \
     && chown -R cavaai:cavaai /app /opt/hf
 # /data es el punto de montaje de duckdb_data en produccion. Un volumen named
 # nuevo se inicializa copiando contenido Y propietario de esta ruta desde la
