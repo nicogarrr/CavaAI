@@ -44,6 +44,9 @@ export type GraphEdgePayload = {
 export type GraphPayload = {
   node_count: number;
   edge_count: number;
+  /** Total de nodos con los MISMOS filtros, sin el `limit` de la pagina.
+   *  Ausente cuando el backend no lo devuelve (vecindario): N/D. */
+  total_node_count?: number;
   nodes: GraphNodePayload[];
   edges: GraphEdgePayload[];
 };
