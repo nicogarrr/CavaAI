@@ -24,7 +24,9 @@
   {
    "case": "neg-003-fila-de-otro-emisor",
    "gate": "extracted_values_match_fixture",
-   "defect": "refresh_from_fmp no contrasta el 'symbol' de cada fila con el ticker pedido: una fila de otro emisor se atribuye a este."
+   "status": "closed",
+   "defect": "refresh_from_fmp no contrastaba el 'symbol' de cada fila con el ticker pedido: una fila de otro emisor se atribuia a este (999.000.000.000 como revenue) y contaminaba el revenue_growth derivado.",
+   "resolution": "Cada fila cuyo symbol no casa con el ticker se rechaza y se reporta rows_rechazadas_por_symbol en el resultado."
   },
   {
    "case": "neg-013-filas-duplicadas-del-proveedor",
@@ -39,7 +41,7 @@
  ],
  "summary": {
   "cases": 80,
-  "negative_controls": 14,
+  "negative_controls": 12,
   "degradation_cases": 11,
   "families": {
    "sec": 42,
@@ -47,9 +49,9 @@
    "esef": 18
   },
   "negative_controls_by_gate": {
-   "absent_fields_reported_as_null": 3,
+   "absent_fields_reported_as_null": 2,
    "duplicates_collapsed": 1,
-   "extracted_values_match_fixture": 2,
+   "extracted_values_match_fixture": 1,
    "fixture_schema_valid": 1,
    "no_lookahead": 2,
    "official_only_if_index_verified": 2,
@@ -3651,9 +3653,9 @@
   {
    "id": "neg-003-fila-de-otro-emisor",
    "family": "fmp",
-   "category": "negative_control",
+   "category": "provider_hygiene",
    "scenario": "fmp_statements",
-   "description": "El payload trae filas de OTRA empresa: la cifra ajena no puede becoming revenue.",
+   "description": "El payload trae filas de OTRA sociedad (symbol=OTRA): se rechazan y solo la fila del ticker pedido se atribuye a este. Antes la cifra ajena 999.000.000.000 acababa como revenue.",
    "scenario_args": {
     "endpoints": {
      "income-statement": "fmp/income_statement_foreign_symbol.json"
@@ -3681,11 +3683,27 @@
      "official": [],
      "unverified": []
     },
-    "absent_metrics": []
+    "absent_metrics": [],
+    "absent_values": [
+     999000000000,
+     888000000000
+    ],
+    "periods": {
+     "revenue": [
+      "2025-12-31:FY"
+     ]
+    }
    },
-   "expect_gate_failure": "extracted_values_match_fixture",
    "applies_to": [
-    "extracted_values_match_fixture"
+    "fixture_schema_valid",
+    "extracted_values_match_fixture",
+    "period_attribution_correct",
+    "no_lookahead",
+    "official_only_if_index_verified",
+    "absent_fields_reported_as_null",
+    "units_consistent",
+    "source_types_declared",
+    "duplicates_collapsed"
    ]
   },
   {
@@ -3731,9 +3749,9 @@
   {
    "id": "neg-005-valor-de-otro-emisor",
    "family": "fmp",
-   "category": "negative_control",
+   "category": "provider_hygiene",
    "scenario": "fmp_statements",
-   "description": "Un valor que el fixture declara ausente aparece en la ingesta: fabricacion.",
+   "description": "El valor de otra sociedad (999.000.000.000) ya no entra: lo que el fixture declara ausente sigue ausente. Antes la fila ajena lo publicaba.",
    "scenario_args": {
     "endpoints": {
      "income-statement": "fmp/income_statement_foreign_symbol.json"
@@ -3768,9 +3786,16 @@
      "unverified": []
     }
    },
-   "expect_gate_failure": "absent_fields_reported_as_null",
    "applies_to": [
-    "absent_fields_reported_as_null"
+    "fixture_schema_valid",
+    "extracted_values_match_fixture",
+    "period_attribution_correct",
+    "no_lookahead",
+    "official_only_if_index_verified",
+    "absent_fields_reported_as_null",
+    "units_consistent",
+    "source_types_declared",
+    "duplicates_collapsed"
    ]
   },
   {
