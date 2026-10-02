@@ -226,6 +226,28 @@ def _fundamentals(db, company_id: int) -> dict[str, float]:
     return resolved
 
 
+def _own_fact_ids(db, company_id: int) -> dict[str, int | None]:
+    result: dict[str, int | None] = {}
+    for canonical, aliases in FUNDAMENTAL_ALIASES.items():
+        for alias in aliases:
+            found = latest_facts(db, company_id, [alias]).get(alias)
+            if found is not None:
+                result[canonical] = found.fact_id
+                break
+    return result
+
+
+def _own_periods(db, company_id: int) -> dict[str, str | None]:
+    result: dict[str, str | None] = {}
+    for canonical, aliases in FUNDAMENTAL_ALIASES.items():
+        for alias in aliases:
+            found = latest_facts(db, company_id, [alias]).get(alias)
+            if found is not None:
+                result[canonical] = found.period
+                break
+    return result
+
+
 def _provider_multiple_metrics(tickers: list[str]) -> list[str]:
     return [
         PROVIDER_MULTIPLE_TEMPLATE.format(kind=kind, ticker=ticker)
@@ -261,12 +283,17 @@ def _peer_set(context: ValuationContext) -> tuple[list[Company], dict]:
         context.db.scalars(select(Company).where(Company.ticker.in_(list(ids)))).all()
     )
     rows.sort(key=lambda company: company.ticker)
-    return rows, {
+    company_currency = (context.company.currency or "EUR").upper()
+    same_currency = [r for r in rows if (r.currency or "EUR").upper() == company_currency]
+    rejected = sorted(r.ticker for r in rows if (r.currency or "EUR").upper() != company_currency)
+    provenance = {
         "basis": comparison.get("basis"),
         "method": (comparison.get("selection_trace") or {}).get("method"),
         "trace": comparison.get("selection_trace", {}),
         "limit": PEER_LIMIT,
+        "rejected_cross_currency": rejected,
     }
+    return same_currency, provenance
 
 
 class RelativeMultiplesEngine(ValuationEngine):
@@ -435,7 +462,7 @@ class RelativeMultiplesEngine(ValuationEngine):
             blockers.append("peer_set_below_five")
         if undeclared:
             blockers.append("peer_multiple_source_undeclared")
-        divergence = self._divergence(context, base_value)
+        divergence = self._divergence(context, base_value, comparable_price=comparable_price)
         if divergence.get("warning"):
             blockers.append("dcf_relative_divergence")
 
@@ -552,8 +579,14 @@ class RelativeMultiplesEngine(ValuationEngine):
                         context, own_fundamentals
                     ),
                     "publication_blockers": blockers,
-                    "fact_ids": snapshot.fact_ids(),
-                    "periods": snapshot.periods(),
+                    "fact_ids": {
+                        **snapshot.fact_ids(),
+                        **{f"own_{k}": v for k, v in _own_fact_ids(context.db, company.id).items()},
+                    },
+                    "periods": {
+                        **snapshot.periods(),
+                        **{f"own_{k}": v for k, v in _own_periods(context.db, company.id).items()},
+                    },
                     "snapshot": {
                         "as_of": snapshot.as_of_period,
                         "income_statement": snapshot.income_statement,
@@ -750,7 +783,7 @@ class RelativeMultiplesEngine(ValuationEngine):
             return screen
         return None
 
-    def _divergence(self, context: ValuationContext, relative_value: float) -> dict:
+    def _divergence(self, context: ValuationContext, relative_value: float, *, comparable_price: float | None = None) -> dict:
         """Run the standard DCF on the same context and publish the gap.
 
         A relative engine that never disagrees with a DCF is either right or
@@ -763,7 +796,7 @@ class RelativeMultiplesEngine(ValuationEngine):
             return divergence_report(
                 intrinsic_value=None,
                 relative_value=relative_value,
-                current_price=context.current_price,
+                current_price=comparable_price,
             )
         try:
             intrinsic = StandardDCFEngine().value(context)
@@ -771,14 +804,14 @@ class RelativeMultiplesEngine(ValuationEngine):
             return divergence_report(
                 intrinsic_value=None,
                 relative_value=relative_value,
-                current_price=context.current_price,
+                current_price=comparable_price,
             )
         intrinsic_value = intrinsic.get("expected_value")
         if intrinsic_value is None:
             report = divergence_report(
                 intrinsic_value=None,
                 relative_value=relative_value,
-                current_price=context.current_price,
+                current_price=comparable_price,
             )
             report["reason"] = (
                 f"The FCFF DCF on this same snapshot returned "
@@ -788,7 +821,7 @@ class RelativeMultiplesEngine(ValuationEngine):
         report = divergence_report(
             intrinsic_value=float(intrinsic_value),
             relative_value=relative_value,
-            current_price=context.current_price,
+            current_price=comparable_price,
             threshold=DIVERGENCE_THRESHOLD,
         )
         report["dcf_status"] = intrinsic.get("status")

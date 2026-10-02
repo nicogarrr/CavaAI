@@ -492,22 +492,13 @@ def gate_no_silent_zero_net_debt(case: dict) -> dict:
         )
     trace = _trace(case)
     source = trace.get("net_debt_source")
-    if source is None and (artifact.get("publishable") is not False or not _declares_assumptions(trace)):
+    if source is None:
         return _result(
             "no_silent_zero_net_debt",
             False,
             [
                 "valor publicado sin fact de net_debt y sin trace.net_debt_source: "
                 "la deuda neta se ha supuesto 0 en silencio"
-            ],
-        )
-    if source is None:
-        return _result(
-            "no_silent_zero_net_debt",
-            True,
-            [
-                "net_debt ausente, valor no publicable y supuestos declarados en el "
-                "trace (valuation_basis/assumed): no entra como 0 en nada publicado"
             ],
         )
     if source == "missing_assumed_zero" and artifact.get("publishable") is not False:

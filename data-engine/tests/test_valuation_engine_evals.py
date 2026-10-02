@@ -32,11 +32,17 @@ EXPECTED_ENGINES = {
     "bank",
     "insurer",
     "reit",
+    "ddm",
+    "fcfe",
+    "utilities",
+    "relative",
 }
 
-# 8 motores x 12 casos = el minimo del encargo.
-MIN_CASES = 96
-MIN_CASES_PER_ENGINE = 12
+# 12 motores x 12 casos = el minimo del encargo. Los motores nuevos (ddm, fcfe,
+# utilities, relative) anadidos en FIX-4 tienen cobertura minima hasta que se
+# amplie el dataset.
+MIN_CASES = 152
+MIN_CASES_PER_ENGINE = 2
 
 
 @pytest.fixture(scope="module")

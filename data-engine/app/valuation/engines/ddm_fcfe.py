@@ -315,20 +315,38 @@ def _scenario_pair(
 
 
 def _resolve_delta(
-    rows: dict[str, SourcedFact], *, direct: str, current: str, prior: str
+    rows: dict[str, SourcedFact], *, direct: str, current: str, prior: str,
+    db=None, company_id: int | None = None, anchor_fiscal_year: int | None = None,
 ) -> tuple[float | None, str]:
     """A balance-sheet delta, from a stored difference or from both instants.
 
     ``(None, "unavailable")`` when neither route works, so the caller names the
-    input instead of inventing a zero.
+    input instead of inventing a zero. When ``db`` and ``company_id`` are given,
+    falls back to deriving the delta from two annual facts of the same metric.
     """
     stated = rows.get(direct)
     if stated is not None:
-        return stated.value, "financial_facts"
+        return stated.value, "dedicated_metric"
     now = rows.get(current)
     before = rows.get(prior)
     if now is not None and before is not None:
         return now.value - before.value, "derived_from_two_instants"
+    if db is not None and company_id is not None and anchor_fiscal_year is not None:
+        from sqlalchemy import select as _select
+
+        from app.models import FinancialFact as _FF
+
+        series = db.scalars(
+            _select(_FF)
+            .where(
+                _FF.company_id == company_id,
+                _FF.metric == direct.replace("delta_", ""),
+                _FF.fiscal_year <= anchor_fiscal_year,
+            )
+            .order_by(_FF.fiscal_year.desc())
+        ).all()
+        if len(series) >= 2:
+            return float(series[0].value) - float(series[1].value), "derived_from_two_annual_facts"
     return None, "unavailable"
 
 
@@ -757,13 +775,17 @@ class FreeCashFlowToEquityEngine(_EquityMethodEngine):
         # unknown, and defaulting it to zero would state that the company
         # neither borrowed nor repaid.
         delta_debt, delta_debt_source = _resolve_delta(
-            rows, direct="delta_total_debt", current="total_debt", prior="total_debt_prior_period"
+            rows, direct="delta_total_debt", current="total_debt", prior="total_debt_prior_period",
+            db=context.db, company_id=context.company.id,
+            anchor_fiscal_year=context.snapshot.fiscal_year,
         )
         delta_wc, delta_wc_source = _resolve_delta(
             rows,
             direct="delta_working_capital",
             current="working_capital",
             prior="working_capital_prior_period",
+            db=context.db, company_id=context.company.id,
+            anchor_fiscal_year=context.snapshot.fiscal_year,
         )
         if delta_debt is None:
             missing.append("delta_total_debt_or_total_debt_pair")

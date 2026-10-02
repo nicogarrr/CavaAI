@@ -429,7 +429,7 @@ def implied_value(
             f"own_{denominator_metric}",
             f"Applying a peer {kind} needs the company's own {denominator_metric}.",
         )
-    if denominator_metric in _EARNINGS_DENOMINATORS and denominator <= 0:
+    if denominator <= 0:
         raise RelativeMultipleError(
             f"own_{denominator_metric}_positive",
             f"own {denominator_metric} is {denominator:.4f}: applying a peer {kind} "

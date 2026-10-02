@@ -196,8 +196,8 @@
         "closed_form": {
           "bear_value": 24.8814049486,
           "base_value": 192.997712134,
-          "bull_value": 386.149143719,
-          "expected_value": 203.908435733
+          "bull_value": 3913.060717,
+          "expected_value": 940.6661557
         }
       },
       "applies_to": [
@@ -216,7 +216,7 @@
       ],
       "price": 25,
       "wacc": 0.04,
-      "hand_calculation": "WACC 0.04 contra terminal 0.03 (spread 1pp): el valor terminal se lleva 0.9569 del EV (>0.95), o sea que el forecast de 5 anos no mueve el valor. Blocker forecast_is_not_the_driver. base=192.997712."
+      "hand_calculation": "WACC 0.04 contra terminal 0.03 (spread 1pp): el valor terminal se lleva >0.95 del EV, o sea que el forecast de 5 anos no mueve el valor. Blocker forecast_is_not_the_driver. FIX-4: bull WACC ahora es min(WACC-1pp, max(terminal+1pp, WACC-0.5pp)) con suelo terminal+0.1pp = 0.031 (antes 0.04). base=192.997712."
     },
     {
       "id": "evdcf16_half_point_spread_breaks_scenario_order",
@@ -249,12 +249,13 @@
         "closed_form": {
           "bear_value": 30.2144378685,
           "base_value": 388.811510822,
-          "bull_value": 386.149143719,
-          "expected_value": 325.873607902
+          "bull_value": 3913.060717,
+          "expected_value": 1066.69433
         }
       },
       "applies_to": [
         "engine_publishable_status",
+        "bear_le_base_le_bull",
         "expected_value_within_band",
         "value_matches_closed_form",
         "probabilities_sum_to_one",
@@ -268,8 +269,8 @@
       ],
       "price": 25,
       "wacc": 0.035,
-      "note": "HALLAZGO C2-1 (defecto real del motor, ver INTEGRACION PENDIENTE): con spread WACC-terminal de 5pb el escenario bull usa max(WACC-1pp, terminal+1pp) = 4%, que es UN WACC MAS ALTO que el 3.5% del base. El valor terminal se divide por el spread, asi que el bull vale MENOS que el base (386.1491 < 388.8115) y el orden bear <= base <= bull se rompe. Este caso comprueba el resto del contrato (blocker, forma cerrada, probabilidades, sensibilidad) pero queda fuera de bear_le_base_le_bull porque el fallo es del motor, no del caso: la forma cerrada aqui esta calculada con la misma formula que el motor.",
-      "hand_calculation": "WACC 0.035 contra terminal 0.03 (spread 5pb). bear = DCF(0.00, 0.09, 0.11); base = DCF(0.08, 0.15, 0.035); bull = DCF(0.16, 0.21, max(0.025, 0.04)=0.04). bear=30.2144 <= base=388.8115 pero bull=386.1491 < base: el bull descuenta MAS que el base."
+      "note": "FIX-4: el defecto del bull WACC mas alto que el base con spread pequeno esta corregido. Antes bull usaba max(WACC-1pp, terminal+1pp)=0.04 > base 0.035, dando bull<base. Ahora usa min(WACC-1pp, max(terminal+1pp, WACC-0.5pp)) con suelo terminal+0.1pp = 0.031, que es menor que base 0.035, asi que bull > base.",
+      "hand_calculation": "WACC 0.035 contra terminal 0.03 (spread 5pb). FIX-4: bull WACC = max(min(0.025, max(0.04, 0.03)), 0.031) = 0.031 (antes 0.04). bear=30.2144 <= base=388.8115 <= bull=3913.06: el orden bear <= base <= bull se cumple."
     },
     {
       "id": "evdcf05_no_revenue_anchor",
@@ -1023,7 +1024,7 @@
         "status": "insufficient_data",
         "publishable": false,
         "missing_inputs": [
-          "cost_of_equity_above_book_value_growth"
+          "positive_shares_diluted"
         ],
         "publication_blockers": [],
         "trace_engine": "bank",
@@ -4913,7 +4914,8 @@
         "publishable": false,
         "missing_inputs": [
           "cash_and_equivalents",
-          "capital_expenditure_or_operating_cash_flow"
+          "capital_expenditure",
+          "operating_cash_flow"
         ],
         "publication_blockers": [],
         "trace_engine": "pre_revenue",
@@ -5093,12 +5095,13 @@
         "probabilities_sum_to_one",
         "sensitivity_covers_base",
         "missing_inputs_declared",
+        "no_silent_zero_net_debt",
         "routing_expected",
         "trace_records_evidence",
         "gate_does_not_omit_itself"
       ],
       "price": 10,
-      "note": "Rango INDICATIVO: sin net_debt el snapshot no es coherente, pero hay precio y acciones, asi que el motor construye un rango con supuestos declarados (margen FCF 0.15, WACC 0.13 tag) y marca status=partial / publishable=False / valuation_basis=indicative_assumptions. HALLAZGO C2: en esta rama net_debt ausente se convierte en 0.0 sin declararlo (NO hay trace.net_debt_source), asi que este caso queda fuera de la puerta no_silent_zero_net_debt hasta que el trace lo nombre. Con flujo de caja POSITIVO declarado la banda es coherente; lo que no se declara es el 0 de la deuda neta.",
+      "note": "Rango INDICATIVO: sin net_debt el snapshot no es coherente, pero hay precio y acciones, asi que el motor construye un rango con supuestos declarados (margen FCF 0.15, WACC 0.13 tag) y marca status=partial / publishable=False / valuation_basis=indicative_assumptions. net_debt ausente se declara ahora como net_debt_source=missing_assumed_zero en el trace (antes se convertia en 0.0 sin declararlo). Con flujo de caja POSITIVO declarado la banda es coherente; lo que no se declara es el 0 de la deuda neta.",
       "hand_calculation": "revenue 40 (no asumido), crecimiento 0.20 por tag, margen supuesto 0.15, WACC 0.13, terminal 0.025, net_debt 0.0 (asumido en silencio). funding incompleto (sin caja) -> sin dilucion. base = 1.151619."
     },
     {
@@ -6348,6 +6351,449 @@
         "gate_does_not_omit_itself"
       ],
       "hand_calculation": "Mismo cruce de ejercicio en pre-revenue: el margen FY2024 no entra en el snapshot FY2025, y sin precio no hay ni rango indicativo. Rechazo con la causa."
+    },
+    {
+      "id": "evddm01_insufficient_no_inputs",
+      "engine": "ddm",
+      "category": "insufficient",
+      "company": {
+        "ticker": "EVDDM01",
+        "name": "eval EVDDM01",
+        "company_type": "standard",
+        "valuation_model": "dividend_discount",
+        "factor_tags": [
+          "dividend_valuation"
+        ]
+      },
+      "facts": {},
+      "expected": {
+        "engine_key": "ddm",
+        "status": "insufficient_data",
+        "publishable": false,
+        "missing_inputs": [
+          "shares_diluted",
+          "dividend_per_share_or_payout_ratio"
+        ],
+        "publication_blockers": [],
+        "trace_engine": "ddm",
+        "closed_form": {
+          "bear_value": null,
+          "base_value": null,
+          "bull_value": null,
+          "expected_value": null
+        }
+      },
+      "applies_to": [
+        "engine_publishable_status",
+        "value_matches_closed_form",
+        "missing_inputs_declared",
+        "routing_expected",
+        "gate_does_not_omit_itself"
+      ],
+      "hand_calculation": "Sin datos: el motor DDM no puede valorar."
+    },
+    {
+      "id": "evddm02_routing_standard",
+      "engine": "ddm",
+      "category": "routing",
+      "company": {
+        "ticker": "EVDDM02",
+        "name": "eval EVDDM02",
+        "company_type": "standard",
+        "valuation_model": "dividend_discount",
+        "factor_tags": [
+          "dividend_valuation"
+        ]
+      },
+      "facts": {},
+      "expected": {
+        "engine_key": "ddm",
+        "status": "insufficient_data",
+        "publishable": false,
+        "missing_inputs": [],
+        "publication_blockers": [],
+        "trace_engine": "ddm",
+        "closed_form": {
+          "bear_value": null,
+          "base_value": null,
+          "bull_value": null,
+          "expected_value": null
+        }
+      },
+      "applies_to": [
+        "engine_publishable_status",
+        "routing_expected",
+        "gate_does_not_omit_itself"
+      ],
+      "hand_calculation": "Routing: standard -> ddm"
+    },
+    {
+      "id": "evfcf01_insufficient_no_inputs",
+      "engine": "fcfe",
+      "category": "insufficient",
+      "company": {
+        "ticker": "EVFCFE01",
+        "name": "eval EVFCFE01",
+        "company_type": "standard",
+        "valuation_model": "fcfe",
+        "factor_tags": [
+          "fcfe_valuation"
+        ]
+      },
+      "facts": {},
+      "expected": {
+        "engine_key": "fcfe",
+        "status": "insufficient_data",
+        "publishable": false,
+        "missing_inputs": [
+          "net_income",
+          "capex",
+          "depreciation_amortization",
+          "shares_diluted",
+          "delta_total_debt_or_total_debt_pair",
+          "delta_working_capital_or_working_capital_pair"
+        ],
+        "publication_blockers": [],
+        "trace_engine": "fcfe",
+        "closed_form": {
+          "bear_value": null,
+          "base_value": null,
+          "bull_value": null,
+          "expected_value": null
+        }
+      },
+      "applies_to": [
+        "engine_publishable_status",
+        "value_matches_closed_form",
+        "missing_inputs_declared",
+        "routing_expected",
+        "gate_does_not_omit_itself"
+      ],
+      "hand_calculation": "Sin datos: el motor FCFE no puede valorar."
+    },
+    {
+      "id": "evfcf02_routing_standard",
+      "engine": "fcfe",
+      "category": "routing",
+      "company": {
+        "ticker": "EVFCFE02",
+        "name": "eval EVFCFE02",
+        "company_type": "standard",
+        "valuation_model": "fcfe",
+        "factor_tags": [
+          "fcfe_valuation"
+        ]
+      },
+      "facts": {},
+      "expected": {
+        "engine_key": "fcfe",
+        "status": "insufficient_data",
+        "publishable": false,
+        "missing_inputs": [],
+        "publication_blockers": [],
+        "trace_engine": "fcfe",
+        "closed_form": {
+          "bear_value": null,
+          "base_value": null,
+          "bull_value": null,
+          "expected_value": null
+        }
+      },
+      "applies_to": [
+        "engine_publishable_status",
+        "routing_expected",
+        "gate_does_not_omit_itself"
+      ],
+      "hand_calculation": "Routing: standard -> fcfe"
+    },
+    {
+      "id": "evuti01_insufficient_no_inputs",
+      "engine": "utilities",
+      "category": "insufficient",
+      "company": {
+        "ticker": "EVUTIL01",
+        "name": "eval EVUTIL01",
+        "company_type": "utility",
+        "valuation_model": "regulated_asset_dasr",
+        "factor_tags": [
+          "utilities"
+        ]
+      },
+      "facts": {},
+      "expected": {
+        "engine_key": "utilities",
+        "status": "insufficient_data",
+        "publishable": false,
+        "missing_inputs": [
+          "rate_base",
+          "allowed_roe",
+          "equity_ratio",
+          "cost_of_equity",
+          "shares_diluted",
+          "payout_ratio"
+        ],
+        "publication_blockers": [],
+        "trace_engine": "utilities",
+        "closed_form": {
+          "bear_value": null,
+          "base_value": null,
+          "bull_value": null,
+          "expected_value": null
+        }
+      },
+      "applies_to": [
+        "engine_publishable_status",
+        "value_matches_closed_form",
+        "missing_inputs_declared",
+        "routing_expected",
+        "gate_does_not_omit_itself"
+      ],
+      "hand_calculation": "Sin datos: el motor de utilities no puede valorar."
+    },
+    {
+      "id": "evuti02_routing_utility",
+      "engine": "utilities",
+      "category": "routing",
+      "company": {
+        "ticker": "EVUTIL02",
+        "name": "eval EVUTIL02",
+        "company_type": "utility",
+        "valuation_model": "regulated_asset_dasr",
+        "factor_tags": [
+          "utilities"
+        ]
+      },
+      "facts": {},
+      "expected": {
+        "engine_key": "utilities",
+        "status": "insufficient_data",
+        "publishable": false,
+        "missing_inputs": [],
+        "publication_blockers": [],
+        "trace_engine": "utilities",
+        "closed_form": {
+          "bear_value": null,
+          "base_value": null,
+          "bull_value": null,
+          "expected_value": null
+        }
+      },
+      "applies_to": [
+        "engine_publishable_status",
+        "routing_expected",
+        "gate_does_not_omit_itself"
+      ],
+      "hand_calculation": "Routing: utility -> utilities"
+    },
+    {
+      "id": "evrel01_insufficient_no_inputs",
+      "engine": "relative",
+      "category": "insufficient",
+      "company": {
+        "ticker": "EVREL01",
+        "name": "eval EVREL01",
+        "company_type": "standard",
+        "valuation_model": "relative_multiples",
+        "factor_tags": [
+          "relative_valuation"
+        ]
+      },
+      "facts": {},
+      "expected": {
+        "engine_key": "relative",
+        "status": "insufficient_data",
+        "publishable": false,
+        "missing_inputs": [
+          "shares_diluted"
+        ],
+        "publication_blockers": [],
+        "trace_engine": "relative",
+        "closed_form": {
+          "bear_value": null,
+          "base_value": null,
+          "bull_value": null,
+          "expected_value": null
+        }
+      },
+      "applies_to": [
+        "engine_publishable_status",
+        "value_matches_closed_form",
+        "missing_inputs_declared",
+        "routing_expected",
+        "gate_does_not_omit_itself"
+      ],
+      "hand_calculation": "Sin datos: el motor de multiples relativos no puede valorar."
+    },
+    {
+      "id": "evrel02_routing_standard",
+      "engine": "relative",
+      "category": "routing",
+      "company": {
+        "ticker": "EVREL02",
+        "name": "eval EVREL02",
+        "company_type": "standard",
+        "valuation_model": "relative_multiples",
+        "factor_tags": [
+          "relative_valuation"
+        ]
+      },
+      "facts": {},
+      "expected": {
+        "engine_key": "relative",
+        "status": "insufficient_data",
+        "publishable": false,
+        "missing_inputs": [],
+        "publication_blockers": [],
+        "trace_engine": "relative",
+        "closed_form": {
+          "bear_value": null,
+          "base_value": null,
+          "bull_value": null,
+          "expected_value": null
+        }
+      },
+      "applies_to": [
+        "engine_publishable_status",
+        "routing_expected",
+        "gate_does_not_omit_itself"
+      ],
+      "hand_calculation": "Routing: standard -> relative"
+    },
+    {
+      "id": "evddm03_negative_engine_publishable_status",
+      "engine": "ddm",
+      "category": "negative_control",
+      "company": {
+        "ticker": "EVDDM03",
+        "name": "eval EVDDM03",
+        "company_type": "standard",
+        "valuation_model": "dividend_discount",
+        "factor_tags": [
+          "dividend_valuation"
+        ]
+      },
+      "facts": {},
+      "expected": {
+        "engine_key": "ddm",
+        "status": "ok",
+        "publishable": true,
+        "missing_inputs": [],
+        "publication_blockers": [],
+        "trace_engine": "ddm",
+        "closed_form": {
+          "bear_value": null,
+          "base_value": null,
+          "bull_value": null,
+          "expected_value": null
+        }
+      },
+      "applies_to": [
+        "engine_publishable_status"
+      ],
+      "expect_gate_failure": "engine_publishable_status",
+      "hand_calculation": "Control negativo: sin datos, la puerta engine_publishable_status debe fallar."
+    },
+    {
+      "id": "evfcf03_negative_engine_publishable_status",
+      "engine": "fcfe",
+      "category": "negative_control",
+      "company": {
+        "ticker": "EVFCFE03",
+        "name": "eval EVFCFE03",
+        "company_type": "standard",
+        "valuation_model": "fcfe",
+        "factor_tags": [
+          "fcfe_valuation"
+        ]
+      },
+      "facts": {},
+      "expected": {
+        "engine_key": "fcfe",
+        "status": "ok",
+        "publishable": true,
+        "missing_inputs": [],
+        "publication_blockers": [],
+        "trace_engine": "fcfe",
+        "closed_form": {
+          "bear_value": null,
+          "base_value": null,
+          "bull_value": null,
+          "expected_value": null
+        }
+      },
+      "applies_to": [
+        "engine_publishable_status"
+      ],
+      "expect_gate_failure": "engine_publishable_status",
+      "hand_calculation": "Control negativo: sin datos, la puerta engine_publishable_status debe fallar."
+    },
+    {
+      "id": "evuti03_negative_engine_publishable_status",
+      "engine": "utilities",
+      "category": "negative_control",
+      "company": {
+        "ticker": "EVUTIL03",
+        "name": "eval EVUTIL03",
+        "company_type": "utility",
+        "valuation_model": "regulated_asset_dasr",
+        "factor_tags": [
+          "utilities"
+        ]
+      },
+      "facts": {},
+      "expected": {
+        "engine_key": "utilities",
+        "status": "ok",
+        "publishable": true,
+        "missing_inputs": [],
+        "publication_blockers": [],
+        "trace_engine": "utilities",
+        "closed_form": {
+          "bear_value": null,
+          "base_value": null,
+          "bull_value": null,
+          "expected_value": null
+        }
+      },
+      "applies_to": [
+        "engine_publishable_status"
+      ],
+      "expect_gate_failure": "engine_publishable_status",
+      "hand_calculation": "Control negativo: sin datos, la puerta engine_publishable_status debe fallar."
+    },
+    {
+      "id": "evrel03_negative_engine_publishable_status",
+      "engine": "relative",
+      "category": "negative_control",
+      "company": {
+        "ticker": "EVREL03",
+        "name": "eval EVREL03",
+        "company_type": "standard",
+        "valuation_model": "relative_multiples",
+        "factor_tags": [
+          "relative_valuation"
+        ]
+      },
+      "facts": {},
+      "expected": {
+        "engine_key": "relative",
+        "status": "ok",
+        "publishable": true,
+        "missing_inputs": [],
+        "publication_blockers": [],
+        "trace_engine": "relative",
+        "closed_form": {
+          "bear_value": null,
+          "base_value": null,
+          "bull_value": null,
+          "expected_value": null
+        }
+      },
+      "applies_to": [
+        "engine_publishable_status"
+      ],
+      "expect_gate_failure": "engine_publishable_status",
+      "hand_calculation": "Control negativo: sin datos, la puerta engine_publishable_status debe fallar."
     }
   ]
 }

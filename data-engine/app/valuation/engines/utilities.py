@@ -102,6 +102,7 @@ from app.valuation.fact_reference import (
 )
 from app.valuation.moat_framework import empty_moat_framework
 from app.valuation.regulated_asset import (
+    ALLOWED_ROE_CONVENTIONS,
     RegulatedAssetError,
     RegulatedAssetInputs,
     regulated_asset_sensitivity,
@@ -178,11 +179,26 @@ ENGINE_PRECEDENCE_NOTE = (
     "Utilities is a SECTOR method (the regulator sets the return on the rate "
     "base); DDM/FCFE are VALUATION methods (the payout policy sets the cash). "
     "A regulated utility that pays a dividend could be routed to either. The "
-    "registry gives utilities precedence when the rate-base inputs exist, "
-    "because the regulated return is the economically binding assumption, and "
-    "falls back to DDM when they do not. The engine that actually ran is named "
-    "in trace['engine']; the reason is trace['engine_precedence_note']."
+    "registry routes by sector first: a company whose company_type or tags "
+    "identify it as a utility goes to the regulated-asset engine, because the "
+    "regulated return is the economically binding assumption. DDM/FCFE/relative "
+    "are routed by model or dedicated valuation tags. The engine that actually "
+    "ran is named in trace['engine']; the reason is trace['engine_precedence_note']."
 )
+
+
+def _allowed_roe_convention(company) -> str:
+    for tag in company.factor_tags or []:
+        text = str(tag).strip().lower()
+        if text.startswith("allowed_roe:"):
+            candidate = text.split(":", 1)[1]
+            if candidate in ALLOWED_ROE_CONVENTIONS:
+                return candidate
+            raise RegulatedAssetError(
+                "known_allowed_roe_convention",
+                f"tag allowed_roe:{candidate} is not one of {sorted(ALLOWED_ROE_CONVENTIONS)}",
+            )
+    return "whole_rate_base"
 
 
 def _insufficient(
@@ -284,12 +300,8 @@ class RegulatedUtilityEngine(ValuationEngine):
         growth, growth_source = self._growth(context, rows)
         book_rate_base = float(rows["book_rate_base"].value) if rows.get("book_rate_base") else None
         transition_years, transition_source = self._transition_years(rows)
-        regulatory_lag, lag_source = self._regulatory_lag(rows)
-        convention = (
-            str(rows["allowed_roe_convention"].value)
-            if rows.get("allowed_roe_convention")
-            else "whole_rate_base"
-        )
+        regulatory_lag, lag_source, lag_normalisation = self._regulatory_lag(rows)
+        convention = _allowed_roe_convention(context.company)
         depreciation_rate = (
             float(rows["depreciation_rate"].value) if rows.get("depreciation_rate") else None
         )
@@ -511,6 +523,11 @@ class RegulatedUtilityEngine(ValuationEngine):
                     "rate_base_source_metric": rows["rate_base"].metric,
                     "allowed_roe": allowed_roe,
                     "allowed_roe_convention": convention,
+                    "allowed_roe_convention_source": (
+                        "company.factor_tags"
+                        if any(str(t).lower().startswith("allowed_roe:") for t in (context.company.factor_tags or []))
+                        else "default_whole_rate_base"
+                    ),
                     "equity_ratio": equity_ratio,
                     "cost_of_equity": cost_of_equity,
                     "cost_of_equity_source": cost_source,
@@ -522,6 +539,7 @@ class RegulatedUtilityEngine(ValuationEngine):
                     "transition_years_source": transition_source,
                     "regulatory_lag": regulatory_lag,
                     "regulatory_lag_source": lag_source,
+                    "regulatory_lag_normalisation": lag_normalisation,
                     "depreciation_rate": depreciation_rate,
                     "capex": capex,
                     "rate_case_year": rate_case_year,
@@ -533,7 +551,7 @@ class RegulatedUtilityEngine(ValuationEngine):
                 "converged_base_value": trace["converged_base_value"],
                 "transition_value_uplift": trace["transition_value_uplift"],
                 "enterprise_value": trace["enterprise_value"],
-                "enterprise_value_formula": trace["enterprise_value_formula"],
+                "enterprise_requirement_formula": trace.get("enterprise_requirement_formula"),
                 "equity_value_identity": trace["equity_value_identity"],
                 "allowed_roe_convention": trace["allowed_roe_convention"],
                 "earning_power_shortfall": trace["earning_power_shortfall"],
@@ -574,11 +592,16 @@ class RegulatedUtilityEngine(ValuationEngine):
             return DEFAULT_TRANSITION_YEARS, "policy_default_out_of_range"
         return years, "financial_facts"
 
-    def _regulatory_lag(self, rows: dict[str, SourcedFact]) -> tuple[float, str]:
+    def _regulatory_lag(self, rows: dict[str, SourcedFact]) -> tuple[float, str, dict | None]:
         fact = rows.get("regulatory_lag")
         if fact is None:
-            return 0.0, "policy_default"
+            return 0.0, "policy_default", None
         value = fact.value
-        if value < 0 or value > 1:
-            return 0.0, "policy_default_out_of_range"
-        return value, "financial_facts"
+        if 0 <= value <= 1:
+            return value, "financial_facts", None
+        if 1 < value <= 100:
+            return value / 100.0, "financial_facts_percent_normalised", {
+                "raw": value,
+                "used": value / 100.0,
+            }
+        return 0.0, "policy_default_out_of_range", {"raw": value, "used": 0.0}

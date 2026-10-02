@@ -177,7 +177,7 @@ def test_excess_return_identity_is_book_equity_plus_the_present_value_of_the_spr
     assert result.equity_value == pytest.approx(1250.0, abs=1e-9)
     assert result.value_per_share == pytest.approx(12.50, abs=1e-12)
     composition = result.trace["value_composition"]
-    assert composition["book_equity"] == pytest.approx(1000.0)
+    assert composition["book_equity_start"] == pytest.approx(1000.0)
     assert composition["pv_perpetuity_economic_profit"] == pytest.approx(250.0)
     assert composition["sum"] == pytest.approx(1250.0)
 
@@ -186,10 +186,8 @@ def test_enterprise_value_identity_is_published_not_assumed():
     """EV = RB/equity_ratio and Equity = EV*equity_ratio = RB*convention_scale."""
     result = run_regulated_asset(_inputs())
     assert result.enterprise_value == pytest.approx(1000.0 / 0.45)
-    assert result.trace["enterprise_value_formula"] == "EV = rate_base / equity_ratio"
-    assert result.trace["equity_value_identity"] == (
-        "Equity = EV * equity_ratio = rate_base * convention_scale"
-    )
+    assert result.trace["enterprise_requirement_formula"] == "capital_requirement = rate_base / equity_ratio"
+    assert "enterprise_requirement" in result.trace["equity_value_identity"]
     assert result.trace["equity_slice_of_capital"] == pytest.approx(450.0)
     assert result.trace["debt_slice_of_capital"] == pytest.approx(550.0)
 
@@ -301,7 +299,7 @@ def test_transition_interpolates_the_base_and_decays_the_lag():
       t=3: base 925, roe 9.025%, EP = (0.09025-0.08)*850  = 8.7125
       t=4: base 1000, roe 9.500%, EP = (0.09500-0.08)*925  = 13.875
     perpetuity EP = (0.095-0.08)*1000/0.06 = 250, at t=4.
-    V = 700 + Σ EP_t/1.08^t + 250/1.08^4 = 905.0127...
+    V = 700 + 300 + Σ EP_t/1.08^t + 250/1.08^4 = 1205.0127...
     """
     result = run_regulated_asset(
         _inputs(book_rate_base=700.0, transition_years=4, regulatory_lag=0.20)
@@ -315,8 +313,8 @@ def test_transition_interpolates_the_base_and_decays_the_lag():
     )
     # The lag is fully recovered by the end of the transition: roe_4 = allowed.
     assert schedule[-1]["effective_allowed_roe"] == pytest.approx(0.095)
-    assert result.equity_value == pytest.approx(905.012783639, abs=1e-6)
-    assert result.value_per_share == pytest.approx(9.05012783639, abs=1e-9)
+    assert result.equity_value == pytest.approx(1205.012783639, abs=1e-6)
+    assert result.value_per_share == pytest.approx(12.05012783639, abs=1e-9)
     assert result.trace["regulatory_lag_applied"] == pytest.approx(0.20)
 
 

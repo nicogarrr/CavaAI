@@ -105,10 +105,10 @@
     },
     {
       "id": "ind_2024-12-31",
-      "category": "lookahead_trap_fiscal_year_2999",
+      "category": "lookahead_trap_filing_date",
       "ticker": "IND",
       "as_of": "2024-12-31",
-      "note": "La BD contenia un hecho FY2999 y la celda no lo uso.",
+      "note": "La BD contenia 8 hecho(s) publicado(s) despues del corte y la celda no los uso.",
       "applies_to": null,
       "expect_gate_failure": null,
       "expected": {
@@ -156,15 +156,14 @@
         "upside": 0.253466,
         "engine_key": "standard_dcf",
         "model_version": "valuation-engines-v2",
-        "degraded": false,
-        "degraded_reason": null,
+        "degraded": true,
+        "degraded_reason": "1 insumo(s) sin fecha de publicacion verificable",
         "source_coverage_score": 0,
         "n_claims": 1,
         "n_claims_with_evidence": 0,
         "debate_verdict": "neutral",
         "lookahead_violations": [],
         "excluded_future_inputs": [
-          "revenue (fact 17): publicable el 2999-12-31, despues del corte 2024-12-31",
           "revenue (fact 13): publicable el 2026-03-10, despues del corte 2024-12-31",
           "revenue (fact 9): publicable el 2025-03-15, despues del corte 2024-12-31",
           "free_cash_flow (fact 14): publicable el 2026-03-10, despues del corte 2024-12-31",
@@ -174,7 +173,9 @@
           "shares_diluted (fact 16): publicable el 2026-03-10, despues del corte 2024-12-31",
           "shares_diluted (fact 12): publicable el 2025-03-15, despues del corte 2024-12-31"
         ],
-        "unverifiable_inputs": [],
+        "unverifiable_inputs": [
+          "revenue (fact 17): sin fecha utilizable (periodo='2999-12-31', precision=exact_date): no se puede probar que fuera publico en la fecha de corte"
+        ],
         "missing_inputs": [],
         "used_periods": [
           {
@@ -341,16 +342,16 @@
             "fair_value": 34.286695
           }
         ],
-        "replay_hash": "5f253d416cd0ccd4f4a918d96822bcfff4252104ffa5d709d5a245a82742baa1",
-        "replay_hash_again": "5f253d416cd0ccd4f4a918d96822bcfff4252104ffa5d709d5a245a82742baa1"
+        "replay_hash": "457d1026503afa59577d64cf579e7fba243471ba48046a98c235d7edb3bad917",
+        "replay_hash_again": "457d1026503afa59577d64cf579e7fba243471ba48046a98c235d7edb3bad917"
       }
     },
     {
       "id": "ind_2025-06-30",
-      "category": "lookahead_trap_fiscal_year_2999",
+      "category": "lookahead_trap_filing_date",
       "ticker": "IND",
       "as_of": "2025-06-30",
-      "note": "La BD contenia un hecho FY2999 y la celda no lo uso.",
+      "note": "La BD contenia 4 hecho(s) publicado(s) despues del corte y la celda no los uso.",
       "applies_to": null,
       "expect_gate_failure": null,
       "expected": {
@@ -398,21 +399,22 @@
         "upside": 0.404291,
         "engine_key": "standard_dcf",
         "model_version": "valuation-engines-v2",
-        "degraded": false,
-        "degraded_reason": null,
+        "degraded": true,
+        "degraded_reason": "1 insumo(s) sin fecha de publicacion verificable",
         "source_coverage_score": 100,
         "n_claims": 1,
         "n_claims_with_evidence": 1,
         "debate_verdict": "neutral",
         "lookahead_violations": [],
         "excluded_future_inputs": [
-          "revenue (fact 17): publicable el 2999-12-31, despues del corte 2025-06-30",
           "revenue (fact 13): publicable el 2026-03-10, despues del corte 2025-06-30",
           "free_cash_flow (fact 14): publicable el 2026-03-10, despues del corte 2025-06-30",
           "net_debt (fact 15): publicable el 2026-03-10, despues del corte 2025-06-30",
           "shares_diluted (fact 16): publicable el 2026-03-10, despues del corte 2025-06-30"
         ],
-        "unverifiable_inputs": [],
+        "unverifiable_inputs": [
+          "revenue (fact 17): sin fecha utilizable (periodo='2999-12-31', precision=exact_date): no se puede probar que fuera publico en la fecha de corte"
+        ],
         "missing_inputs": [],
         "used_periods": [
           {
@@ -607,16 +609,16 @@
             "fair_value": 34.286695
           }
         ],
-        "replay_hash": "fde205acc047856930bfe8f4a252d80003ce431360b192a06aad912ae87001ad",
-        "replay_hash_again": "fde205acc047856930bfe8f4a252d80003ce431360b192a06aad912ae87001ad"
+        "replay_hash": "546966a2c6976b09bffc9f2a295d6e01bcb50d6bf9669a15759babe8de758c37",
+        "replay_hash_again": "546966a2c6976b09bffc9f2a295d6e01bcb50d6bf9669a15759babe8de758c37"
       }
     },
     {
       "id": "ind_2026-06-30",
-      "category": "lookahead_trap_fiscal_year_2999",
+      "category": "unverifiable_provenance",
       "ticker": "IND",
       "as_of": "2026-06-30",
-      "note": "La BD contenia un hecho FY2999 y la celda no lo uso.",
+      "note": "Insumos sin fecha de publicacion verificable: celda degradada.",
       "applies_to": null,
       "expect_gate_failure": null,
       "expected": {
@@ -664,17 +666,17 @@
         "upside": 0.581723,
         "engine_key": "standard_dcf",
         "model_version": "valuation-engines-v2",
-        "degraded": false,
-        "degraded_reason": null,
+        "degraded": true,
+        "degraded_reason": "1 insumo(s) sin fecha de publicacion verificable",
         "source_coverage_score": 100,
         "n_claims": 1,
         "n_claims_with_evidence": 1,
         "debate_verdict": "neutral",
         "lookahead_violations": [],
-        "excluded_future_inputs": [
-          "revenue (fact 17): publicable el 2999-12-31, despues del corte 2026-06-30"
+        "excluded_future_inputs": [],
+        "unverifiable_inputs": [
+          "revenue (fact 17): sin fecha utilizable (periodo='2999-12-31', precision=exact_date): no se puede probar que fuera publico en la fecha de corte"
         ],
-        "unverifiable_inputs": [],
         "missing_inputs": [],
         "used_periods": [
           {
@@ -887,8 +889,8 @@
             "fair_value": 34.286695
           }
         ],
-        "replay_hash": "072142799adb70c68650d1d72974de6cb2e3b56517560e02d6b4e3bd69550c36",
-        "replay_hash_again": "072142799adb70c68650d1d72974de6cb2e3b56517560e02d6b4e3bd69550c36"
+        "replay_hash": "f356144127d35017776ef1b6a09824df6211c4b4ad79b8c108a127cc561275a4",
+        "replay_hash_again": "f356144127d35017776ef1b6a09824df6211c4b4ad79b8c108a127cc561275a4"
       }
     },
     {
@@ -3557,10 +3559,10 @@
     },
     {
       "id": "fil_2024-12-31",
-      "category": "lookahead_trap_fiscal_year_2999",
+      "category": "lookahead_trap_filing_date",
       "ticker": "FIL",
       "as_of": "2024-12-31",
-      "note": "La BD contenia un hecho FY2999 y la celda no lo uso.",
+      "note": "La BD contenia 8 hecho(s) publicado(s) despues del corte y la celda no los uso.",
       "applies_to": null,
       "expect_gate_failure": null,
       "expected": {
@@ -3604,15 +3606,14 @@
         "upside": -0.068568,
         "engine_key": "standard_dcf",
         "model_version": "valuation-engines-v2",
-        "degraded": false,
-        "degraded_reason": null,
+        "degraded": true,
+        "degraded_reason": "1 insumo(s) sin fecha de publicacion verificable",
         "source_coverage_score": 0,
         "n_claims": 1,
         "n_claims_with_evidence": 0,
         "debate_verdict": "neutral",
         "lookahead_violations": [],
         "excluded_future_inputs": [
-          "revenue (fact 109): publicable el 2999-12-31, despues del corte 2024-12-31",
           "revenue (fact 105): publicable el 2026-04-20, despues del corte 2024-12-31",
           "revenue (fact 101): publicable el 2025-03-15, despues del corte 2024-12-31",
           "free_cash_flow (fact 106): publicable el 2026-04-20, despues del corte 2024-12-31",
@@ -3622,7 +3623,9 @@
           "shares_diluted (fact 108): publicable el 2026-04-20, despues del corte 2024-12-31",
           "shares_diluted (fact 104): publicable el 2025-03-15, despues del corte 2024-12-31"
         ],
-        "unverifiable_inputs": [],
+        "unverifiable_inputs": [
+          "revenue (fact 109): sin fecha utilizable (periodo='2999-12-31', precision=exact_date): no se puede probar que fuera publico en la fecha de corte"
+        ],
         "missing_inputs": [],
         "used_periods": [
           {
@@ -3761,16 +3764,16 @@
             "fair_value": 53.956618
           }
         ],
-        "replay_hash": "ee91b24ffa6360257c940eace69c76fbedc08773465969badb6153a780fe5374",
-        "replay_hash_again": "ee91b24ffa6360257c940eace69c76fbedc08773465969badb6153a780fe5374"
+        "replay_hash": "6ce1e695bb2c2b930812cc24f1f2912bd7bcdb2f27ab53506f912a4eb5d6ebe3",
+        "replay_hash_again": "6ce1e695bb2c2b930812cc24f1f2912bd7bcdb2f27ab53506f912a4eb5d6ebe3"
       }
     },
     {
       "id": "fil_2025-06-30",
-      "category": "lookahead_trap_fiscal_year_2999",
+      "category": "lookahead_trap_filing_date",
       "ticker": "FIL",
       "as_of": "2025-06-30",
-      "note": "La BD contenia un hecho FY2999 y la celda no lo uso.",
+      "note": "La BD contenia 4 hecho(s) publicado(s) despues del corte y la celda no los uso.",
       "applies_to": null,
       "expect_gate_failure": null,
       "expected": {
@@ -3814,21 +3817,22 @@
         "upside": 0.113615,
         "engine_key": "standard_dcf",
         "model_version": "valuation-engines-v2",
-        "degraded": false,
-        "degraded_reason": null,
+        "degraded": true,
+        "degraded_reason": "1 insumo(s) sin fecha de publicacion verificable",
         "source_coverage_score": 100,
         "n_claims": 1,
         "n_claims_with_evidence": 1,
         "debate_verdict": "neutral",
         "lookahead_violations": [],
         "excluded_future_inputs": [
-          "revenue (fact 109): publicable el 2999-12-31, despues del corte 2025-06-30",
           "revenue (fact 105): publicable el 2026-04-20, despues del corte 2025-06-30",
           "free_cash_flow (fact 106): publicable el 2026-04-20, despues del corte 2025-06-30",
           "net_debt (fact 107): publicable el 2026-04-20, despues del corte 2025-06-30",
           "shares_diluted (fact 108): publicable el 2026-04-20, despues del corte 2025-06-30"
         ],
-        "unverifiable_inputs": [],
+        "unverifiable_inputs": [
+          "revenue (fact 109): sin fecha utilizable (periodo='2999-12-31', precision=exact_date): no se puede probar que fuera publico en la fecha de corte"
+        ],
         "missing_inputs": [],
         "used_periods": [
           {
@@ -3995,16 +3999,16 @@
             "fair_value": 53.956618
           }
         ],
-        "replay_hash": "e6cebfd44fec567b19f05160651008b392a5e8911ea6a5a3e8a922882fa7e455",
-        "replay_hash_again": "e6cebfd44fec567b19f05160651008b392a5e8911ea6a5a3e8a922882fa7e455"
+        "replay_hash": "898ac5780c2329344de630b51d296205dd3cc3a9fcb0796b48f26cd4fa2e677d",
+        "replay_hash_again": "898ac5780c2329344de630b51d296205dd3cc3a9fcb0796b48f26cd4fa2e677d"
       }
     },
     {
       "id": "fil_2026-06-30",
-      "category": "lookahead_trap_fiscal_year_2999",
+      "category": "unverifiable_provenance",
       "ticker": "FIL",
       "as_of": "2026-06-30",
-      "note": "La BD contenia un hecho FY2999 y la celda no lo uso.",
+      "note": "Insumos sin fecha de publicacion verificable: celda degradada.",
       "applies_to": null,
       "expect_gate_failure": null,
       "expected": {
@@ -4048,17 +4052,17 @@
         "upside": 1.98697,
         "engine_key": "standard_dcf",
         "model_version": "valuation-engines-v2",
-        "degraded": false,
-        "degraded_reason": null,
+        "degraded": true,
+        "degraded_reason": "1 insumo(s) sin fecha de publicacion verificable",
         "source_coverage_score": 100,
         "n_claims": 1,
         "n_claims_with_evidence": 1,
         "debate_verdict": "neutral",
         "lookahead_violations": [],
-        "excluded_future_inputs": [
-          "revenue (fact 109): publicable el 2999-12-31, despues del corte 2026-06-30"
+        "excluded_future_inputs": [],
+        "unverifiable_inputs": [
+          "revenue (fact 109): sin fecha utilizable (periodo='2999-12-31', precision=exact_date): no se puede probar que fuera publico en la fecha de corte"
         ],
-        "unverifiable_inputs": [],
         "missing_inputs": [],
         "used_periods": [
           {
@@ -4243,8 +4247,8 @@
             "fair_value": 53.956618
           }
         ],
-        "replay_hash": "f5c795fd30d3053d442192949f1ba1946aded7073145996dc65bee2663ba4bdf",
-        "replay_hash_again": "f5c795fd30d3053d442192949f1ba1946aded7073145996dc65bee2663ba4bdf"
+        "replay_hash": "9d567fb76dcfc21bc656f20fbca03a55c3b3eef27370125919d057cf42bdca04",
+        "replay_hash_again": "9d567fb76dcfc21bc656f20fbca03a55c3b3eef27370125919d057cf42bdca04"
       }
     },
     {

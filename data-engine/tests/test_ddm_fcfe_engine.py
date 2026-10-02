@@ -462,7 +462,8 @@ def test_fcfe_collapses_onto_the_gordon_price_when_nothing_is_retained_or_financ
 def test_fcfe_reconciliation_names_the_bridge_that_makes_it_differ():
     reconciliation = run_fcfe(_fcfe_inputs()).trace["reconciliation"]
     assert reconciliation["identity_holds"] is False
-    assert reconciliation["fcfe_minus_net_income"] == pytest.approx(-13.0)
+    # FIX-4: la reconciliacion ahora es por accion (fcfe/shares vs ni/shares)
+    assert reconciliation["fcfe_minus_net_income"] == pytest.approx(-0.13)
     assert reconciliation["bridge_gap_per_share"] < 0
 
 
