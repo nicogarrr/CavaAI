@@ -287,6 +287,11 @@ describe('la lista de excepciones no crece sin motivo', () => {
         assert.ok(row, `${rel}: la excepcion apunta a un fichero que el auditor no encuentra. Bórrala.`);
         assert.equal(row.hasUseClient, true, `${rel}: ya no tiene 'use client', la excepcion es obsoleta. Bórrala.`);
         assert.equal(
+          row.inheritedFromClient,
+          true,
+          `${rel}: ya no lo importa ningun Client Component, asi que la directiva dejo de ser inocua (ahora es JS cliente de mas). Quitale el 'use client' o recupera la importacion en el padre.`,
+        );
+        assert.equal(
           row.justified,
           false,
           `${rel}: ya tiene una señal de cliente que justifica la directiva. Bórrala de las excepciones.`,
@@ -311,15 +316,18 @@ describe('el escaner y el guard cuentan lo mismo', () => {
   });
 
   it('el numero de directivas client del repo no crece sin explicacion', () => {
-    // 78 = 72 justificadas (A) + 6 heredadas del padre (C). Si sube, alguien
+    // 79 = 73 justificadas (A) + 6 heredadas del padre (C). Si sube, alguien
     // ha anadido un modulo cliente: que lo justifique en la revision.
+    // KnowledgeGraphCanvas.tsx (D2b) es la ultima incorporacion legitima:
+    // usa useState/useRef, handlers JSX, useRouter/useSearchParams y accesos
+    // a window/document, asi que su directiva esta justificada.
     const total = audit.filter((r) => r.hasUseClient).length;
     const justified = audit.filter((r) => r.hasUseClient && r.justified).length;
     const inherited = audit.filter((r) => r.hasUseClient && !r.justified).length;
     assert.equal(inherited, 6, 'cambian las excepciones: revisa COMPONENTS_EXCEPTIONS y su motivo');
     assert.equal(
       total,
-      78,
+      79,
       `han aparecido directivas 'use client' sin revisar (total ${total}, justificadas ${justified}, heredadas ${inherited})`,
     );
   });
