@@ -9,12 +9,10 @@ on:
     types: [opened, synchronize, reopened, closed]
   workflow_dispatch:
 
-# `pull-requests: write` es lo unico que se anade: el job `comment` actualiza el
-# comentario del PR. Sin este permiso, GitHub baja el GITHUB_TOKEN a solo
-# lectura y la llamada a la API devuelve 403.
+# Solo lectura por defecto. `pull-requests: write` se concede UNICAMENTE al job
+# `comment` (el que actualiza el comentario del PR); gate y deploy no lo tienen.
 permissions:
   contents: read
-  pull-requests: write
 
 concurrency:
   # Un grupo por PR (por numero, no por `refs/pull/N/merge`: es lo mismo 1:1 pero
@@ -98,12 +96,11 @@ jobs:
     if: ${{ needs.gate.outputs.deploy == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    # Env con `secrets` a nivel de job (a diferencia de `if`, aqui si es
-    # valido). Nada hardcodeado: si el secret no esta, el job ni se planifica.
-    env:
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    permissions:
+      contents: read
+    # Los secrets NO van a nivel de job: solo los pasos que los necesitan
+    # (enlace, pull, deploy) los reciben. `vercel build` ejecuta scripts del PR
+    # (npm ci / next build) y no recibe VERCEL_TOKEN.
     outputs:
       # Declarado de forma explicita porque lo consume `comment` via needs: sin
       # esta linea el consumidor lee cadena vacia y postea un comentario sin URL.
@@ -116,6 +113,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 1
+          persist-credentials: false
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -125,6 +123,9 @@ jobs:
       - name: Instala el CLI de Vercel
         run: npm install -g "vercel@$VERCEL_CLI_VERSION" && vercel --version
       - name: Enlaza el proyecto de Vercel
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
           if [ -f .vercel/project.json ]; then
             echo "Reutilizo .vercel/project.json del repo."
@@ -138,14 +139,20 @@ jobs:
         # proyecto no tiene entorno Preview configurado, el build falla aqui con
         # un error legible, que es el comportamento correcto: es mejor que un
         # preview desplegado y roto.
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
       - name: Build con la configuracion del repo
         # vercel build lee vercel.json tal cual (framework nextjs, installCommand
         # npm ci, buildCommand npm run build, regions fra1): no hay ningun
         # vercel.json paralelo en este workflow.
-        run: vercel build --token="$VERCEL_TOKEN"
+        # Sin VERCEL_TOKEN a proposito: el build corre codigo del PR y usa el
+        # entorno ya descargado por `vercel pull` en .vercel/.
+        run: vercel build
       - id: deploy
         name: Deploy del preview
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           set -o pipefail
           if vercel deploy --prebuilt --yes --token="$VERCEL_TOKEN" 2>&1 | tee /tmp/vercel-deploy.log; then
@@ -178,6 +185,9 @@ jobs:
     if: ${{ always() && github.event_name == 'pull_request' && needs.gate.outputs.can_comment == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - name: Marca el comentario como obsoleto
         if: ${{ github.event.action == 'closed' }}

@@ -14,7 +14,7 @@ permissions:
 concurrency:
   # Por ref, como en ci.yml: sin el, el run de `schedule` (rama por defecto) y
   # el de un push a main se cancelarian entre si.
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   # PR -> true: el analisis del commit viejo no sirve de nada.
   # main y schedule -> false: este workflow NO es un linter. El paso
   # `codeql-action/analyze` SUBE SARIF al code scanning de GitHub, y cancelar a
