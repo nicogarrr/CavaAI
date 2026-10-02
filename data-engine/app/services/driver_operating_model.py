@@ -183,6 +183,13 @@ FORMULAS: dict[str, FormulaDefinition] = {
         _single("resource", lambda v: v["production_volume"] * v["realized_price"]),
         "production_volume*realized_price",
     ),
+    "biotech_pre_fcf": FormulaDefinition(
+        "reported_revenue_bridge",
+        ("revenue",),
+        "revenue",
+        _single("reported_business", lambda v: v["revenue"]),
+        "reported_revenue projected from its sourced historical series; no pipeline value is assumed",
+    ),
     "generic_fcf": FormulaDefinition(
         "reported_revenue_bridge",
         ("revenue",),
