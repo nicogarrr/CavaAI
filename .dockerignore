@@ -103,6 +103,15 @@ coverage/**
 playwright-report/**
 data-engine/htmlcov/**
 
+# Harness y suite del motor fuera del contexto del FRONTEND: la imagen final
+# solo empaqueta .next/standalone, pero `COPY . .` en el builder del
+# Dockerfile de la raiz subia tests/ y evals/ (738 + 27 ficheros con sus
+# fixtures) al daemon y las metia en las capas del stage de build. La version
+# del ENGINE ya las excluye en data-engine/.dockerignore; esta es la del
+# contexto raiz.
+data-engine/tests/
+data-engine/evals/
+
 # Python
 __pycache__
 *.py[cod]
