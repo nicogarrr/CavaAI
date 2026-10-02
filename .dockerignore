@@ -26,6 +26,7 @@ coverage
 # Se montan como volumen; nunca deben entrar en el contexto de build.
 data-engine/data/
 data-esef-snapshots/
+data-sp500-factsheet-snapshots/
 storage/
 backups/
 *.duckdb
