@@ -599,7 +599,12 @@ export default function KnowledgeGraphCanvas({ graph }: Props) {
                 ) : null}
                 <p aria-live="polite" className="text-xs text-gray-500" data-testid="kg-isolation-note">
                     {isolated && selectedId !== null
-                        ? t('knowledgeGraph.canvas.isolatedOn', { count: keep ? keep.size - 1 : scene.nodes.length - 1 })
+                        ? keep === null
+                            ? // focusIds devuelve null cuando el vecindario es el grafo
+                              // entero: el copy no puede prometer «el resto queda
+                              // atenuado» si no se atenúa nada.
+                              t('knowledgeGraph.canvas.isolatedOff')
+                            : t('knowledgeGraph.canvas.isolatedOn', { count: keep.size - 1 })
                         : t('knowledgeGraph.canvas.isolatedOff')}
                 </p>
                 <p className="text-xs text-gray-500" id={descriptionId}>
