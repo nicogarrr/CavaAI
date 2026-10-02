@@ -46,19 +46,19 @@
   }
  ],
  "summary": {
-  "cases": 84,
-  "negative_controls": 10,
+  "cases": 85,
+  "negative_controls": 11,
   "degradation_cases": 11,
   "families": {
    "sec": 46,
-   "fmp": 20,
+   "fmp": 21,
    "esef": 18
   },
   "negative_controls_by_gate": {
    "absent_fields_reported_as_null": 2,
    "extracted_values_match_fixture": 1,
    "fixture_schema_valid": 1,
-   "no_lookahead": 1,
+   "no_lookahead": 2,
    "official_only_if_index_verified": 2,
    "period_attribution_correct": 1,
    "source_types_declared": 1,
@@ -4507,6 +4507,46 @@
    "expect_gate_failure": "extracted_values_match_fixture",
    "applies_to": [
     "extracted_values_match_fixture"
+   ]
+  },
+  {
+   "id": "neg-017-etiqueta-de-periodo-imposible",
+   "family": "fmp",
+   "category": "negative_control",
+   "scenario": "fmp_statements",
+   "description": "El proveedor entrega un cierre imposible (2025-99-99): la etiqueta de periodo no es una fecha y la puerta no_lookahead lo acusa en vez de saltarselo. Antes la etiqueta pasaba las dos implementaciones de _period_date sin que nadie la viera.",
+   "scenario_args": {
+    "endpoints": {
+     "income-statement": "fmp/income_statement_bad_date.json"
+    },
+    "limit": 5
+   },
+   "expected": {
+    "facts": [
+     {
+      "metric": "revenue",
+      "period": "2025-99-99:FY",
+      "value": 5000000000,
+      "unit": "USD",
+      "fiscal_year": 2025,
+      "fiscal_quarter": "FY"
+     }
+    ],
+    "absent_metrics": [],
+    "as_of": "2026-10-01",
+    "tolerance": {
+     "relative": "0",
+     "absolute": "0.000001"
+    },
+    "index": {
+     "verified": [],
+     "official": [],
+     "unverified": []
+    }
+   },
+   "expect_gate_failure": "no_lookahead",
+   "applies_to": [
+    "no_lookahead"
    ]
   }
  ]
