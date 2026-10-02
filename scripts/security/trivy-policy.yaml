@@ -1,0 +1,52 @@
+# Politica de excepciones del escaneo de imagenes (tarea E3).
+#
+# Este fichero es la UNICA fuente de excepciones de .github/workflows/sbom-scan.yml.
+# No se puede silenciar nada con --ignore, --skip o exit-code dentro del YAML del
+# workflow: una exception inline no se revisa, no caduca y no se puede auditar con
+# un `git log`. Aqui cada entrada esta versionada, con motivo, ticket y fecha.
+#
+# La puerta por defecto (todo lo que NO este listado aqui) es:
+#   - CVE de severidad CRITICAL con fix disponible  -> rojo
+#   - secret encontrado en la imagen (cualquier severidad) -> rojo
+#   - misconfiguration HIGH o CRITICAL -> rojo
+#   - CVE HIGH / MEDIUM / LOW -> se reportan con su numero en el log del job,
+#     no bloquean (se arreglan en el PR de dependencia, no en el de imagen)
+#   - escaner que no se ejecuta, informe que falta o build roto -> rojo
+#
+# Reglas que data-engine/scripts/security/gate_image_scan.py verifica en CADA run
+# y que hacen fallar el job si no se cumplen:
+#   1. Cada entrada necesita los cinco campos: id, scope, reason, ticket, expires.
+#   2. `expires` es una fecha ISO (YYYY-MM-DD). Sin fecha la exception es una
+#      vulnerabilidad silenciada para siempre, que es justo lo que este fichero
+#      existe para impedir.
+#   3. Una entrada caducada hace fallar el build (no se ignora en silencio):
+#      hay que borrarla o renovarla con su ticket.
+#   4. `scope` solo puede ser vulnerability | secret | misconfig.
+#
+# Formato de una entrada:
+#
+# exceptions:
+#   - id: CVE-2026-12345              # ID de trivy/misconfig/secret
+#     scope: vulnerability             # vulnerability | secret | misconfig
+#     targets: [backend-prod]          # vacio o ausente = todas las imagenes
+#     reason: "..."
+#     ticket: "SEC-123"                # ticket de seguimiento, obligatorio
+#     expires: "2026-12-31"            # dia en que deja de aplican (inclusive)
+#
+# ---------------------------------------------------------------------------
+# Estado actual: cero excepciones.
+#
+# Es deliberado. En la auditoria de E3 (2026-10-02) el escaneo real con
+# trivy 0.69.1 sobre los 4 Dockerfiles + los 2 .dockerignore devolvio dos
+# misconfigurations HIGH sin parche posible (se arreglan en el Dockerfile, no se
+# silencian) y ningun secret:
+#
+#   HIGH DS-0002 Dockerfile.dev            "Image user should not be 'root'"
+#   HIGH DS-0029 data-engine/Dockerfile   "apt-get missing --no-install-recommends"
+#
+# Anadirlas aqui dejaria el build en verde con el Dockerfile sin corregir, que es
+# el auto-ocultamiento que las puertas de este workflow prohiben. Los diffs
+# exactos para arreglarlas estan en el informe de E3.
+# ---------------------------------------------------------------------------
+version: 1
+exceptions: []

@@ -1,14 +1,86 @@
+# Politica de actualizaciones de dependencias.
+#
+# Que ya cubria y que se cambia en E3 (no se anade un fichero nuevo: este ya
+# existia y cubria npm + pip + github-actions, sin grupos ni limites):
+#
+#   - Se separan las actualizaciones de SEGURIDAD de las de RUTINA. Una PR de
+#     seguridad tiene que poder revisarse y mergearse sola: siShares PR con 14
+#     bumps de routine, nadie la merges primero (y llega tarde al commit, que es
+#     justo cuando la CVE ya se esta explotando). Al reves, un PR de routine no
+#     debe poder bloquear a una de seguridad: por eso son grupos distintos y no
+#     un unico grupo "todo lo de la semana".
+#   - `open-pull-requests-limit` explicito. El default (5) se reparte entre los
+#     tres ecosistema y hacia que un PR de seguridad se quede en la cola sin
+#     abrir. Con 10 por ecosistema hay sitio para la seguridad sin inundar.
+#
+# Lo que NO se toca aqui, a proposito:
+#   - `data-engine/requirements.txt` es GENERADO desde `pyproject.toml`
+#     (data-engine/scripts/sync_requirements.py, job dep-parity de ci.yml). Una
+#     PR de dependabot que lo edite a mano la desconcierta del pyproject y el CI
+#     falla con "derived content differs". Ver informe E3: la correccion es que
+#     E2 decida como se regenera y si pip se queda en /data-engine o se mueve al
+#     pyproject, no lo reconfigura este fichero a ciegas.
+#   - No se ignoran versiones ni paquetes: ignorar sin fecha es la misma
+#     vulnerabilidad silenciada que evita scripts/security/trivy-policy.yaml en
+#     las imagenes.
 version: 2
 updates:
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
+      day: monday
+      time: "07:00"
+      timezone: Europe/Madrid
+    open-pull-requests-limit: 10
+    groups:
+      # Seguridad: una sola PR, rapida de revisar, con todo lo critico junto.
+      npm-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+      # Routine: una PR por semana en vez de diez, para que la bandeja de
+      # revision siga siendo utilizable.
+      npm-routine:
+        applies-to: version-updates
+        patterns:
+          - "*"
+
   - package-ecosystem: pip
     directory: /data-engine
     schedule:
       interval: weekly
+      day: monday
+      time: "07:00"
+      timezone: Europe/Madrid
+    open-pull-requests-limit: 10
+    groups:
+      pip-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+      pip-routine:
+        applies-to: version-updates
+        patterns:
+          - "*"
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+      day: monday
+      time: "07:00"
+      timezone: Europe/Madrid
+    open-pull-requests-limit: 10
+    groups:
+      # Las actions de este repo son justo el vector de supply chain que escanea
+      # sbom-scan.yml: actualizarlas de golpe y en una PR hace auditable quien
+      # metio que action.
+      actions-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+      actions-routine:
+        applies-to: version-updates
+        patterns:
+          - "*"
