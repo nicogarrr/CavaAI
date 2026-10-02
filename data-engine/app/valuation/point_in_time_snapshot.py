@@ -116,6 +116,15 @@ class PointInTimeSnapshotBuilder:
             fiscal_quarter=fact.fiscal_quarter,
             published_at=published_on,
         )
+        _OFFICIAL_SOURCE_TYPES = frozenset({"primary_official", "official", "sec_filing", "regulatory"})
+        if published_on is None and (fact.source_type or "") in _OFFICIAL_SOURCE_TYPES:
+            return FactVerdict(
+                fact_id=fact.id,
+                metric=fact.metric,
+                bounds=bounds,
+                usable=False,
+                reason="sin fecha de publicacion: no se puede probar que fuera publico",
+            )
         if bounds.unverifiable:
             return FactVerdict(
                 fact_id=fact.id,
