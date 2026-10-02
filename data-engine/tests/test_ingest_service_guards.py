@@ -287,6 +287,81 @@ def test_payload_sin_cik_declarado_no_se_puede_contrastar(db, monkeypatch):
 
 
 # --------------------------------------------------------------------------
+# FIX5-7: derivadas sin duplicar entre proveedores y anclas del proveedor
+# --------------------------------------------------------------------------
+
+
+class _FakeSECDerivadas:
+    async def cik_for_ticker(self, ticker):
+        return "0000000001"
+
+    async def company_facts(self, cik):
+        def _fy(year, val):
+            return {"fy": year, "fp": "FY", "form": "10-K", "start": f"{year}-01-01",
+                    "end": f"{year}-12-31", "val": val, "filed": f"{year + 1}-02-10",
+                    "accn": f"0000000001-{str(year)[-2:]}-000001"}
+        return {"cik": 1, "facts": {"us-gaap": {
+            "Revenues": {"units": {"USD": [_fy(2025, 5000000000), _fy(2024, 4000000000)]}},
+            "NetCashProvidedByUsedInOperatingActivities": {"units": {"USD": [_fy(2025, 900000000)]}},
+            "PaymentsToAcquirePropertyPlantAndEquipment": {"units": {"USD": [_fy(2025, 300000000)]}},
+        }}}
+
+    async def annual_report_anchors(self, cik):
+        return {f"0000000001-{str(y)[-2:]}-000001": f"{y}-12-31" for y in (2024, 2025)}
+
+
+class _FakeFMPDerivadas:
+    async def income_statement(self, ticker, limit=5):
+        return [
+            {"symbol": "ACME", "date": "2025-12-31", "period": "FY", "calendarYear": 2025,
+             "revenue": 5500000000},
+            {"symbol": "ACME", "date": "2025-09-30", "period": "TTM", "calendarYear": 2025,
+             "revenue": 4800000000},
+            {"symbol": "ACME", "date": "2024-12-31", "period": "FY", "calendarYear": 2024,
+             "revenue": 4200000000},
+        ]
+
+    async def balance_sheet(self, ticker, limit=5):
+        return []
+
+    async def cash_flow(self, ticker, limit=5):
+        return [{"symbol": "ACME", "date": "2025-12-31", "period": "FY", "calendarYear": 2025,
+                 "operatingCashFlow": 1000000000, "capitalExpenditure": -200000000}]
+
+    async def ratios(self, ticker, limit=5):
+        return []
+
+    async def company_profile(self, ticker):
+        return []
+
+    async def quote(self, ticker):
+        return []
+
+
+def test_derivadas_no_se_duplican_entre_proveedores(db, monkeypatch):
+    monkeypatch.setattr(ingestion, "SECClient", _FakeSECDerivadas)
+    company = _company(db)
+    asyncio.run(FinancialIngestionService().refresh_from_sec(db=db, company=company))
+    assert len(_facts(db, company, "revenue_growth")) == 1  # derivada SEC
+
+    asyncio.run(
+        FinancialIngestionService().refresh_from_fmp(db, company, client=_FakeFMPDerivadas())
+    )
+    growth = _facts(db, company, "revenue_growth")
+    assert len(growth) == 1, "una sola derivada por (metrica, periodo), del ultimo proveedor"
+    assert growth[0].source_type == "FMP"
+    # Anclas SOLO FMP y SOLO FY: 5.500/4.200-1, nunca contra el TTM (4.800).
+    assert abs(growth[0].value - (Decimal("5500000000") / Decimal("4200000000") - 1)) < Decimal("1e-5")
+
+    margins = _facts(db, company, "fcf_margin")
+    assert len(margins) == 1
+    assert margins[0].source_type == "FMP"
+    fcf = _facts(db, company, "free_cash_flow")
+    assert len(fcf) == 1 and fcf[0].source_type == "FMP"
+    assert fcf[0].value == Decimal("800000000")  # 1.000 - 200, insumos FMP
+
+
+# --------------------------------------------------------------------------
 # FIX5-8: shares_diluted no mezcla saldo instantaneo con promedio ponderado
 # --------------------------------------------------------------------------
 
