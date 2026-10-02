@@ -234,6 +234,59 @@ def test_add_facts_sustituye_la_derivada_vieja_de_la_clave(db):
 
 
 # --------------------------------------------------------------------------
+# FIX5-6: el CIK del payload se contrasta con el resuelto y con la ficha
+# --------------------------------------------------------------------------
+
+
+class _FakeSECConCik:
+    payload = {"cik": 99, "facts": {"us-gaap": {
+        "Revenues": {"units": {"USD": [
+            {"fy": 2025, "fp": "FY", "form": "10-K", "start": "2025-01-01",
+             "end": "2025-12-31", "val": 5000000000, "filed": "2026-02-10",
+             "accn": "0000000001-25-000001"},
+        ]}}}}}
+
+    async def cik_for_ticker(self, ticker):
+        return "0000000001"
+
+    async def company_facts(self, cik):
+        return self.payload
+
+    async def annual_report_anchors(self, cik):
+        return {"0000000001-25-000001": "2025-12-31"}
+
+
+def test_refresh_from_sec_fail_closed_si_el_cik_del_payload_no_casa(db, monkeypatch):
+    monkeypatch.setattr(ingestion, "SECClient", _FakeSECConCik)
+    company = _company(db)
+    with pytest.raises(RuntimeError, match="CIK del payload"):
+        asyncio.run(FinancialIngestionService().refresh_from_sec(db=db, company=company))
+    assert _facts(db, company, "revenue") == []
+
+
+def test_refresh_from_sec_fail_closed_si_la_ficha_declara_otro_cik(db, monkeypatch):
+    class _Fake(_FakeSECConCik):
+        payload = {"cik": 1, "facts": {"us-gaap": {}}}
+
+    monkeypatch.setattr(ingestion, "SECClient", _Fake)
+    company = _company(db, cik="0000000099")
+    with pytest.raises(RuntimeError, match="CIK de la ficha"):
+        asyncio.run(FinancialIngestionService().refresh_from_sec(db=db, company=company))
+
+
+def test_payload_sin_cik_declarado_no_se_puede_contrastar(db, monkeypatch):
+    """Sin entidad declarada no hay nada que falsificar (los payloads
+    sinteticos de tests viven aqui; la API real siempre declara `cik`)."""
+    class _Fake(_FakeSECConCik):
+        payload = {"facts": {"us-gaap": {}}}
+
+    monkeypatch.setattr(ingestion, "SECClient", _Fake)
+    company = _company(db)
+    result = asyncio.run(FinancialIngestionService().refresh_from_sec(db=db, company=company))
+    assert result["status"] == "ingested"
+
+
+# --------------------------------------------------------------------------
 # FIX5-8: shares_diluted no mezcla saldo instantaneo con promedio ponderado
 # --------------------------------------------------------------------------
 
