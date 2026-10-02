@@ -1,5 +1,21 @@
 # ============================================
-# Dockerfile para Frontend Next.js
+# Dockerfile para Frontend Next.js (imagen de PRODUCCION self-hosted)
+# ============================================
+#
+# DUEÑO Y HUECO, dicho para que no acabe en tierra de nadie:
+#  - Nadie la DESPLIEGA hoy. El frontend de produccion va en Vercel
+#    (vercel.json) y docker-compose.prod.yml no tiene servicio de frontend
+#    por eso mismo (auth en MongoDB Atlas, el backend en Oracle). El compose
+#    de DESARROLLO usa Dockerfile.dev, no este.
+#  - SÍ la CONSUME sbom-scan.yml (fx3): trivy misconfiguration, SBOM y
+#    barrido de imagen sobre este fichero, Dockerfile.dev, data-engine/
+#    Dockerfile y data-engine/Dockerfile.prod. Borrarla deja un hueco en el
+#    pipeline de seguridad.
+#  - Para qué existe: la imagen standalone de Next (output: 'standalone')
+#    para self-hosting o paridad de build. Si el dia que se cablea en un
+#    compose de produccion se decide que sobra, se borra EN EL MISMO cambio
+#    que la retire de sbom-scan.yml (son dos trabajos de una decision, no
+#    dos decisiones).
 # ============================================
 
 # Base fijada por digest del MANIFEST LIST (amd64+arm64): el mismo commit
