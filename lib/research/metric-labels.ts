@@ -75,7 +75,7 @@ export const METRIC_LABELS: Record<string, string> = {
     normalized_fcf_or_fcf_margin: 'FCF normalizado o margen FCF',
     penetration: 'penetración',
     price_per_gb: 'precio por GB',
-    revenue_share: 'cuota de ingresos',
+    revenue_share: 'reparto de ingresos',
     satellites: 'satélites',
     utilization: 'utilización',
 };
