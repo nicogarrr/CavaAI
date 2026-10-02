@@ -1,0 +1,85 @@
+name: QA e2e (solo lectura)
+
+on:
+  deployment_status:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qa-e2e
+  cancel-in-progress: true
+
+jobs:
+  qa:
+    # Tras un deploy correcto de Vercel a produccion, o a mano.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.deployment_status.state == 'success' &&
+       github.event.deployment_status.environment == 'Production')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: qa-e2e
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Instala dependencias y Chromium
+        run: |
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Comprueba la clave de Zen
+        id: key
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+        run: |
+          if [ -z "$OPENCODE_API_KEY" ]; then
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "### QA e2e no ejecutado" >> "$GITHUB_STEP_SUMMARY"
+            echo "Falta el secret de repo OPENCODE_API_KEY." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "ok=true" >> "$GITHUB_OUTPUT"
+
+      - name: Ejecuta e2e (paginas publicas)
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+        run: |
+          set +e
+          npx e2e run 2>&1 | tee run.log
+          echo "${PIPESTATUS[0]}" > exit.code
+
+      - name: Resumen del run
+        if: always()
+        run: |
+          {
+            echo "### QA e2e (solo lectura) contra ${E2E_BASE_URL:-https://cavaai.vercel.app}"
+            echo "Resultado: salida $(cat exit.code 2>/dev/null || echo n/d)"
+            echo
+            echo "#### Problemas de UI detectados"
+            echo '```'
+            grep -E '^\[[a-z]+\]' run.log || echo "ninguno extraido"
+            echo '```'
+            echo
+            echo "#### Pruebas"
+            echo '```'
+            grep -i -E 'pass|fail|✓|✗|error' run.log | head -40 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: qa-e2e-resultados
+          path: qa-e2e/test-results
+          if-no-files-found: ignore
+
+      - name: Falla si el e2e falla
+        run: test "$(cat exit.code)" = "0"
