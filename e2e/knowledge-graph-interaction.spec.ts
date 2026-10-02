@@ -6,8 +6,11 @@ const runUiE2E = process.env.E2E_UI_RUN === "1";
 const uiBackendURL = process.env.E2E_UI_BACKEND_URL ?? "http://127.0.0.1:8100";
 const authSecret =
   process.env.RESEARCH_AUTH_SECRET ?? "cavaai-e2e-research-secret-at-least-32-characters";
-const tenant = "e2e-kg-tenant";
-const user = "e2e-kg-user";
+// El navegador entra con el bypass E2E como `e2e-browser-user` y la UI firma con
+// tenant = user.id (lib/auth/research-identity.ts). Sembrar con otra identidad
+// deja la pagina leyendo un tenant vacio ("El grafo esta vacio").
+const tenant = "e2e-browser-user";
+const user = "e2e-browser-user";
 
 /**
  * Por que este spec siembra por el backend y no con `page.route`.
