@@ -1,0 +1,28 @@
+{
+ "origin": "synthetic_fixture",
+ "endpoint": "cash-flow-statement",
+ "rows": [
+  {
+   "symbol": "SYNQ",
+   "date": "2025-12-31",
+   "period": "FY",
+   "calendarYear": 2025,
+   "operatingCashFlow": 900000000,
+   "capitalExpenditure": -300000000,
+   "freeCashFlow": 600000000,
+   "commonStockRepurchased": 100000000,
+   "dividendsPaid": 150000000
+  },
+  {
+   "symbol": "SYNQ",
+   "date": "2024-12-31",
+   "period": "FY",
+   "calendarYear": 2024,
+   "operatingCashFlow": 800000000,
+   "capitalExpenditure": -250000000,
+   "freeCashFlow": 550000000,
+   "commonStockRepurchased": 90000000,
+   "dividendsPaid": 140000000
+  }
+ ]
+}

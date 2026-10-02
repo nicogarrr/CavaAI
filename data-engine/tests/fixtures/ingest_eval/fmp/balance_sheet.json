@@ -1,0 +1,36 @@
+{
+ "origin": "synthetic_fixture",
+ "endpoint": "balance-sheet-statement",
+ "rows": [
+  {
+   "symbol": "SYNQ",
+   "date": "2025-12-31",
+   "period": "FY",
+   "calendarYear": 2025,
+   "cashAndCashEquivalents": 1200000000,
+   "totalDebt": 2000000000,
+   "netDebt": 800000000,
+   "totalAssets": 9000000000,
+   "totalLiabilities": 4500000000,
+   "totalStockholdersEquity": 4500000000,
+   "goodwill": 700000000,
+   "intangibleAssets": 500000000,
+   "operatingLeaseLiabilities": 250000000
+  },
+  {
+   "symbol": "SYNQ",
+   "date": "2024-12-31",
+   "period": "FY",
+   "calendarYear": 2024,
+   "cashAndCashEquivalents": 1000000000,
+   "totalDebt": 1900000000,
+   "netDebt": 900000000,
+   "totalAssets": 8000000000,
+   "totalLiabilities": 4000000000,
+   "totalStockholdersEquity": 4000000000,
+   "goodwill": 700000000,
+   "intangibleAssets": 520000000,
+   "operatingLeaseLiabilities": 240000000
+  }
+ ]
+}

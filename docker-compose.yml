@@ -89,7 +89,11 @@ services:
   # MinIO - local S3-compatible raw document store
   # ==========================================
   minio:
-    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    # Build local desde el codigo fuente de MinIO (la imagen de quay ya no es publica): docker/minio/Dockerfile.
+    build:
+      context: ./docker/minio
+      dockerfile: Dockerfile
+    image: cavaai-minio:RELEASE.2025-10-15T17-29-55Z
     container_name: cavaai-minio
     restart: unless-stopped
     command: server --address ":9000" --console-address ":9001" /data
