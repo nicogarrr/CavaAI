@@ -33,6 +33,12 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+*.log
+# scripts de exploracion de un solo uso que se dejaban en la raiz
+/dbg.js
+/dbg2.js
+/dbg3.js
+dbg*.js
 
 # env (todos los locales; solo se versionan los .example)
 .env*
@@ -84,6 +90,7 @@ data-engine/htmlcov/
 # build_esef_snapshots.py, y en produccion viajan como volumen montado.
 /data-engine/data/
 /data-esef-snapshots/
+/data-sp500-factsheet-snapshots/
 *.duckdb
 *.duckdb.wal
 .mypy_cache/

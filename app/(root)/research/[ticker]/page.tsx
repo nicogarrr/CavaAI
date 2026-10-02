@@ -91,6 +91,7 @@ import { withResearchTelemetry } from '@/lib/research/fetch-telemetry';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+export const maxDuration = 60;
 
 /**
  * El snapshot alimenta la página y el título. Sin esta memoización, el
@@ -1039,6 +1040,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
             <ThesisMemo
               thesis={data.thesis}
               ticker={ticker}
+              currency={company.currency}
               debateBody={
                 data.sections.find((section) => section.section_key === 'thesis_debate')?.body ?? null
               }

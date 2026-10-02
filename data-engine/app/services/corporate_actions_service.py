@@ -21,14 +21,43 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import Company, CorporateAction, Position, Transaction
 from app.services.company_resolver import resolve_company
 
+SPLIT_TYPES = {"split", "reverse_split"}
+
 
 class CorporateActionService:
+    @staticmethod
+    def first_trade_dates(db: Session, company_ids: set[int]) -> dict[int, object]:
+        """Primera compra/venta registrada por empresa (lote, 1 query)."""
+        if not company_ids:
+            return {}
+        rows = db.execute(
+            select(Transaction.company_id, func.min(Transaction.trade_date))
+            .where(
+                Transaction.company_id.in_(company_ids),
+                Transaction.action.in_(("buy", "sell")),
+            )
+            .group_by(Transaction.company_id)
+        ).all()
+        return {row[0]: row[1] for row in rows}
+
+    @staticmethod
+    def is_historical(action: CorporateAction, first_trade_date: object) -> bool:
+        """Split anterior (o igual) a la primera operacion de la posicion: las
+        acciones ya se compraron post-split, asi que ya esta reflejado y
+        reescalar la posicion actual la deformaria. Sin transacciones no hay
+        referencia: se deja decidir al usuario (no es historico)."""
+        return bool(
+            action.action_type in SPLIT_TYPES
+            and first_trade_date is not None
+            and action.effective_date <= first_trade_date  # type: ignore[operator]
+        )
+
     def list_actions(self, db: Session, *, limit: int = 500) -> list[CorporateAction]:
         return list(
             db.scalars(
@@ -95,10 +124,13 @@ class CorporateActionService:
             raise ValueError("Ratio must be positive")
 
         if action.action_type in {"split", "reverse_split"}:
+            first = self.first_trade_dates(db, {action.company_id}).get(action.company_id)
             position = db.scalar(
                 select(Position).where(Position.company_id == action.company_id)
             )
-            if position is not None:
+            # Split historico (anterior a la primera operacion): ya reflejado,
+            # se marca aplicado sin reescalar la posicion actual.
+            if position is not None and not self.is_historical(action, first):
                 position.quantity = (position.quantity * ratio).quantize(Decimal("0.000001"))
                 if position.average_cost is not None:
                     position.average_cost = (position.average_cost / ratio).quantize(

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime
+from decimal import Decimal
 from math import isfinite, sqrt
 from statistics import median
 from typing import Any
@@ -31,6 +32,7 @@ from app.services.driver_assumption_service import DriverAssumptionService
 from app.services.driver_dimensions import driver_metadata
 from app.services.driver_operating_model import DriverOperatingModel
 from app.services.fundamental_model_repository import FundamentalModelRepository
+from app.services.inferred_input_service import MIN_WACC_TERMINAL_SPREAD, InferredInputService
 from app.services.market_opportunity_service import MarketOpportunityEngine
 from app.valuation.engines.base import default_terminal_growth, default_wacc
 from app.valuation.reverse_dcf import ReverseDCFInputs, solve_required_growth
@@ -66,9 +68,10 @@ class Assumption:
     basis: str
     source_fact_ids: list[int]
     confidence: float
+    source_urls: tuple[str, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "value": self.value,
             "unit": self.unit,
             "source_type": self.source_type,
@@ -76,6 +79,10 @@ class Assumption:
             "source_fact_ids": self.source_fact_ids,
             "confidence": self.confidence,
         }
+        if self.source_urls:
+            # INFERIDO documentado (InferredInput): URLs https de la base.
+            out["source_urls"] = list(self.source_urls)
+        return out
 
 
 def _float(value: Any) -> float | None:
@@ -201,6 +208,22 @@ def _calculated_line(
         "basis": basis,
         "evidence": [],
     }
+
+
+def _derived_fcf(ocf: FinancialFact | None, capex: FinancialFact | None) -> Decimal | None:
+    """Free cash flow derived from the two reported legs: ``operating_cash_flow + capital_expenditure``.
+
+    Capex keeps the sign it has in the filing (reported negative, so the sum is
+    a subtraction in practice). Returns ``None`` when either leg is missing or
+    unreadable: substituting a silent 0 would publish a cash flow the issuer
+    never reported, which is exactly what the reported line's absence was
+    telling us.
+    """
+    operating = _float(ocf.value) if ocf is not None else None
+    investing = _float(capex.value) if capex is not None else None
+    if operating is None or investing is None:
+        return None
+    return Decimal(str(operating)) + Decimal(str(investing))
 
 
 def _is_annual(fact: FinancialFact) -> bool:
@@ -695,10 +718,10 @@ class LongTermModelService:
                 if metric == "free_cash_flow" and fact is None:
                     ocf = self._fact_for_year(fact_cache["operating_cash_flow"], year)
                     capex = self._fact_for_year(fact_cache["capital_expenditure"], year)
-                    if ocf and capex:
-                        value = (_float(ocf.value) or 0) + (_float(capex.value) or 0)
+                    derived = _derived_fcf(ocf, capex)
+                    if derived is not None:
                         metrics[metric] = _calculated_line(
-                            value,
+                            float(derived),
                             unit="USD",
                             source_fact_ids=_unique_ids(ocf, capex),
                             calculation="operating_cash_flow + capital_expenditure",
@@ -758,11 +781,12 @@ class LongTermModelService:
                 continue
             ocf = self._fact_for_year(fact_cache["operating_cash_flow"], year)
             capex = self._fact_for_year(fact_cache["capital_expenditure"], year)
-            if ocf and capex:
+            derived = _derived_fcf(ocf, capex)
+            if derived is not None:
                 result.append(
                     {
                         "year": year,
-                        "value": (_float(ocf.value) or 0) + (_float(capex.value) or 0),
+                        "value": float(derived),
                         "fact_ids": _unique_ids(ocf, capex),
                     }
                 )
@@ -898,6 +922,25 @@ class LongTermModelService:
                 "source_fact_ids": list(wacc_metric.source_fact_ids or []),
                 "calculation_trace": wacc_metric.calculation_trace or {},
             }
+        elif (
+            wacc_inferred := InferredInputService().latest_valid(db, company.id, "wacc")
+        ) is not None:
+            wacc = Assumption(
+                value=_float(wacc_inferred.value),
+                unit="decimal",
+                source_type="inferred_input",
+                basis=f"InferredInput #{wacc_inferred.id}: {wacc_inferred.base}",
+                source_fact_ids=[],
+                confidence=0.5,
+                source_urls=tuple(wacc_inferred.source_urls or ()),
+            )
+            wacc_trace = {
+                "status": "inferred_input",
+                "calculated_metric_id": None,
+                "inferred_input_id": wacc_inferred.id,
+                "source_fact_ids": [],
+                "source_urls": list(wacc_inferred.source_urls or []),
+            }
         else:
             wacc = Assumption(
                 value=default_wacc(company),
@@ -912,14 +955,65 @@ class LongTermModelService:
                 "calculated_metric_id": None,
                 "source_fact_ids": [],
             }
-        terminal = Assumption(
-            value=default_terminal_growth(company),
-            unit="decimal",
-            source_type="model_policy",
-            basis="terminal growth policy from company framework",
-            source_fact_ids=[],
-            confidence=0.40,
-        )
+        terminal_inferred = InferredInputService().latest_valid(db, company.id, "terminal_growth")
+        if terminal_inferred is not None:
+            terminal = Assumption(
+                value=_float(terminal_inferred.value),
+                unit="decimal",
+                source_type="inferred_input",
+                basis=f"InferredInput #{terminal_inferred.id}: {terminal_inferred.base}",
+                source_fact_ids=[],
+                confidence=0.5,
+                source_urls=tuple(terminal_inferred.source_urls or ()),
+            )
+        else:
+            terminal = Assumption(
+                value=default_terminal_growth(company),
+                unit="decimal",
+                source_type="model_policy",
+                basis="terminal growth policy from company framework",
+                source_fact_ids=[],
+                confidence=0.40,
+            )
+
+        # run_dcf exige WACC > g: un par inferido sin spread minimo se ignora
+        # (primero g, luego wacc) y queda constancia en wacc_trace.
+        ignored_inferred: list[str] = []
+        if (
+            wacc.value is not None
+            and terminal.value is not None
+            and wacc.value - terminal.value < MIN_WACC_TERMINAL_SPREAD - 1e-9
+        ):
+            if terminal.source_type == "inferred_input":
+                terminal = Assumption(
+                    value=default_terminal_growth(company),
+                    unit="decimal",
+                    source_type="model_policy",
+                    basis="terminal growth policy from company framework",
+                    source_fact_ids=[],
+                    confidence=0.40,
+                )
+                ignored_inferred.append("terminal_growth")
+            if (
+                wacc.value - (terminal.value or 0.0) < MIN_WACC_TERMINAL_SPREAD - 1e-9
+                and wacc.source_type == "inferred_input"
+            ):
+                wacc = Assumption(
+                    value=default_wacc(company),
+                    unit="decimal",
+                    source_type="model_policy",
+                    basis="preview-only company policy; a traceable CalculatedMetric(wacc) is required for publication",
+                    source_fact_ids=[],
+                    confidence=0.20,
+                )
+                wacc_trace = {
+                    "status": "preview_only_default",
+                    "calculated_metric_id": None,
+                    "source_fact_ids": [],
+                }
+                ignored_inferred.append("wacc")
+        if ignored_inferred:
+            wacc_trace = {**wacc_trace, "inferred_inputs_ignored": ignored_inferred}
 
         capex_intensity = ratio_assumption("capex_to_revenue", "capital_expenditure", "revenue")
         if capex_intensity.value is not None:
@@ -1345,9 +1439,8 @@ class LongTermModelService:
             return _float(fact.value)
         ocf = self._fact_for_year(fact_cache["operating_cash_flow"], year)
         capex = self._fact_for_year(fact_cache["capital_expenditure"], year)
-        if ocf and capex:
-            return (_float(ocf.value) or 0) + (_float(capex.value) or 0)
-        return None
+        derived = _derived_fcf(ocf, capex)
+        return float(derived) if derived is not None else None
 
     def _scenario_payload(
         self,
@@ -1455,8 +1548,28 @@ class LongTermModelService:
                     "source_type": assumptions["wacc"].source_type,
                     "basis": f"{assumptions['wacc'].basis}; scenario adjustment applied",
                     "source_fact_ids": assumptions["wacc"].source_fact_ids,
+                    **(
+                        {"source_urls": list(assumptions["wacc"].source_urls)}
+                        if assumptions["wacc"].source_urls
+                        else {}
+                    ),
                 },
-                "terminal_growth": {"value": spec["terminal_growth"], "unit": "decimal", "source_type": "model_policy", "basis": "terminal growth policy with bear adjustment", "source_fact_ids": []},
+                "terminal_growth": {
+                    "value": spec["terminal_growth"],
+                    "unit": "decimal",
+                    "source_type": assumptions["terminal_growth"].source_type,
+                    "basis": (
+                        "terminal growth policy with bear adjustment"
+                        if assumptions["terminal_growth"].source_type == "model_policy"
+                        else f"{assumptions['terminal_growth'].basis}; scenario adjustment applied"
+                    ),
+                    "source_fact_ids": [],
+                    **(
+                        {"source_urls": list(assumptions["terminal_growth"].source_urls)}
+                        if assumptions["terminal_growth"].source_urls
+                        else {}
+                    ),
+                },
             },
             "drivers": spec["drivers"],
             "forecast": forecast,
@@ -1746,11 +1859,6 @@ class LongTermModelService:
         if len(years) < 5:
             limitations.append("full_10_year_history")
         return sorted(set(limitations))
-
-    @staticmethod
-    def _current_price(db: Session, company_id: int) -> float | None:
-        price, _as_of, _source = _current_price_with_date(db, company_id)
-        return price
 
     @staticmethod
     def _metric_value(value: float | None, unit: str, source_fact_ids: list[int], calculation: str) -> dict[str, Any]:
