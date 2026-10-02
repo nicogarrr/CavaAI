@@ -28,7 +28,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.errors import redact_secrets
@@ -44,6 +44,11 @@ from app.services.connectors.edgartools_ownership import (
     ownership_transactions,
 )
 from app.services.connectors.edgartools_thirteenf import infotable_holdings
+from app.services.fact_deletion import (
+    delete_financial_facts,
+    drop_shadowed_facts,
+    tenant_condition,
+)
 from app.services.financial_ingestion_service import BANK_REVENUE_TICKERS
 from app.services.provenance import Coverage, SourceKind, provenance
 
@@ -107,12 +112,11 @@ def _source_document(db: Session, company: Company, ticker: str) -> Document:
 
 def _replace_own_facts(db: Session, company: Company, document: Document) -> None:
     """Borra solo lo escrito por ESTE documento (frontera como _replace_esef_data)."""
-    db.execute(
-        delete(FinancialFact).where(
-            FinancialFact.company_id == company.id,
-            FinancialFact.source_id == document.id,
-            _tenant_filter(db, FinancialFact),
-        )
+    delete_financial_facts(
+        db,
+        FinancialFact.company_id == company.id,
+        FinancialFact.source_id == document.id,
+        _tenant_filter(db, FinancialFact),
     )
 
 
@@ -282,6 +286,7 @@ def refresh_from_edgartools(
                 confidence=fact.get("confidence", Decimal("0.95")),
             )
         )
+    drop_shadowed_facts(db, company.id, document.id, tenant_condition(db))
     fy_periods = sorted({f["period"] for f in facts if f["period"].endswith(":FY")}, reverse=True)
     fetched_at = datetime.now(UTC)
     document.metadata_ = {
