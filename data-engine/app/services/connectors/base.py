@@ -4,9 +4,79 @@
 from __future__ import annotations
 
 import asyncio
+import threading
+import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
+
+# ---------------- Ritmo de salida a la SEC (estado GLOBAL de proceso) ----------------
+
+# SEC fair-use: maximo 10 peticiones/segundo. El limite lo aplica la SEC por
+# IP/proceso, NO por modulo de Python: cada modulo con su propio reloj se
+# persuade a si mismo y dos conectores distintos disparan a la vez. Por eso el
+# estado vive aqui y no duplicado en ``form4`` / ``form13f``: un fetch 13F y un
+# Form 4 seguidos deben contar desde la MISMA ultima llamada, o la SEC responde
+# 403 y el barrido pierde ambos tramites sin error visible.
+SEC_MAX_REQUESTS_PER_SECOND = 10.0
+SEC_MIN_INTERVAL_SECONDS = 1.0 / SEC_MAX_REQUESTS_PER_SECOND
+
+
+class SecRateLimiter:
+    """Separador de llamadas a data.sec.gov, compartido por todos los conectores.
+
+    Un unico lock por proceso: el sleep ocurre DENTRO del lock a proposito. Es
+    lo que hace correcto el calculo bajo concurrencia — si se midiera fuera, N
+    hilos verian el mismo ``_next_allowed_at`` y saldrian todos juntos.
+
+    Dos detalles no negociables para que 10 req/s sea 10 req/s y no "casi":
+
+    - El reloj es ``perf_counter``, no ``monotonic``. En Windows ``monotonic``
+      es ``GetTickCount64`` y resuelve a ~15.6 ms: con el, ``sleep(0.1)`` se
+      mide como 0.094 s y la llamada siguiente se adelanta, dando ~12.8 req/s.
+      ``perf_counter`` usa ``QueryPerformanceCounter`` (~100 ns) y es igual de
+      monotono.
+    - El reinicio del hueco se comprueba en bucle tras el sleep. Registrar el
+      instante de una sola lectura puede dejar el plazo ya vencido; asi el hueco
+      siguiente nunca se acorta.
+    """
+
+    def __init__(self, min_interval: float = SEC_MIN_INTERVAL_SECONDS) -> None:
+        if min_interval <= 0:
+            raise ValueError(f"min_interval must be > 0, got {min_interval}")
+        self.min_interval = float(min_interval)
+        self._lock = threading.Lock()
+        self._next_allowed_at = 0.0
+
+    def wait(self) -> None:
+        with self._lock:
+            while True:
+                remaining = self._next_allowed_at - time.perf_counter()
+                if remaining <= 0:
+                    break
+                time.sleep(remaining)
+            self._next_allowed_at = time.perf_counter() + self.min_interval
+
+    def reset(self) -> None:
+        """Solo para tests: deja el reloj como recien arrancado."""
+        with self._lock:
+            self._next_allowed_at = 0.0
+
+
+# Singleton de proceso. Importarlo por referencia desde cada conector es lo que
+# convierte "un throttle por modulo" en "un throttle para la SEC".
+_sec_rate_limiter = SecRateLimiter()
+
+
+def sec_throttle() -> None:
+    """Bloquea hasta poder emitir otra peticion a la SEC sin pasar de 10 req/s."""
+    _sec_rate_limiter.wait()
+
+
+def reset_sec_rate_limiter() -> None:
+    """Solo para tests: reinicia el reloj global de la SEC."""
+    _sec_rate_limiter.reset()
+
 
 # Tope de reintentos por llamada y espera maxima por uno. El presupuesto
 # acota el tiempo total en el peor caso.

@@ -12,7 +12,10 @@ Diseno propio para CavaAI (cero dependencias nuevas, solo stdlib + httpx):
 - parse del XML del documento primario con xml.etree (tolerante a
   campos ausentes, como los filings reales).
 - rate-limit SEC: maximo 10 req/s (intervalo minimo 0.1s) + User-Agent
-  de contacto desde settings.sec_user_agent.
+  de contacto desde settings.sec_user_agent. El reloj del rate-limit NO es de
+  este modulo sino de ``connectors/base.py``, compartido con ``form13f``: la
+  SEC limita por IP/proceso, y con un reloj por modulo los dos conectores se
+  creerian libres a la vez.
 
 No se anade ninguna dependencia: NO tocar requirements.txt por esto.
 """
@@ -20,8 +23,6 @@ No se anade ninguna dependencia: NO tocar requirements.txt por esto.
 from __future__ import annotations
 
 import re
-import threading
-import time
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from xml.etree import ElementTree as ET
@@ -30,14 +31,21 @@ import httpx
 
 from app.core.config import get_settings
 
+# El ritmo de la SEC es un estado UNICO de proceso (ver connectors/base.py):
+# data.sec.gov limita por IP, no por modulo, asi que un reloj propio aqui
+# permitiria que un fetch 13F y un Form 4 disparasen juntos y la SEC devolviese
+# 403 a los dos. ``form13f`` comparte este mismo throttle.
+from app.services.connectors.base import SEC_MIN_INTERVAL_SECONDS, sec_throttle
+
 SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
 ARCHIVES_URL = "https://www.sec.gov/Archives/edgar/data"
 
 # SEC fair-use: maximo 10 peticiones/segundo.
-MIN_INTERVAL_SECONDS = 0.1
+MIN_INTERVAL_SECONDS = SEC_MIN_INTERVAL_SECONDS
 
-_lock = threading.Lock()
-_last_request_at = 0.0
+# Alias directo (no un wrapper) para que ``form4._throttle`` y
+# ``form13f._throttle`` sean el MISMO objeto y compartan estado por construccion.
+_throttle = sec_throttle
 
 
 BROWSER_USER_AGENT = (
@@ -74,17 +82,6 @@ def default_headers() -> dict[str, str]:
     }
 
 
-def _throttle() -> None:
-    """Respeta el rate-limit SEC (10 req/s) en cliente sincrono."""
-    global _last_request_at
-    with _lock:
-        elapsed = time.monotonic() - _last_request_at
-        wait = MIN_INTERVAL_SECONDS - elapsed
-        if wait > 0:
-            time.sleep(wait)
-        _last_request_at = time.monotonic()
-
-
 def _pad_cik(cik: str | int) -> str:
     return str(cik).strip().zfill(10)
 
@@ -103,11 +100,16 @@ def recent_form4_filings(
 ) -> list[dict]:
     """Filings Form 4 recientes desde el submissions JSON (sincrono)."""
     url = SUBMISSIONS_URL.format(cik=_pad_cik(cik))
+    # Cabeceras ANTES del throttle: el sello del intervalo se fija justo antes de
+    # salir a la red. Preparar despues (el primer ``get_settings()`` cuesta
+    # ~15 ms) se comia parte del hueco y acortaba la separacion real entre
+    # peticiones, que es justo lo que la SEC mide.
+    headers = default_headers()
     _throttle()
     if client is not None:
-        response = client.get(url, headers=default_headers())
+        response = client.get(url, headers=headers)
     else:
-        with httpx.Client(timeout=30, headers=default_headers()) as owned:
+        with httpx.Client(timeout=30, headers=headers) as owned:
             response = owned.get(url)
     response.raise_for_status()
     payload = response.json()
@@ -177,11 +179,12 @@ def _looks_like_xml(text: str) -> bool:
 
 
 def _get_text(url: str, client: httpx.Client | None) -> str:
+    headers = default_headers()
     _throttle()
     if client is not None:
-        response = client.get(url, headers=default_headers())
+        response = client.get(url, headers=headers)
     else:
-        with httpx.Client(timeout=30, headers=default_headers()) as owned:
+        with httpx.Client(timeout=30, headers=headers) as owned:
             response = owned.get(url)
     response.raise_for_status()
     return response.text
