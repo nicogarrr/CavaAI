@@ -1,5 +1,6 @@
 import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
+import { z } from 'zod';
 
 // Pasada de SOLO LECTURA contra produccion, solo paginas publicas (sin login).
 const RULES =
@@ -15,6 +16,9 @@ test('login page is reachable and clean', async ({ app, agent }) => {
   await app.open('/');
   await agent.act(`${RULES} Find and open the login or sign-in page. Do not type anything.`);
   await agent.assert('a login form or sign-in prompt is visible with no error banner');
-  const info = await agent.extract('List visible problems: error messages, untranslated English text, overlapping or cut-off elements. Return "none" if clean.');
-  console.log('[login]', JSON.stringify(info));
+  const info = await agent.extract(
+    'List visible UI problems on this page: error messages, untranslated English text, overlapping or cut-off elements. Use an empty list if clean.',
+    z.object({ problems: z.array(z.string()) }),
+  );
+  console.log('[login]', JSON.stringify(info.problems.length ? info.problems : 'ninguno'));
 });
