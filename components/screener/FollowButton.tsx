@@ -12,6 +12,11 @@ import { showErrorToast } from '@/lib/toast';
  *
  * - `isFollowed` siembra el estado inicial desde el servidor (watchlist del
  *   usuario); sin él, el botón asume "no seguido" hasta la primera interacción.
+ * - `stateUnknown` es el estado DESCONOCIDO: el backend de cartera falló y nadie
+ *   sabe si sigues el ticker. No se pinta «Seguir» (sería una afirmación
+ *   inventada) ni se ofrece «dejar de seguir» (la acción peor a ciegas): el
+ *   botón queda deshabilitado y el hueco se DECLARA en texto, no solo en el
+ *   tooltip (FIX-3.5).
  * - El toggle persiste en el backend (POST/DELETE /api/watchlist) y refresca
  *   la caché de /watchlist.
  * - Duplicados ("Ya sigues este ticker") y caídas del motor (toast con
@@ -71,7 +76,7 @@ export default function FollowButton({
     }
   };
 
-  return (
+  const button = (
     <Button
       variant="ghost"
       size="sm"
@@ -92,4 +97,21 @@ export default function FollowButton({
       {busy ? 'Guardando…' : stateUnknown ? 'Seguir (no disponible)' : followed ? 'Dejar de seguir' : 'Seguir'}
     </Button>
   );
+
+  // Estado desconocido: se DECLARA en texto, no solo en el tooltip. El botón va
+  // deshabilitado —«dejar de seguir» a ciegas sería la acción peor, y «Seguir»
+  // afirmaría una cartera que no se ha podido leer— pero el hueco se dice en
+  // la propia cabecera (FIX-3.5).
+  if (stateUnknown) {
+    return (
+      <span className="inline-flex min-h-[44px] flex-wrap items-center gap-2">
+        <span aria-live="polite" className="text-xs text-amber-400">
+          Seguimiento sin comprobar
+        </span>
+        {button}
+      </span>
+    );
+  }
+
+  return button;
 }

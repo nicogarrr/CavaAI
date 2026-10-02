@@ -3,6 +3,7 @@ import { Receipt } from 'lucide-react';
 import TaxesView from '@/components/taxes/TaxesView';
 import BackendOffline from '@/components/system/BackendOffline';
 import { getModelo720File, getModelo720Thresholds, getTaxHoldings, getTaxReport, type TaxRecord } from '@/lib/actions/taxes.actions';
+import { USER_TZ } from '@/lib/format';
 import { isBackendUnavailableError } from '@/lib/backend-offline';
 import { isAppError } from '@/lib/types/errors';
 
@@ -41,7 +42,11 @@ function isNotGeneratedYet(error: unknown): boolean {
 }
 
 function asFiscalYear(raw: string | undefined): number {
-    const current = new Date().getFullYear();
+    // El año fiscal del USUARIO, no el del runner: a las 00:30 del 1 de enero
+    // en Madrid (23:30 del 31 de diciembre en UTC) `new Date().getFullYear()`
+    // del servidor devolvía el ejercicio anterior. `en-CA` rinde "2026" con
+    // year: 'numeric' y el instante se mide en USER_TZ (Europe/Madrid).
+    const current = Number(new Intl.DateTimeFormat('en-CA', { timeZone: USER_TZ, year: 'numeric' }).format(new Date()));
     const parsed = raw ? Number.parseInt(raw, 10) : current;
     if (!Number.isInteger(parsed) || parsed < MIN_YEAR || parsed > MAX_YEAR) return current;
     return parsed;
@@ -95,7 +100,7 @@ export default async function TaxesPage({ searchParams }: PageProps) {
                         Posiciones con base de coste, reportes fiscales anuales y plusvalías latentes de tu cartera.
                     </p>
                 </div>
-                <div className="flex items-center gap-2 rounded-lg border border-gray-800 bg-surface-1 px-3 py-2 text-sm text-gray-300">
+                <div className="flex items-center gap-2 rounded-lg border border-gray-800 bg-[#111111] px-3 py-2 text-sm text-gray-300">
                     <Receipt className="h-4 w-4 text-teal-300" />
                     Ejercicio {fiscalYear}
                 </div>

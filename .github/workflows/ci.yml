@@ -32,23 +32,44 @@ concurrency:
   # false siempre.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# shell por defecto para TODOS los `run:` de este workflow. `bash` explicito es
+# `bash --noprofile --norc -eo pipefail {0}`; sin `shell:`, GitHub ejecuta
+# `bash -e {0}` (SIN pipefail), y ahi `cmd | tee log` devuelve el exit code de
+# `tee`, no el de `cmd`: un pytest en rojo pasaba el gate de RAG y un eval
+# fallido pasaba el bucle de evals (FIX-3.2). Los pasos con `| tee` llevan
+# ademas `set -o pipefail` explicito: doble cinturon por si alguien pone un
+# `shell:` que los anule.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   dep-parity:
-    name: Python dep parity (pyproject ↔ requirements)
+    name: Python dep parity (pyproject â†” requirements)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      # fetch-depth: 1 explicito aunque ya sea el default de checkout@v4+: deja
+      # fetch-depth: 1 explicito aunque ya sea el default de checkout: deja
       # escrita la intension de que este job no lee historial. Sin `cache: pip`
       # a proposito: no instala nada, `sync_requirements.py --check` solo lee
       # pyproject.toml y requirements.txt.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 1
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          version: "0.12.5"
+      # requirements.txt sigue siendo el contrato de RANGOS (la intencion) y
+      # este job lo mira; uv.lock es la RESOLUCION y ahora tambien se vigila:
+      #   - `uv lock --check`: el lock no ha quedado desfasado de pyproject.
+      #   - `verify_lockfile.py`: lo fijado satisface lo declarado y trae hashes.
+      # uv 0.12.5 a proposito: es el que genero uv.lock (revision = 3).
       - run: python data-engine/scripts/sync_requirements.py --check
+      - run: uv lock --check --project data-engine
+      - run: python data-engine/scripts/verify_lockfile.py
 
   frontend:
     name: Frontend quality
@@ -62,10 +83,10 @@ jobs:
       FMP_BACKEND_URL: http://127.0.0.1:8000
       OPENCODE_GO_API_KEY: ci-placeholder
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 1
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
           cache: npm
@@ -102,10 +123,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 1
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
           cache: npm
@@ -131,31 +152,40 @@ jobs:
       CAVAAI_ENABLE_VECTOR_INGEST: "0"
       CAVAAI_ENABLE_VECTOR_CHAT: "0"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 1
-      - uses: actions/setup-python@v7
+      # setup-python SOLO aporta el interprete 3.12; no instala nada (sin
+      # `cache: pip` ni `cache-dependency-path`: la cache y la instalacion son
+      # las de uv). El interprete fijado aqui es el que usa `uv sync`, y
+      # coincide con `.python-version`, `ruff.toml` (py312) y
+      # `pyrightconfig.json` (3.12) y con `requires-python = ">=3.12,<3.13"`.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: data-engine/requirements.txt
-      - run: python -m pip install --upgrade pip
-      # ruff y pyright con pin EXACTO a proposito: son la definicion del gate,
-      # y ruff anade reglas nuevas en cada minor (un run de manana puede fallar
-      # sin que haya cambiado ni una linea del repo). pytest lleva rango, no
-      # pin exacto: el piso declarado es el extra `test` de pyproject.toml
-      # (pytest>=8.0.0) y el techo <9 evita el salto mayor incompatible.
-      # TODO(#E2): los tres pins no estan en ningun fichero que los verifique;
-      # en cuanto exista un extra `dev` en data-engine/pyproject.toml, esta linea
-      # debe pasar a `-r requirements.txt -e .[dev]` y el duplicado con
-      # ruff.toml/pyrightconfig.json desaparece.
-      # python-version 3.12 coincide con `target-version = "py312"` de
-      # data-engine/ruff.toml y con `pythonVersion` de pyrightconfig.json. El
-      # desajuste que reporto E2 (venv local en 3.11) es SOLO local: por eso
-      # CI no se toca y el ajuste va en data-engine/**, no aqui.
-      - run: python -m pip install -r requirements.txt "pytest>=8.0.0,<9" "ruff==0.16.10" "pyright==1.1.414"
-      - run: python -m ruff check .
-      - run: pyright
+      # uv 0.12.5: el MISMO que genero data-engine/uv.lock (revision = 3).
+      # La cache se keya por uv.lock, no por requirements.txt: quien decide que
+      # se instala es el lock.
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          version: "0.12.5"
+          enable-cache: true
+          cache-dependency-glob: "data-engine/uv.lock"
+      # Instalacion CONGELADA desde uv.lock, nunca desde requirements.txt
+      # (rangos: dos runs del mismo commit resuelven distinto). --extra test /
+      # --extra dev traen pytest-cov/httpx y ruff==0.16.10 / pyright==1.1.414
+      # tal y como los fija el lock: NO hace falta ningun pin de herramienta en
+      # este workflow (el lock es el unico sitio donde se fijan versiones).
+      # --no-install-project: el paquete no se instala; los scripts corren del
+      # working tree, igual que cuando solo existia `pip install -r`.
+      - name: Sync congelado desde uv.lock (NO requirements.txt)
+        run: uv sync --frozen --extra test --extra dev --no-install-project
+      # El lock sigue fiel a los rangos declarados (fail-closed): sin esto, un
+      # `uv sync --frozen` instalaria un lock desfasado sin decirlo.
+      - name: El lock sigue fiel a los rangos declarados
+        run: uv run --frozen python scripts/verify_lockfile.py
+      - run: uv run --frozen ruff check .
+      - run: uv run --frozen pyright
       # TODO(#fixes): 14 tests preexistentes en rojo en el base del que parte
       # esta rama -- 13 en tests/test_retitle_sec_news_es.py y 1 en
       # tests/test_company_snapshot_batch.py. NO son fallos de CI: en
@@ -164,7 +194,7 @@ jobs:
       # asi que solo se ven en el `pytest` de un venv de Windows. Dejarlos
       # anotados para que la ronda de fixes los haga portables y no parezca un
       # fallo nuevo cuando se arreglen.
-      - run: python -m pytest
+      - run: uv run --frozen pytest
       - name: Wait for Qdrant
         run: for i in $(seq 1 30); do curl -fs http://localhost:6333/collections && break || sleep 2; done
       - name: RAG activation against real Qdrant (must not skip)
@@ -173,12 +203,17 @@ jobs:
           CAVAAI_ENABLE_VECTOR_SEARCH: "1"
           CAVAAI_ENABLE_VECTOR_CHAT: "1"
         run: |
-          python -m pytest tests/test_rag_activation.py -v -rs | tee /tmp/rag_activation.log
+          # `set -o pipefail` explicito (ademas del `shell: bash` del workflow):
+          # sin el, `pytest | tee` devuelve el exit code de `tee` y el gate era
+          # incapaz de ponerse en rojo aunque test_rag_activation.py FALLARA
+          # (FIX-3.2).
+          set -o pipefail
+          uv run --frozen python -m pytest tests/test_rag_activation.py -v -rs | tee /tmp/rag_activation.log
           if grep -Eq "[0-9]+ skipped" /tmp/rag_activation.log; then
             echo "RAG activation tests skipped: Qdrant service not reachable" >&2
             exit 1
           fi
-      - run: python scripts/run_financial_evals.py
+      - run: uv run --frozen python scripts/run_financial_evals.py
 
   evals:
     # Los evals de RAG, valuation, LLM, ingest, backtest y realized viven aqui y
@@ -212,9 +247,12 @@ jobs:
       CAVAAI_ENABLE_VECTOR_SEARCH: "1"
       CAVAAI_ENABLE_VECTOR_CHAT: "1"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 1
+      # Inventario + puerta de obligatorios (trabajo de main, PR #773/#759): deja
+      # constancia en el summary de que scripts hay en el arbol y tumba el job si
+      # desaparece uno obligatorio.
       - name: Inventario de scripts de evals presentes en el arbol
         id: discover
         run: |
@@ -233,16 +271,13 @@ jobs:
             if [ -z "$present" ]; then
               echo "## EVALS NO EJECUTADOS: no hay ningun script de evals en el arbol"
             elif [ -n "$missing" ]; then
-              echo "## EVALS INCOMPLETOS: se ejecutan solo los presentes"
+              echo "## EVALS INCOMPLETOS: se ejecutan los presentes y el job falla"
             else
               echo "## Evals: los 6 scripts presentes"
             fi
             echo "Se ejecutan:${present:- ninguno}"
             echo "Ausentes (NO ejecutados):${missing:- ninguno}"
           } >> "$GITHUB_STEP_SUMMARY"
-          # Obligatorios: ya estan integrados en main; si se borran o renombran
-          # el CI se pone en rojo en vez de quedar en verde sin evaluar nada.
-          # Anadir aqui rag/llm/ingest/backtest segun entren en main.
           required="run_valuation_evals run_realized_evals"
           for r in $required; do
             if [ ! -f "scripts/$r.py" ]; then
@@ -252,56 +287,60 @@ jobs:
             fi
           done
           if [ -n "$missing" ]; then
-            # Los ficheros los traen otras ramas (D1/D3/E1). No se pone el CI en
-            # rojo por un fichero que aun no existe, pero un verde sin evals
-            # NUNCA se presenta como verde limpio: anotacion + cabecera del
-            # summary dicen exactamente que no se ejecuto.
+            # Aviso informativo: el bucle de abajo ya es fail-closed sobre
+            # `missing`, asi que no hace falta tumbar el job dos veces.
             echo "::warning title=Evals no ejecutados::scripts ausentes:$missing"
           fi
-      - uses: actions/setup-python@v7
-        if: ${{ steps.discover.outputs.present != '' }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: data-engine/requirements.txt
-      - name: Instalar dependencias
-        if: ${{ steps.discover.outputs.present != '' }}
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          version: "0.12.5"
+          enable-cache: true
+          cache-dependency-glob: "data-engine/uv.lock"
+      # Mismo instalador congelado que `backend`: uv.lock, no requirements.txt.
+      - run: uv sync --frozen --extra test --extra dev --no-install-project
       - name: Wait for Qdrant
-        if: ${{ steps.discover.outputs.present != '' }}
         run: for i in $(seq 1 30); do curl -fs http://localhost:6333/collections && break || sleep 2; done
       # run_rag_evals mide el RAG de verdad y se niega a correr con un stub
       # (fail-closed). Necesita el modelo de embeddings: se cachea y se
       # precarga con reintentos. Si ni asi se puede descargar, el eval sigue
       # fallando con motivo explicito; nunca se sustituye por un stub.
       - name: Cache del modelo de embeddings (RAG evals)
-        if: ${{ steps.discover.outputs.present != '' }}
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cache/huggingface
             /tmp/fastembed_cache
           key: embeddings-all-MiniLM-L6-v2-v1
       - name: Precargar el modelo de embeddings (con reintentos)
-        if: ${{ steps.discover.outputs.present != '' }}
         run: |
           for i in 1 2 3 4; do
-            python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')" && exit 0
+            uv run --frozen python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')" && exit 0
             echo "::warning::intento $i de descargar el modelo de embeddings fallo"; sleep $((i * 10))
           done
           echo "::warning title=Modelo de embeddings no disponible::run_rag_evals fallara cerrado (sin stub)"
-      - name: "Evals presentes (fail-closed: nada se auto-skipea)"
-        if: ${{ steps.discover.outputs.present != '' }}
-        env:
-          PRESENT: ${{ steps.discover.outputs.present }}
+      - name: "Evals: se ejecutan los presentes y se falla si falta alguno"
+        # SIN `if:` a proposito (FIX-3.1). Antes el paso entero se saltaba si
+        # faltaba UN solo script (`if: missing == ''`, luego `present != ''`):
+        # con dos scripts ausentes en el arbol, los cuatro presentes tampoco se
+        # ejecutaban y el job salia VERDE con 0 evals. Ahora la ausencia se
+        # convierte en rc=1 DENTRO del bucle: los presentes se ejecutan
+        # SIEMPRE y el job falla si falta alguno (fail-closed de verdad, sin
+        # todo-o-nada).
+        # `set -o pipefail` explicito (ademas del `shell: bash` del workflow):
+        # sin el, `python ... | tee` devolveria el exit code de `tee`.
+
         run: |
           set -o pipefail
           rc=0
-          for s in $PRESENT; do
+          for s in run_rag_evals run_valuation_evals run_llm_evals run_ingest_evals run_backtest_evals run_realized_evals; do
             echo "::group::$s"
-            if python "scripts/$s.py" 2>&1 | tee "/tmp/$s.log"; then
+            if [ ! -f "scripts/$s.py" ]; then
+              echo "::error::$s no existe en el arbol: el eval NO se ha evaluado"
+              rc=1
+            elif uv run --frozen python "scripts/$s.py" 2>&1 | tee "/tmp/$s.log"; then
               # Mismo patron fail-closed que el gate de RAG activation: un eval
               # que se salta tests porque Qdrant o el LLM no estaban NO es un
               # eval verde, es un eval que no ha evaluado nada.
@@ -317,12 +356,11 @@ jobs:
           done
           exit $rc
       - name: Publica los logs de evals como artefacto
-        if: ${{ always() && steps.discover.outputs.present != '' }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: evals-logs
           path: /tmp/run_*_evals.log
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 7
 
   openapi-drift:
@@ -337,21 +375,27 @@ jobs:
       # fetch-depth: 1 SUFICE aqui, no hace falta clon completo: `git diff
       # --exit-code` compara el working tree contra el INDICE de HEAD, no contra
       # el log. El drift se detecta igual sin historia.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 1
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
           cache: npm
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: data-engine/requirements.txt
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          version: "0.12.5"
+          enable-cache: true
+          cache-dependency-glob: "data-engine/uv.lock"
       - run: npm ci
-      - run: python -m pip install --upgrade pip
-      - run: python -m pip install -r data-engine/requirements.txt
+      # Instalacion congelada desde uv.lock (ver job `backend`): generar el
+      # cliente con resoluciones distintas entre runs es justamente el drift
+      # que este job viene a cazar.
+      - run: uv sync --frozen --extra test --extra dev --no-install-project
+        working-directory: data-engine
       - run: npm run generate:openapi
       - run: git diff --exit-code -- data-engine/openapi.json lib/research/openapi.generated.ts
 
@@ -383,18 +427,48 @@ jobs:
       # propia tabla de versiones en Postgres: no consulta git en ningun punto.
       # fetch-depth: 1 explicito para que nadie lo cambie a un clon completo
       # sin motivo.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 1
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: data-engine/requirements.txt
-      - run: python -m pip install --upgrade pip
-      - run: python -m pip install -r requirements.txt
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          version: "0.12.5"
+          enable-cache: true
+          cache-dependency-glob: "data-engine/uv.lock"
+      # Instalacion congelada desde uv.lock (ver job `backend`): un alembic que
+      # corre contra librerias resueltas distinto cada run no es un round trip
+      # reproducible.
+      - run: uv sync --frozen --extra test --extra dev --no-install-project
+      # Gate de cadena de Alembic, ANTES de tocar la base de datos.
+      #
+      # Sin este paso, el unico sintoma de una cadena rota es el efecto
+      # secundario críptico del paso siguiente: `alembic upgrade head` aborta
+      # con "Multiple head revisions are present for given argument 'head'" y
+      # `Dockerfile.prod` (que hace upgrade antes de uvicorn) deja el contenedor
+      # sin arrancar. El mensaje no dice que fichero duplica el prefijo, ni que
+      # hay que renombrar; este gate lo dice antes y en el sitio.
+      #
+      # Doble cinturon a proposito:
+      #   1. `alembic heads | wc -l` sobre la herramienta real, que es la que
+      #      aborta en produccion.
+      #   2. `test_alembic_chain.py`, que ademas caza lo que `heads` no ve
+      #      (prefijo de 4 digitos duplicado, revision != stem, down_revision
+      #      huerfano, ciclo, rama colgante) y explica el por que.
+      - name: Gate de cadena de Alembic (un solo head)
+        run: |
+          set -euo pipefail
+          heads=$(uv run --frozen python -m alembic heads | wc -l)
+          if [ "$heads" -ne 1 ]; then
+            echo "::error::alembic tiene $heads heads; la cadena debe ser lineal"
+            uv run --frozen python -m alembic heads
+            exit 1
+          fi
+          uv run --frozen python -m pytest tests/test_alembic_chain.py -q
       - name: Empty database to head
-        run: python -m alembic upgrade head
+        run: uv run --frozen python -m alembic upgrade head
       - name: 0032 rejects a clean downgrade (forward-only)
         # 0032 es forward-only a proposito (restaurar los unique globales
         # reabriria el IntegrityError cross-tenant). El round-trip de
@@ -404,13 +478,13 @@ jobs:
           # Con 0033 en head, primero baja 0033 (downgrade limpio y verificado);
           # si no, el raise de 0032 revertiria en la misma transaccion tambien
           # el downgrade de 0033 y `current` quedaria en 0033.
-          python -m alembic downgrade 0032_tenant_uniques_fk_actions
-          if python -m alembic downgrade 0031_propick_runs; then
+          uv run --frozen python -m alembic downgrade 0032_tenant_uniques_fk_actions
+          if uv run --frozen python -m alembic downgrade 0031_propick_runs; then
             echo "0032 downgrade should have raised (forward-only)" >&2
             exit 1
           fi
-          python -m alembic current | grep -q "0032_tenant_uniques_fk_actions"
-          python -c "
+          uv run --frozen python -m alembic current | grep -q "0032_tenant_uniques_fk_actions"
+          uv run --frozen python -c "
           import os
           import sqlalchemy as sa
 
@@ -424,7 +498,7 @@ jobs:
         # El round-trip de downgrade cubre solo revisiones < 0032, asi que
         # necesita una base limpia (desde head no se puede bajar de 0032).
         run: |
-          python -c "
+          uv run --frozen python -c "
           import os
           import sqlalchemy as sa
 
@@ -433,11 +507,11 @@ jobs:
               conn.execute(sa.text('DROP SCHEMA public CASCADE'))
               conn.execute(sa.text('CREATE SCHEMA public'))
           "
-          python -m alembic upgrade 0031_propick_runs
-          python -m alembic downgrade base
-          python -m alembic upgrade 0006_fundamental_model_journal
-          python -m alembic downgrade base
-          python -m alembic upgrade head
+          uv run --frozen python -m alembic upgrade 0031_propick_runs
+          uv run --frozen python -m alembic downgrade base
+          uv run --frozen python -m alembic upgrade 0006_fundamental_model_journal
+          uv run --frozen python -m alembic downgrade base
+          uv run --frozen python -m alembic upgrade head
 
   arm64-smoke:
     name: ARM64 compatibility smoke
@@ -456,32 +530,31 @@ jobs:
       FMP_BACKEND_URL: http://127.0.0.1:8000
       OPENCODE_GO_API_KEY: ci-placeholder
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 1
-      # `cache: pip` anadido: este job instala torch + requirements.txt
-      # (pandas, scipy, sentence-transformers) en un runner ARM64, que es el
-      # install mas caro del workflow. La cache no cubre el wheel de torch
-      # --index-url https://download.pytorch.org/whl/cpu, que esta en otro
-      # indice, pero si todo lo demas.
-      - uses: actions/setup-python@v7
+      # `enable-cache` de uv: este job instala todo el lock (torch CPU incluido)
+      # en un runner ARM64, que es el install mas caro del workflow. La cache
+      # se keya por uv.lock.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: data-engine/requirements.txt
-      - run: python -m pip install --upgrade pip
-      # Mismo orden que data-engine/Dockerfile.prod: torch CPU-only primero
-      # (indice oficial PyTorch, tiene wheels linux/aarch64) y luego el resto.
-      # Asi CI prueba la estrategia exacta de la imagen de Oracle y evita
-      # descargar los wheels CUDA (multi-GB) tambien en CI.
-      - name: Install torch CPU-only on ARM64 (same as Dockerfile.prod)
-        run: python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
-      - name: Install backend deps on ARM64 (pandas, scipy, sentence-transformers)
-        run: python -m pip install -r data-engine/requirements.txt
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          version: "0.12.5"
+          enable-cache: true
+          cache-dependency-glob: "data-engine/uv.lock"
+      # Instalacion congelada desde uv.lock. SIN los dos pasos manuales de
+      # torch: el lock ya fija la variante CPU-only (torch==2.9.1+cpu desde el
+      # indice de PyTorch), con sus hashes por plataforma (aarch64 incluido),
+      # que es la misma estrategia que Dockerfile.prod. Los pasos manuales
+      # elegian version a mano y podian divergir del lock.
+      - name: Sync congelado desde uv.lock en ARM64 (torch CPU viene del lock)
+        run: uv sync --frozen --extra test --extra dev --no-install-project
       - name: Import backend app on ARM64
         working-directory: data-engine
-        run: python -c "import platform; from main import app; print('backend import OK on', platform.machine())"
-      - uses: actions/setup-node@v7
+        run: uv run --frozen python -c "import platform; from main import app; print('backend import OK on', platform.machine())"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
           cache: npm
@@ -494,29 +567,48 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 1
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
           cache: npm
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: data-engine/requirements.txt
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          version: "0.12.5"
       - run: npm ci
       - name: Audit npm dependencies
         run: npm audit --audit-level=high
-      # `if: always()` en los dos pasos de pip: un `npm audit` en rojo no debe
-      # dejar el lado Python sin auditar. Los dos hallazgos se ven juntos.
+      # `if: always()` en los tres pasos de audit: un `npm audit` en rojo no
+      # debe dejar el lado Python sin auditar. Los hallazgos se ven juntos.
+      #
+      # DECISION (FIX-3.3): se auditan DOS cosas y no una.
+      #   1. requirements.txt = los RANGOS. Es lo que los Dockerfile instalan
+      #      todavia (pip install -r), o sea que es lo que puede llegar a
+      #      produccion mientras ese cambio no aterrice: una resolucion nueva
+      #      de los rangos con una CVE reciente solo se ve aqui.
+      #   2. uv.lock = la RESOLUCION congelada que instala CI. Es lo que de
+      #      verdad corre en cada run; una version fijada con CVE solo se ve
+      #      aqui (auditar solo los rangos la esconderia, porque la resolucion
+      #      fresca iria a una version posterior).
+      # `uvx pip-audit` flota el AUDITOR (herramienta, no dependencia); lo que
+      # se audita si esta fijado. El dia que los Dockerfiles pasen a
+      # `uv sync --frozen`, el paso (1) sobra y solo queda (2).
       - name: Install pip-audit
         if: ${{ always() }}
-        run: python -m pip install --upgrade pip pip-audit
-      - name: Audit Python dependencies
+        run: uvx pip-audit --version
+      - name: "Audit Python dependencies (rangos de requirements.txt)"
         if: ${{ always() }}
-        run: python -m pip_audit -r data-engine/requirements.txt
+        run: uvx pip-audit -r data-engine/requirements.txt
+      - name: "Audit Python dependencies (resolucion congelada de uv.lock)"
+        if: ${{ always() }}
+        run: |
+          uv export --frozen --all-extras --no-hashes --no-emit-project --project data-engine -o /tmp/lock-reqs.txt
+          uvx pip-audit -r /tmp/lock-reqs.txt
 
   e2e:
     name: Research API E2E
@@ -545,27 +637,30 @@ jobs:
       CAVAAI_ENABLE_VECTOR_INGEST: "0"
       CAVAAI_ENABLE_VECTOR_CHAT: "0"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 1
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
           cache: npm
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: data-engine/requirements.txt
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          version: "0.12.5"
+          enable-cache: true
+          cache-dependency-glob: "data-engine/uv.lock"
       - run: npm ci
-      - run: python -m pip install --upgrade pip
-      - run: python -m pip install -r data-engine/requirements.txt
-      - run: python -m alembic upgrade head
+      - run: uv sync --frozen --extra test --extra dev --no-install-project
+        working-directory: data-engine
+      - run: uv run --frozen python -m alembic upgrade head
         working-directory: data-engine
       - run: npm run test:e2e
       - name: Upload Playwright report
         if: ${{ always() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: playwright-report
           path: playwright-report/
@@ -581,26 +676,29 @@ jobs:
       E2E_UI_RUN: "1"
       RESEARCH_AUTH_SECRET: cavaai-browser-e2e-research-secret-at-least-32-characters
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 1
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
           cache: npm
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: data-engine/requirements.txt
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          version: "0.12.5"
+          enable-cache: true
+          cache-dependency-glob: "data-engine/uv.lock"
       - run: npm ci
-      - run: python -m pip install --upgrade pip
-      - run: python -m pip install -r data-engine/requirements.txt
+      - run: uv sync --frozen --extra test --extra dev --no-install-project
+        working-directory: data-engine
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
       - name: Upload browser report and traces
         if: ${{ always() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: browser-playwright-artifacts
           path: |
@@ -608,6 +706,41 @@ jobs:
             test-results/
           if-no-files-found: ignore
           retention-days: 7
+
+  pin-check:
+    # FIX-3.9 (capa de enforcement). Los `uses:` de .github/workflows/ van
+    # pineados por SHA (con el tag como comentario); este job tumba CI si
+    # alguien (o Dependabot a medias) introduce un `uses:` por tag flotante:
+    # una etiqueta upstream movida en un workflow con `contents: write` seria
+    # escritura en el repo sin revision humana. Las acciones locales
+    # (`uses: ./...`) no se pueden pinear y se admiten.
+    name: Actions pineadas por SHA
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+      - name: Ningun `uses:` sin SHA de 40 hex (salvo acciones locales)
+        run: |
+          set -euo pipefail
+          rc=0
+          # Patron anclado a la CLAVE `uses:` de YAML (linea que empieza por
+          # `uses:` o `- uses:`): no caza los comentarios ni este script.
+          while IFS= read -r line; do
+            if echo "$line" | grep -Eq 'uses:[[:space:]]*\./'; then
+              continue
+            fi
+            if echo "$line" | grep -Eq '@[0-9a-f]{40}([[:space:]]|$)'; then
+              continue
+            fi
+            echo "::error::uses: sin SHA pineado -> $line"
+            rc=1
+          done < <(grep -RInE --include='*.yml' --include='*.yaml' '^[[:space:]]*(-[[:space:]]+)?uses:[[:space:]]' .github/workflows/ || true)
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::hay uses: por tag flotante: pinealos por SHA (gh api repos/<owner>/<repo>/git/ref/tags/<tag>)"
+          fi
+          exit $rc
 
   gate:
     # Un unico check de referencia para branch protection, en vez de 11 checks
@@ -630,6 +763,7 @@ jobs:
       - evals
       - e2e
       - browser-e2e
+      - pin-check
     # always(): sin esto el gate se saltaria en cuanto un `needs` fallara, que
     # es justo el caso en el que tiene que ejecutarse.
     if: ${{ always() }}

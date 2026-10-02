@@ -11,7 +11,6 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.models import CalculatedMetric, Company
-from app.services.inferred_input_service import InferredInputService, pick_rate_pair
 from app.valuation.financial_snapshot import FinancialSnapshot, FinancialSnapshotBuilder
 from app.valuation.moat_framework import empty_moat_framework
 
@@ -23,8 +22,8 @@ from app.valuation.moat_framework import empty_moat_framework
 MODEL_VERSION = "valuation-engines-v2"
 
 
-def traceable_wacc(db: Session, company: Company) -> float | None:
-    """Return the persisted, traceable WACC for this company, if any.
+def traceable_wacc(db: Session, company: Company) -> tuple[float | None, str | None]:
+    """Return ``(wacc, fiscal_year)`` for this company, if any.
 
     ``metric_calculation_service`` / ``WaccInputService`` already compute a
     dated, sourced WACC (risk-free + ERP + beta + capital-structure weights).
@@ -47,11 +46,11 @@ def traceable_wacc(db: Session, company: Company) -> float | None:
         .limit(1)
     )
     if metric is None or metric.value is None:
-        return None
+        return None, None
     value = float(metric.value)
     if not math.isfinite(value) or not 0.0 < value < 1.0:
-        return None
-    return value
+        return None, None
+    return value, str(metric.fiscal_year) if metric.fiscal_year is not None else None
 
 
 def clamp_fcf_margin(margin: float, *, ceiling: float) -> tuple[float, bool]:
@@ -94,6 +93,18 @@ def is_adr_without_ratio(company: Company) -> bool:
     tags = {str(tag).strip().lower() for tag in (company.factor_tags or [])}
     is_adr = "adr" in tags or any(tag.startswith(ADR_TAG_PREFIX) for tag in tags)
     return is_adr and adr_ratio(company) is None
+
+
+def adr_comparable_price(company: Company, current_price: float | None) -> tuple[float | None, float | None]:
+    """Return ``(comparable_price, ratio)`` for ADR-aware price comparison.
+
+    ``comparable_price`` is the price per ordinary share (``current_price / ratio``)
+    when the company is an ADR with a usable ratio, otherwise ``current_price``.
+    """
+    ratio = adr_ratio(company)
+    if ratio and current_price:
+        return current_price / ratio, ratio
+    return current_price, ratio
 
 
 @dataclass
@@ -275,43 +286,3 @@ def apply_publication_blockers(result: dict[str, Any]) -> dict[str, Any]:
             "source; the numbers are an orientation, not a final valuation.",
         )
     return result
-
-
-def resolve_rates(db, company) -> tuple[float, str, float, str, list[str]]:
-    """(wacc, wacc_source, terminal, terminal_source, inferidos_descartados).
-
-    Prioridad: CalculatedMetric trazable > InferredInput (base + URLs) > tags.
-    Un par que no deje spread minimo wacc - g descarta el inferido (nunca
-    llega a run_dcf, que lanzaria ValueError). ``db=None`` solo en unit tests.
-    """
-    wacc_default = default_wacc(company)
-    terminal_default = default_terminal_growth(company)
-    if db is None:
-        return wacc_default, "tag_default", terminal_default, "tag_default", []
-    service = InferredInputService()
-    traceable = traceable_wacc(db, company)
-    inferred_w = service.latest_valid(db, company.id, "wacc") if traceable is None else None
-    inferred_g = service.latest_valid(db, company.id, "terminal_growth")
-    if traceable is not None:
-        wacc, wacc_source = traceable, "calculated_metric"
-    elif inferred_w is not None:
-        wacc, wacc_source = float(inferred_w.value), "inferred_input"
-    else:
-        wacc, wacc_source = wacc_default, "tag_default"
-    if inferred_g is not None:
-        terminal, terminal_source = float(inferred_g.value), "inferred_input"
-    else:
-        terminal, terminal_source = terminal_default, "tag_default"
-    wacc, terminal, dropped = pick_rate_pair(
-        wacc=wacc,
-        wacc_inferred=wacc_source == "inferred_input",
-        terminal=terminal,
-        terminal_inferred=terminal_source == "inferred_input",
-        default_wacc_value=wacc_default,
-        default_terminal_value=terminal_default,
-    )
-    if "wacc" in dropped:
-        wacc_source = "tag_default"
-    if "terminal_growth" in dropped:
-        terminal_source = "tag_default"
-    return wacc, wacc_source, terminal, terminal_source, dropped

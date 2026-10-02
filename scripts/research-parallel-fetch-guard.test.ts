@@ -105,19 +105,153 @@ export function findUnbudgetedReads(source: string): string[] {
  * (3) `Promise.all` naked sobre lecturas degradables. Un `all` convierte un 503
  * de un widget lateral en una pagina en blanco; para eso esta `allSettled`.
  * Se excluye el `Promise.all` de `params`/`searchParams` (no son red).
+ *
+ * El `.catch` que degrada tiene que estar DENTRO de los argumentos del
+ * `Promise.all` (aplicado a las llamadas del lote). Mirar una ventana de
+ * caracteres alrededor dejaba que un `.catch` ajeno (otra promesa, un helper
+ * posterior) absolviera al lote: `void algo.catch(...)` tras el `all` bastaba
+ * para esconder un waterfall.
  */
+function callArgsAt(source: string, open: number): string {
+  let depth = 1;
+  for (let i = open; i < source.length && i < open + 400; i += 1) {
+    const ch = source[i];
+    if (ch === '(') depth += 1;
+    else if (ch === ')') {
+      depth -= 1;
+      if (depth === 0) return source.slice(open, i);
+    }
+  }
+  return source.slice(open, Math.min(source.length, open + 400));
+}
+
 export function findNakedPromiseAll(source: string): string[] {
   const findings: string[] = [];
-  const pattern = /Promise\.all\(/g;
+  const head = /Promise\.all\s*\(/g;
   let match: RegExpExecArray | null;
-  while ((match = pattern.exec(source)) !== null) {
-    const block = source.slice(match.index, match.index + 500);
-    const touchesReaders = RESEARCH_READERS.test(block) && /\b(getResearch\w+|getMoatQualityScore|getCompanyMarketSnapshot|getAstOrbitOverview)\s*\(/.test(block);
-    // El unico `Promise.all` tolerable es el de las promesas ya degradadas por
-    // `.catch`, o el de params/searchParams (no red).
-    const alreadyDegraded = /\.catch\(/.test(block);
-    if (touchesReaders && !alreadyDegraded) {
+  while ((match = head.exec(source)) !== null) {
+    const args = callArgsAt(source, match.index + match[0].length);
+    if (!RESEARCH_READERS.test(args)) continue;
+    if (!/\b(getResearch\w+|getMoatQualityScore|getCompanyMarketSnapshot|getAstOrbitOverview)\s*\(/.test(args)) continue;
+    const readers = args.match(/get(?:Research\w+|MoatQualityScore|CompanyMarketSnapshot|AstOrbitOverview)\s*\(/g) ?? [];
+    const catches = args.match(/\.catch\s*\(/g) ?? [];
+    if (readers.length > catches.length) {
       findings.push(`Promise.all naked sobre lecturas degradables en offset ${match.index}`);
+    }
+  }
+  return findings;
+}
+
+/* ------------------------------------------------------------------ *
+ * (4) La degradacion del watchlist tiene que ser EXPLICITA.
+ *
+ * El watchlist nunca tumba la ficha: un 500 del backend de cartera no puede
+ * dejar la ficha en blanco. Pero degradar a `[]` en silencio MIENTE: convierte
+ * «no sabemos si sigues esta empresa» en «no la sigues», y la cabecera ofrece
+ * «Seguir» sobre una cartera que no existe. Lo arreglo FIX-3.5 degradando a
+ * `null` (estado DESCONOCIDO) y propagandolo como `stateUnknown`, que
+ * `FollowButton` pinta como «Seguimiento sin comprobar».
+ *
+ * El guard anterior fijaba la cadena literal `getWatchlist()).catch(() => [])`,
+ * o sea: tumbaba exactamente el bug. Se comprueba aqui la INTENCION (la
+ * promesa no rechaza y el catch NO fabrica una cartera vacia), no la forma:
+ * valen tanto el centinela `null` como una senal `degraded` explicita.
+ * ------------------------------------------------------------------ */
+
+/** Indice del caracter que cierra la cadena que empieza en `abierto`. */
+function finDeCadena(source: string, abierto: number): number {
+  const quote = source[abierto];
+  for (let i = abierto + 1; i < source.length; i += 1) {
+    if (source[i] === '\\') {
+      i += 1;
+      continue;
+    }
+    if (source[i] === quote) return i + 1;
+  }
+  return source.length;
+}
+
+/** Indice del `)` que cierra el parentesis abierto en `abierto`, o -1. */
+function cierraDe(source: string, abierto: number): number {
+  let depth = 0;
+  for (let i = abierto; i < source.length; i += 1) {
+    const ch = source[i];
+    if (ch === "'" || ch === '"' || ch === '`') {
+      i = finDeCadena(source, i) - 1;
+      continue;
+    }
+    if (ch === '(') depth += 1;
+    else if (ch === ')') {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+/**
+ * La cadena de llamadas que sigue a una llamada: `.then(...)`, `.catch(...)`,
+ * `.finally(...)` y paras.
+ *
+ * Se recorre la cadena de verdad en vez de mirar una ventana de caracteres
+ * alrededor: una ventana deja que el `.catch` de OTRA promesa absuelva a esta
+ * (el bug que ya tumbo a este detector una vez).
+ *
+ * Tolera como mucho dos parentesis de cierre entre la llamada y el siguiente
+ * punto, que es lo que separa una llamada envuelta en una arrow
+ * (`() => getWatchlist()`) de su cadena. El limite evita que se enganche la
+ * cadena de una expresion hermana y la dé por degradada sin serlo.
+ */
+function cadenaDesde(source: string, desde: number): string {
+  let i = desde;
+  for (;;) {
+    let j = i;
+    let cierres = 0;
+    for (;;) {
+      while (j < source.length && /\s/.test(source[j]!)) j += 1;
+      if ((source[j] === ')' || source[j] === ']') && cierres < 2) {
+        cierres += 1;
+        j += 1;
+        continue;
+      }
+      break;
+    }
+    if (source[j] !== '.') break;
+    let k = j + 1;
+    while (k < source.length && /[A-Za-z0-9_$]/.test(source[k]!)) k += 1;
+    if (k === j + 1) break;
+    let m = k;
+    while (m < source.length && /\s/.test(source[m]!)) m += 1;
+    if (source[m] !== '(') break;
+    const cierra = cierraDe(source, m);
+    if (cierra === -1) break;
+    i = cierra + 1;
+  }
+  return source.slice(desde, i);
+}
+
+/**
+ * El watchlist tiene que (a) degradar para no tumbar la pagina y (b) NO
+ * fabricar una cartera vacia. Un `.catch(() => [])` es el antipatron; valen
+ * tanto el centinela `null` (estado desconocido) como una senal `degraded`.
+ */
+export function findDegradacionSilenciosa(source: string): string[] {
+  const findings: string[] = [];
+  for (const match of source.matchAll(/getWatchlist\s*\(\s*\)/g)) {
+    const chain = cadenaDesde(source, match.index + match[0].length);
+    const catchAt = chain.indexOf('.catch');
+    if (catchAt === -1) {
+      findings.push(`el watchlist no degrada: su rechazo tumba la ficha (offset ${match.index})`);
+      continue;
+    }
+    // Solo el ARGUMENTO del catch: una senal `degraded` en un `.then` posterior
+    // no arregla un catch que devuelve una lista vacia inventada.
+    const abre = chain.indexOf('(', catchAt);
+    const cierra = cierraDe(chain, abre);
+    const handler = chain.slice(abre + 1, cierra === -1 ? chain.length : cierra);
+    const honesto = /\bdegraded\b/.test(handler) || /=>\s*(?:null|undefined)\s*[;,)]?/.test(handler);
+    if (!honesto) {
+      findings.push(`el watchlist degrada en silencio, sin senal 'degraded' ni centinela null: getWatchlist()${chain.slice(0, 120)}`);
     }
   }
   return findings;
@@ -152,6 +286,38 @@ export async function ficha(ticker: string) {
     getResearchThesisWorkspace(ticker),
   ]);
   return { facts, metrics, thesis };
+}`;
+
+/* Antipatrones del detector (4). */
+const ANTIPATRON_WATCHLIST_SILENCIOSO = `
+export async function ficha(ticker: string) {
+  const watchlistPromise = getWatchlist().catch(() => []);
+  return watchlistPromise;
+}`;
+
+const ANTIPATRON_WATCHLIST_SIN_CATCH = `
+export async function ficha(ticker: string) {
+  const watchlistPromise = getWatchlist();
+  return watchlistPromise;
+}`;
+
+/* Lo mismo, pero CON senal: esto es lo que se quiere. */
+const CODIGO_WATCHLIST_EXPLICITO = `
+export async function ficha(ticker: string) {
+  const watchlistPromise = getWatchlist()
+    .then((items) => ({ items, degraded: false }))
+    .catch(() => ({ items: [], degraded: true }));
+  const [{ items, degraded }] = await Promise.all([watchlistPromise]);
+  return { items, degraded };
+}`;
+
+/* Lo mismo con el centinela `null`: esto es lo que hace la ficha real. */
+const CODIGO_WATCHLIST_NULO = `
+export async function ficha(ticker: string) {
+  const watchlistPromise = getWatchlist().catch(() => null);
+  const [watchlist] = await Promise.all([watchlistPromise]);
+  const watchlistUnknown = watchlist === null;
+  return { watchlist, watchlistUnknown };
 }`;
 
 const CODIGO_LIMPIO = `
@@ -200,6 +366,61 @@ async function ficha(ticker: string) {
 }`;
     assert.deepEqual(findNakedPromiseAll(degradado), []);
   });
+
+  it('un .catch AJENO tras el Promise.all no absuelve al lote (caso negativo)', () => {
+    // El bug que tumbaba este detector: bastaba un `.catch` de cualquier otra
+    // promesa dentro de la ventana de caracteres para declarar el lote
+    // "ya degradado". El .catch tiene que estar sobre las llamadas del lote.
+    const catchAgeno = `
+export async function ficha(ticker: string) {
+  const [facts, metrics] = await Promise.all([
+    getResearchFinancialsWorkspace(ticker),
+    getResearchLongTermModel(ticker),
+  ]);
+  void algo.catch(() => null); // .catch NO relacionado
+  return { facts, metrics };
+}`;
+    const found = findNakedPromiseAll(catchAgeno);
+    assert.equal(found.length, 1, `el .catch ajeno no debe esconder el Promise.all naked: ${JSON.stringify(found)}`);
+  });
+
+  it('ve el .catch(() => []) silencioso del watchlist (caso negativo)', () => {
+    // Este era el codigo que el guard fijaba como Bueno, y es el bug: el
+    // backend de cartera caido se convierte en «no sigues esta empresa».
+    const found = findDegradacionSilenciosa(ANTIPATRON_WATCHLIST_SILENCIOSO);
+    assert.equal(found.length, 1, `debe marcar la degradacion silenciosa: ${JSON.stringify(found)}`);
+    assert.match(found[0]!, /en silencio, sin senal 'degraded' ni centinela null/);
+  });
+
+  it('ve el watchlist sin catch: su rechazo tumba la ficha (caso negativo)', () => {
+    const found = findDegradacionSilenciosa(ANTIPATRON_WATCHLIST_SIN_CATCH);
+    assert.equal(found.length, 1, `debe marcar el watchlist que no degrada: ${JSON.stringify(found)}`);
+    assert.match(found[0]!, /no degrada/);
+  });
+
+  it('el watchlist que degrada con senal no se marca', () => {
+    assert.deepEqual(findDegradacionSilenciosa(CODIGO_WATCHLIST_EXPLICITO), []);
+  });
+
+  it('el watchlist que degrada al centinela null no se marca', () => {
+    // La forma que usa la ficha real desde #FIX3V: null = estado desconocido,
+    // que FollowButton pinta como «Seguimiento sin comprobar».
+    assert.deepEqual(findDegradacionSilenciosa(CODIGO_WATCHLIST_NULO), []);
+  });
+
+  it('un .then posterior con la palabra degraded no absuelve a un catch mudo', () => {
+    // La senal tiene que estar EN el manejador del catch: si `degraded` solo
+    // aparece en un `.then` posterior, el catch sigue mintiendo.
+    const senalTardia = `
+export async function ficha(ticker: string) {
+  const watchlistPromise = getWatchlist()
+    .catch(() => [])
+    .then((items) => ({ items, degraded: false }));
+  return watchlistPromise;
+}`;
+    const found = findDegradacionSilenciosa(senalTardia);
+    assert.equal(found.length, 1, `la senal tiene que estar en el catch: ${JSON.stringify(found)}`);
+  });
 });
 
 /* ------------------------------------------------------------------ *
@@ -224,11 +445,17 @@ describe('la ficha real no serializa sus lecturas', () => {
     const hardReads = PAGE.match(/throw error;/g) ?? [];
     assert.ok(hardReads.length <= 2, 'solo el snapshot y el market de overview pueden propagar');
     assert.match(PAGE, /settleResearchBatch\(\[viewTask\], RESEARCH_RENDER_BUDGET_MS\)/);
-    // El watchlist nunca tumba la ficha, pero tampoco miente: degrada a
-    // "estado desconocido" (null, boton deshabilitado), no a una lista vacia
-    // que pintaria "Seguir" aunque el usuario ya siga el ticker.
-    assert.match(PAGE, /getWatchlist\(\)\)\.catch\(\(\) => null\)/);
-    assert.doesNotMatch(PAGE, /getWatchlist\(\)\)\.catch\(\(\) => \[\]\)/);
+});
+
+  it('el watchlist nunca tumba la ficha y su degradacion es EXPLICITA', () => {
+    // (a) la promesa no rechaza (degrada) y (b) no fabrica una cartera vacia:
+    // sin senal, el catch devuelve `[]` y la cabecera ofrece «Seguir» sobre una
+    // cartera que no se ha podido leer.
+    assert.deepEqual(findDegradacionSilenciosa(PAGE), []);
+    // La senal tiene que LLEGAR a la cabecera: null = estado desconocido, que
+    // FollowButton sabe pintar como «no se sabe», no como «no seguido».
+    assert.match(PAGE, /const watchlistUnknown = watchlist === null/);
+    assert.match(PAGE, /stateUnknown=\{watchlistUnknown\}/);
   });
 
   it('el chat sale en la primera fase y su rechazo queda drenado', () => {

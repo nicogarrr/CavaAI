@@ -30,17 +30,7 @@ export type CompanyMarketSnapshot = {
         // cierre NUNCA se pinta como cotización actual.
         priceKind: 'live' | 'close' | null;
     };
-    // OHLC opcional: Finnhub lo sirve en la misma respuesta de velas, pero un
-    // punto sin OHLC completo sigue valiendo para precio/sparkline; el chart
-    // de velas filtra (toCandleRows) y muestra su propio estado vacio.
-    history: Array<{
-        date: string;
-        open?: number | null;
-        high?: number | null;
-        low?: number | null;
-        close: number;
-        volume: number | null;
-    }>;
+    history: Array<{ date: string; close: number; volume: number | null }>;
     status: 'available' | 'partial' | 'unavailable';
 };
 
@@ -67,7 +57,17 @@ export async function getResearchCompanyBasics(ticker: string): Promise<Research
     }
 }
 
-export async function getCompanyMarketSnapshot(ticker: string): Promise<CompanyMarketSnapshot> {
+export async function getCompanyMarketSnapshot(
+    ticker: string,
+    /**
+     * Identidad del master ya resuelta (el snapshot de research la trae).
+     * `undefined` = no aportada -> se pide /api/companies/{ticker} como hasta
+     * ahora. Pasarla elimina ese round-trip, que solo repetía name/exchange/
+     * currency ya leídos. `null` = el llamante SABE que no hay basics y no se
+     * repite la petición.
+     */
+    basics?: ResearchCompanyBasics | null,
+): Promise<CompanyMarketSnapshot> {
     await requireAuthenticatedUser();
     const normalized = ticker.trim().toUpperCase();
     if (isE2EMarketFixtureEnabled(process.env, normalized)) {
@@ -76,7 +76,7 @@ export async function getCompanyMarketSnapshot(ticker: string): Promise<CompanyM
     const to = Math.floor(Date.now() / 1000);
     const from = to - 366 * 24 * 60 * 60;
     // El master primero: su bolsa/divisa deciden el símbolo de cotización.
-    const researchCompany = await getResearchCompanyBasics(normalized);
+    const researchCompany = basics !== undefined ? basics : await getResearchCompanyBasics(normalized);
     const quoteSymbol = quoteSymbolFor(researchCompany, normalized);
     if (!quoteSymbol) {
         // Sin identidad de listado verificada (master inaccesible) o sin
@@ -101,11 +101,6 @@ export async function getCompanyMarketSnapshot(ticker: string): Promise<CompanyM
     const history = candles.s === 'ok'
         ? candles.t.map((timestamp, index) => ({
             date: new Date(timestamp * 1000).toISOString().slice(0, 10),
-            // El endpoint ya trae o/h/l en la misma respuesta; antes se
-            // descartaban y el chart de velas no tenia con que pintar.
-            open: candles.o?.[index] ?? null,
-            high: candles.h?.[index] ?? null,
-            low: candles.l?.[index] ?? null,
             close: candles.c[index],
             volume: candles.v[index] ?? null,
         })).filter((point) => Number.isFinite(point.close))

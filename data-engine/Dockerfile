@@ -1,4 +1,8 @@
-FROM python:3.12-slim
+# Base fijada por digest del MANIFEST LIST (amd64+arm64): `python:3.12-slim` se
+# movio a 3.12.15-slim-trixie el 2026-10-01 y sin digest el mismo commit
+# producia un SBOM distinto cada dia. Digest de
+# docker buildx imagetools inspect python:3.12-slim.
+FROM python:3.12-slim@sha256:dddfd7e07f9d15aeeca61529320492139d21cac7f0070c00609243e51e4e0016
 
 WORKDIR /app
 
@@ -19,7 +23,7 @@ COPY requirements.txt .
 # sentence-transformers lo exige, y la wheel CUDA por defecto de PyPI son
 # GB inservibles en una maquina CPU-only. Ver --extra-index-url en
 # requirements.txt y data-engine/scripts/sync_requirements.py.
-RUN pip install torch==2.14.1+cpu --index-url https://download.pytorch.org/whl/cpu \
+RUN pip install torch==2.9.1+cpu --index-url https://download.pytorch.org/whl/cpu \
     && pip install --no-cache-dir -r requirements.txt
 
 # Copy source (quantstats package is vendored inside data-engine/)

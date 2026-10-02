@@ -491,7 +491,9 @@ def test_pins_de_imagen_coinciden_con_docker_compose():
 
 
 def test_pin_del_cliente_postgres_cuadra_con_el_servidor():
-    major = int(_kit.POSTGRES_IMAGE.split(":")[1])
+    # Del TAG, no de POSTGRES_IMAGE: el pin lleva digest y no se puede partir
+    # por ':' sin desarmarlo.
+    major = int(_kit.POSTGRES_TAG.split(":")[1])
     assert major == _kit.REQUIRED_PG_CLIENT_MAJOR
 
 
@@ -668,10 +670,7 @@ def test_workflow_usa_las_imagenes_fijadas():
     text = WORKFLOW.read_text(encoding="utf-8")
     assert _kit.POSTGRES_IMAGE in text
     assert _kit.QDRANT_IMAGE in text
-    # La imagen oficial de MinIO (quay.io) ya no es publica: el servicio del drill
-    # usa bitnamilegacy/minio con tag fijo. Prod sigue con _kit.MINIO_IMAGE
-    # (decision pendiente de Nico), por eso aqui NO se exige MINIO_SERVER_RELEASE.
-    assert "image: bitnamilegacy/minio:2025.7.23-debian-12-r5" in text
+    assert _kit.MINIO_SERVER_RELEASE in text
 
 
 def test_workflow_bloquea_main_pero_no_pr():
@@ -694,9 +693,19 @@ def test_workflow_no_asume_secretos():
 
 
 def test_workflow_cachea_la_instalacion_de_python():
+    """La cache es la de uv y su clave es uv.lock, no la de pip.
+
+    FIX-3.3/3.4 movio el drill a `uv sync --frozen`: un drill que resuelve
+    distinto en cada run no demuestra nada sobre el backup del commit, porque
+    las versiones de las herramientas cambian entre ejecuciones. Lo que se
+    cachea es lo que decide la instalacion, o sea el lock.
+    """
     text = WORKFLOW.read_text(encoding="utf-8")
-    assert "cache: pip" in text
-    assert "requirements.txt" in text
+    assert "enable-cache: true" in text
+    assert "cache-dependency-glob:" in text
+    assert "uv.lock" in text, "la cache se keya por el lock, que es lo que decide la instalacion"
+    assert "uv sync --frozen" in text, "instalacion congelada: sin --frozen el lock puede desatarse"
+    assert "cache: pip" not in text, "la cache de pip keyaria por requirements.txt, que ya no instala nada"
 
 
 def test_workflow_es_yaml_valido():
