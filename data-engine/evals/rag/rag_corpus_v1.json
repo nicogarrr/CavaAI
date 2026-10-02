@@ -1,0 +1,251 @@
+{
+  "corpus_id": "rag_corpus_v1",
+  "date": "2026-10-01",
+  "corpus_origin": "repo_derived",
+  "note": "Corpus de la biblioteca propia: cada documento es una condensacion de un fichero REAL del repo, con su sha256 y su procedencia. No hay ningun numero, CIK, LEI, accession, fecha, URL ni nombre de emisor que no salga literalmente del fichero fuente listado en source_files. Cuando el fuente esta en ingles, el texto esta traducido al español (el producto es en español) y el documento lo declara en translation; las cifras, identificadores, nombres y fechas se copian literalmente. Cada identificador tecnico del fuente va acompanado de su glosa española, porque un corpus en español que solo guardara los nombres de campo en ingles no se podria consultar en español. El bucket de almacenamiento RAGEVAL existe solo porque Document.company_id es NOT NULL y ningun emisor de company_master.py corresponde a un documento regulatorio (ITU, ESEF, CNMV, Politica de datos): no aporta ninguna cifra.",
+  "translation": "contenido condensado y traducido al español; cifras, identificadores, nombres y fechas verbatim del fuente",
+  "source_files": [
+    {
+      "path": "data-engine/app/data/company_master.py",
+      "sha256": "4da65322d5a22c3c60e0a92a6f253e8d9bace857bc837362b9289ff8bbb5c376",
+      "used_for": ["doc-universe-master", "doc-valuation-models", "doc-asts-master", "doc-asts-valuation", "doc-msft-valuation"]
+    },
+    {
+      "path": "data-engine/app/services/rag.py",
+      "sha256": "ed005f38e74758927f7586892ea6b1de17558ca411c0db806332182b37e84610",
+      "used_for": ["doc-rag-architecture"]
+    },
+    {
+      "path": "data-engine/tests/fixtures/esef_entity_fcc.json",
+      "sha256": "e5b5116c576a75581701585bb5a9296cef4c6aa71da0cf188ff1b6ddea17e6de",
+      "used_for": ["doc-esef-entity"]
+    },
+    {
+      "path": "data-engine/tests/fixtures/esef_xbrl_json_fcc_trimmed.json",
+      "sha256": "06d96f3f837b2d5aa8c79b44507aa1fb66301e7fedcd5cb452c2eff883759f7b",
+      "used_for": ["doc-esef-xbrl-fomento"]
+    },
+    {
+      "path": "data-engine/tests/fixtures/itu/README.md",
+      "sha256": "1be3ddc78477482c2197023f3e0d3ba44dd70109a2eb66fe19429ee6c3491ba5",
+      "used_for": ["doc-itu-provenance"]
+    },
+    {
+      "path": "data-engine/tests/fixtures/itu/d2026-84958-detail.html",
+      "sha256": "1da58c29610f9956d0ef6c3ec2eb88f7970dc71ded51d26d15fd6295256adb2a",
+      "used_for": ["doc-itu-d2026-84958"]
+    },
+    {
+      "path": "data-engine/tests/fixtures/itu/d2026-84958-frequencies.html",
+      "sha256": "40245187559bdeee71a9d86c980afeb8f2fd138110b07a261411cfc0f602f807",
+      "used_for": ["doc-itu-d2026-84958"]
+    },
+    {
+      "path": "data-engine/tests/fixtures/itu/j2026-70632-detail.html",
+      "sha256": "faa0af57ba670eeffc86fb91a1b39c5ddcb920805d991c8c6e9f0060ff593dd5",
+      "used_for": ["doc-itu-j2026-70632"]
+    },
+    {
+      "path": "data-engine/tests/fixtures/itu/j2026-70633-detail.html",
+      "sha256": "aa79a7b35b557d55a3654de82eba00cdce1918fbd9b107babf4e12b94aad5614",
+      "used_for": ["doc-itu-j2026-70633"]
+    },
+    {
+      "path": "data-engine/tests/fixtures/itu/asreceived-listing.html",
+      "sha256": "383fad2778ed7a90aa6c0facaa6cf1cab8bf39b505879324f404af4db2c8b9c3",
+      "used_for": ["doc-itu-asreceived-index"]
+    },
+    {
+      "path": "data-engine/tests/fixtures/itu/asreceived-page2.html",
+      "sha256": "021691ed892522e9204658fe5d83f95e9780e019f3e0fd1a809ca55a1376ec71",
+      "used_for": ["doc-itu-asreceived-page2"]
+    },
+    {
+      "path": "data-engine/tests/fixtures/cnmv_oir_results.html",
+      "sha256": "e91f9e163f5e1ba1ed869514e4f31d64ae2fb69d0d41f5425a05db5b591dab8a",
+      "used_for": ["doc-cnmv-oir-2026-09-22"]
+    },
+    {
+      "path": "data-engine/docs/evidence/asts_sec_filings_manifest.json",
+      "sha256": "6813405b5f90ada463e599b72d2807102484bf0a141a3ab90933abf89a4ab549",
+      "used_for": ["doc-asts-sec-manifest"]
+    },
+    {
+      "path": "data-engine/docs/market-context-data-policy.md",
+      "sha256": "caf3c534f9b9d4e9d7ab23fda8115b75ddf96fb25150083c6812e7573cf0f5fd",
+      "used_for": ["doc-market-context-policy"]
+    }
+  ],
+  "documents": [
+    {
+      "id": "doc-universe-master",
+      "title": "Universo de research CavaAI (COMPANY_MASTER, 23 emisores)",
+      "ticker": "RAGEVAL",
+      "source_type": "company_master",
+      "source_ref": "data-engine/app/data/company_master.py",
+      "source_language": "en",
+      "translation": "claves de campo literales; las filas son una transcripcion directa de la lista",
+      "content": "Lista COMPANY_MASTER del universo de research con 23 emisores. Campos de cada emisor: ticker, name (nombre), exchange (bolsa), currency (divisa), sector, industry (industria), cik, ir_url, company_type (tipo de empresa), valuation_model (modelo de valoracion), special_sources (fuentes), special_risks (riesgos), factor_tags (etiquetas).\nASTS | AST SpaceMobile | NASDAQ | USD | Communication Services | Satellite telecom | cik 1780312\nMSFT | Microsoft | NASDAQ | USD | Technology | Software and cloud | cik 789019\nADBE | Adobe | NASDAQ | USD | Technology | Application software | cik 796343\nRKLB | Rocket Lab | NASDAQ | USD | Industrials | Aerospace and defense | cik 1819994\nUBER | Uber Technologies | NYSE | USD | Industrials | Mobility platform | cik 1543151\nTSLA | Tesla | NASDAQ | USD | Consumer Discretionary | Automobiles | cik 1318605\nMETA | Meta Platforms | NASDAQ | USD | Communication Services | Social platforms | cik 1326801\nPLTR | Palantir | NASDAQ | USD | Technology | Data analytics software | cik 1321655\nBN | Brookfield Corporation | NYSE | USD | Financials | Asset management and holdings | cik 1001085\nBABA | Alibaba | NYSE | USD | Consumer Discretionary | China ecommerce and cloud | cik 1577552\nONDS | Ondas Holdings | NASDAQ | USD | Technology | Industrial connectivity and drones | cik 1646188\nHYMC | Hycroft Mining | NASDAQ | USD | Materials | Gold and silver mining | cik 1718405\nAMD | Advanced Micro Devices | NASDAQ | USD | Technology | Semiconductors | cik 2488\nNBIS | Nebius Group | NASDAQ | USD | Technology | AI infrastructure | cik null\nHIMS | Hims & Hers Health | NYSE | USD | Health Care | Digital health | cik 1773751\nNVO | Novo Nordisk | NYSE | USD | Health Care | Pharmaceuticals | cik 353278\nNOW | ServiceNow | NYSE | USD | Technology | Enterprise software | cik 1373715\nAMZN | Amazon | NASDAQ | USD | Consumer Discretionary | Ecommerce and cloud | cik 1018724\nNVDA | NVIDIA | NASDAQ | USD | Technology | Semiconductors | cik 1045810\nNFLX | Netflix | NASDAQ | USD | Communication Services | Streaming entertainment | cik 1065280\nZETA | Zeta Global | NYSE | USD | Technology | Marketing software | cik 1851003\nCCJ | Cameco | NYSE | USD | Energy | Uranium mining | cik 1009001\nKRKNF | Kraken Robotics | OTC | USD | Industrials | Marine robotics | cik null\nLos 23 emisores del universo cotizan en USD. KRKNF es el unico emisor con bolsa OTC y los unicos dos sin cik son NBIS y KRKNF. Los emisores del sector Technology son MSFT, ADBE, PLTR, ONDS, AMD, NBIS, NOW, ZETA y NVDA: son 9 de los 23.\nEl COMPANY_MASTER no declara consenso de analistas, ni precio objetivo, ni rating, ni precio de mercado para ningun emisor del universo, ni para ASTS, MSFT o NVDA: son metadatos registrales, de clasificacion y de riesgos."
+    },
+    {
+      "id": "doc-valuation-models",
+      "title": "Modelos de valoracion, fuentes y riesgos por emisor",
+      "ticker": "RAGEVAL",
+      "source_type": "company_master",
+      "source_ref": "data-engine/app/data/company_master.py",
+      "source_language": "en",
+      "translation": "valores literales de los campos company_type, valuation_model, special_sources, special_risks y factor_tags",
+      "content": "Por emisor, el tipo de empresa (company_type), el modelo de valoracion (valuation_model), los riesgos declarados (special_risks) y las fuentes (special_sources).\nASTS: space_telecom_pre_fcf, probability_weighted_scenarios+dilution, riesgos dilution+spectrum+execution+funding, fuentes SEC+FCC+IR+GDELT.\nMSFT: ai_big_tech, dcf+reverse_dcf+ai_capex_sensitivity, riesgos ai_capex+cloud_growth+regulation, fuentes SEC+IR+FMP+FRED.\nMETA: ai_big_tech, dcf+reverse_dcf+ai_capex_sensitivity, riesgos ai_capex+regulation+ads_cycle, fuentes SEC+IR+FMP.\nAMZN: ai_big_tech, dcf+reverse_dcf+ai_capex_sensitivity, riesgos aws_growth+retail_margin+ai_capex+regulation, fuentes SEC+IR+FMP.\nNVDA: ai_big_tech, dcf+reverse_dcf+ai_capex_sensitivity, riesgos ai_cycle+competition+gross_margin+export_controls, fuentes SEC+IR+FMP.\nAMD: ai_big_tech, dcf+reverse_dcf+ai_capex_sensitivity, riesgos ai_gpu_share+gross_margin+cyclicality, fuentes SEC+IR+FMP.\nADBE: software_ai_disruption, software_dcf+reverse_dcf, riesgos ai_disruption+growth_deceleration+margin_pressure, fuentes SEC+IR+FMP+GDELT.\nTSLA: auto_energy_optionality, scenario_auto_energy_fsd, riesgos competition+margin+regulation+optionality, fuentes SEC+IR+GDELT.\nBABA: china_adr_holding, sotp+buyback_adjusted_dcf, riesgos china_policy+adr+cloud_competition+capital_allocation, etiqueta adr:8, fuentes SEC+IR+GDELT.\nNBIS: ai_infra_capacity, capacity_capex_utilization_model, riesgos capex+utilization+funding+geopolitics, fuentes SEC+IR+GDELT.\nHIMS: healthcare_regulatory, subscriber_dcf+regulatory_risk_tracker, riesgos fda+compounding+subscriber_churn+marketing_efficiency, fuentes SEC+IR+openFDA+GDELT.\nNVO: healthcare_regulatory, glp1_franchise_dcf+regulatory_risk, riesgos pricing+competition+regulatory+manufacturing, fuentes SEC+IR+openFDA+EMA.\nCCJ: uranium_mining, commodity_sensitivity+dcf, riesgos uranium_price+mine_restart+geopolitics+contracting, fuentes SEC+SEDAR++EIA+IR.\nHYMC: mining_pre_revenue, nav_rough+dilution_risk, riesgos dilution+commodity+financing+technical_report, fuentes SEC+IR+EIA.\nRKLB: space_defense_growth, sotp+backlog_capex_scenario, riesgos launch_execution+capex+defense_contracts, fuentes SEC+IR+GDELT.\nONDS: speculative_scenario, speculative_scenario_model, riesgos funding+execution+customer_concentration, fuentes SEC+IR+GDELT.\nKRKNF: defense_contract_backlog, defense_backlog_scenario_model, riesgos liquidity+defense_contracts+execution+small_cap, fuentes SEDAR++IR+GDELT.\nHay 5 emisores cuyo modelo de valoracion es dcf+reverse_dcf+ai_capex_sensitivity: MSFT, META, AMZN, NVDA y AMD. MSFT es el unico emisor del universo con FRED entre sus fuentes, NVO es el unico con EMA, y HIMS y NVO son los unicos dos con openFDA."
+    },
+    {
+      "id": "doc-asts-master",
+      "title": "Ficha de emisor ASTS en el COMPANY_MASTER",
+      "ticker": "ASTS",
+      "source_type": "company_master",
+      "source_ref": "data-engine/app/data/company_master.py",
+      "source_language": "en",
+      "translation": "valores literales de los campos del registro ASTS",
+      "content": "Registro ASTS de COMPANY_MASTER: ticker ASTS, nombre AST SpaceMobile, bolsa NASDAQ, divisa USD, sector Communication Services, industria Satellite telecom y cik 1780312.\nIdentidad registral de ASTS: ir_url https://investors.ast-science.com, tipo de empresa (company_type) space_telecom_pre_fcf y modelo de valoracion (valuation_model) probability_weighted_scenarios+dilution.\nFuentes, riesgos (special_risks) y etiquetas (factor_tags) de ASTS en el COMPANY_MASTER: fuentes (special_sources) SEC, FCC, IR, GDELT; riesgos (special_risks) dilution, spectrum, execution, funding; etiquetas (factor_tags) space, speculative, pre_fcf, telecom.\nLos 4 riesgos declarados de ASTS son dilution, spectrum, execution y funding. ASTS es el unico emisor del universo cuya lista de fuentes incluye FCC. ASTS es el unico emisor con la etiqueta pre_fcf. Los 4 factores declarados de ASTS son space, speculative, pre_fcf y telecom. La ficha de ASTS en el COMPANY_MASTER no declara WACC, ni precio objetivo, ni recomendacion de compra o venta, ni ingresos por trimestre: son metadatos del emisor, no un modelo de valoracion ejecutado."
+    },
+    {
+      "id": "doc-asts-valuation",
+      "title": "Emisores con riesgo de dilucion: ASTS, HYMC y BABA",
+      "ticker": "ASTS",
+      "source_type": "company_master",
+      "source_ref": "data-engine/app/data/company_master.py",
+      "source_language": "en",
+      "translation": "valores literales de special_risks y valuation_model",
+      "content": "Los 3 emisores del COMPANY_MASTER cuyo riesgo dilution aparece en sus riesgos declarados (special_risks).\nASTS: riesgos dilution, spectrum, execution, funding; modelo de valoracion probability_weighted_scenarios+dilution.\nHYMC: riesgos dilution, commodity, financing, technical_report; modelo de valoracion nav_rough+dilution_risk.\nBABA: riesgos china_policy, adr, cloud_competition, capital_allocation; modelo de valoracion sotp+buyback_adjusted_dcf.\nASTS e HYMC son los 2 emisores cuyo modelo de valoracion nombra la dilucion de forma explicita: probability_weighted_scenarios+dilution y nav_rough+dilution_risk. BABA declara el riesgo adr, no dilution, aunque su etiqueta adr:8 lo hace sensible al riesgo de la Accion Americana."
+    },
+    {
+      "id": "doc-msft-valuation",
+      "title": "Fuentes y riesgos de los emisores ai_big_tech",
+      "ticker": "MSFT",
+      "source_type": "company_master",
+      "source_ref": "data-engine/app/data/company_master.py",
+      "source_language": "en",
+      "translation": "valores literales de los cinco registros ai_big_tech",
+      "content": "Los 5 emisores con tipo de empresa ai_big_tech comparten el modelo de valoracion dcf+reverse_dcf+ai_capex_sensitivity.\nMSFT: sector Technology, industria Software and cloud, riesgos ai_capex+cloud_growth+regulation, fuentes SEC+IR+FMP+FRED.\nMETA: sector Communication Services, industria Social platforms, riesgos ai_capex+regulation+ads_cycle, fuentes SEC+IR+FMP.\nAMZN: sector Consumer Discretionary, industria Ecommerce and cloud, riesgos aws_growth+retail_margin+ai_capex+regulation, fuentes SEC+IR+FMP.\nNVDA: sector Technology, industria Semiconductors, riesgos ai_cycle+competition+gross_margin+export_controls, fuentes SEC+IR+FMP.\nAMD: sector Technology, industria Semiconductors, riesgos ai_gpu_share+gross_margin+cyclicality, fuentes SEC+IR+FMP.\nDe los 5 emisores ai_big_tech, MSFT, META y AMZN declaran el riesgo ai_capex, mientras que NVDA y AMD no lo declaran. MSFT es el unico ai_big_tech con 4 fuentes declaradas y el unico con FRED. NVDA y AMD comparten la industria Semiconductors."
+    },
+    {
+      "id": "doc-rag-architecture",
+      "title": "Arquitectura del RAG de CavaAI (clase RAGIndex)",
+      "ticker": "RAGEVAL",
+      "source_type": "code",
+      "source_ref": "data-engine/app/services/rag.py",
+      "source_language": "en",
+      "translation": "comentarios de codigo traducidos; identificadores literales",
+      "content": "La clase RAGIndex de app/services/rag.py define la coleccion (collection_name) portfolio_research_documents con tamano de vector (vector_size) 384 y distancia COSINE, y usa un embedder local SentenceTransformer(all-MiniLM-L6-v2) con normalize_embeddings=True.\ningest_document indexa un punto por cada DocumentChunk con payload text, ticker, document_id, chunk_index, entity_type document_chunk, entity_id, source_type, title y tenant_id. Exige contexto de tenant: sin tenant_id, o con un documento de otro tenant, lanza ValueError, y con cero chunks devuelve chunks_indexed 0.\ningest_knowledge_document indexa KnowledgeChunk con payload text, title, source_type, knowledge_document_id, collection_id, chunk_index, page_number, entity_type knowledge_chunk, entity_id y tenant_id.\nsearch exige tenant_id: sin tenant_id devuelve una lista vacia sin lanzar excepcion. Busca por similitud y devuelve text, ticker, document_id, knowledge_document_id, collection_id, page_number, source_type, title, score, point_id, entity_type, entity_id y chunk_index. Si el embedder o Qdrant fallan, registra un warning y devuelve lista vacia en vez de propagar la excepcion.\nrebuild_tenant borra los puntos del tenant y vuelve a indexar sus documentos y sus documentos de conocimiento, devolviendo tenant_id, documents, knowledge_documents, chunks_indexed, errors y collection. Por eso el indice vectorial se considera desechable: la verdad de los chunks vive en PostgreSQL y el indice se reconstruye desde ahi."
+    },
+    {
+      "id": "doc-esef-entity",
+      "title": "Registro de entidad ESEF: FOMENTO DE CONSTRUCCIONES Y CONTRATAS S.A.",
+      "ticker": "RAGEVAL",
+      "source_type": "esef",
+      "source_ref": "data-engine/tests/fixtures/esef_entity_fcc.json",
+      "source_language": "en",
+      "translation": "atributos literales del endpoint de entidades",
+      "content": "Endpoint de entidades ESEF (JSON:API 1.0). El nombre de la entidad (name) es FOMENTO DE CONSTRUCCIONES Y CONTRATAS S.A. y su identificador LEI (identifier) es 95980020140005178328. El id interno del recurso de entidad de FOMENTO DE CONSTRUCCIONES Y CONTRATAS S.A. es 2437. El endpoint de relaciones de presentaciones (filings) es /api/entities/95980020140005178328/filings y el endpoint del propio recurso (self) es /api/entities/95980020140005178328.\nEl mismo LEI 95980020140005178328 aparece como entidad scheme en los hechos XBRL del fixture ESEF de FOMENTO DE CONSTRUCCIONES Y CONTRATAS S.A."
+    },
+    {
+      "id": "doc-esef-xbrl-fomento",
+      "title": "Hechos XBRL ESEF de FOMENTO DE CONSTRUCCIONES Y CONTRATAS S.A.",
+      "ticker": "RAGEVAL",
+      "source_type": "esef",
+      "source_ref": "data-engine/tests/fixtures/esef_xbrl_json_fcc_trimmed.json",
+      "source_language": "en",
+      "translation": "conceptos, valores y periodos literales del fixture XBRL",
+      "content": "Fixture ESEF XBRL recortado con 4 hechos, todos con decimals -3 y unit iso4217:EUR, y todos de la entidad scheme:95980020140005178328 (FOMENTO DE CONSTRUCCIONES Y CONTRATAS S.A.).\nEl valor del hecho XBRL Revenue (fact-105) del fixture ESEF de FOMENTO DE CONSTRUCCIONES Y CONTRATAS S.A. es 7705687000 EUR y su periodo es 2022-01-01T00:00:00/2023-01-01T00:00:00.\nEl valor del hecho XBRL ProfitLoss (fact-143) del fixture ESEF de FOMENTO DE CONSTRUCCIONES Y CONTRATAS S.A. es 477930000 EUR y su periodo es 2022-01-01T00:00:00/2023-01-01T00:00:00.\nEl valor del hecho XBRL CashAndCashEquivalents (fact-43) del fixture ESEF de FOMENTO DE CONSTRUCCIONES Y CONTRATAS S.A. es 1575538000 EUR en el instante 2023-01-01T00:00:00.\nEl valor del hecho XBRL NoncurrentAssets (fact-3) del fixture ESEF de FOMENTO DE CONSTRUCCIONES Y CONTRATAS S.A. es 9874542000 EUR en el instante 2023-01-01T00:00:00.\nLos hechos Revenue y ProfitLoss son los 2 hechos de duracion, con periodo de inicio y fin, y los hechos CashAndCashEquivalents y NoncurrentAssets son los 2 instantaneos a 2023-01-01T00:00:00.\nEl hecho mas grande del fixture ESEF es NoncurrentAssets con 9874542000 EUR y el mas pequeno es ProfitLoss con 477930000 EUR. El margen de beneficio sobre Revenue con estos 2 hechos es aproximadamente 6.2%.\nEl fixture ESEF no declara numero de empleados ni plantilla, ni ingresos por trimestre, ni precio de la accion, ni informe de sostenibilidad para FOMENTO DE CONSTRUCCIONES Y CONTRATAS S.A. Sus hechos son todos financieros y anuales."
+    },
+    {
+      "id": "doc-itu-d2026-84958",
+      "title": "Ficha ITU BR As Received D2026-84958",
+      "ticker": "RAGEVAL",
+      "source_type": "itu",
+      "source_ref": "data-engine/tests/fixtures/itu/d2026-84958-detail.html y d2026-84958-frequencies.html",
+      "source_language": "en",
+      "translation": "etiquetas de la interfaz ITU traducidas; identificadores, nombres de fichero y cifras literales",
+      "content": "Ficha D2026-84958 de la pagina e-Submission of Satellite Network Filings del ITU Radiocommunication Bureau, publication 72184.\nLa ficha ITU D2026-84958 declara 5 bandas de frecuencia unicas (Freq From / Freq To en MHz), que van de 806 MHz a 2690 MHz: 806-890, 1980-2010, 2170-2200, 2483.5-2500 y 2670-2690.\nLa banda de frecuencia mas estrecha de la ficha ITU D2026-84958 es 2483.5-2500 MHz, con 16.5 MHz de amplitud, y la mas ancha es 806-890 MHz, con 84 MHz de amplitud.\nAdjuntos de la ficha ITU D2026-84958: Attachments to the CR-MOD.docx de 25.25 KB; 223-3 D-BLUEBIRD REV CRC 20260924.pdf de 199.72 KB; D-BLUEBIRD_CRMOD1 - v1.mdb de 5.16 MB (GIMS V10, As Received Copy); y una copia SNS(MDB) del mismo .mdb.\nTimestamps TSA validos de la ficha ITU D2026-84958: 24.09.2026 04:49:04 sobre el .docx con Message Imprint MD5 69-AF-E2-A3-78-FB-B0-B2-AA-B1-16-B5-BC-8C-3F-C6; 24.09.2026 04:49:09 sobre el PDF; 24.09.2026 04:49:31 sobre la copia SNS(MDB); 24.09.2026 04:49:32 sobre la copia GIMS(MDB). El emisor del TSA es CN=timestamping.itu.int,O=International Telecommunication Union,OU=Radiocommunication Bureau,E=spacehelp@itu.int,C=CH."
+    },
+    {
+      "id": "doc-itu-j2026-70632",
+      "title": "Ficha ITU BR As Received J2026-70632 (Notice ID J2026-83391)",
+      "ticker": "RAGEVAL",
+      "source_type": "itu",
+      "source_ref": "data-engine/tests/fixtures/itu/j2026-70632-detail.html",
+      "source_language": "en",
+      "translation": "etiquetas de la interfaz ITU traducidas; identificadores, nombres de fichero y cifras literales",
+      "content": "Ficha J2026-70632, identificador de aviso (Notice ID) J2026-83391, publication 70632, de la pagina e-Submission of Satellite Network Filings del ITU Radiocommunication Bureau. La ficha ITU J2026-70632 tiene el campo Short Duration Mission en su cabecera.\nLa ficha ITU J2026-70632, Notice ID J2026-83391, declara 14 bandas de frecuencia unicas (MHz), que van de 430 MHz a 47000 MHz: 430-440, 698-960, 1427-1518, 1675-1680, 1710-1785, 1805-1915, 1920-1995, 2025-2170, 2200-2290, 2305-2320, 2332.5-2360, 2500-2570, 2620-2690 y 45500-47000.\nLa banda de frecuencia mas estrecha de la ficha ITU J2026-70632 es 1675-1680 MHz, con 5 MHz de amplitud, y la mas ancha es 45500-47000 MHz, con 14500 MHz de amplitud.\nEl adjunto J-BLUEBIRD-NGSO_API.mdb de la ficha ITU J2026-70632 pesa 8.09 MB y se ofrece con Download All. Los otros 2 adjuntos de la ficha ITU J2026-70632 son J-BLUEBIRD-NGSO_API_Attachments.docx de 27.45 KB y MICTB731.pdf de 134.58 KB.\nTimestamps TSA validos de la ficha ITU J2026-70632: 20.08.2026 05:07:08 sobre el .docx con Message Imprint MD5 9F-84-2A-82-CF-9B-2D-60-D8-3E-8F-F2-01-02-4E-00; 04.09.2026 09:54:03 sobre el .docx de attachments; 20.08.2026 05:07:22 sobre MICTB731.pdf con Message Imprint MD5 CB-D1-15-1B-20-27-FA-2B-29-23-E1-7B-9D-F8-92-8C."
+    },
+    {
+      "id": "doc-itu-j2026-70633",
+      "title": "Ficha ITU BR As Received J2026-70633 (Notice ID J2026-83392)",
+      "ticker": "RAGEVAL",
+      "source_type": "itu",
+      "source_ref": "data-engine/tests/fixtures/itu/j2026-70633-detail.html",
+      "source_language": "en",
+      "translation": "etiquetas de la interfaz ITU traducidas; identificadores, nombres de fichero y cifras literales",
+      "content": "Ficha J2026-70633, identificador de aviso (Notice ID) J2026-83392, publication 70633, de la pagina e-Submission of Satellite Network Filings del ITU Radiocommunication Bureau. A diferencia de la ficha J2026-70632, la ficha ITU J2026-70633 no tiene el campo Short Duration Mission.\nEl adjunto J-BLUEBIRD-NGSO_CR.mdb de la ficha ITU J2026-70633 pesa 13.6 MB, y hay copia GIMS(MDB) As Received Copy del mismo .mdb. Los otros 2 adjuntos de la ficha ITU J2026-70633 son J-BLUEBIRD-NGSO_CR_Attachments.docx de 27.66 KB y MICTB731.pdf de 134.58 KB.\nEl .mdb de la ficha ITU J2026-70633 (13.6 MB) es 5.51 MB mayor que el .mdb de la ficha ITU J2026-70632 (8.09 MB), y el .docx de attachments de J2026-70633 es 0.21 KB mayor que el de J2026-70632 (27.66 KB frente a 27.45 KB). El PDF MICTB731.pdf pesa exactamente lo mismo en las 2 fichas: 134.58 KB.\nTimestamps TSA validos de la ficha ITU J2026-70633: 20.08.2026 05:13:56 sobre el .docx con Message Imprint MD5 C8-2D-09-4E-E1-73-A5-91-1F-0A-5D-49-F0-3C-C2-77; 04.09.2026 09:48:36 sobre el .docx de attachments con Message Imprint MD5 95-D1-01-07-AC-44-68-CA-AA-C3-DB-CF-57-78-32-75; 20.08.2026 05:14:11 sobre MICTB731.pdf con Message Imprint MD5 80-CD-64-E9-B4-16-E3-F9-7B-06-1A-44-CD-9D-F7-38; 20.08.2026 05:14:11 sobre la copia GIMS(MDB) con Message Imprint MD5 FA-7C-40-29-47-9D-08-BA-83-C7-2C-E4-EB-B8-89-86."
+    },
+    {
+      "id": "doc-itu-asreceived-index",
+      "title": "Listado ITU As Received: primeras referencias",
+      "ticker": "RAGEVAL",
+      "source_type": "itu",
+      "source_ref": "data-engine/tests/fixtures/itu/asreceived-listing.html",
+      "source_language": "en",
+      "translation": "columnas literales del listado; identificadores y nombres de estacion verbatim",
+      "content": "Listado oficial As Received de e-Submission of Satellite Network Filings del ITU Radiocommunication Bureau: avisos de satelites recibidos y aun no publicados, con las columnas Reference, NTC ID, Adm., Network Org., Station/Satellite Name, Long. Nom., BR Registry Date, Type of submission, Reg y Act. Code.\nResumen del primer bloque del listado: 4 avisos, 3 de Advance publication information de la administracion USA y 1 Coordination Request de LAO, con la referencia mas reciente de fecha 25.09.2026.\nLAO2026-84992 | 126520155 | LAO | LAOSAT2-128.5E | 128.5 E | 25.09.2026 | Coordination Request | A.\nUSA2026-84977 | 126545337 | USA | WSERIES11 | 24.09.2026 | Advance publication information | A.\nUSA2026-84976 | 126545336 | USA | WSERIES10 | 24.09.2026 | Advance publication information | A.\nUSA2026-84975 | 126545335 | USA | DYNAGLO | 24.09.2026 | Advance publication information | A.\nLa referencia del aviso mas reciente de este bloque del listado As Received del ITU es LAO2026-84992, con fecha de registro BR de 25.09.2026 y tipo de envio Coordination Request; las otras 3 referencias USA del bloque son de 24.09.2026 y son Advance publication information. La pagina declara que la informacion as received no tiene valoracion regulatoria y por tanto no se recomienda para fines de examen."
+    },
+    {
+      "id": "doc-itu-asreceived-page2",
+      "title": "Listado ITU As Received pagina 2 (Skip=30, Take=30)",
+      "ticker": "RAGEVAL",
+      "source_type": "itu",
+      "source_ref": "data-engine/tests/fixtures/itu/asreceived-page2.html",
+      "source_language": "en",
+      "translation": "columnas literales del listado; identificadores y nombres de estacion verbatim",
+      "content": "Segunda pagina del listado oficial As Received del ITU, obtenida con Skip=30 y Take=30 sobre los mismos avisos de satelites recibidos y aun no publicados. El servidor declara 517 elementos en total.\nResumen de la pagina 2 del listado As Received: 10 avisos, con Notification of Earth Station de HOL, Res 49/552 de RUS, AP30/30A Article 2A de G, Advance publication information de UAE, TUN, F e IND, y 1 Resubmission of Notification con codigo de acto M de RUS.\nHOL2026-83800 | 126505084 | HOL | BES-RNC-01 / NSS-16 | 22 W | 14.09.2026 | Notification of Earth Station | A.\nRUS2026-83765 | 126590048 | RUS | RGS-S-128E | 128 E | 11.09.2026 | Res 49/552 | A.\nRUS2026-83761 | 126590047 | RUS | RGS-S-70E | 70 E | 11.09.2026 | Res 49/552 | A.\nHOL2026-83776 | 126505083 | HOL | BES-RNC-02 / NSS-35 | 40.5 W | 11.09.2026 | Notification of Earth Station | A.\nUAE2026-83725 | 126545324 | UAE | MBZSAT-2 | 11.09.2026 | Advance publication information | A.\nTUN2026-83764 | 126545323 | TUN | ALIFSAT | 10.09.2026 | Advance publication information | A.\nG2026-81138 | 1 | G | UKAAT-TTC-136E | 136 E | 10.09.2026 | AP30/30A Article 2A | A.\nRUS2026-83755 | 126500161 | RUS | RGS-S-128E | 128 E | 10.09.2026 | Resubmission of Notification / Notification of Space Station (GSO) | M.\nF2026-83749 | 126545322 | F | ESA | CRISTAL | 10.09.2026 | Advance publication information | A.\nIND2026-83732 | 126545321 | IND | MICROSAT-2AB | 10.09.2026 | Advance publication information | A.\nKOR2026-83715 | 126505082 | KOR.\nEl aviso mas antiguo de la pagina 2 es HOL2026-83800, con fecha de registro BR de 14.09.2026, y la fecha mas reciente del bloque es 11.09.2026, en RUS2026-83765 y RUS2026-83761. RUS2026-83755 es el unico aviso de la pagina con codigo de acto M, y es la Resubmission of Notification / Notification of Space Station (GSO) de la estacion RGS-S-128E, la misma estacion que aparece como RUS2026-83765 con fecha 11.09.2026. Hay 2 Notification of Earth Station (HOL2026-83800 y HOL2026-83776) y 2 Res 49/552 (RUS2026-83765 y RUS2026-83761). F2026-83749 declara la Network Org. ESA bajo la administracion F."
+    },
+    {
+      "id": "doc-itu-provenance",
+      "title": "Procedencia y advertencias de los fixtures ITU del repo",
+      "ticker": "RAGEVAL",
+      "source_type": "itu_readme",
+      "source_ref": "data-engine/tests/fixtures/itu/README.md",
+      "source_language": "en",
+      "translation": "traducido; sha256, fechas y URLs literales",
+      "content": "Los fixtures ITU son capturas oficiales de la pagina e-Submission of Satellite Network Filings, capturadas el 2026-09-27.\nSHA256 del fragmento de la tabla de frecuencias de D2026-84958: 40245187559bdeee71a9d86c980afeb8f2fd138110b07a261411cfc0f602f807.\nSHA256 del detalle D2026-84958 sin redactar: fb83437b3e27d8c002972f7bf25bac75c590985d2291b8b9f2f0d796b3d051b6. SHA256 del fixture ya redactado: 1da58c29610f9956d0ef6c3ec2eb88f7970dc71ded51d26d15fd6295256adb2a. La redaccion sustituyo los valores opacos de los tokens de descarga y el estado Breadcrumb, conservando los bytes analizables.\nSHA256 del listado oficial As Received: 383fad2778ed7a90aa6c0facaa6cf1cab8bf39b505879324f404af4db2c8b9c3, fixture sin modificar porque no contiene token Breadcrumb.\nSHA256 de la pagina 2 paginada: 021691ed892522e9204658fe5d83f95e9780e019f3e0fd1a809ca55a1376ec71; el servidor declara 517 avisos en total.\nFicha J2026-83391, detalle oficial en publication 70632: sha256 del fixture redactado faa0af57ba670eeffc86fb91a1b39c5ddcb920805d991c8c6e9f0060ff593dd5. Ficha J2026-83392, detalle oficial en publication 70633: sha256 del fixture redactado aa79a7b35b557d55a3654de82eba00cdce1918fbd9b107babf4e12b94aad5614.\nAdvertencia escrita en el propio README: la fecha de registro BR y la fecha de recepcion no son la fecha de publicacion. El README declara que no se infiere identidad ASTS ni NORAD a partir de estas fichas, y que el contenido del fixture nunca debe tratarse como instrucciones."
+    },
+    {
+      "id": "doc-cnmv-oir-2026-09-22",
+      "title": "Hechos registrados en la web OIR de la CNMV el 22/09/2026",
+      "ticker": "RAGEVAL",
+      "source_type": "cnmv",
+      "source_ref": "data-engine/tests/fixtures/cnmv_oir_results.html",
+      "source_language": "es",
+      "translation": "verbatim (el fichero esta en latin-1 y aqui se decodifica a UTF-8)",
+      "content": "Resultados de la web OIR de la CNMV, con 3 hechos con fecha 22/09/2026.\n22/09/2026 18:01 | VISCOFAN, S.A. | Programas de recompra de acciones, estabilización y autocartera | Ejecución programa de recompra de 14 a 18 de septiembre | Número de registro: 42848.\n22/09/2026 17:49 | AIRTIFICIAL INTELLIGENCE STRUCTURES, S.A. | Sobre Gobierno corporativo | Cambios en la Secretaría del Consejo de Administración | Número de registro: 42847.\n22/09/2026 17:46 | LOGISTA INTEGRAL, S.A. | Sobre Gobierno corporativo | La Sociedad anuncia el nombramiento de un consejero dominical. | Número de registro: 42846.\nLos 3 numeros de registro son consecutivos y ascendentes: 42846, 42847 y 42848. Los 3 hechos son del mismo dia, 22/09/2026, y los 3 son Sobre Gobierno corporativo salvo el de VISCOFAN, que es Programas de recompra de acciones. Ninguno de los 3 emisores de la CNMV figura en el COMPANY_MASTER del universo de research."
+    },
+    {
+      "id": "doc-asts-sec-manifest",
+      "title": "Manifiesto de capturas SEC de ASTS (CIK 0001780312)",
+      "ticker": "ASTS",
+      "source_type": "sec_manifest",
+      "source_ref": "data-engine/docs/evidence/asts_sec_filings_manifest.json",
+      "source_language": "en",
+      "translation": "campos literales del manifiesto; accession, fechas y bytes verbatim",
+      "content": "Manifiesto de 5 capturas del portal EDGAR de la SEC, el expediente EDGAR de AST SpaceMobile con CIK 0001780312, todas con http_status 200, host www.sec.gov, submissions_file submissions-0001780312.json y second_fetch_identical true, fechadas el 2026-10-01T08:54:38+00:00 y 2026-10-01T08:54:39+00:00. Los last_modified del manifiesto se reescriben en ISO 8601 con el mismo instante que declara el indice del portal.\nEl formulario 8-K del manifiesto SEC de ASTS tiene accession 0001193125-26-342540, filing_date 2026-08-10, period_of_report 2026-08-10, 48030 bytes servidos (bytes_served), last_modified 2026-08-10T20:39:45Z y documento primario true.\nEl EX-99.1 del manifiesto SEC de ASTS tiene accession 0001193125-26-342540, period_of_report 2026-08-10, 825053 bytes servidos, last_modified 2026-08-10T20:39:45Z y documento primario false.\nEl EX-99.2 del manifiesto SEC de ASTS tiene accession 0001193125-26-342540, period_of_report 2026-08-10, 25045 bytes servidos, last_modified 2026-08-10T20:39:45Z y documento primario false.\nEl formulario 10-Q, que es el informe trimestral, del manifiesto SEC de ASTS tiene accession 0001193125-26-342550, filing_date 2026-08-10, period_of_report 2026-06-30, 3562353 bytes servidos, last_modified 2026-08-10T20:43:10Z y documento primario true.\nEl formulario 10-K, que es el informe anual, del manifiesto SEC de ASTS tiene accession 0001780312-26-000006, filing_date 2026-03-02, period_of_report 2025-12-31, 4397301 bytes servidos, last_modified 2026-03-02T21:40:28Z y documento primario true.\nLa entrada mayor del manifiesto SEC de ASTS es el 10-K con 4397301 bytes servidos, y la menor es el EX-99.2 con 25045 bytes servidos. El EX-99.1 es el segundo mayor con 825053 bytes servidos. El 10-Q es la unica de las 3 entradas con filing_date 2026-08-10 cuyo period_of_report no coincide con esa fecha: 2026-06-30 frente a 2026-08-10. El size_delta_vs_index es 114 en las 3 entradas primarias (8-K, 10-Q y 10-K) y 2 en los 2 EX-99."
+    },
+    {
+      "id": "doc-market-context-policy",
+      "title": "Politica de datos de contexto de mercado (series FRED)",
+      "ticker": "RAGEVAL",
+      "source_type": "doc",
+      "source_ref": "data-engine/docs/market-context-data-policy.md",
+      "source_language": "en",
+      "translation": "traducido al español; nombres de serie, cifras y rutas literales",
+      "content": "El actor global FRED programado corre una vez al dia y descarga 6 series CSV publicas de FRED sin API key: MORTGAGE30US, DGS10, DGS2, T10YIE, BAMLH0A0HYM2 y VIXCLS. Cada peticion del actor FRED pide las 800 filas mas recientes.\nEl techo de 800 filas por peticion del actor FRED es un backfill en frio deliberado: VIX y los spreads de high-yield necesitan al menos 127 fechas de negociacion emparejadas, o sea 126 observaciones de entrenamiento mas la observacion filtrada de hoy. El tope de 800 filas deja margen para festivos, huecos y revisiones, y acota el trabajo de base de datos a como mucho 4800 observaciones CSV inspeccionadas por corrida.\nHay 6 GETs aguas arriba al dia en el actor FRED, no uno por tenant ni por lectura de usuario final. Las filas ya vistas que no cambian se omiten, y los valores cambiados anaden una nueva vintage. No se hace borrado periodico ni compactacion de las vintages porque borrar una vintage rompe el replay historico de knowledge-time y los IDs de evidencia de las instantaneas.\nFRED CSV lleva fechas y valores de observacion, no marcas de tiempo de publicacion ni historial de revisiones: fetched_at significa que la app vio el valor por primera vez, no que FRED lo publicara entonces. Los valores de backfill iniciales son vintages actuales aplicados a fechas de observacion antiguas y no deben presentarse como senales point-in-time anteriores a la ingesta. El modelo entrena sobre observaciones conocidas y filtra su estado mas reciente sin suavizado futuro.\nLas metricas ausentes o rancias del contexto de mercado se muestran como sin datos, y la concentracion top-10 del S&P 500 sigue no disponible hasta que exista un feed completo, fechado y con fuentes de componentes y capitalizacion."
+    }
+  ]
+}
