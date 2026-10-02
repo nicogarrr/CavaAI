@@ -974,17 +974,17 @@
           },
           {
             "as_of": "2024-12-31",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           },
           {
             "as_of": "2025-06-30",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           },
           {
             "as_of": "2026-06-30",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           }
         ],
@@ -994,16 +994,16 @@
     },
     {
       "id": "bnk_2024-12-31",
-      "category": "insufficient_data",
+      "category": "lookahead_trap_period_leak",
       "ticker": "BNK",
       "as_of": "2024-12-31",
-      "note": "Sin datos suficientes: N/D: datos insuficientes a 2024-12-31 (shares_diluted, roe, book_value_growth)",
+      "note": "Un periodo posterior llego a la valoracion: celda rechazada y contada.",
       "applies_to": null,
       "expect_gate_failure": null,
       "expected": {
         "as_of": "2024-12-31",
         "evidence_cutoff": "2024-12-31",
-        "status": "insufficient_data"
+        "status": "rejected_lookahead"
       },
       "frozen_facts": {
         "tangible_book_value": [
@@ -1037,29 +1037,27 @@
         "as_of": "2024-12-31",
         "evidence_cutoff": "2024-12-31",
         "as_of_source": "explicit",
-        "status": "insufficient_data",
+        "status": "rejected_lookahead",
         "fair_value": null,
         "bear_value": null,
         "base_value": null,
         "bull_value": null,
         "current_price": 11.2846,
         "upside": null,
-        "engine_key": null,
-        "model_version": null,
+        "engine_key": "bank",
+        "model_version": "valuation-engines-v2",
         "degraded": true,
-        "degraded_reason": "N/D: datos insuficientes a 2024-12-31 (shares_diluted, roe, book_value_growth)",
+        "degraded_reason": "look-ahead rechazado por el guard publico: valuation tangible_book_value dated 2999-12-31 is after as_of 2024-12-31; using it would introduce look-ahead bias",
         "source_coverage_score": 0,
         "n_claims": 1,
         "n_claims_with_evidence": 0,
         "debate_verdict": "neutral",
-        "lookahead_violations": [],
+        "lookahead_violations": [
+          "valuation tangible_book_value dated 2999-12-31 is after as_of 2024-12-31; using it would introduce look-ahead bias"
+        ],
         "excluded_future_inputs": [],
         "unverifiable_inputs": [],
-        "missing_inputs": [
-          "shares_diluted",
-          "roe",
-          "book_value_growth"
-        ],
+        "missing_inputs": [],
         "used_periods": [],
         "engine_trace_periods": [],
         "lookahead_violations_detail": [],
@@ -1086,36 +1084,36 @@
           },
           {
             "as_of": "2024-12-31",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           },
           {
             "as_of": "2025-06-30",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           },
           {
             "as_of": "2026-06-30",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           }
         ],
-        "replay_hash": "3598f5d66b00b89bbb2b4f963bde858254a4babf92a76a99b30fe50a2346c084",
-        "replay_hash_again": "3598f5d66b00b89bbb2b4f963bde858254a4babf92a76a99b30fe50a2346c084"
+        "replay_hash": "c68e5f91e1750acab62fef2c2ba370caad931539decb4ba9d962aa41c8ce40ff",
+        "replay_hash_again": "c68e5f91e1750acab62fef2c2ba370caad931539decb4ba9d962aa41c8ce40ff"
       }
     },
     {
       "id": "bnk_2025-06-30",
-      "category": "insufficient_data",
+      "category": "lookahead_trap_period_leak",
       "ticker": "BNK",
       "as_of": "2025-06-30",
-      "note": "Sin datos suficientes: N/D: datos insuficientes a 2025-06-30 (shares_diluted, roe, book_value_growth)",
+      "note": "Un periodo posterior llego a la valoracion: celda rechazada y contada.",
       "applies_to": null,
       "expect_gate_failure": null,
       "expected": {
         "as_of": "2025-06-30",
         "evidence_cutoff": "2025-06-30",
-        "status": "insufficient_data"
+        "status": "rejected_lookahead"
       },
       "frozen_facts": {
         "tangible_book_value": [
@@ -1149,29 +1147,27 @@
         "as_of": "2025-06-30",
         "evidence_cutoff": "2025-06-30",
         "as_of_source": "explicit",
-        "status": "insufficient_data",
+        "status": "rejected_lookahead",
         "fair_value": null,
         "bear_value": null,
         "base_value": null,
         "bull_value": null,
         "current_price": 12.6234,
         "upside": null,
-        "engine_key": null,
-        "model_version": null,
+        "engine_key": "bank",
+        "model_version": "valuation-engines-v2",
         "degraded": true,
-        "degraded_reason": "N/D: datos insuficientes a 2025-06-30 (shares_diluted, roe, book_value_growth)",
+        "degraded_reason": "look-ahead rechazado por el guard publico: valuation tangible_book_value dated 2999-12-31 is after as_of 2025-06-30; using it would introduce look-ahead bias",
         "source_coverage_score": 100,
         "n_claims": 1,
         "n_claims_with_evidence": 1,
         "debate_verdict": "neutral",
-        "lookahead_violations": [],
+        "lookahead_violations": [
+          "valuation tangible_book_value dated 2999-12-31 is after as_of 2025-06-30; using it would introduce look-ahead bias"
+        ],
         "excluded_future_inputs": [],
         "unverifiable_inputs": [],
-        "missing_inputs": [
-          "shares_diluted",
-          "roe",
-          "book_value_growth"
-        ],
+        "missing_inputs": [],
         "used_periods": [],
         "engine_trace_periods": [],
         "lookahead_violations_detail": [],
@@ -1198,36 +1194,36 @@
           },
           {
             "as_of": "2024-12-31",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           },
           {
             "as_of": "2025-06-30",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           },
           {
             "as_of": "2026-06-30",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           }
         ],
-        "replay_hash": "6f98b4251a28ffafdc30facd4ef9a6b1a6ac32433acff62638b7ac9d4fd72dd9",
-        "replay_hash_again": "6f98b4251a28ffafdc30facd4ef9a6b1a6ac32433acff62638b7ac9d4fd72dd9"
+        "replay_hash": "6a9b787e436f49535852358379ffa66f04bfb62443e3dd23b2fe16fcb03237f4",
+        "replay_hash_again": "6a9b787e436f49535852358379ffa66f04bfb62443e3dd23b2fe16fcb03237f4"
       }
     },
     {
       "id": "bnk_2026-06-30",
-      "category": "insufficient_data",
+      "category": "lookahead_trap_period_leak",
       "ticker": "BNK",
       "as_of": "2026-06-30",
-      "note": "Sin datos suficientes: N/D: datos insuficientes a 2026-06-30 (shares_diluted, roe, book_value_growth)",
+      "note": "Un periodo posterior llego a la valoracion: celda rechazada y contada.",
       "applies_to": null,
       "expect_gate_failure": null,
       "expected": {
         "as_of": "2026-06-30",
         "evidence_cutoff": "2026-06-30",
-        "status": "insufficient_data"
+        "status": "rejected_lookahead"
       },
       "frozen_facts": {
         "tangible_book_value": [
@@ -1261,29 +1257,27 @@
         "as_of": "2026-06-30",
         "evidence_cutoff": "2026-06-30",
         "as_of_source": "explicit",
-        "status": "insufficient_data",
+        "status": "rejected_lookahead",
         "fair_value": null,
         "bear_value": null,
         "base_value": null,
         "bull_value": null,
         "current_price": 15.3544,
         "upside": null,
-        "engine_key": null,
-        "model_version": null,
+        "engine_key": "bank",
+        "model_version": "valuation-engines-v2",
         "degraded": true,
-        "degraded_reason": "N/D: datos insuficientes a 2026-06-30 (shares_diluted, roe, book_value_growth)",
+        "degraded_reason": "look-ahead rechazado por el guard publico: valuation tangible_book_value dated 2999-12-31 is after as_of 2026-06-30; using it would introduce look-ahead bias",
         "source_coverage_score": 100,
         "n_claims": 1,
         "n_claims_with_evidence": 1,
         "debate_verdict": "neutral",
-        "lookahead_violations": [],
+        "lookahead_violations": [
+          "valuation tangible_book_value dated 2999-12-31 is after as_of 2026-06-30; using it would introduce look-ahead bias"
+        ],
         "excluded_future_inputs": [],
         "unverifiable_inputs": [],
-        "missing_inputs": [
-          "shares_diluted",
-          "roe",
-          "book_value_growth"
-        ],
+        "missing_inputs": [],
         "used_periods": [],
         "engine_trace_periods": [],
         "lookahead_violations_detail": [],
@@ -1310,22 +1304,22 @@
           },
           {
             "as_of": "2024-12-31",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           },
           {
             "as_of": "2025-06-30",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           },
           {
             "as_of": "2026-06-30",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           }
         ],
-        "replay_hash": "4866def442493f4f533bfff88d8ff3c93f8cfee8c7ac9a379d025e857dabc2ce",
-        "replay_hash_again": "4866def442493f4f533bfff88d8ff3c93f8cfee8c7ac9a379d025e857dabc2ce"
+        "replay_hash": "9754816a2098fd9d9dfbdd66e4a40ae9dd1bb8a0eff0ef6641ad45da492bcbb9",
+        "replay_hash_again": "9754816a2098fd9d9dfbdd66e4a40ae9dd1bb8a0eff0ef6641ad45da492bcbb9"
       }
     },
     {
@@ -1410,17 +1404,17 @@
           },
           {
             "as_of": "2024-12-31",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           },
           {
             "as_of": "2025-06-30",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           },
           {
             "as_of": "2026-06-30",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           }
         ],
@@ -1430,16 +1424,16 @@
     },
     {
       "id": "ins_2024-12-31",
-      "category": "insufficient_data",
+      "category": "lookahead_trap_period_leak",
       "ticker": "INS",
       "as_of": "2024-12-31",
-      "note": "Sin datos suficientes: N/D: datos insuficientes a 2024-12-31 (shares_diluted, roe, combined_ratio, book_value_growth)",
+      "note": "Un periodo posterior llego a la valoracion: celda rechazada y contada.",
       "applies_to": null,
       "expect_gate_failure": null,
       "expected": {
         "as_of": "2024-12-31",
         "evidence_cutoff": "2024-12-31",
-        "status": "insufficient_data"
+        "status": "rejected_lookahead"
       },
       "frozen_facts": {
         "book_value": [
@@ -1472,30 +1466,27 @@
         "as_of": "2024-12-31",
         "evidence_cutoff": "2024-12-31",
         "as_of_source": "explicit",
-        "status": "insufficient_data",
+        "status": "rejected_lookahead",
         "fair_value": null,
         "bear_value": null,
         "base_value": null,
         "bull_value": null,
         "current_price": 7.9656,
         "upside": null,
-        "engine_key": null,
-        "model_version": null,
+        "engine_key": "insurer",
+        "model_version": "valuation-engines-v2",
         "degraded": true,
-        "degraded_reason": "N/D: datos insuficientes a 2024-12-31 (shares_diluted, roe, combined_ratio, book_value_growth)",
+        "degraded_reason": "look-ahead rechazado por el guard publico: valuation book_value dated 2999-12-31 is after as_of 2024-12-31; using it would introduce look-ahead bias",
         "source_coverage_score": 0,
         "n_claims": 1,
         "n_claims_with_evidence": 0,
         "debate_verdict": "neutral",
-        "lookahead_violations": [],
+        "lookahead_violations": [
+          "valuation book_value dated 2999-12-31 is after as_of 2024-12-31; using it would introduce look-ahead bias"
+        ],
         "excluded_future_inputs": [],
         "unverifiable_inputs": [],
-        "missing_inputs": [
-          "shares_diluted",
-          "roe",
-          "combined_ratio",
-          "book_value_growth"
-        ],
+        "missing_inputs": [],
         "used_periods": [],
         "engine_trace_periods": [],
         "lookahead_violations_detail": [],
@@ -1522,36 +1513,36 @@
           },
           {
             "as_of": "2024-12-31",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           },
           {
             "as_of": "2025-06-30",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           },
           {
             "as_of": "2026-06-30",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           }
         ],
-        "replay_hash": "792bf93cfe303f885291d3f505df546c92626ffaf1f3d33ec7a5b0b536ca97bd",
-        "replay_hash_again": "792bf93cfe303f885291d3f505df546c92626ffaf1f3d33ec7a5b0b536ca97bd"
+        "replay_hash": "01d5163a4e1656b6c3f0172fdcb1186200a0d607390c34a1daac59286184bdbb",
+        "replay_hash_again": "01d5163a4e1656b6c3f0172fdcb1186200a0d607390c34a1daac59286184bdbb"
       }
     },
     {
       "id": "ins_2025-06-30",
-      "category": "insufficient_data",
+      "category": "lookahead_trap_period_leak",
       "ticker": "INS",
       "as_of": "2025-06-30",
-      "note": "Sin datos suficientes: N/D: datos insuficientes a 2025-06-30 (shares_diluted, roe, combined_ratio, book_value_growth)",
+      "note": "Un periodo posterior llego a la valoracion: celda rechazada y contada.",
       "applies_to": null,
       "expect_gate_failure": null,
       "expected": {
         "as_of": "2025-06-30",
         "evidence_cutoff": "2025-06-30",
-        "status": "insufficient_data"
+        "status": "rejected_lookahead"
       },
       "frozen_facts": {
         "book_value": [
@@ -1584,30 +1575,27 @@
         "as_of": "2025-06-30",
         "evidence_cutoff": "2025-06-30",
         "as_of_source": "explicit",
-        "status": "insufficient_data",
+        "status": "rejected_lookahead",
         "fair_value": null,
         "bear_value": null,
         "base_value": null,
         "bull_value": null,
         "current_price": 8.9106,
         "upside": null,
-        "engine_key": null,
-        "model_version": null,
+        "engine_key": "insurer",
+        "model_version": "valuation-engines-v2",
         "degraded": true,
-        "degraded_reason": "N/D: datos insuficientes a 2025-06-30 (shares_diluted, roe, combined_ratio, book_value_growth)",
+        "degraded_reason": "look-ahead rechazado por el guard publico: valuation book_value dated 2999-12-31 is after as_of 2025-06-30; using it would introduce look-ahead bias",
         "source_coverage_score": 100,
         "n_claims": 1,
         "n_claims_with_evidence": 1,
         "debate_verdict": "neutral",
-        "lookahead_violations": [],
+        "lookahead_violations": [
+          "valuation book_value dated 2999-12-31 is after as_of 2025-06-30; using it would introduce look-ahead bias"
+        ],
         "excluded_future_inputs": [],
         "unverifiable_inputs": [],
-        "missing_inputs": [
-          "shares_diluted",
-          "roe",
-          "combined_ratio",
-          "book_value_growth"
-        ],
+        "missing_inputs": [],
         "used_periods": [],
         "engine_trace_periods": [],
         "lookahead_violations_detail": [],
@@ -1634,36 +1622,36 @@
           },
           {
             "as_of": "2024-12-31",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           },
           {
             "as_of": "2025-06-30",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           },
           {
             "as_of": "2026-06-30",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           }
         ],
-        "replay_hash": "a3b14009a7281cff5228a58fc6ad7d1c14bd7fd7ba1f8db36b9743bb93085915",
-        "replay_hash_again": "a3b14009a7281cff5228a58fc6ad7d1c14bd7fd7ba1f8db36b9743bb93085915"
+        "replay_hash": "b9525b10963e7139db48c92ee4245966b4b1b40385a749a52a745ce20aa6c559",
+        "replay_hash_again": "b9525b10963e7139db48c92ee4245966b4b1b40385a749a52a745ce20aa6c559"
       }
     },
     {
       "id": "ins_2026-06-30",
-      "category": "insufficient_data",
+      "category": "lookahead_trap_period_leak",
       "ticker": "INS",
       "as_of": "2026-06-30",
-      "note": "Sin datos suficientes: N/D: datos insuficientes a 2026-06-30 (shares_diluted, roe, combined_ratio, book_value_growth)",
+      "note": "Un periodo posterior llego a la valoracion: celda rechazada y contada.",
       "applies_to": null,
       "expect_gate_failure": null,
       "expected": {
         "as_of": "2026-06-30",
         "evidence_cutoff": "2026-06-30",
-        "status": "insufficient_data"
+        "status": "rejected_lookahead"
       },
       "frozen_facts": {
         "book_value": [
@@ -1696,30 +1684,27 @@
         "as_of": "2026-06-30",
         "evidence_cutoff": "2026-06-30",
         "as_of_source": "explicit",
-        "status": "insufficient_data",
+        "status": "rejected_lookahead",
         "fair_value": null,
         "bear_value": null,
         "base_value": null,
         "bull_value": null,
         "current_price": 10.8384,
         "upside": null,
-        "engine_key": null,
-        "model_version": null,
+        "engine_key": "insurer",
+        "model_version": "valuation-engines-v2",
         "degraded": true,
-        "degraded_reason": "N/D: datos insuficientes a 2026-06-30 (shares_diluted, roe, combined_ratio, book_value_growth)",
+        "degraded_reason": "look-ahead rechazado por el guard publico: valuation book_value dated 2999-12-31 is after as_of 2026-06-30; using it would introduce look-ahead bias",
         "source_coverage_score": 100,
         "n_claims": 1,
         "n_claims_with_evidence": 1,
         "debate_verdict": "neutral",
-        "lookahead_violations": [],
+        "lookahead_violations": [
+          "valuation book_value dated 2999-12-31 is after as_of 2026-06-30; using it would introduce look-ahead bias"
+        ],
         "excluded_future_inputs": [],
         "unverifiable_inputs": [],
-        "missing_inputs": [
-          "shares_diluted",
-          "roe",
-          "combined_ratio",
-          "book_value_growth"
-        ],
+        "missing_inputs": [],
         "used_periods": [],
         "engine_trace_periods": [],
         "lookahead_violations_detail": [],
@@ -1746,22 +1731,22 @@
           },
           {
             "as_of": "2024-12-31",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           },
           {
             "as_of": "2025-06-30",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           },
           {
             "as_of": "2026-06-30",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           }
         ],
-        "replay_hash": "f11a5913e2641a1e416b7ffe05ae5e2791783947e501bbc4295ae718ddad7c44",
-        "replay_hash_again": "f11a5913e2641a1e416b7ffe05ae5e2791783947e501bbc4295ae718ddad7c44"
+        "replay_hash": "4d810335230fc68fbb69ea5ab01116fb2116dbf96e65de0f28407213ae9443bf",
+        "replay_hash_again": "4d810335230fc68fbb69ea5ab01116fb2116dbf96e65de0f28407213ae9443bf"
       }
     },
     {
@@ -1838,17 +1823,17 @@
           },
           {
             "as_of": "2024-12-31",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           },
           {
             "as_of": "2025-06-30",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           },
           {
             "as_of": "2026-06-30",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           }
         ],
@@ -1858,16 +1843,16 @@
     },
     {
       "id": "ree_2024-12-31",
-      "category": "insufficient_data",
+      "category": "lookahead_trap_period_leak",
       "ticker": "REE",
       "as_of": "2024-12-31",
-      "note": "Sin datos suficientes: N/D: datos insuficientes a 2024-12-31 (net_debt, shares_diluted)",
+      "note": "Un periodo posterior llego a la valoracion: celda rechazada y contada.",
       "applies_to": null,
       "expect_gate_failure": null,
       "expected": {
         "as_of": "2024-12-31",
         "evidence_cutoff": "2024-12-31",
-        "status": "insufficient_data"
+        "status": "rejected_lookahead"
       },
       "frozen_facts": {
         "net_operating_income": [
@@ -1892,28 +1877,27 @@
         "as_of": "2024-12-31",
         "evidence_cutoff": "2024-12-31",
         "as_of_source": "explicit",
-        "status": "insufficient_data",
+        "status": "rejected_lookahead",
         "fair_value": null,
         "bear_value": null,
         "base_value": null,
         "bull_value": null,
         "current_price": 11.9484,
         "upside": null,
-        "engine_key": null,
-        "model_version": null,
+        "engine_key": "reit",
+        "model_version": "valuation-engines-v2",
         "degraded": true,
-        "degraded_reason": "N/D: datos insuficientes a 2024-12-31 (net_debt, shares_diluted)",
+        "degraded_reason": "look-ahead rechazado por el guard publico: valuation net_operating_income dated 2999-12-31 is after as_of 2024-12-31; using it would introduce look-ahead bias",
         "source_coverage_score": 0,
         "n_claims": 1,
         "n_claims_with_evidence": 0,
         "debate_verdict": "neutral",
-        "lookahead_violations": [],
+        "lookahead_violations": [
+          "valuation net_operating_income dated 2999-12-31 is after as_of 2024-12-31; using it would introduce look-ahead bias"
+        ],
         "excluded_future_inputs": [],
         "unverifiable_inputs": [],
-        "missing_inputs": [
-          "net_debt",
-          "shares_diluted"
-        ],
+        "missing_inputs": [],
         "used_periods": [],
         "engine_trace_periods": [],
         "lookahead_violations_detail": [],
@@ -1940,36 +1924,36 @@
           },
           {
             "as_of": "2024-12-31",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           },
           {
             "as_of": "2025-06-30",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           },
           {
             "as_of": "2026-06-30",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           }
         ],
-        "replay_hash": "4a49a3696f16bbc363535207b3bcdd99c74dc851cfa9f76a1d0867ed07a83d97",
-        "replay_hash_again": "4a49a3696f16bbc363535207b3bcdd99c74dc851cfa9f76a1d0867ed07a83d97"
+        "replay_hash": "598bd2770d4e544008f42b118fefba7a9f3eca905832fc1719117ccc56c51748",
+        "replay_hash_again": "598bd2770d4e544008f42b118fefba7a9f3eca905832fc1719117ccc56c51748"
       }
     },
     {
       "id": "ree_2025-06-30",
-      "category": "insufficient_data",
+      "category": "lookahead_trap_period_leak",
       "ticker": "REE",
       "as_of": "2025-06-30",
-      "note": "Sin datos suficientes: N/D: datos insuficientes a 2025-06-30 (net_debt, shares_diluted)",
+      "note": "Un periodo posterior llego a la valoracion: celda rechazada y contada.",
       "applies_to": null,
       "expect_gate_failure": null,
       "expected": {
         "as_of": "2025-06-30",
         "evidence_cutoff": "2025-06-30",
-        "status": "insufficient_data"
+        "status": "rejected_lookahead"
       },
       "frozen_facts": {
         "net_operating_income": [
@@ -1994,28 +1978,27 @@
         "as_of": "2025-06-30",
         "evidence_cutoff": "2025-06-30",
         "as_of_source": "explicit",
-        "status": "insufficient_data",
+        "status": "rejected_lookahead",
         "fair_value": null,
         "bear_value": null,
         "base_value": null,
         "bull_value": null,
         "current_price": 13.3659,
         "upside": null,
-        "engine_key": null,
-        "model_version": null,
+        "engine_key": "reit",
+        "model_version": "valuation-engines-v2",
         "degraded": true,
-        "degraded_reason": "N/D: datos insuficientes a 2025-06-30 (net_debt, shares_diluted)",
+        "degraded_reason": "look-ahead rechazado por el guard publico: valuation net_operating_income dated 2999-12-31 is after as_of 2025-06-30; using it would introduce look-ahead bias",
         "source_coverage_score": 100,
         "n_claims": 1,
         "n_claims_with_evidence": 1,
         "debate_verdict": "neutral",
-        "lookahead_violations": [],
+        "lookahead_violations": [
+          "valuation net_operating_income dated 2999-12-31 is after as_of 2025-06-30; using it would introduce look-ahead bias"
+        ],
         "excluded_future_inputs": [],
         "unverifiable_inputs": [],
-        "missing_inputs": [
-          "net_debt",
-          "shares_diluted"
-        ],
+        "missing_inputs": [],
         "used_periods": [],
         "engine_trace_periods": [],
         "lookahead_violations_detail": [],
@@ -2042,36 +2025,36 @@
           },
           {
             "as_of": "2024-12-31",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           },
           {
             "as_of": "2025-06-30",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           },
           {
             "as_of": "2026-06-30",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           }
         ],
-        "replay_hash": "8a2cdf89c7ad70504a83270a1105d8259c48d9874ffca2381878d393267cf41a",
-        "replay_hash_again": "8a2cdf89c7ad70504a83270a1105d8259c48d9874ffca2381878d393267cf41a"
+        "replay_hash": "77418f2ea8d822c0272ff7dfa3e2edb91c40531776fca64448f45741e94bebf5",
+        "replay_hash_again": "77418f2ea8d822c0272ff7dfa3e2edb91c40531776fca64448f45741e94bebf5"
       }
     },
     {
       "id": "ree_2026-06-30",
-      "category": "insufficient_data",
+      "category": "lookahead_trap_period_leak",
       "ticker": "REE",
       "as_of": "2026-06-30",
-      "note": "Sin datos suficientes: N/D: datos insuficientes a 2026-06-30 (net_debt, shares_diluted)",
+      "note": "Un periodo posterior llego a la valoracion: celda rechazada y contada.",
       "applies_to": null,
       "expect_gate_failure": null,
       "expected": {
         "as_of": "2026-06-30",
         "evidence_cutoff": "2026-06-30",
-        "status": "insufficient_data"
+        "status": "rejected_lookahead"
       },
       "frozen_facts": {
         "net_operating_income": [
@@ -2096,28 +2079,27 @@
         "as_of": "2026-06-30",
         "evidence_cutoff": "2026-06-30",
         "as_of_source": "explicit",
-        "status": "insufficient_data",
+        "status": "rejected_lookahead",
         "fair_value": null,
         "bear_value": null,
         "base_value": null,
         "bull_value": null,
         "current_price": 16.2576,
         "upside": null,
-        "engine_key": null,
-        "model_version": null,
+        "engine_key": "reit",
+        "model_version": "valuation-engines-v2",
         "degraded": true,
-        "degraded_reason": "N/D: datos insuficientes a 2026-06-30 (net_debt, shares_diluted)",
+        "degraded_reason": "look-ahead rechazado por el guard publico: valuation net_operating_income dated 2999-12-31 is after as_of 2026-06-30; using it would introduce look-ahead bias",
         "source_coverage_score": 100,
         "n_claims": 1,
         "n_claims_with_evidence": 1,
         "debate_verdict": "neutral",
-        "lookahead_violations": [],
+        "lookahead_violations": [
+          "valuation net_operating_income dated 2999-12-31 is after as_of 2026-06-30; using it would introduce look-ahead bias"
+        ],
         "excluded_future_inputs": [],
         "unverifiable_inputs": [],
-        "missing_inputs": [
-          "net_debt",
-          "shares_diluted"
-        ],
+        "missing_inputs": [],
         "used_periods": [],
         "engine_trace_periods": [],
         "lookahead_violations_detail": [],
@@ -2144,22 +2126,22 @@
           },
           {
             "as_of": "2024-12-31",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           },
           {
             "as_of": "2025-06-30",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           },
           {
             "as_of": "2026-06-30",
-            "status": "insufficient_data",
+            "status": "rejected_lookahead",
             "fair_value": null
           }
         ],
-        "replay_hash": "09d4ba9f18faeaa8dbd9ef8182a15232d8305af7a16d1fd7bbc4a3a0715f78f6",
-        "replay_hash_again": "09d4ba9f18faeaa8dbd9ef8182a15232d8305af7a16d1fd7bbc4a3a0715f78f6"
+        "replay_hash": "232896a1829f34b3004ffe3b5d2c5d90c7f4f8e01767c3d5e430386ac013b541",
+        "replay_hash_again": "232896a1829f34b3004ffe3b5d2c5d90c7f4f8e01767c3d5e430386ac013b541"
       }
     },
     {
@@ -3196,13 +3178,13 @@
         "engine_key": "holding_company",
         "model_version": "valuation-engines-v2",
         "degraded": true,
-        "degraded_reason": "look-ahead rechazado por el guard publico: valuation segment_retail 2999-12-31 dated 2999-12-31 is after as_of 2024-12-31; using it would introduce look-ahead bias",
+        "degraded_reason": "look-ahead rechazado por el guard publico: valuation segment_retail dated 2999-12-31 is after as_of 2024-12-31; using it would introduce look-ahead bias",
         "source_coverage_score": 0,
         "n_claims": 1,
         "n_claims_with_evidence": 0,
         "debate_verdict": "neutral",
         "lookahead_violations": [
-          "valuation segment_retail 2999-12-31 dated 2999-12-31 is after as_of 2024-12-31; using it would introduce look-ahead bias"
+          "valuation segment_retail dated 2999-12-31 is after as_of 2024-12-31; using it would introduce look-ahead bias"
         ],
         "excluded_future_inputs": [],
         "unverifiable_inputs": [],
@@ -3247,8 +3229,8 @@
             "fair_value": null
           }
         ],
-        "replay_hash": "8d5ab74c742ff612f069c11bdfa604f7c4b9f8e8c46e7aca1d93896d46d8fb75",
-        "replay_hash_again": "8d5ab74c742ff612f069c11bdfa604f7c4b9f8e8c46e7aca1d93896d46d8fb75"
+        "replay_hash": "c8b9c10167ca394610daba5366aec049b4e6f8b619d0fd48deac67be1c9b8d28",
+        "replay_hash_again": "c8b9c10167ca394610daba5366aec049b4e6f8b619d0fd48deac67be1c9b8d28"
       }
     },
     {
@@ -3309,13 +3291,13 @@
         "engine_key": "holding_company",
         "model_version": "valuation-engines-v2",
         "degraded": true,
-        "degraded_reason": "look-ahead rechazado por el guard publico: valuation segment_retail 2999-12-31 dated 2999-12-31 is after as_of 2025-06-30; using it would introduce look-ahead bias",
+        "degraded_reason": "look-ahead rechazado por el guard publico: valuation segment_retail dated 2999-12-31 is after as_of 2025-06-30; using it would introduce look-ahead bias",
         "source_coverage_score": 100,
         "n_claims": 1,
         "n_claims_with_evidence": 1,
         "debate_verdict": "neutral",
         "lookahead_violations": [
-          "valuation segment_retail 2999-12-31 dated 2999-12-31 is after as_of 2025-06-30; using it would introduce look-ahead bias"
+          "valuation segment_retail dated 2999-12-31 is after as_of 2025-06-30; using it would introduce look-ahead bias"
         ],
         "excluded_future_inputs": [],
         "unverifiable_inputs": [],
@@ -3360,8 +3342,8 @@
             "fair_value": null
           }
         ],
-        "replay_hash": "4591afdd2df701640d63b9774cf4f9b8141c2154bc8594557cebc696271e0f02",
-        "replay_hash_again": "4591afdd2df701640d63b9774cf4f9b8141c2154bc8594557cebc696271e0f02"
+        "replay_hash": "2a39a74858d6f74c1daab886e8dcb4c4b3de84acaf652b6dd9bbe2262ae85ac9",
+        "replay_hash_again": "2a39a74858d6f74c1daab886e8dcb4c4b3de84acaf652b6dd9bbe2262ae85ac9"
       }
     },
     {
@@ -3422,13 +3404,13 @@
         "engine_key": "holding_company",
         "model_version": "valuation-engines-v2",
         "degraded": true,
-        "degraded_reason": "look-ahead rechazado por el guard publico: valuation segment_retail 2999-12-31 dated 2999-12-31 is after as_of 2026-06-30; using it would introduce look-ahead bias",
+        "degraded_reason": "look-ahead rechazado por el guard publico: valuation segment_retail dated 2999-12-31 is after as_of 2026-06-30; using it would introduce look-ahead bias",
         "source_coverage_score": 100,
         "n_claims": 1,
         "n_claims_with_evidence": 1,
         "debate_verdict": "neutral",
         "lookahead_violations": [
-          "valuation segment_retail 2999-12-31 dated 2999-12-31 is after as_of 2026-06-30; using it would introduce look-ahead bias"
+          "valuation segment_retail dated 2999-12-31 is after as_of 2026-06-30; using it would introduce look-ahead bias"
         ],
         "excluded_future_inputs": [],
         "unverifiable_inputs": [],
@@ -3473,8 +3455,8 @@
             "fair_value": null
           }
         ],
-        "replay_hash": "dfc6ba712fa31d0dd86c784523393022a822cba82f29d133191bf387bc265acd",
-        "replay_hash_again": "dfc6ba712fa31d0dd86c784523393022a822cba82f29d133191bf387bc265acd"
+        "replay_hash": "ae1d05c14321da6e4bde47196702c643280c0f13d4b2b5a895a332d0bc28e975",
+        "replay_hash_again": "ae1d05c14321da6e4bde47196702c643280c0f13d4b2b5a895a332d0bc28e975"
       }
     },
     {
