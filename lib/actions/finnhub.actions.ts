@@ -3,6 +3,7 @@
 import { getDateRange, validateArticle, formatArticle } from '@/lib/utils';
 import { POPULAR_STOCK_SYMBOLS } from '@/lib/constants';
 import type { PopularStocksResult } from '@/lib/popular-stocks-loader';
+import { foldSearchQuery } from '@/lib/search-query';
 import { cache } from 'react';
 import { cachedFetch } from '@/lib/cache/memoryTTL';
 import { mapBackendYahooQuote, sanitizeFinnhubQuote, type SanitizedQuote } from '@/lib/market/quote-freshness';
@@ -603,7 +604,7 @@ const searchStocksOrThrow = async (query?: string): Promise<StockWithWatchlistSt
             return [];
         }
 
-        const trimmed = typeof query === 'string' ? query.trim() : '';
+        const trimmed = typeof query === 'string' ? foldSearchQuery(query) : '';
 
         let results: FinnhubSearchResult[] = [];
 
