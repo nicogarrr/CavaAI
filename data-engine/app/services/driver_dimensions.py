@@ -112,6 +112,7 @@ FORMULA_TERMS: dict[str, tuple[tuple[str | Dimension, ...], ...]] = {
     "insurer": (("earned_premiums",),),
     "reit": (("net_operating_income",),),
     "commodity": (("production_volume", "realized_price"),),
+    "biotech_pre_fcf": (("revenue",),),
     "generic_fcf": (("revenue",),),
 }
 
