@@ -123,7 +123,40 @@ npm run generate:openapi
 git diff --exit-code -- data-engine/openapi.json lib/research/openapi.generated.ts
 ```
 
-El CI ejecuta 9 jobs: calidad frontend, auth-store, calidad backend, drift OpenAPI, migraciones Postgres, smoke ARM64, auditoría supply-chain y e2e (API + navegador).
+El CI ejecuta 11 jobs: calidad frontend, auth-store, calidad backend, evals de
+calidad (RAG, valoración, capas LLM e ingesta), drift OpenAPI, migraciones
+Postgres, smoke ARM64, auditoría supply-chain y e2e (API + navegador), más un
+workflow aparte de cobertura.
+
+### Evals de calidad (FASE C)
+
+Cuatro suites con dataset congelado y puertas deterministas. Los números, sus
+umbrales y el workflow que los ejecuta están en
+[docs/QUALITY_GATES.md](docs/QUALITY_GATES.md); el detalle de cobertura, en
+[docs/COVERAGE.md](docs/COVERAGE.md).
+
+```bash
+cd data-engine
+
+# RAG (C1): necesita Qdrant vivo. refuse-to-skip: sin Qdrant sale con 1, no con un stub.
+docker compose up -d qdrant
+python scripts/run_rag_evals.py
+
+# Motores de valoración (C2), capas LLM (C3) e ingesta (C4): offline y deterministas
+python scripts/run_valuation_evals.py
+python scripts/run_llm_evals.py
+python scripts/run_ingest_evals.py
+
+# Cobertura: mide y gatea. Sin pytest-cov instalado esto falla con "unrecognized arguments".
+python -m pip install "pytest-cov>=5.0"
+python scripts/run_coverage_gate.py
+
+# Suite completa sin servicios externos (el marker `services` está registrado)
+python -m pytest tests -m "not services"
+```
+
+Todos aceptan `--json` para volcar el informe. El eval del RAG indexa en
+`rag_eval_v1_documents`, no en el índice del producto.
 
 ## Arquitectura en 30 segundos
 
