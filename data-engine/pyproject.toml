@@ -21,7 +21,7 @@ dependencies = [
     # Ingesta SEC paralela tipada (ver app/services/edgartools_ingestion_service.py).
     # Solo UA declarado, sin API key. Detras de flag EDGARTOOLS_ENABLED.
     "edgartools>=5.59.1,<6",
-    "pandas>=2.0.0,<3",
+    "pandas>=2.0.0,<4",
     "lxml>=6.1.1,<7",
     "scipy>=1.11.0,<2",
     "hmmlearn>=0.3.3,<0.4",
