@@ -9,7 +9,8 @@ test('F303: el input file oculto es nativo con sr-only, sin la base w-full de ui
     // ui/Input impone w-full/h-10/borde en su clase base; con sr-only el
     // width:100% ganaba al width:1px (sr-only se ordena antes en el
     // stylesheet de Tailwind) y la caja invisible desbordaba el viewport.
-    assert.match(component, /<input\n[\s\S]*?type="file"\n[\s\S]*?className="sr-only"/);
+    // \r?\n: el patron aguanta CRLF (checkout Windows) y LF.
+    assert.match(component, /<input\r?\n[\s\S]*?type="file"\r?\n[\s\S]*?className="sr-only"/);
     assert.doesNotMatch(component, /from '@\/components\/ui\/input'/);
 });
 
@@ -18,5 +19,5 @@ test('F303: ui/Input sigue imponiendo w-full (el conflicto vive en su base)', ()
 });
 
 test('F303: el disparador visible sigue siendo el label asociado', () => {
-    assert.match(component, /<label\n[\s\S]*?htmlFor=\{inputId\}/);
+    assert.match(component, /<label\r?\n[\s\S]*?htmlFor=\{inputId\}/);
 });

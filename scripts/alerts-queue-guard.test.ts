@@ -9,6 +9,7 @@ const compose = readFileSync('docker-compose.prod.yml', 'utf8');
 // la cola default detras de la ingesta larga de GDELT (~3 h): las alertas
 // llegaban tarde. Cola dedicada "alerts" con worker propio (patron F359).
 test('el carril de alertas va en cola dedicada consumida por un worker DEDICADO', () => {
+    // \r?\n: los patrones aguantan CRLF (checkout Windows) y LF.
     for (const actor of [
         'evaluate_alert_rules',
         'dispatch_tracked_news_alerts',
@@ -18,13 +19,13 @@ test('el carril de alertas va en cola dedicada consumida por un worker DEDICADO'
     ]) {
         assert.match(
             workers,
-            new RegExp(`@dramatiq\\.actor\\([^)]*queue_name=ALERT_QUEUE_NAME\\)\\ndef ${actor}\\(`),
+            new RegExp(`@dramatiq\\.actor\\([^)]*queue_name=ALERT_QUEUE_NAME\\)\\r?\\ndef ${actor}\\(`),
             `${actor} sin queue_name alerts`,
         );
     }
     assert.match(workers, /ALERT_QUEUE_NAME = "alerts"/);
     // scan_insider_watchlist es ingesta/escaneo, no entrega: se queda en default.
-    assert.doesNotMatch(workers, /queue_name=ALERT_QUEUE_NAME\)\ndef scan_insider_watchlist/);
+    assert.doesNotMatch(workers, /queue_name=ALERT_QUEUE_NAME\)\r?\ndef scan_insider_watchlist/);
     // Servicio aparte con sus propios hilos (aislamiento = PROCESO dedicado).
     assert.match(compose, /worker-alerts:[\s\S]{0,900}"-Q", "alerts"/);
     const alertsBlock = compose.slice(compose.indexOf('worker-alerts:'));
@@ -33,6 +34,6 @@ test('el carril de alertas va en cola dedicada consumida por un worker DEDICADO'
     // best-effort): sin la key en el servicio nuevo la clasificacion pasaria
     // silenciosamente a None (regresion de metadatos, no de entrega).
     assert.match(alertsBlock, /TYPESAFE_API_KEY=\$\{TYPESAFE_API_KEY:-\}/);
-    const workerCmd = compose.match(/worker:\n[\s\S]{0,200}command: \[[^\]]*\]/)?.[0] ?? '';
+    const workerCmd = compose.match(/worker:\r?\n[\s\S]{0,200}command: \[[^\]]*\]/)?.[0] ?? '';
     assert.ok(workerCmd && !workerCmd.includes('alerts'), 'el worker general NO consume alerts');
 });
