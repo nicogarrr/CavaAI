@@ -1,0 +1,402 @@
+# SBOM + escaneo de seguridad de las 4 imagenes Docker del repo.
+#
+# POR QUE EXISTE ESTE WORKFLOW (tarea E3)
+#
+# Antes de el, el repo no construia ninguna imagen en CI, no generaba SBOM y no
+# escaneaba imagenes: una CVE en la imagen de produccion no se enteraba hasta
+# que algo se rompia en Oracle. El job `supply-chain` de ci.yml cubre el
+# *codigo* (npm audit + pip_audit sobre requirements.txt); esto cubre el
+# *entorno resultante*: el sistema operativo, las librerias que pip resolvio en
+# el build, lo que quedo en las capas y el propio Dockerfile.
+#
+# Gates (por que cada puerta es la que es, no la que es comodo):
+#
+#   CVE CRITICAL con fix disponible .... ROJO.  Es la unica combinacion donde el
+#     atacante tiene codigo publicado y nosotros tenemos el parche a una linea de
+#     distancia: no esperar un trimestre a la proxima version.
+#   secret en la imagen (CUALQUIER sev) ROJO.  Un token quemado en una capa sigue
+#     quemado aunque se borre el fichero: `ENV`/`ARG` en el historial no se
+#     des-cargan. Ademas el escaner no puede saber si "example" es de mentira.
+#   misconfiguration HIGH/CRITICAL .... ROJO.  Corregible en el Dockerfile, sin
+#     esperar a nadie, y es la causa de las RCE que terminan en root del host.
+#   CVE HIGH/MEDIUM/LOW ............... se REPORTA con su numero en el log y en el
+#     artefacto. Bloquear por un HIGH de una dependencia transitiva que nadie usa
+#     enseña al equipo a ignorar el escaneo; se arregla en el PR de dependencia.
+#   escaner que no se ejecuta .......... ROJO.  Fail-closed, mismo principio que
+#     el gate de Qdrant de ci.yml (que falla si el test se salta): "no lo he
+#     podido comprobar" jamas se reporta como "esta limpio".
+#
+# Lo que este workflow NO hace, a proposito:
+#   - No usa secrets de Vercel ni de Docker Hub. `GITHUB_TOKEN` es lo unico que
+#     necesita y corre en forks. El push a registry (attestations de buildx,
+#     provenance) queda fuera: no se depende de ningun registry para dar el
+#     veredicto.
+#   - No repara los Dockerfile. Este workflow los mide; quien los arregla esta en
+#     el informe de E3 y en el PR correspondiente.
+#
+# Las excepciones viven en scripts/security/trivy-policy.yaml (versionado, con
+# motivo + ticket + fecha de caducidad). No hay `--ignore` ni `exit-code` que
+# decidan por su cuenta: el unico veredicto es el exit code de
+# data-engine/scripts/security/gate_image_scan.py, que ademas es testeable sin
+# docker (data-engine/tests/test_supply_chain_contracts.py).
+name: SBOM + escaneo de seguridad de imagenes
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sbom-scan-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1) BUILD: las 4 imagenes, cache en el propio runner, sin registry.
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build ${{ matrix.image.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      # `actions: write` solo para el backend de cache `type=gha` de buildx, que
+      # es lo que hace que sbom/scan reconstruyan en segundos en vez de repetir
+      # la descarga de los wheels de torch.
+      actions: write
+    strategy:
+      # fail-fast: false = una imagen rota no oculta los resultados de las otras
+      # tres. El veredicto global lo cierra igualmente el gate de scan.
+      fail-fast: false
+      matrix:
+        include:
+          - name: frontend-prod
+            context: .
+            file: Dockerfile
+            production: "true"
+          - name: frontend-dev
+            context: .
+            file: Dockerfile.dev
+            production: "false"
+          - name: backend-prod
+            context: data-engine
+            file: data-engine/Dockerfile.prod
+            production: "true"
+          - name: backend-dev
+            context: data-engine
+            file: data-engine/Dockerfile
+            production: "false"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4.4.1
+
+      - name: "Construir ${{ matrix.image.name }} (sin push: no depende de registry)"
+        id: build
+        uses: docker/build-push-action@v7.4.0
+        with:
+          context: ${{ matrix.image.context }}
+          file: ${{ matrix.image.file }}
+          tags: cavaai/${{ matrix.image.name }}:${{ github.sha }}
+          load: true
+          # push:false a proposito. Las attestations de buildx (sbom/provenance)
+          # solo existen cuando hay un registry al que empujarlas; el SBOM de
+          # este repo lo genera el job `sbom` y no depende de donde se publique.
+          push: false
+          provenance: false
+          sbom: false
+          cache-from: type=gha,scope=img-${{ matrix.image.name }}
+          cache-to: type=gha,mode=max,scope=img-${{ matrix.image.name }}
+
+      - name: Registrar digest y usuario efectivo
+        # El digest es lo unico que identifica el contenido escaneado; sin el,
+        # un informe de CVEs no se puede relacionar con la imagen que se
+        # desplego. El usuario efectivo se registra porque un contenedor en root
+        # convierte una RCE de la app en root sobre los volumenes montados.
+        run: |
+          set -euo pipefail
+          mkdir -p digests
+          ref="cavaai/${{ matrix.image.name }}:${{ github.sha }}"
+          digest="${{ steps.build.outputs.digest }}"
+          if [ -z "$digest" ]; then
+            digest="$(docker image inspect --format '{{.Id}}' "$ref")"
+          fi
+          user="$(docker image inspect --format '{{.Config.User}}' "$ref")"
+          printf 'image\tdigest\tuser\tproduction\t%s\n' "$digest" "${user:-<root:0>}" \
+            "${{ matrix.image.production }}" | tee -a "digests/${{ matrix.image.name }}.tsv"
+          docker image inspect "$ref" --format 'User={{.Config.User}} Entrypoint={{json .Config.Entrypoint}} Cmd={{json .Config.Cmd}}'
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: digest-${{ matrix.image.name }}
+          path: digests/${{ matrix.image.name }}.tsv
+          if-no-files-found: warn
+          retention-days: 90
+
+  # ---------------------------------------------------------------------------
+  # 2) SBOM: CycloneDX y SPDX por imagen, subidos SIEMPRE como artefacto.
+  #    `if: always()` en el job y en la subida: un SBOM que solo existe si todo
+  #    fue bien no sirve en una investigacion posterior a un incidente.
+  # ---------------------------------------------------------------------------
+  sbom:
+    name: SBOM ${{ matrix.image.name }}
+    needs: build
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      actions: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # Misma lista que el job build. test_supply_chain_contracts.py verifica
+        # que las tres matrices declaran las mismas 4 imagenes.
+        include:
+          - name: frontend-prod
+            context: .
+            file: Dockerfile
+            production: "true"
+          - name: frontend-dev
+            context: .
+            file: Dockerfile.dev
+            production: "false"
+          - name: backend-prod
+            context: data-engine
+            file: data-engine/Dockerfile.prod
+            production: "true"
+          - name: backend-dev
+            context: data-engine
+            file: data-engine/Dockerfile
+            production: "false"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4.4.1
+
+      - name: Reconstruir desde la cache del job build
+        # Sin registry no hay forma de pasar la imagen entre jobs: se reconstruye
+        # y la cache `type=gha` que dejo el job build lo convierte en una capa.
+        # El contexto es el mismo commit, asi que es el mismo contenido.
+        uses: docker/build-push-action@v7.4.0
+        with:
+          context: ${{ matrix.image.context }}
+          file: ${{ matrix.image.file }}
+          tags: cavaai/${{ matrix.image.name }}:${{ github.sha }}
+          load: true
+          push: false
+          provenance: false
+          sbom: false
+          cache-from: type=gha,scope=img-${{ matrix.image.name }}
+
+      - name: SBOM CycloneDX (syft via anchore/sbom-action)
+        id: sbom-cyclonedx
+        uses: anchore/sbom-action@v0.24.2
+        with:
+          image: cavaai/${{ matrix.image.name }}:${{ github.sha }}
+          format: cyclonedx-json
+          output-file: sbom/${{ matrix.image.name }}.cdx.json
+          # La subida la hace el paso siguiente con `if: always()`: la interna de
+          # la action no existe si la action falla, que es justo cuando hace falta.
+          upload-artifact: false
+          dependency-snapshot: false
+
+      - name: SBOM SPDX (syft via anchore/sbom-action)
+        id: sbom-spdx
+        uses: anchore/sbom-action@v0.24.2
+        with:
+          image: cavaai/${{ matrix.image.name }}:${{ github.sha }}
+          format: spdx-json
+          output-file: sbom/${{ matrix.image.name }}.spdx.json
+          upload-artifact: false
+          dependency-snapshot: false
+
+      - name: Subir SBOM CycloneDX
+        uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: sbom-${{ matrix.image.name }}-cyclonedx
+          path: sbom/${{ matrix.image.name }}.cdx.json
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Subir SBOM SPDX
+        uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: sbom-${{ matrix.image.name }}-spdx
+          path: sbom/${{ matrix.image.name }}.spdx.json
+          if-no-files-found: warn
+          retention-days: 90
+
+  # ---------------------------------------------------------------------------
+  # 3) SCAN: dos motores independientes + gate con umbral.
+  # ---------------------------------------------------------------------------
+  scan:
+    name: Scan ${{ matrix.image.name }}
+    needs: [build, sbom]
+    # always() + gate explicito: si build o sbom fallaron, este job corre igual
+    # y el gate dice POR QUE esta en rojo. Un job saltado se lee como verde.
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    # 60 min y no 40: en la auditoria E3 el analisis de trivy de la imagen de
+    # backend (3,4 GB) se comio mas de 25 min solo, y este job encadena
+    # reconstruccion + vuln + secrets + misconfig + motor 2 + gate.
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: frontend-prod
+            context: .
+            file: Dockerfile
+            production: "true"
+          - name: frontend-dev
+            context: .
+            file: Dockerfile.dev
+            production: "false"
+          - name: backend-prod
+            context: data-engine
+            file: data-engine/Dockerfile.prod
+            production: "true"
+          - name: backend-dev
+            context: data-engine
+            file: data-engine/Dockerfile
+            production: "false"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Dependencias del gate (pyyaml)
+        run: python -m pip install --disable-pip-version-check pyyaml
+
+      - uses: docker/setup-buildx-action@v4.4.1
+
+      - name: Reconstruir desde la cache del job build
+        uses: docker/build-push-action@v7.4.0
+        with:
+          context: ${{ matrix.image.context }}
+          file: ${{ matrix.image.file }}
+          tags: cavaai/${{ matrix.image.name }}:${{ github.sha }}
+          load: true
+          push: false
+          provenance: false
+          sbom: false
+          cache-from: type=gha,scope=img-${{ matrix.image.name }}
+
+      - name: Motor 2 necesita el SBOM del job sbom
+        uses: actions/download-artifact@v4
+        with:
+          name: sbom-${{ matrix.image.name }}-cyclonedx
+          path: sbom
+          if-no-files-found: ignore
+
+      - name: "Motor 1: trivy sobre la imagen (vuln)"
+        id: trivy_vuln
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: cavaai/${{ matrix.image.name }}:${{ github.sha }}
+          format: json
+          output: reports/trivy-vuln-${{ matrix.image.name }}.json
+          scanners: vuln
+          severity: CRITICAL,HIGH,MEDIUM,LOW
+          # Los CVEs sin fix tambien se listan: que no haya parche es informacion,
+          # no una excusa para no mirar.
+          ignore-unfixed: false
+          # exit-code 0 a proposito: el umbral de la politica (solo CRITICAL con
+          # fix) lo aplica gate_image_scan.py. Con exit-code 1, trivy fallaria
+          # tambien por un HIGH de una dependencia transitiva.
+          exit-code: "0"
+          # Medido en la auditoria E3: el analisis de la imagen de backend
+          # (3,4 GB, ~150 paquetes) se pasa del default de 5 min de trivy por
+          # poco. Un timeout aqui es un build rojo que no significa ni una CVE
+          # ni un fallo: es la razon de que el gate sea fail-closed.
+          timeout: 25m
+
+      - name: "Motor 1: trivy sobre la imagen (secret)"
+        id: trivy_secret
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          # Paso aparte, no por coste: un secret solo se detecta en las capas de la
+          # imagen, y asi el informe de secrets y el de CVEs no se pisan. Si uno
+          # de los dos escaneres no llega a correr, el gate lo nota por separado.
+          image-ref: cavaai/${{ matrix.image.name }}:${{ github.sha }}
+          format: json
+          output: reports/trivy-secret-${{ matrix.image.name }}.json
+          scanners: secret
+          exit-code: "0"
+          timeout: 15m
+
+      - name: "Motor 1: trivy misconfiguration (los 4 Dockerfiles + los 2 compose)"
+        id: trivy_misconfig
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          # Se evalua el repo entero, no solo el Dockerfile de esta imagen: una
+          # imagen de produccion tampoco es segura si el compose que la levanta
+          # la monta en root sobre un volumen con datos.
+          scan-type: config
+          scan-ref: .
+          scanners: misconfig
+          format: json
+          output: reports/trivy-misconfig-${{ matrix.image.name }}.json
+          severity: CRITICAL,HIGH,MEDIUM,LOW,UNKNOWN
+          exit-code: "0"
+
+      - name: "Motor 2: anchore/scan-action (trivy sobre el SBOM)"
+        id: anchore_scan
+        uses: anchore/scan-action@v7.4.2
+        with:
+          # SBOM -> motor independiente: dos bases de datos de CVE distintas sobre
+          # el mismo contenido de imagen. Un motor que se cae lo nota el otro.
+          sbom: sbom/${{ matrix.image.name }}.cdx.json
+          output-format: json
+          output-file: reports/anchore-${{ matrix.image.name }}.json
+          # El veredicto lo da el gate, no el corte binario de la action: aqui el
+          # corte caeria en cualquier CVE, sin importar la severidad ni si tiene
+          # fix, que no es la politica de este repo.
+          fail-build: false
+
+      - name: Puerta (unico punto de decision, rojo/verde)
+        # Sin `continue-on-error` y con `if: always()`: este paso corre siempre y
+        # su exit code es el veredicto de la imagen. Los `outcome` de cada
+        # escaner se le pasan porque "no se ejecuto" != "0 hallazgos"; si un paso
+        # quedo skipped, el gate sale en rojo por eso y no por lo que hubiera
+        # encontrado.
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          python data-engine/scripts/security/gate_image_scan.py \
+            --image "${{ matrix.image.name }}" \
+            --image-ref "cavaai/${{ matrix.image.name }}:${{ github.sha }}" \
+            --build-result "${{ needs.build.result }}" \
+            --policy scripts/security/trivy-policy.yaml \
+            --vuln-report "reports/trivy-vuln-${{ matrix.image.name }}.json" \
+            --vuln-status "${{ steps.trivy_vuln.outcome }}" \
+            --secret-report "reports/trivy-secret-${{ matrix.image.name }}.json" \
+            --secret-status "${{ steps.trivy_secret.outcome }}" \
+            --misconfig-report "reports/trivy-misconfig-${{ matrix.image.name }}.json" \
+            --misconfig-status "${{ steps.trivy_misconfig.outcome }}" \
+            --second-report "reports/anchore-${{ matrix.image.name }}.json" \
+            --second-status "${{ steps.anchore_scan.outcome }}" \
+            --summary "reports/summary-${{ matrix.image.name }}.json"
+
+      - name: Subir informes
+        uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: reports-${{ matrix.image.name }}
+          path: reports/
+          if-no-files-found: warn
+          retention-days: 90
