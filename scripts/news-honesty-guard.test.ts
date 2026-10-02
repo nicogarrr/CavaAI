@@ -27,11 +27,11 @@ void test('un evento antiguo nunca es urgente por recencia', () => {
 void test('fuente sin fecha: fallback declarado, no silencioso', () => {
   const news = source('data-engine/app/services/news_service.py');
   assert.ok(news.includes('ingested_at_fallback'), 'metadata declara el fallback');
-  const page = source('app/(root)/research/news/page.tsx');
+  const page = (source('app/(root)/research/news/page.tsx') + source('components/research/NewsEventsFlow.tsx'));
   assert.ok(page.includes('la fuente no da fecha'), 'la UI etiqueta el fallback');
 });
 
 void test('la UI no pinta el razonamiento interno de scoring', () => {
-  const page = source('app/(root)/research/news/page.tsx');
+  const page = (source('app/(root)/research/news/page.tsx') + source('components/research/NewsEventsFlow.tsx'));
   assert.ok(!page.includes('materiality_reasons'), 'materiality_reasons fuera de la UI');
 });
