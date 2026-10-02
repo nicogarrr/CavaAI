@@ -17,8 +17,8 @@ test('login page is reachable and clean', async ({ app, agent }) => {
   await agent.act(`${RULES} Find and open the login or sign-in page. Do not type anything.`);
   await agent.assert('a login form or sign-in prompt is visible with no error banner');
   const info = await agent.extract(
-    'List visible UI problems on this page: error messages, untranslated English text, overlapping or cut-off elements. Use an empty list if clean.',
-    { schema: z.object({ problems: z.array(z.string()) }) },
+    'List visible UI problems on this page: error messages, untranslated English text, overlapping or cut-off elements. Answer as JSON with exactly two keys: "checked" (the boolean true) and "problems" (an array of short strings, empty if clean).',
+    { schema: z.object({ checked: z.literal(true), problems: z.array(z.string()) }) },
   );
   console.log('[login]', JSON.stringify(info.problems.length ? info.problems : 'ninguno'));
 });
