@@ -11,7 +11,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 // @ts-expect-error TS5097: la extensión explícita la exige node --experimental-strip-types.
-import { analyzedCountCopy, degradedCopy, durableReadCopy } from '../lib/insider-status-copy.ts';
+import { analyzedCountCopy, degradedCopy, durableReadCopy, persistedSourceCopy } from '../lib/insider-status-copy.ts';
 
 const view = readFileSync('components/insider/InsiderSignalsView.tsx', 'utf8');
 const count = (v: unknown) => String(v);
@@ -97,4 +97,22 @@ test('el panel usa durableReadCopy y no muestra el count si el status no es ok',
         'el count de una lectura fallida no puede salir como número',
     );
     assert.match(view, /Detalle técnico: \{durable\.detail\}/);
+});
+
+test('filings persistidos: la lectura live fallida se declara con fecha del ultimo filing', () => {
+    const copy = persistedSourceCopy(
+        'ASTS',
+        { filings_scanned: 20, filings_from_persisted: 20, latest_persisted_filing_date: '2026-10-01' },
+        count,
+    );
+    assert.equal(
+        copy,
+        'ASTS: 20 de 20 Form 4 desde filings persistidos (último filing: 2026-10-01); la lectura en vivo de SEC EDGAR falló. Los datos son los de esos filings, no de hoy.',
+    );
+});
+
+test('filings persistidos: sin copia persistida no hay etiqueta, y la vista la renderiza', () => {
+    assert.equal(persistedSourceCopy('ASTS', { filings_scanned: 20 }, count), null);
+    assert.equal(persistedSourceCopy('ASTS', { filings_from_persisted: 0 }, count), null);
+    assert.match(view, /persistedSourceCopy\(initialTicker, initialResult, countText\)/);
 });
