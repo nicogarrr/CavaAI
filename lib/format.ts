@@ -101,6 +101,17 @@ export function isValidCurrencyCode(currency: string | null | undefined): curren
 }
 
 /**
+ * Confianza de un dato como porcentaje (0.9 -> «90%»), con la regla del repo:
+ * sin dato o no finito es N/D, nunca un «0%» inventado. `Number(null) * 100`
+ * da 0 y `Number(undefined) * 100` da NaN; pintarlos como confianza medida
+ * engaña (hoy el esquema no deja nulos, mañana puede dejarlos).
+ */
+export function formatConfidence(value: NumericInput, fallback: string = NA): string {
+  const parsed = toFinite(value);
+  return parsed === null ? fallback : `${Math.round(parsed * 100)}%`;
+}
+
+/**
  * Importe monetario con locale es-ES (1.234,56 US$ / 1.234,56 €).
  */
 export function formatMoney(
