@@ -38,7 +38,7 @@ def test_0047_upgrade_downgrade_upgrade_roundtrip():
         finally:
             engine.dispose()
 
-        _alembic(database_url, "upgrade", "head")
+        _alembic(database_url, "upgrade", REVISION_0047)
         engine = create_engine(database_url)
         try:
             assert "instrument_references" in inspect(engine).get_table_names()
@@ -63,7 +63,7 @@ def test_0047_upgrade_downgrade_upgrade_roundtrip():
         finally:
             engine.dispose()
 
-        _alembic(database_url, "upgrade", "head")
+        _alembic(database_url, "upgrade", REVISION_0047)
         engine = create_engine(database_url)
         try:
             assert "instrument_references" in inspect(engine).get_table_names()
