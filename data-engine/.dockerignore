@@ -33,6 +33,40 @@ storage/
 .env
 .env.*
 
+# ------------------------------------------------ patrones que SI cruzan
+# directorios.
+#
+# Docker casa las reglas con filepath.Match, donde `*` NO cruza `/`. Las reglas
+# de arriba (`__pycache__`, `*.py[cod]`, `*.db`, `.env.*`) solo anclan a la raiz
+# del contexto, de modo que app/__pycache__/*.pyc, app/app.db y .env.* de un
+# subdirectorio entraban en la imagen sin que nada lo dijera. Las dos imagenes
+# del engine hacen `COPY . .` (Dockerfile linea 26 y Dockerfile.prod linea 47),
+# asi que esto no es teoria: es lo que acaba en la capa.
+**/__pycache__
+**/*.py[cod]
+**/.venv
+**/.env
+**/.env.*
+**/*.db
+**/*.sqlite*
+**/*.duckdb
+**/*.tsbuildinfo
+
+# Artefactos de verificacion: htmlcov lleva el .coverage (data_file de
+# .coveragerc) y el informe JSON del gate.
+htmlcov/
+coverage/
+
+# Harness y suite de tests fuera de la imagen de PRODUCCION: 738 ficheros de
+# test (incluidos sus fixtures) y 27 de evals/ viajaban dentro del contenedor que
+# expone el backend. No los usa nada en runtime.
+#
+# Es seguro en desarrollo: docker-compose.yml monta `./data-engine:/app` sobre
+# /app en los tres servicios del engine (backend, worker y scheduler), asi que
+# en dev tests/ y evals/ llegan igual desde el host.
+tests/
+evals/
+
 # IDE
 .idea
 .vscode
