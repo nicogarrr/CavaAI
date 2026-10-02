@@ -57,7 +57,17 @@ export async function getResearchCompanyBasics(ticker: string): Promise<Research
     }
 }
 
-export async function getCompanyMarketSnapshot(ticker: string): Promise<CompanyMarketSnapshot> {
+export async function getCompanyMarketSnapshot(
+    ticker: string,
+    /**
+     * Identidad del master ya resuelta (el snapshot de research la trae).
+     * `undefined` = no aportada -> se pide /api/companies/{ticker} como hasta
+     * ahora. Pasarla elimina ese round-trip, que solo repetía name/exchange/
+     * currency ya leídos. `null` = el llamante SABE que no hay basics y no se
+     * repite la petición.
+     */
+    basics?: ResearchCompanyBasics | null,
+): Promise<CompanyMarketSnapshot> {
     await requireAuthenticatedUser();
     const normalized = ticker.trim().toUpperCase();
     if (isE2EMarketFixtureEnabled(process.env, normalized)) {
@@ -66,7 +76,7 @@ export async function getCompanyMarketSnapshot(ticker: string): Promise<CompanyM
     const to = Math.floor(Date.now() / 1000);
     const from = to - 366 * 24 * 60 * 60;
     // El master primero: su bolsa/divisa deciden el símbolo de cotización.
-    const researchCompany = await getResearchCompanyBasics(normalized);
+    const researchCompany = basics !== undefined ? basics : await getResearchCompanyBasics(normalized);
     const quoteSymbol = quoteSymbolFor(researchCompany, normalized);
     if (!quoteSymbol) {
         // Sin identidad de listado verificada (master inaccesible) o sin
