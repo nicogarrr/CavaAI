@@ -238,10 +238,13 @@ services:
       - SEC_SNAPSHOT_DIR=${SEC_SNAPSHOT_DIR:-}
       - SEC_HF_MIRROR_DATASET=${SEC_HF_MIRROR_DATASET:-}
       - ESEF_SNAPSHOT_DIR=${ESEF_SNAPSHOT_DIR:-/data/esef-snapshots}
+      # Opt-in (#726): top_ten_sp500 se calcula en refresh_macro_context (cola default).
+      - SP500_FACTSHEET_SNAPSHOT_DIR=${SP500_FACTSHEET_SNAPSHOT_DIR:-/data/sp500-factsheet-snapshots}
       - RSS_FEEDS=${RSS_FEEDS:-}
     volumes:
       - duckdb_data:/data
       - ./data-esef-snapshots:/data/esef-snapshots:ro
+      - ./data-sp500-factsheet-snapshots:/data/sp500-factsheet-snapshots:ro
     healthcheck:
       # Sin HTTP: dramatiq vivo (PID 1) + Redis de cola accesible.
       test:
