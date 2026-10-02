@@ -69,11 +69,6 @@
      * vez de depender de que un componente cliente mida al otro.
      */
     --shell-top: var(--header-h);
-
-    /* Superficies del tema (ver tambien --color-surface-* en @theme). */
-    --surface-0: #0a0a0b;
-    --surface-1: #101010;
-    --surface-2: #18181b;
 }
 
 .dark {

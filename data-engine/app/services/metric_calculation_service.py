@@ -191,6 +191,46 @@ def _quantize(value: Decimal) -> Decimal:
 _ABSOLUTE_AMOUNT_SOURCES = frozenset({"yfinance", "Finnhub", "SEC", "FMP"})
 
 
+# Rango plausible de una beta de MERCADO. Fuera de el el fact no es una beta:
+# o la ventana de regresion es tan corta que la covarianza con el mercado no
+# llega a ser significativa (beta 0,15), o el proveedor entrego otra magnitud
+# con la escala mal leida (una beta de 5 suele ser un 0,5 con la escala x10),
+# y una beta negativa no describe un equity. El impacto no es academico: con
+# rf 3,0%, ERP 5,5% y beta 0,15 el coste de equity cae a 3,8%, el WACC a 3,9%,
+# el spread sobre g=2,5% queda en 1,4pp y el PV del valor terminal se
+# multiplica por ~3,4 con el DCF marcado publicable. No se recorta al extremo
+# mas cercano: recortar es inventar una beta. El input se declara ausente.
+BETA_PLAUSIBLE_RANGE = (Decimal("0.2"), Decimal("3.0"))
+
+
+def _beta_is_plausible(beta: Decimal) -> bool:
+    low, high = BETA_PLAUSIBLE_RANGE
+    return low <= beta <= high
+
+
+def _gated_input(
+    name: str,
+    reason: str,
+    detail: str,
+    *,
+    value: Decimal | None = None,
+) -> dict:
+    """Entrada que el gate de honestidad del WACC se niega a usar.
+
+    Se registra en el ``calculation_trace`` para que el motivo sea auditable.
+    ``resolution`` es siempre ``treated_as_absent``: un input que no supera el
+    gate vale exactamente lo mismo que un input que no existe, y su valor no
+    se sustituye por un default.
+    """
+    return {
+        "input": name,
+        "value": None if value is None else str(value),
+        "reason": reason,
+        "resolution": "treated_as_absent",
+        "detail": detail,
+    }
+
+
 def _capital_scale_conflict(equity_fact: FinancialFact, debt_fact: FinancialFact) -> bool:
     """True si equity y debt no son comparables para el WACC.
 
@@ -837,9 +877,11 @@ class MetricCalculationService:
         best_facts: dict[str, FinancialFact] = {"risk_free_rate": anchors[0]}
         best_missing: list[str] = []
         best_tax_trace: dict = {}
+        best_gated: list[dict] = []
         for anchor in anchors:
             facts: dict[str, FinancialFact] = {"risk_free_rate": anchor}
             missing: list[str] = []
+            gated: list[dict] = []
             for key, aliases in (
                 ("beta", ("beta",)),
                 ("equity_risk_premium", ("equity_risk_premium",)),
@@ -856,6 +898,27 @@ class MetricCalculationService:
                     facts[key] = matched[1]
                 else:
                     missing.append(key)
+
+            # Beta presente pero no plausible: mismo estado que beta ausente.
+            # Se saca de `facts` (asi no entra en source_fact_ids ni se
+            # presenta como input disponible) y se declara en `missing`.
+            beta_fact = facts.get("beta")
+            if beta_fact is not None and not _beta_is_plausible(
+                Decimal(beta_fact.value)
+            ):
+                del facts["beta"]
+                missing.append("beta")
+                gated.append(
+                    _gated_input(
+                        "beta",
+                        "beta_outside_plausible_range",
+                        "beta de mercado fuera de "
+                        f"[{BETA_PLAUSIBLE_RANGE[0]}, {BETA_PLAUSIBLE_RANGE[1]}]: "
+                        "el dato es basura o una escala mal parseada; no se "
+                        "recorta a los extremos",
+                        value=Decimal(beta_fact.value),
+                    )
+                )
 
             # Solo valor de MERCADO para el peso de equity. `total_equity` es el
             # patrimonio contable: usarlo como Ew del WACC mezcla market value
@@ -933,21 +996,50 @@ class MetricCalculationService:
                     anchor,
                     allow_latest=True,
                 )
-                country_risk_rate = Decimal("0")
-                if country_risk:
+                # Sin fact de CRP el WACC NO se calcula. Un 0 explicito seria
+                # afirmar "esta compañía no tiene riesgo pais", y para
+                # Argentina, Nigeria o Arabia son +-10pp de CRP real: con rf
+                # 4,5%, beta 1,2 y ERP 5,5% el coste de equity salia 11,1%
+                # donde correspondia ~21%. Como el DCF escala con 1/(WACC-g),
+                # ese -10pp multiplica el valor por accion por ~2,3. La CRP es
+                # input obligatorio: si no hay fact, el unico CRP 0 legitimo es
+                # el declarado por la politica (wacc_policy, con fuente y
+                # fecha), no el que aparece por defecto en este codigo.
+                if not country_risk:
+                    missing.append("country_risk_premium")
+                    gated.append(
+                        _gated_input(
+                            "country_risk_premium",
+                            "absent_never_defaulted_to_zero",
+                            "sin fact de prima de riesgo pais: un 0 implicito "
+                            "subestimaria el coste de equity en los +10pp que "
+                            "aplica a mercados emergentes; el WACC queda "
+                            "unavailable en vez de descontar con un 0 inventado",
+                        )
+                    )
+                else:
                     facts["country_risk_premium"] = country_risk[1]
                     normalized_country_risk, _ = self._normalize_rate(
                         country_risk[1].value
                     )
                     if normalized_country_risk is None:
                         missing.append("valid_country_risk_premium")
-                    else:
-                        country_risk_rate = normalized_country_risk
+                        gated.append(
+                            _gated_input(
+                                "country_risk_premium",
+                                "invalid_country_risk_premium",
+                                "el fact existe pero no es una tasa valida "
+                                "(negativa o >100%): se declara ausente en "
+                                "vez de tomar 0",
+                                value=Decimal(country_risk[1].value),
+                            )
+                        )
 
             if len(facts) >= len(best_facts):
                 best_facts = facts
                 best_missing = missing
                 best_tax_trace = tax_trace
+                best_gated = gated
             if missing:
                 continue
 
@@ -971,6 +1063,7 @@ class MetricCalculationService:
                 best_facts = facts
                 best_missing = ["valid_rates_and_capital_weights"]
                 best_tax_trace = tax_trace
+                best_gated = gated
                 continue
             if _capital_scale_conflict(facts["equity_value"], facts["total_debt"]):
                 # market_cap viene de market data en unidades absolutas;
@@ -982,13 +1075,12 @@ class MetricCalculationService:
                 best_facts = facts
                 best_missing = ["capital_amounts_scale_mismatch"]
                 best_tax_trace = tax_trace
+                best_gated = gated
                 continue
 
-            country_risk_rate = (
-                self._normalize_rate(facts["country_risk_premium"].value)[0]
-                if "country_risk_premium" in facts
-                else Decimal("0")
-            )
+            country_risk_rate = self._normalize_rate(
+                facts["country_risk_premium"].value
+            )[0]
             assert country_risk_rate is not None
             assert tax_rate is not None
             assert cost_of_debt is not None
@@ -1012,6 +1104,10 @@ class MetricCalculationService:
                 **tax_trace,
                 "risk_free_rate": str(risk_free_rate),
                 "beta": str(beta),
+                "beta_plausible_range": [
+                    str(BETA_PLAUSIBLE_RANGE[0]),
+                    str(BETA_PLAUSIBLE_RANGE[1]),
+                ],
                 "equity_risk_premium": str(equity_risk_premium),
                 "country_risk_premium": str(country_risk_rate),
                 "cost_of_equity": str(cost_of_equity),
@@ -1086,6 +1182,7 @@ class MetricCalculationService:
                 **best_tax_trace,
                 "reason": "missing_or_incoherent_inputs",
                 "missing_inputs": sorted(set(best_missing)),
+                "gated_inputs": best_gated,
                 "available_inputs": sorted(best_facts),
                 "currency": company.currency,
                 "as_of_period": anchor.period,
@@ -1400,6 +1497,12 @@ class MetricCalculationService:
         if risk_free is None or erp is None:
             return None
         beta = Decimal(beta_facts[0].value)
+        if not _beta_is_plausible(beta):
+            # Mismo gate que el WACC estándar: una beta no plausible haría que
+            # el umbral del check roic>wacc se cumpliera con un coste de equity
+            # sin respaldo, en la dirección que ENGANA (roic "pasa"). Sin beta
+            # creíble el check queda no evaluable.
+            return None
         country_rate = Decimal("0")
         crp_facts = self._facts_for_metric(db, company, "country_risk_premium")
         if crp_facts:

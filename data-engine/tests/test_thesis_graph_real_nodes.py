@@ -1,4 +1,9 @@
-"""Stage 6d/6e: real deterministic nodes (resolve_company, freeze_input_snapshot, probes)."""
+"""Read-side probes of the thesis graph: every node reports what it verified.
+
+There is no "skeleton without a session factory" mode any more: a probe that
+cannot read the database would only report a placeholder, so ``build_thesis_graph``
+requires a session and these tests cover the honest artefacts instead.
+"""
 
 import pytest
 from sqlalchemy import create_engine
@@ -46,12 +51,17 @@ def _config(thread_id: str) -> dict:
     return {"configurable": {"thread_id": thread_id}}
 
 
-def test_resolve_company_real_with_session_factory(db):
-    company = _company(db)
+def _run(db: Session, thread_id: str) -> dict:
+    """Run the graph up to the approval interrupt and return its state."""
     with sqlite_checkpointer() as saver:
         graph = build_thesis_graph(checkpointer=saver, session_factory=_Scope(db))
-        graph.invoke({"ticker": "AAPL", "tenant_id": "t1"}, config=_config("t:r1"))
-        state = graph.get_state(_config("t:r1")).values
+        graph.invoke({"ticker": "AAPL", "tenant_id": "t1"}, config=_config(thread_id))
+        return graph.get_state(_config(thread_id)).values
+
+
+def test_resolve_company_real(db):
+    company = _company(db)
+    state = _run(db, "t:r1")
     assert state["company_id"] == str(company.id)
     assert state["artifacts"]["resolve_company"] == f"company:{company.id}"
 
@@ -61,15 +71,6 @@ def test_resolve_company_unknown_ticker_fails_loudly(db):
         graph = build_thesis_graph(checkpointer=saver, session_factory=_Scope(db))
         with pytest.raises(ValueError, match="unknown_company:NOPE"):
             graph.invoke({"ticker": "NOPE", "tenant_id": "t1"}, config=_config("t:r2"))
-
-
-def test_resolve_company_skeleton_without_session_factory():
-    with sqlite_checkpointer() as saver:
-        graph = build_thesis_graph(checkpointer=saver)
-        graph.invoke({"ticker": "AAPL", "tenant_id": "t1"}, config=_config("t:r3"))
-        state = graph.get_state(_config("t:r3")).values
-    assert state["artifacts"]["resolve_company"] == "pending:resolve_company"
-    assert "company_id" not in state
 
 
 def test_freeze_input_snapshot_deterministic_and_idempotent(db):
@@ -102,6 +103,7 @@ def test_caller_fingerprint_wins(db):
 
 # --- ensure_ingestion_complete: evidence coverage probe ---
 
+
 def _seed_evidence(db: Session, company_id: int) -> None:
     from datetime import date
 
@@ -119,10 +121,7 @@ def _seed_evidence(db: Session, company_id: int) -> None:
 def test_ingestion_probe_counts_evidence(db):
     company = _company(db)
     _seed_evidence(db, company.id)
-    with sqlite_checkpointer() as saver:
-        graph = build_thesis_graph(checkpointer=saver, session_factory=_Scope(db))
-        graph.invoke({"ticker": "AAPL", "tenant_id": "t1"}, config=_config("t:i1"))
-        state = graph.get_state(_config("t:i1")).values
+    state = _run(db, "t:i1")
     assert state["artifacts"]["ensure_ingestion_complete"] == "evidence:facts=1,prices=1,docs=1"
     assert state["meta"]["evidence_coverage"] == {
         "financial_facts": 1,
@@ -133,10 +132,7 @@ def test_ingestion_probe_counts_evidence(db):
 
 def test_ingestion_probe_zero_coverage_is_honest_not_error(db):
     _company(db)
-    with sqlite_checkpointer() as saver:
-        graph = build_thesis_graph(checkpointer=saver, session_factory=_Scope(db))
-        graph.invoke({"ticker": "AAPL", "tenant_id": "t1"}, config=_config("t:i2"))
-        state = graph.get_state(_config("t:i2")).values
+    state = _run(db, "t:i2")
     assert state["artifacts"]["ensure_ingestion_complete"] == "evidence:facts=0,prices=0,docs=0"
     assert state["meta"]["evidence_coverage"] == {
         "financial_facts": 0,
@@ -145,14 +141,8 @@ def test_ingestion_probe_zero_coverage_is_honest_not_error(db):
     }
 
 
-def test_ingestion_probe_skeleton_without_session_factory():
-    with sqlite_checkpointer() as saver:
-        graph = build_thesis_graph(checkpointer=saver)
-        graph.invoke({"ticker": "AAPL", "tenant_id": "t1"}, config=_config("t:i3"))
-        state = graph.get_state(_config("t:i3")).values
-    assert state["artifacts"]["ensure_ingestion_complete"] == "pending:ensure_ingestion_complete"
-
 # --- build_fundamental_model / deterministic_valuation: read-side probes ---
+
 
 def _seed_model_and_valuation(db: Session, company_id: int) -> None:
     from app.models.entities import FundamentalModelVersion, FundamentalValuationSnapshot
@@ -178,10 +168,7 @@ def _seed_model_and_valuation(db: Session, company_id: int) -> None:
 def test_fundamental_model_probe_reads_latest(db):
     company = _company(db)
     _seed_model_and_valuation(db, company.id)
-    with sqlite_checkpointer() as saver:
-        graph = build_thesis_graph(checkpointer=saver, session_factory=_Scope(db))
-        graph.invoke({"ticker": "AAPL", "tenant_id": "t1"}, config=_config("t:m1"))
-        state = graph.get_state(_config("t:m1")).values
+    state = _run(db, "t:m1")
     assert state["artifacts"]["build_fundamental_model"] == "model:v3:fp-input-012"
     assert state["meta"]["fundamental_model"] == {
         "version": 3,
@@ -195,23 +182,11 @@ def test_fundamental_model_probe_reads_latest(db):
 
 def test_model_and_valuation_probes_honest_none(db):
     _company(db)
-    with sqlite_checkpointer() as saver:
-        graph = build_thesis_graph(checkpointer=saver, session_factory=_Scope(db))
-        graph.invoke({"ticker": "AAPL", "tenant_id": "t1"}, config=_config("t:m2"))
-        state = graph.get_state(_config("t:m2")).values
+    state = _run(db, "t:m2")
     assert state["artifacts"]["build_fundamental_model"] == "model:none"
     assert state["meta"]["fundamental_model"] is None
     assert state["artifacts"]["deterministic_valuation"] == "valuation:none"
     assert state["meta"]["valuation_snapshot"] is None
-
-
-def test_model_and_valuation_probes_skeleton_without_session_factory():
-    with sqlite_checkpointer() as saver:
-        graph = build_thesis_graph(checkpointer=saver)
-        graph.invoke({"ticker": "AAPL", "tenant_id": "t1"}, config=_config("t:m3"))
-        state = graph.get_state(_config("t:m3")).values
-    assert state["artifacts"]["build_fundamental_model"] == "pending:build_fundamental_model"
-    assert state["artifacts"]["deterministic_valuation"] == "pending:deterministic_valuation"
 
 
 def _seed_facts_and_doc(db: Session, company_id: int):
@@ -236,10 +211,7 @@ def _seed_facts_and_doc(db: Session, company_id: int):
 def test_source_audit_probe_reports_observed_distribution(db):
     company = _company(db)
     _seed_facts_and_doc(db, company.id)
-    with sqlite_checkpointer() as saver:
-        graph = build_thesis_graph(checkpointer=saver, session_factory=_Scope(db))
-        graph.invoke({"ticker": "AAPL", "tenant_id": "t1"}, config=_config("t:a1"))
-        state = graph.get_state(_config("t:a1")).values
+    state = _run(db, "t:a1")
     assert state["artifacts"]["source_audit"] == (
         "audit:facts={FMP:1,SEC:2}|docs={SEC:1}|lowconf=1"
     )
@@ -252,19 +224,8 @@ def test_source_audit_probe_reports_observed_distribution(db):
 
 def test_source_audit_probe_honest_empty(db):
     _company(db)
-    with sqlite_checkpointer() as saver:
-        graph = build_thesis_graph(checkpointer=saver, session_factory=_Scope(db))
-        graph.invoke({"ticker": "AAPL", "tenant_id": "t1"}, config=_config("t:a2"))
-        state = graph.get_state(_config("t:a2")).values
+    state = _run(db, "t:a2")
     assert state["artifacts"]["source_audit"] == "audit:facts={}|docs={}|lowconf=0"
-
-
-def test_source_audit_skeleton_without_session_factory():
-    with sqlite_checkpointer() as saver:
-        graph = build_thesis_graph(checkpointer=saver)
-        graph.invoke({"ticker": "AAPL", "tenant_id": "t1"}, config=_config("t:a3"))
-        state = graph.get_state(_config("t:a3")).values
-    assert state["artifacts"]["source_audit"] == "pending:source_audit"
 
 
 def test_red_team_probe_reads_latest_run(db):
@@ -274,10 +235,7 @@ def test_red_team_probe_reads_latest_run(db):
     db.add(RedTeamRun(company_id=company.id, status="completed", score=72,
                       prompt_version="red-team-v1"))
     db.commit()
-    with sqlite_checkpointer() as saver:
-        graph = build_thesis_graph(checkpointer=saver, session_factory=_Scope(db))
-        graph.invoke({"ticker": "AAPL", "tenant_id": "t1"}, config=_config("t:rt1"))
-        state = graph.get_state(_config("t:rt1")).values
+    state = _run(db, "t:rt1")
     assert state["artifacts"]["deterministic_red_team"] == "redteam:1:score=72"
     assert state["meta"]["red_team_run"] == {
         "id": 1,
@@ -289,17 +247,83 @@ def test_red_team_probe_reads_latest_run(db):
 
 def test_red_team_probe_honest_none(db):
     _company(db)
-    with sqlite_checkpointer() as saver:
-        graph = build_thesis_graph(checkpointer=saver, session_factory=_Scope(db))
-        graph.invoke({"ticker": "AAPL", "tenant_id": "t1"}, config=_config("t:rt2"))
-        state = graph.get_state(_config("t:rt2")).values
+    state = _run(db, "t:rt2")
     assert state["artifacts"]["deterministic_red_team"] == "redteam:none"
     assert state["meta"]["red_team_run"] is None
 
 
-def test_red_team_skeleton_without_session_factory():
-    with sqlite_checkpointer() as saver:
-        graph = build_thesis_graph(checkpointer=saver)
-        graph.invoke({"ticker": "AAPL", "tenant_id": "t1"}, config=_config("t:rt3"))
-        state = graph.get_state(_config("t:rt3")).values
-    assert state["artifacts"]["deterministic_red_team"] == "pending:deterministic_red_team"
+# --- draft_synthesis: observation of what the classic path composed ---
+
+
+def _seed_thesis(db: Session, company_id: int, *, version: int = 2, status: str) -> None:
+    from app.models.entities import ThesisSection, ThesisVersion
+
+    row = ThesisVersion(
+        company_id=company_id, version=version, status=status,
+        thesis_markdown="# thesis body", executive_summary="summary",
+        rating="buy", data_confidence_score=70, source_coverage_score=55,
+    )
+    db.add(row)
+    db.flush()
+    for index, key in enumerate(("drivers", "risks", "valuation")):
+        db.add(ThesisSection(
+            thesis_version_id=row.id, company_id=company_id, section_key=key,
+            title=key.title(), body="body", order_index=index,
+        ))
+    db.commit()
+    return row
+
+
+def test_draft_synthesis_reports_the_latest_persisted_version(db):
+    company = _company(db)
+    _seed_thesis(db, company.id, version=1, status="superseded")
+    _seed_thesis(db, company.id, version=2, status="draft")
+    state = _run(db, "t:d1")
+    artifact = state["artifacts"]["draft_synthesis"]
+    assert artifact.startswith("thesis:v2:draft:sections=3:sha=")
+    assert state["meta"]["thesis_draft"]["version"] == 2
+    assert state["meta"]["thesis_draft"]["status"] == "draft"
+    assert state["meta"]["thesis_draft"]["sections"] == 3
+    assert state["meta"]["thesis_draft"]["rating"] == "buy"
+    assert state["meta"]["thesis_draft"]["data_confidence_score"] == 70
+    assert len(state["meta"]["thesis_draft"]["markdown_sha256"]) == 12
+
+
+def test_draft_synthesis_honest_none_without_a_thesis(db):
+    _company(db)
+    state = _run(db, "t:d2")
+    assert state["artifacts"]["draft_synthesis"] == "thesis:none"
+    assert state["meta"]["thesis_draft"] is None
+
+
+# --- assemble_candidate: deterministic digest of the observations ---
+
+
+def test_candidate_digest_is_deterministic_and_bundles_observations(db):
+    company = _company(db)
+    _seed_thesis(db, company.id, status="draft")
+    first = _run(db, "t:c1")["meta"]["candidate"]
+    second = _run(db, "t:c2")["meta"]["candidate"]
+    assert first["digest"] == second["digest"]
+    assert first["ticker"] == "AAPL"
+    assert first["executor"] == "classic_thesis_service_path"
+    assert set(first["observations"]) == {
+        "resolve_company",
+        "ensure_ingestion_complete",
+        "build_fundamental_model",
+        "deterministic_valuation",
+        "draft_synthesis",
+        "source_audit",
+        "deterministic_red_team",
+    }
+    assert not any(
+        ref.startswith("pending:") for ref in first["observations"].values()
+    )
+
+
+def test_candidate_digest_changes_when_an_observation_changes(db):
+    company = _company(db)
+    before = _run(db, "t:c3")["meta"]["candidate"]["digest"]
+    _seed_thesis(db, company.id, status="draft")
+    after = _run(db, "t:c4")["meta"]["candidate"]["digest"]
+    assert before != after

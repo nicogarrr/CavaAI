@@ -7,7 +7,7 @@ import { AstSmaChart } from '@/components/research/AstSmaChart';
 
 function SourceObjects({ objects }: { objects: AstOrbitObject[] }) {
   return <ul className="grid min-w-0 gap-3 lg:grid-cols-2">
-    {objects.map((item) => <li className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-4" key={item.norad_cat_id}>
+    {objects.map((item) => <li className="min-w-0 rounded-xl border border-gray-800 bg-surface-1 p-4" key={item.norad_cat_id}>
       <div className="flex flex-wrap items-baseline justify-between gap-2"><h3 className="break-words font-semibold text-gray-100">{item.object_name}</h3><span className="text-xs text-gray-500">NORAD {item.norad_cat_id}</span></div>
       <p className="mt-2 text-sm text-gray-300">Semieje mayor: {item.sma_km === null ? 'sin datos' : `${formatNumber(item.sma_km, { maximumFractionDigits: 1 })} km`}</p>
       <p className="mt-1 text-sm text-gray-300">Tendencia: {item.signal.delta_sma_km === null ? item.signal.status : `${item.signal.delta_sma_km > 0 ? '+' : ''}${formatNumber(item.signal.delta_sma_km, { maximumFractionDigits: 2 })} km en ${formatNumber(item.signal.hours, { maximumFractionDigits: 0 })} h`}</p>
