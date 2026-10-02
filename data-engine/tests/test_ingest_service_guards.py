@@ -422,3 +422,56 @@ def test_el_conteo_de_portada_no_entra_como_shares_diluted_trimestral(db, monkey
     assert [f.period for f in outstanding] == ["2025-08-15:Q3"]
 
 
+# --------------------------------------------------------------------------
+# FIX de la publicacion: Document.published_at desde el filed de los hechos
+# --------------------------------------------------------------------------
+
+
+def test_publicacion_sec_persiste_el_filed_mas_reciente(db, monkeypatch):
+    monkeypatch.setattr(ingestion, "SECClient", _FakeSECConCortes)
+    company = _company(db)
+    asyncio.run(
+        FinancialIngestionService().refresh_from_sec(db=db, company=company, as_of=date(2026, 10, 1))
+    )
+    document = db.scalar(select(Document).where(Document.source_type == "SEC"))
+    assert document.published_at is not None
+    assert document.published_at.date() == date(2026, 2, 10)  # max(filed) de lo ingerido
+
+
+def test_publicacion_esef_persiste_la_fecha_del_snapshot(db, monkeypatch):
+    from app.services.connectors import esef as esef_connector
+
+    snapshot = {
+        "lei": "9598SYNTHETIC0000001",
+        "ticker": "ACME",
+        "entity_name": "Synthetic SA",
+        "period_end": "2025-12-31",
+        "fxo_id": "9598SYNTHETIC0000001-2025-12-31",
+        "fetched_at": "2026-01-05",
+        "facts": {"ifrs-full:Revenue": {"iso4217:EUR": [
+            {"start": "2025-01-01", "end": "2025-12-31", "val": "7000000000",
+             "decimals": 0, "lei": "9598SYNTHETIC0000001", "dims": []},
+        ]}},
+    }
+    monkeypatch.setattr(esef_connector, "read_esef_snapshot", lambda t: snapshot)
+    company = _company(db, "ACME")
+    result = asyncio.run(FinancialIngestionService().refresh_from_esef(db=db, company=company))
+    assert result["status"] == "ingested"
+    document = db.scalar(select(Document).where(Document.source_type == "ESEF"))
+    assert document.published_at is not None
+    assert document.published_at.date() == date(2026, 1, 5)
+
+
+def test_publicacion_fmp_persiste_el_filling_date_mas_reciente(db):
+    class _FakeFMP(_FakeFMPDuplicado):
+        async def income_statement(self, ticker, limit=5):
+            return [
+                {"symbol": "ACME", "date": "2025-12-31", "period": "FY", "calendarYear": 2025,
+                 "fillingDate": "2026-02-12", "revenue": 5000000000},
+            ]
+
+    company = _company(db, "ACME")
+    asyncio.run(FinancialIngestionService().refresh_from_fmp(db, company, client=_FakeFMP()))
+    document = db.scalar(select(Document).where(Document.source_type == "FMP"))
+    assert document.published_at is not None
+    assert document.published_at.date() == date(2026, 2, 12)

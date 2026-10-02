@@ -1010,6 +1010,11 @@ class FinancialIngestionService:
         facts_imported = 0
         cash_restricted_years: set[int] = set()
         concept_usage: dict[str, dict[str, Any]] = {}
+        # FIX de la publicacion: `FinancialFact` no tiene `available_at` (la
+        # columna y su migracion pertenecen a fx1), asi que la fecha de
+        # publicacion de lo ingerido se persiste en `Document.published_at`
+        # desde el `filed` de cada hecho escrito.
+        publication_dates: list[date] = []
         # La moda SOLO etiqueta trimestres (los 10-Q no declaran su cierre de
         # ejercicio por hecho); la admision anual va por ancla de filing.
         modal_fy_month = _current_fiscal_month_from_anchors(
@@ -1154,6 +1159,9 @@ class FinancialIngestionService:
                         f"{entry['end']}:{fp}"
                     ] = entry.get("_concept")
                     facts_imported += 1
+                    filed_on = _publication_date(entry)
+                    if filed_on is not None:
+                        publication_dates.append(filed_on)
             # Los alias se FUSIONAN, no "gana el primero que informe": muchos
             # filers migraron de tag (Revenues -> SalesRevenueNet ->
             # RevenueFromContractWithCustomer...) y el tag antiguo queda
@@ -1210,11 +1218,23 @@ class FinancialIngestionService:
                         "_concept"
                     )
                     facts_imported += 1
+                    filed_on = _publication_date(entry)
+                    if filed_on is not None:
+                        publication_dates.append(filed_on)
 
         if concept_usage:
             existing_meta = dict(document.metadata_ or {})
             existing_meta["xbrl_concept_by_metric_period"] = concept_usage
             document.metadata_ = existing_meta
+
+        if publication_dates:
+            # Max(filed) = el momento en que TODO lo persistido ya era publico.
+            # Es lo que puede afirmar un documento compartido por todos los
+            # hechos; con `FinancialFact.available_at` (pendiente de fx1) el
+            # guard point-in-time podra afinar por hecho.
+            document.published_at = datetime.combine(
+                max(publication_dates), datetime.min.time(), tzinfo=UTC
+            )
 
         db.flush()
 
@@ -1344,6 +1364,17 @@ class FinancialIngestionService:
         document = self._source_document_esef(db, company, ticker, snapshot)
         self._replace_esef_data(db, company, document)
         facts_imported = 0
+        # FIX de la publicacion (ver refresh_from_sec): los renders xBRL-JSON no
+        # traen `filed`; lo que si sabemos es cuando el snapshot entro en
+        # local. Es la fecha honesta de disponibilidad del documento.
+        publication_dates: list[date] = []
+        fetched_on: date | None = None
+        fetched_raw = str(snapshot.get("fetched_at") or "").strip()
+        if fetched_raw:
+            try:
+                fetched_on = date.fromisoformat(fetched_raw[:10])
+            except ValueError:
+                fetched_on = None
 
         esef_coverage: dict[str, Any] = {}
         for metric, concepts, unit in ESEF_METRIC_MAP:
@@ -1372,9 +1403,18 @@ class FinancialIngestionService:
                     )
                 )
                 facts_imported += 1
+                filed_on = _publication_date(by_period[period_date])
+                if filed_on is not None:
+                    publication_dates.append(filed_on)
 
         db.flush()  # la sesion de ingestion usa autoflush=False: flush antes de derivar
         facts_imported += self._derive_esef_metrics(db, company, document)
+        if publication_dates or (facts_imported and fetched_on):
+            document.published_at = datetime.combine(
+                max(publication_dates, default=fetched_on),
+                datetime.min.time(),
+                tzinfo=UTC,
+            )
 
         document.metadata_ = {
             **(document.metadata_ or {}),
