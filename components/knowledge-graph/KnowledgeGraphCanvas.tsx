@@ -173,6 +173,26 @@ export default function KnowledgeGraphCanvas({ graph }: Props) {
         return queryString ? `${pathname}?${queryString}` : pathname;
     }, [pathname, searchParams, selectedId]);
 
+    /**
+     * «Enlace compartible» era un `<Link>` a la URL ACTUAL: el panel solo se
+     * pinta con `?focus=` ya en la URL, así que el href era idéntico a
+     * `location.href` y Next no navegaba a ninguna parte (clic muerto). El
+     * botón copia la URL absoluta al portapapeles; sin Clipboard API (contexto
+     * no seguro) lo dice y enseña el enlace para copiarlo a mano.
+     */
+    const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
+    useEffect(() => setCopyState('idle'), [selectedId]);
+    const copyShareLink = useCallback(async () => {
+        const absolute = new URL(shareHref, window.location.href).toString();
+        try {
+            if (!navigator.clipboard?.writeText) throw new Error('Clipboard API no disponible');
+            await navigator.clipboard.writeText(absolute);
+            setCopyState('copied');
+        } catch {
+            setCopyState('failed');
+        }
+    }, [shareHref]);
+
     const selectAndCenter = useCallback(
         (id: number) => {
             const node = nodeById.get(id);
@@ -736,9 +756,17 @@ export default function KnowledgeGraphCanvas({ graph }: Props) {
                                     {t('knowledgeGraph.detail.scopeLink')}
                                 </Link>
                             </Button>
-                            <Button asChild className="w-full" size="sm" variant="ghost">
-                                <Link href={shareHref}>{t('knowledgeGraph.detail.shareLink')}</Link>
-                            </Button>
+                        <Button className="w-full" data-testid="kg-copy-link" onClick={() => void copyShareLink()} size="sm" type="button" variant="ghost">
+                            {t('knowledgeGraph.detail.shareLink')}
+                        </Button>
+                        <p aria-live="polite" className="text-xs text-gray-500" role="status">
+                            {copyState === 'copied' ? t('knowledgeGraph.detail.shareLinkCopied') : copyState === 'failed' ? t('knowledgeGraph.detail.shareLinkFailed') : ''}
+                        </p>
+                        {copyState === 'failed' ? (
+                            <code className="block w-full break-all rounded-md border border-gray-800 bg-black/30 p-2 text-xs text-gray-300">
+                                {new URL(shareHref, typeof window === 'undefined' ? 'http://localhost' : window.location.href).toString()}
+                            </code>
+                        ) : null}
                         </div>
                     </div>
                 )}
