@@ -1,0 +1,44 @@
+{
+ "origin": "synthetic_fixture",
+ "cik": 1,
+ "entityName": "SYNTHETIC HOLDINGS PLC (synthetic fixture)",
+ "facts": {
+  "us-gaap": {
+   "WeightedAverageNumberOfDilutedSharesOutstanding": {
+    "label": "Weighted average diluted shares",
+    "description": "synthetic quarterly flow fact",
+    "units": {
+     "shares": [
+      {
+       "start": "2025-04-01",
+       "end": "2025-06-30",
+       "val": 1170000000,
+       "accn": "0000000001-25-000010",
+       "fy": 2025,
+       "fp": "Q2",
+       "form": "10-Q",
+       "filed": "2025-08-01"
+      }
+     ]
+    }
+   },
+   "CommonStockSharesOutstanding": {
+    "label": "Common shares outstanding",
+    "description": "synthetic cover-page instant count inside the same 10-Q",
+    "units": {
+     "shares": [
+      {
+       "end": "2025-08-15",
+       "val": 1260000000,
+       "accn": "0000000001-25-000010",
+       "fy": 2025,
+       "fp": "Q3",
+       "form": "10-Q",
+       "filed": "2025-08-15"
+      }
+     ]
+    }
+   }
+  }
+ }
+}

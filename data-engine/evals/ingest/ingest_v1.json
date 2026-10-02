@@ -42,11 +42,11 @@
   }
  ],
  "summary": {
-  "cases": 80,
+  "cases": 82,
   "negative_controls": 11,
   "degradation_cases": 11,
   "families": {
-   "sec": 42,
+   "sec": 44,
    "fmp": 20,
    "esef": 18
   },
@@ -4245,6 +4245,117 @@
       "fiscal_quarter": "FY"
      }
     ],
+    "absent_metrics": [],
+    "as_of": "2026-10-01",
+    "tolerance": {
+     "relative": "0",
+     "absolute": "0.000001"
+    },
+    "index": {
+     "verified": [],
+     "official": [],
+     "unverified": []
+    }
+   },
+   "applies_to": [
+    "fixture_schema_valid",
+    "extracted_values_match_fixture",
+    "period_attribution_correct",
+    "no_lookahead",
+    "official_only_if_index_verified",
+    "absent_fields_reported_as_null",
+    "units_consistent",
+    "source_types_declared",
+    "duplicates_collapsed"
+   ]
+  },
+  {
+   "id": "sec-036-shares-saldo-no-es-promedio",
+   "family": "sec",
+   "category": "shares_basis",
+   "scenario": "sec_companyfacts",
+   "description": "CommonStockSharesOutstanding (saldo instantaneo, filed mas reciente) y WeightedAverageNumberOfDilutedSharesOutstanding (promedio ponderado) son magnitudes distintas: el divisor del DCF es el promedio y el saldo vive en su propia metrica shares_outstanding.",
+   "scenario_args": {
+    "companyfacts": "sec/companyfacts_shares_outstanding.json",
+    "submissions": "sec/submissions_calendar_fy.json"
+   },
+   "expected": {
+    "facts": [
+     {
+      "metric": "shares_diluted",
+      "period": "2025-12-31:FY",
+      "value": 1176000000,
+      "unit": "shares",
+      "fiscal_year": 2025,
+      "fiscal_quarter": "FY"
+     },
+     {
+      "metric": "shares_outstanding",
+      "period": "2025-12-31:FY",
+      "value": 1250000000,
+      "unit": "shares",
+      "fiscal_year": 2025,
+      "fiscal_quarter": "FY"
+     }
+    ],
+    "absent_metrics": [],
+    "as_of": "2026-10-01",
+    "tolerance": {
+     "relative": "0",
+     "absolute": "0.000001"
+    },
+    "index": {
+     "verified": [],
+     "official": [],
+     "unverified": []
+    }
+   },
+   "applies_to": [
+    "fixture_schema_valid",
+    "extracted_values_match_fixture",
+    "period_attribution_correct",
+    "no_lookahead",
+    "official_only_if_index_verified",
+    "absent_fields_reported_as_null",
+    "units_consistent",
+    "source_types_declared",
+    "duplicates_collapsed"
+   ]
+  },
+  {
+   "id": "sec-037-shares-cover-trimestral",
+   "family": "sec",
+   "category": "shares_basis",
+   "scenario": "sec_companyfacts",
+   "description": "El conteo de portada (instantaneo, sin start) de un 10-Q no puede entrar como shares_diluted: el trimestre se queda con el promedio ponderado (flujo con start) y el conteo va a shares_outstanding.",
+   "scenario_args": {
+    "companyfacts": "sec/companyfacts_shares_quarterly.json",
+    "submissions": "sec/submissions_calendar_fy.json"
+   },
+   "expected": {
+    "facts": [
+     {
+      "metric": "shares_diluted",
+      "period": "2025-06-30:Q2",
+      "value": 1170000000,
+      "unit": "shares",
+      "fiscal_year": null,
+      "fiscal_quarter": "Q2"
+     },
+     {
+      "metric": "shares_outstanding",
+      "period": "2025-08-15:Q3",
+      "value": 1260000000,
+      "unit": "shares",
+      "fiscal_year": null,
+      "fiscal_quarter": "Q3"
+     }
+    ],
+    "periods": {
+     "shares_diluted": [
+      "2025-06-30:Q2"
+     ]
+    },
     "absent_metrics": [],
     "as_of": "2026-10-01",
     "tolerance": {
