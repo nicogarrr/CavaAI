@@ -32,12 +32,12 @@ Reglas que valen para todas las filas:
 |---|---|---:|---:|---|---|
 | **Cobertura total gateada** | Sentencias + ramas de `app/**` + `alembic/**`, exento `alembic` | **84.27 %** | **84** (ratchet por paquete, `max_drop_points = 0`) | `data-engine/scripts/run_coverage_gate.py` | [`.github/workflows/coverage.yml`](../.github/workflows/coverage.yml) |
 | **Cobertura con exentos** | Lo mismo mas `alembic`, que se mide y se reporta pero no gatea (se ejercita en subproceso) | **81.99 %** | **81** (`fail_under`) | el mismo | el mismo |
-| **RAG faithfulness** | Fraccion de frases de la respuesta respaldadas por el contexto recuperado (RAGAS, juez determinista) | ver log del job `evals` (sin verificar en CI de main a 2026-10-02) | **>= 0.75** | `data-engine/scripts/run_rag_evals.py` | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), job `evals` |
-| **RAG answer_relevancy** | Proporcion de terminos de contenido de la pregunta cubiertos por la mejor frase | ver log del job `evals` (sin verificar en CI de main a 2026-10-02) | **>= 0.70** | el mismo | el mismo |
-| **RAG context_precision** | Average precision de RAGAS con relevancia binaria (Dice >= 0.30) | ver log del job `evals` (sin verificar en CI de main a 2026-10-02) | **>= 0.70** | el mismo | el mismo |
-| **RAG context_recall** | Proporcion de documentos de referencia cubiertos por el contexto recuperado | ver log del job `evals` (sin verificar en CI de main a 2026-10-02) | **>= 0.70** | el mismo | el mismo |
-| **RAG abstention_accuracy** | Proporcion de los 16 casos que deben negarse en los que el RAG se abstiene | ver log del job `evals` (sin verificar en CI de main a 2026-10-02) | **= 1.00** | el mismo | el mismo |
-| **RAG source_hit_rate** | Proporcion de casos respondidos que citan una fuente esperada | ver log del job `evals` (sin verificar en CI de main a 2026-10-02) | **>= 0.90** | el mismo | el mismo |
+| **RAG faithfulness** | Fraccion de frases de la respuesta respaldadas por el contexto recuperado (RAGAS, juez determinista) | 1.000 (log del job Evals, [run 37031348481](https://github.com/nicogarrr/CavaAI/actions/runs/37031348481/job/110919654069), 2026-10-02; 50 casos medidos y 5 controles negativos, corpus de 17 documentos) | **>= 0.75** | `data-engine/scripts/run_rag_evals.py` | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), job `evals` |
+| **RAG answer_relevancy** | Proporcion de terminos de contenido de la pregunta cubiertos por la mejor frase | 0.760 (mismo run 37031348481, 2026-10-02) | **>= 0.70** | el mismo | el mismo |
+| **RAG context_precision** | Average precision de RAGAS con relevancia binaria (Dice >= 0.30) | 0.866 (mismo run 37031348481, 2026-10-02) | **>= 0.70** | el mismo | el mismo |
+| **RAG context_recall** | Proporcion de documentos de referencia cubiertos por el contexto recuperado | 1.000 (mismo run 37031348481, 2026-10-02) | **>= 0.70** | el mismo | el mismo |
+| **RAG abstention_accuracy** | Proporcion de los 16 casos que deben negarse en los que el RAG se abstiene | 1.000 (mismo run 37031348481, 2026-10-02) | **= 1.00** | el mismo | el mismo |
+| **RAG source_hit_rate** | Proporcion de casos respondidos que citan una fuente esperada | 1.000 (mismo run 37031348481, 2026-10-02) | **>= 0.90** | el mismo | el mismo |
 | **Ingest field_accuracy** | Campo extraido == campo del fixture (SEC/EDGAR, FMP, ESEF) | **1.0000** (107/107) | **>= 0.98** | `data-engine/scripts/run_ingest_evals.py` | `ci.yml` job `evals` + [`ingest-evals.yml`](../.github/workflows/ingest-evals.yml) |
 | **Ingest period_attribution_accuracy** | El periodo atribuido es el del hecho, no el del documento | **1.0000** (95/95) | **>= 0.95** | el mismo | el mismo |
 | **Ingest source_attribution_accuracy** | La familia de fuente declarada es la real | **1.0000** (101/101) | **>= 0.99** | el mismo | el mismo |
@@ -151,3 +151,23 @@ python scripts/run_coverage_gate.py --report
 | `data-engine/evals/llm/README.md`, `data-engine/evals/valuation/README.md`, `data-engine/evals/ingest/README.md` | **PENDIENTE**: todavia no existen. Los tres runners imprimen su cobertura por puerta, por capa/motor y por familia de fuente, que es la parte que estos README documentarian. |
 | [`data-engine/scripts/run_coverage_gate.py`](../data-engine/scripts/run_coverage_gate.py) | El gate, con las 10 situaciones en las que falla cerrado. |
 | [`data-engine/LOCKFILE.md`](../data-engine/LOCKFILE.md) | El lockfile (`uv.lock`) con las versiones exactas del arbol de dependencias y como regenerarlo (#765). Ruff y pyright van ademas pineados en los workflows (`ruff==0.16.10`, `pyright==1.1.414`) y las de runtime por rango en `data-engine/requirements.txt`, cuya paridad con `pyproject.toml` vigila el job `dep-parity`. |
+
+## Evidencia literal de las cifras RAG
+
+Las seis cifras RAG de la tabla salen del job Evals del run 37031348481, que es
+el run del head de la PR #787 (no de main), fecha 2026-10-02. Salida literal del
+log (corpus de 17 documentos; 34 casos que exigen respuesta y 16 que deben
+negarse, es decir 50 medidos mas controles negativos aparte):
+
+```
+METRICAS GATEABLES (RAGAS con juez determinista; sin LLM, sin red)
+  faithfulness         1.000  >= 0.75  OK   (34 casos, sin cambio)
+  answer_relevancy     0.760  >= 0.70  OK   (34 casos, sin cambio)
+  context_precision    0.866  >= 0.70  OK   (34 casos, sin cambio)
+  context_recall       1.000  >= 0.70  OK   (34 casos, sin cambio)
+  abstention_accuracy  1.000  >= 1.00  OK   (16 casos, sin cambio)
+  source_hit_rate      1.000  >= 0.90  OK   (34 casos, sin cambio)
+```
+
+Para comprobarlas: abrir ese job en GitHub Actions con la sesion del repo, o
+volver a ejecutar `data-engine/scripts/run_rag_evals.py` en local.
