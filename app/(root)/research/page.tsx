@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { ArrowRight, BookOpen, FileSearch, Library, Newspaper, Settings, Workflow } from 'lucide-react';
+import { ArrowRight, BookOpen, FileSearch, Library, Newspaper, Workflow } from 'lucide-react';
 
 import { getResearchCompanySnapshots, getResearchDashboard } from '@/lib/actions/research.actions';
 import { getPortfolioSummary } from '@/lib/actions/portfolio.actions';
@@ -109,12 +109,6 @@ const TOOLS = [
         label: 'Workflows',
         icon: Workflow,
         description: 'Flujos de investigación del motor Python y su estado real de implementación.',
-    },
-    {
-        href: '/research/settings',
-        label: 'Ajustes',
-        icon: Settings,
-        description: 'Conectores externos, presupuesto del modelo de lenguaje y runtime del backend.',
     },
 ];
 

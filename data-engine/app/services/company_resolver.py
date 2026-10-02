@@ -19,6 +19,49 @@ from sqlalchemy.orm import Session
 
 from app.models import Company
 
+
+def _reference_company_candidates(db: Session, normalized: str) -> list[str]:
+    """Tickers Company candidatos via la tabla de referencia (seam aditivo).
+
+    Consulta instrument_references primero: si el ticker pedido tiene fila
+    con FIGI, devuelve todos los tickers que comparten ese FIGI (o su
+    composite) para que un renombre resuelva a la misma Company. Sin fila
+    o sin FIGI: lista vacia (el fallback de sufijos sigue exacto igual).
+    Degrada a [] si la tabla aun no existe (DB anterior a la migracion).
+    """
+    try:
+        from app.models.entities import InstrumentReference
+    except Exception:
+        return []
+    try:
+        row = db.scalar(
+            select(InstrumentReference).where(
+                InstrumentReference.ticker_normalized == normalized
+            )
+        )
+    except Exception:
+        return []
+    if row is None:
+        return []
+    candidates: set[str] = set()
+    try:
+        if row.figi:
+            for sib in db.scalars(
+                select(InstrumentReference).where(InstrumentReference.figi == row.figi)
+            ).all():
+                candidates.add(sib.ticker_normalized)
+        if row.composite_figi:
+            for sib in db.scalars(
+                select(InstrumentReference).where(
+                    InstrumentReference.composite_figi == row.composite_figi
+                )
+            ).all():
+                candidates.add(sib.ticker_normalized)
+    except Exception:
+        return []
+    candidates.discard(normalized)
+    return sorted(candidates)
+
 KNOWN_MARKET_SUFFIXES = frozenset({
     "MC",  # Bolsa de Madrid
     "L",   # London
@@ -47,11 +90,20 @@ KNOWN_MARKET_SUFFIXES = frozenset({
 
 def resolve_company(db: Session, ticker: str) -> Company | None:
     """Devuelve la Company por ticker exacto o, si falla y hay sufijo de
-    mercado conocido, por ticker base. None si no existe."""
+    mercado conocido, por ticker base. None si no existe.
+
+    Seam aditivo: antes del fallback de sufijos se consulta la tabla de
+    referencia (identidad FIGI estable). Si no hay fila, el fallback
+    funciona exacto igual que hoy; un desconocido sigue siendo None.
+    """
     normalized = ticker.strip().upper()
     company = db.scalar(select(Company).where(Company.ticker == normalized))
     if company is not None:
         return company
+    for candidate in _reference_company_candidates(db, normalized):
+        company = db.scalar(select(Company).where(Company.ticker == candidate))
+        if company is not None:
+            return company
     if "." not in normalized:
         return None
     base, _, suffix = normalized.rpartition(".")
@@ -68,9 +120,11 @@ def resolve_companies(
     Misma politica: el match exacto siempre gana (BRK.B, BF.A y tickers
     reales con punto nunca se tocan) y el fallback a ticker base solo
     aplica con sufijo de mercado conocido. Un IN para los exactos y, solo
-    si hay alias pendientes, un segundo IN para sus bases. Devuelve las
-    Company en el orden pedido (deduplicadas por id) y los tickers sin
-    match, en orden. Nunca crea ni inventa compañías.
+    si hay alias pendientes, un segundo IN para sus bases. Seam aditivo:
+    entre el exacto y el fallback de sufijos se consulta la referencia
+    (identidad FIGI); sin fila, el fallback funciona exacto igual que hoy.
+    Devuelve las Company en el orden pedido (deduplicadas por id) y los
+    tickers sin match, en orden. Nunca crea ni inventa compañías.
     """
     normalized: list[str] = []
     seen: set[str] = set()
@@ -104,11 +158,76 @@ def resolve_companies(
                 )
             ).all()
         }
+    # Seam aditivo: solo para los tickers que siguen sin match tras el
+    # exacto, expandir por FIGI via la referencia (queries extra solo si
+    # hay pendientes; sin fila, todo queda igual que hoy).
+    reference_hit: dict[str, Company] = {}
+    pending = [t for t in normalized if t not in exact]
+    if pending:
+        try:
+            from app.models.entities import InstrumentReference
+
+            rows = list(
+                db.scalars(
+                    select(InstrumentReference).where(
+                        InstrumentReference.ticker_normalized.in_(pending)
+                    )
+                ).all()
+            )
+            wanted: dict[str, set[str]] = {}
+            for row in rows:
+                figs = {f for f in (row.figi, row.composite_figi) if f}
+                if figs:
+                    wanted[row.ticker_normalized] = figs
+            figis: set[str] = set()
+            for figs in wanted.values():
+                figis.update(figs)
+            if figis:
+                siblings = list(
+                    db.scalars(
+                        select(InstrumentReference).where(
+                            (InstrumentReference.figi.in_(sorted(figis)))
+                            | (InstrumentReference.composite_figi.in_(sorted(figis)))
+                        )
+                    ).all()
+                )
+                by_figi: dict[str, list[str]] = {}
+                for sib in siblings:
+                    for figi in (sib.figi, sib.composite_figi):
+                        if figi in figis:
+                            by_figi.setdefault(figi, []).append(sib.ticker_normalized)
+                sibling_tickers = {sib.ticker_normalized for sib in siblings}
+                by_ticker = (
+                    {
+                        company.ticker: company
+                        for company in db.scalars(
+                            select(Company).where(
+                                Company.ticker.in_(sorted(sibling_tickers))
+                            )
+                        ).all()
+                    }
+                    if sibling_tickers
+                    else {}
+                )
+                for ticker in pending:
+                    for figi in wanted.get(ticker, set()):
+                        for cand in by_figi.get(figi, []):
+                            if cand in by_ticker:
+                                reference_hit[ticker] = by_ticker[cand]
+                                break
+                        if ticker in reference_hit:
+                            break
+        except Exception:
+            reference_hit = {}
     companies: list[Company] = []
     resolved_ids: set[int] = set()
     missing: list[str] = []
     for ticker in normalized:
-        company = exact.get(ticker) or bases.get(alias_bases.get(ticker, ""))
+        company = (
+            exact.get(ticker)
+            or reference_hit.get(ticker)
+            or bases.get(alias_bases.get(ticker, ""))
+        )
         if company is None:
             missing.append(ticker)
         elif company.id not in resolved_ids:

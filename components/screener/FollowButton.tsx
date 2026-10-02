@@ -23,10 +23,13 @@ export default function FollowButton({
   symbol,
   company,
   isFollowed = false,
+  stateUnknown = false,
 }: {
   symbol: string;
   company?: string;
   isFollowed?: boolean;
+  /** El servidor no pudo leer la watchlist: no se sabe si se sigue. Botón deshabilitado, no un "Seguir" que podría ser falso. */
+  stateUnknown?: boolean;
 }) {
   const [followed, setFollowed] = useState(isFollowed);
   const [busy, setBusy] = useState(false);
@@ -73,7 +76,8 @@ export default function FollowButton({
       variant="ghost"
       size="sm"
       onClick={onClick}
-      disabled={busy}
+      disabled={busy || stateUnknown}
+      title={stateUnknown ? 'No se pudo comprobar tu watchlist. Recarga la página.' : undefined}
       aria-busy={busy}
       aria-pressed={followed}
       className="min-h-[44px] px-3 py-2 text-sm text-gray-300 hover:text-teal-300 sm:h-7 sm:min-h-0 sm:px-2 sm:text-xs"
@@ -85,7 +89,7 @@ export default function FollowButton({
       ) : (
         <Plus aria-hidden="true" className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
       )}
-      {busy ? 'Guardando…' : followed ? 'Dejar de seguir' : 'Seguir'}
+      {busy ? 'Guardando…' : stateUnknown ? 'Seguir (no disponible)' : followed ? 'Dejar de seguir' : 'Seguir'}
     </Button>
   );
 }

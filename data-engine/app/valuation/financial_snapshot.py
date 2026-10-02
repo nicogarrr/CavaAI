@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from decimal import Decimal
 
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
@@ -55,6 +56,9 @@ class FinancialSnapshot:
     missing_inputs: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     coherent: bool = False
+    # metric -> ids of the persisted facts it was derived from (e.g. net_debt
+    # = total_debt - cash_and_equivalents). Derived facts are not persisted.
+    derived: dict[str, list[int]] = field(default_factory=dict)
 
     def value(self, metric: str) -> float | None:
         """Return a finite float, or ``None``.
@@ -148,6 +152,57 @@ def _pick_matching(
 class FinancialSnapshotBuilder:
     """Assemble a coherent valuation snapshot from FinancialFact rows."""
 
+    @staticmethod
+    def _derive_net_debt(snapshot: FinancialSnapshot, anchor: FinancialFact) -> None:
+        """net_debt = total_debt - cash_and_equivalents when both are reported.
+
+        Only when no net_debt fact exists, and only when both inputs are
+        persisted facts of the SAME instant period and currency. The result is a
+        transient ``derivado`` fact (never added to the session) and the ids of
+        its two sources are exposed in ``snapshot.derived``.
+        """
+        if "net_debt" in snapshot.facts:
+            return
+        debt = snapshot.facts.get("total_debt")
+        cash = snapshot.facts.get("cash_and_equivalents")
+        if debt is None or cash is None:
+            return
+        if (debt.period or "").upper() != (cash.period or "").upper():
+            return
+        if (debt.unit or "") != (cash.unit or ""):
+            return
+        try:
+            d, c = float(debt.value), float(cash.value)
+        except (TypeError, ValueError):
+            return
+        if not (math.isfinite(d) and math.isfinite(c)):
+            return
+        # Both inputs must come from the same source document; otherwise the
+        # derived fact has no single source and the audit keeps it unsupported.
+        shared_source = debt.source_id if debt.source_id == cash.source_id else None
+        derived = FinancialFact(
+            company_id=debt.company_id,
+            source_id=shared_source,
+            metric="net_debt",
+            value=Decimal(str(d - c)),
+            period=debt.period,
+            fiscal_year=debt.fiscal_year,
+            fiscal_quarter=debt.fiscal_quarter,
+            unit=debt.unit,
+            source_type="DERIVED",
+            is_reported=False,
+            is_adjusted=False,
+            # Column defaults only apply on INSERT; this fact is transient, so
+            # every attribute downstream code reads must be set explicitly.
+            confidence=min(
+                Decimal(str(debt.confidence if debt.confidence is not None else "0.8")),
+                Decimal(str(cash.confidence if cash.confidence is not None else "0.8")),
+            ),
+        )
+        snapshot.facts["net_debt"] = derived
+        snapshot.balance_sheet = debt.period
+        snapshot.derived["net_debt"] = [i for i in (debt.id, cash.id) if i is not None]
+
     def build(self, db: Session, company: Company) -> FinancialSnapshot:
         revenue_candidates = _facts_for_metric(db, company.id, "revenue")
         if not revenue_candidates:
@@ -206,6 +261,8 @@ class FinancialSnapshotBuilder:
                         f"{metric} latest period {latest[0].period} is incompatible "
                         f"with anchor {anchor.period}; excluded from snapshot."
                     )
+
+        self._derive_net_debt(snapshot, anchor)
 
         missing: list[str] = []
         for metric in REQUIRED_FOR_DCF:

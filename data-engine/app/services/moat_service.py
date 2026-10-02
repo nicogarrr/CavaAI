@@ -1,3 +1,15 @@
+"""Orquestacion del foso competitivo: evidencia viva -> puntuacion trazable.
+
+Este servicio no inventa ventaja competitiva. Reune las afirmaciones vivas del
+scope de tesis, filtra la evidencia por categoria de foso y delega el calculo
+en ``app.valuation.moat_framework``, que decide si cada categoria es puntuable
+o si debe declararse no evaluable. El contrato publico (claves que leen
+``valuation_service``, el red team y el frontend) no cambia: ``moats`` sigue
+siendo la lista de categorias con ``strength`` numerico, ahora solo cuando ese
+numero existe; las categorias descartadas van aparte, con su estado, en
+``unevaluated_moats``.
+"""
+
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -5,21 +17,174 @@ from sqlalchemy.orm import Session
 
 from app.models import Company, MoatAssessment
 from app.services.claim_scope import live_claims
+from app.services.moat_profile import moat_evidence_context
 from app.services.source_hierarchy_service import SOURCE_TIERS
+from app.valuation.moat_framework import (
+    CONTRADICTING_RELATIONS,
+    EVIDENCE_BACKED,
+    LIMITED_EVIDENCE,
+    SCORE_VERSION,
+    STATUS_EVIDENCE_BACKED,
+    STATUS_NOT_EVALUABLE,
+    STATUS_PARTIAL,
+    SUPPORTING_RELATIONS,
+    CategoryScore,
+    EvidenceRef,
+    aggregate_strength,
+    build_result,
+    score_category,
+)
 
+#: Terminos que asocian una afirmacion con una categoria de foso.
+#:
+#: Las afirmaciones se escriben en castellano (``thesis_service`` las genera en
+#: castellano y el usuario las escribe asi), asi que una lista solo en ingles
+#: no encontraria nunca evidencia real y el foso se quedaria siempre sin
+#: evaluar. Las dos familias conviven; la clave de la categoria es la misma de
+#: siempre, que es la que mapea ``lib/glossary.ts``.
 MOAT_KEYWORDS: dict[str, tuple[str, ...]] = {
-    "network_effects": ("network effect", "two-sided", "liquidity", "user network"),
-    "switching_costs": ("switching cost", "lock-in", "migration", "retention"),
-    "cost_advantage": ("cost advantage", "lowest cost", "unit cost", "procurement"),
-    "scale": ("scale economy", "scale advantage", "fixed cost", "density"),
-    "distribution": ("distribution", "dealer network", "channel", "installed base"),
-    "brand": ("brand", "pricing power", "premium", "trust"),
-    "regulation": ("license", "regulatory barrier", "spectrum", "approval"),
-    "data": ("data advantage", "proprietary data", "dataset"),
-    "ecosystem": ("ecosystem", "platform", "developer", "integration"),
-    "capital_barrier": ("capital barrier", "capital intensive", "capex barrier"),
-    "process_advantage": ("process advantage", "operational excellence", "know-how"),
+    "network_effects": (
+        "network effect",
+        "two-sided",
+        "liquidity",
+        "user network",
+        "efecto de red",
+        "efecto red",
+        "doble efecto",
+        "liquidez del mercado",
+        "red de usuarios",
+    ),
+    "switching_costs": (
+        "switching cost",
+        "lock-in",
+        "migration",
+        "retention",
+        "coste de cambio",
+        "costos de cambio",
+        "cambio de proveedor",
+        "fidelizacion",
+        "retencion",
+        "churn",
+        "migracion",
+        "integracion profunda",
+    ),
+    "cost_advantage": (
+        "cost advantage",
+        "lowest cost",
+        "unit cost",
+        "procurement",
+        "ventaja de costes",
+        "ventaja en costes",
+        "coste unitario",
+        "costo unitario",
+        "menor coste",
+        "compras",
+        "aprovisionamiento",
+    ),
+    "scale": (
+        "scale economy",
+        "scale advantage",
+        "fixed cost",
+        "density",
+        "economia de escala",
+        "economias de escala",
+        "ventaja de escala",
+        "coste fijo",
+        "costos fijos",
+        "densidad",
+    ),
+    "distribution": (
+        "distribution",
+        "dealer network",
+        "channel",
+        "installed base",
+        "distribucion",
+        "canal de distribucion",
+        "red de distribuidores",
+        "base instalada",
+    ),
+    "brand": (
+        "brand",
+        "pricing power",
+        "premium",
+        "trust",
+        "marca",
+        "poder de fijacion de precios",
+        "capacidad de fijar precios",
+        "premium",
+        "confianza del cliente",
+        "notoriedad",
+    ),
+    "regulation": (
+        "license",
+        "regulatory barrier",
+        "spectrum",
+        "approval",
+        "licencia",
+        "licencias",
+        "barrera regulatoria",
+        "espectro",
+        "autorizacion del regulador",
+        "aprobacion regulatoria",
+    ),
+    "data": (
+        "data advantage",
+        "proprietary data",
+        "dataset",
+        "ventaja de datos",
+        "datos propios",
+        "datos propietarios",
+        "conjunto de datos",
+    ),
+    "ecosystem": (
+        "ecosystem",
+        "platform",
+        "developer",
+        "integration",
+        "ecosistema",
+        "plataforma",
+        "desarrolladores",
+        "integraciones",
+    ),
+    "capital_barrier": (
+        "capital barrier",
+        "capital intensive",
+        "capex barrier",
+        "barrera de capital",
+        "intensivo en capital",
+        "barrera de capex",
+        "requiere enorme capital",
+    ),
+    "process_advantage": (
+        "process advantage",
+        "operational excellence",
+        "know-how",
+        "ventaja de proceso",
+        "excelencia operativa",
+        "saber hacer",
+        "knowhow",
+    ),
 }
+
+READ_METHODOLOGY = "Persisted source-weighted moat assessments."
+ASSESS_METHODOLOGY = (
+    "Strength, trend and persistence are derived only from linked claim "
+    "evidence weighted by the centralized source hierarchy. A category is "
+    "scored only when at least one supporting or contradicting claim carries "
+    "primary-source evidence (regulator, company or transcript); evidence from "
+    "media, data providers, bootstrap seeds, user input or unknown sources is "
+    "reported but never scored."
+)
+
+#: Estados de fila persistida que siguen siendo puntuaciones vigentes.
+PERSISTED_EVALUATED_STATUSES = frozenset({EVIDENCE_BACKED, LIMITED_EVIDENCE})
+
+
+def _tier(evidence) -> tuple[str | None, float]:
+    """Tier declarado y confianza de la jerarquia; nunca inventar confianza."""
+    raw_tier = getattr(evidence, "source_tier", None)
+    tier = SOURCE_TIERS.get(str(raw_tier), SOURCE_TIERS["tier_unknown"])
+    return raw_tier, float(tier.trust_score)
 
 
 class MoatService:
@@ -32,8 +197,13 @@ class MoatService:
                 .order_by(MoatAssessment.moat_type)
             ).all()
         )
-        moats = [
-            {
+        moats: list[dict] = []
+        evaluated: list[CategoryScore] = []
+        excluded: list[dict] = []
+        for row in rows:
+            trace = dict(row.assessment_trace or {})
+            comparable = trace.get("method") == SCORE_VERSION
+            payload = {
                 "type": row.moat_type,
                 "strength": row.strength,
                 "trend": row.trend,
@@ -43,19 +213,67 @@ class MoatService:
                 "supporting_claim_ids": row.supporting_claim_ids,
                 "contradicting_claim_ids": row.contradicting_claim_ids,
                 "trace": row.assessment_trace,
+                "evaluable": comparable and row.status in PERSISTED_EVALUATED_STATUSES,
+                "policy": SCORE_VERSION if comparable else "superseded_policy",
             }
-            for row in rows
-        ]
-        return {
-            "ticker": company.ticker,
-            "status": (
-                "evidence_backed"
-                if any(item["status"] == "evidence_backed" for item in moats)
-                else "insufficient_evidence"
+            moats.append(payload)
+            if comparable and row.status in PERSISTED_EVALUATED_STATUSES:
+                evaluated.append(
+                    CategoryScore(
+                        type=row.moat_type,
+                        status=row.status,
+                        strength=row.strength,
+                        trend=row.trend,
+                        persistence=row.persistence,
+                        confidence=float(row.confidence),
+                        supporting_claim_ids=list(row.supporting_claim_ids or []),
+                        contradicting_claim_ids=list(
+                            row.contradicting_claim_ids or []
+                        ),
+                        trace=trace,
+                    )
+                )
+            else:
+                # Fila que no es una puntuacion vigente: se muestra (es lo que
+                # hay persistido) pero no se mezcla en el agregado actual.
+                excluded.append(
+                    {
+                        "type": row.moat_type,
+                        "status": row.status,
+                        "reason": (
+                            "persisted_under_previous_scoring_policy"
+                            if not comparable
+                            else "persisted_status_is_not_a_score"
+                        ),
+                    }
+                )
+        result = build_result(
+            ticker=company.ticker,
+            company_type=company.company_type,
+            evaluated=evaluated,
+            unevaluated=[],
+            categories_total=len(moats),
+            methodology=READ_METHODOLOGY,
+            note=(
+                "Puntuaciones persistidas de evaluaciones anteriores. "
+                "Reevalua la evidencia para refrescarlas."
             ),
-            "methodology": "Persisted source-weighted moat assessments.",
-            "moats": moats,
-        }
+        )
+        result["moats"] = moats
+        result["categories_total"] = len(moats)
+        result["categories_evaluated"] = len(evaluated)
+        result["aggregate_strength"] = aggregate_strength(evaluated)
+        result["aggregate"].update(
+            {
+                "strength": result["aggregate_strength"],
+                "comparable": result["aggregate_strength"] is not None,
+                "evaluated_categories": [
+                    item["type"] for item in moats if item["evaluable"]
+                ],
+                "excluded_categories": excluded,
+            }
+        )
+        return result
 
     def assess(
         self,
@@ -69,7 +287,8 @@ class MoatService:
         # the company let each regeneration's orphans count towards the moat
         # evidence breadth.
         claims = live_claims(db, company)
-        results = []
+        evaluated: list[CategoryScore] = []
+        unevaluated: list[CategoryScore] = []
         for moat_type, keywords in MOAT_KEYWORDS.items():
             relevant = [
                 claim
@@ -77,148 +296,99 @@ class MoatService:
                 if (claim.metadata_ or {}).get("moat_type") == moat_type
                 or any(keyword in claim.statement.lower() for keyword in keywords)
             ]
-            supporting: list[int] = []
-            contradicting: list[int] = []
-            support_score = 0.0
-            against_score = 0.0
-            source_refs: list[dict] = []
+            refs: list[EvidenceRef] = []
             for claim in relevant:
                 for evidence in claim.evidence:
-                    tier = SOURCE_TIERS.get(
-                        evidence.source_tier, SOURCE_TIERS["tier_unknown"]
+                    tier_key, trust_score = _tier(evidence)
+                    refs.append(
+                        EvidenceRef(
+                            claim_id=claim.id,
+                            evidence_id=evidence.id,
+                            relation=evidence.evidence_type,
+                            source_tier=tier_key,
+                            trust_score=trust_score,
+                            confidence=float(evidence.confidence),
+                            document_id=evidence.document_id,
+                            document_chunk_id=evidence.document_chunk_id,
+                        )
                     )
-                    weight = tier.trust_score * float(evidence.confidence)
-                    if evidence.evidence_type == "supports":
-                        support_score += weight
-                        supporting.append(claim.id)
-                    elif evidence.evidence_type in {
-                        "contradicts",
-                        "supersedes",
-                    }:
-                        against_score += weight
-                        contradicting.append(claim.id)
-                    source_refs.append(
-                        {
-                            "claim_id": claim.id,
-                            "evidence_id": evidence.id,
-                            "relation": evidence.evidence_type,
-                            "source_tier": evidence.source_tier,
-                            "weight": round(weight, 4),
-                            "document_id": evidence.document_id,
-                            "document_chunk_id": evidence.document_chunk_id,
-                        }
-                    )
-            total = support_score + against_score
-            evidence_count = len(source_refs)
-            if total <= 0:
-                strength = 0
-                confidence = 0.0
-                status = "insufficient_evidence"
-                trend = "uncertain"
-            else:
-                balance = max(0.0, support_score - against_score)
-                breadth_factor = min(1.0, evidence_count / 5)
-                strength = round(100 * (balance / total) * breadth_factor)
-                confidence = min(
-                    0.95,
-                    (total / max(1, evidence_count)) * breadth_factor,
-                )
-                status = (
-                    "evidence_backed"
-                    if evidence_count >= 2 and confidence >= 0.35
-                    else "limited_evidence"
-                )
-                trend_markers = [
-                    str((claim.metadata_ or {}).get("trend", ""))
-                    for claim in relevant
-                ]
-                trend = next(
-                    (
-                        marker
-                        for marker in trend_markers
-                        if marker in {"strengthening", "stable", "eroding"}
-                    ),
-                    "stable" if status == "evidence_backed" else "uncertain",
-                )
-            persistence = (
-                "high"
-                if strength >= 70 and confidence >= 0.6
-                else "medium"
-                if strength >= 40 and confidence >= 0.4
-                else "unproven"
+            claim_trends = tuple(
+                str((claim.metadata_ or {}).get("trend", "")) for claim in relevant
             )
-            payload = {
-                "type": moat_type,
-                "strength": strength,
-                "trend": trend,
-                "persistence": persistence,
-                "confidence": round(confidence, 4),
-                "status": status,
-                "supporting_claim_ids": sorted(set(supporting)),
-                "contradicting_claim_ids": sorted(set(contradicting)),
-                "evidence_for": [
-                    ref for ref in source_refs if ref["relation"] == "supports"
-                ],
-                "evidence_against": [
-                    ref
-                    for ref in source_refs
-                    if ref["relation"] in {"contradicts", "supersedes"}
-                ],
-                "trace": {
-                    "method": "MOAT_EVIDENCE_V1",
-                    "support_score": round(support_score, 4),
-                    "against_score": round(against_score, 4),
-                    "keywords": list(keywords),
-                },
-            }
-            results.append(payload)
-            # F29: una corrida sin evidencia no es una puntuacion. No se
-            # persiste ningun tipo con 0 evidencia y nunca se pisa una
-            # evaluacion real con ceros: la fila anterior se conserva.
-            if persist and evidence_count > 0:
-                self._persist(db, company, payload)
+            score = score_category(
+                moat_type,
+                refs,
+                claim_trends=claim_trends,
+                keywords=keywords,
+            )
+            if score.evaluable:
+                evaluated.append(score)
+                # F29: una corrida sin evidencia no es una puntuacion. No se
+                # persiste ningun tipo sin evidencia de fuente primaria y nunca
+                # se pisa una evaluacion real con ceros: la fila anterior se
+                # conserva.
+                if persist:
+                    self._persist(db, company, score)
+            else:
+                # Sin score no hay fila: se reporta el estado, no un cero.
+                unevaluated.append(score)
         if persist and commit:
             db.commit()
-        evidence_backed = sum(
-            1 for result in results if result["status"] == "evidence_backed"
+        result = build_result(
+            ticker=company.ticker,
+            company_type=company.company_type,
+            evaluated=evaluated,
+            unevaluated=unevaluated,
+            categories_total=len(MOAT_KEYWORDS),
+            methodology=ASSESS_METHODOLOGY,
+            note=(
+                "Cada puntuacion es trazable claim por claim en evidence_for, "
+                "evidence_against y supporting_claim_ids. Las categorias sin "
+                "evidencia de fuente primaria no se puntuan y quedan fuera del "
+                "agregado."
+            ),
+            trace={
+                "method": SCORE_VERSION,
+                "claims_scanned": len(claims),
+                "categories": len(MOAT_KEYWORDS),
+                "relations": {
+                    "supporting": sorted(SUPPORTING_RELATIONS),
+                    "contradicting": sorted(CONTRADICTING_RELATIONS),
+                },
+                "statuses": {
+                    "evidence_backed": STATUS_EVIDENCE_BACKED,
+                    "partial_evidence": STATUS_PARTIAL,
+                    "not_evaluable": STATUS_NOT_EVALUABLE,
+                },
+            },
         )
-        return {
-            "ticker": company.ticker,
-            "status": (
-                "evidence_backed"
-                if evidence_backed
-                else "insufficient_evidence"
-            ),
-            "methodology": (
-                "Strength, trend and persistence are derived only from linked "
-                "claim evidence weighted by the centralized source hierarchy."
-            ),
-            "moats": results,
-        }
+        # Contexto de perfil: informativo. No participa en el score.
+        result["profile_context"] = moat_evidence_context(company)
+        return result
 
     def _persist(
-        self, db: Session, company: Company, payload: dict
+        self, db: Session, company: Company, payload: CategoryScore
     ) -> MoatAssessment:
         assessment = db.scalar(
             select(MoatAssessment).where(
                 MoatAssessment.company_id == company.id,
-                MoatAssessment.moat_type == payload["type"],
+                MoatAssessment.moat_type == payload.type,
             )
         )
         if assessment is None:
             assessment = MoatAssessment(
                 company_id=company.id,
-                moat_type=payload["type"],
+                moat_type=payload.type,
             )
             db.add(assessment)
-        assessment.strength = payload["strength"]
-        assessment.trend = payload["trend"]
-        assessment.persistence = payload["persistence"]
-        assessment.confidence = Decimal(str(payload["confidence"]))
-        assessment.status = payload["status"]
-        assessment.supporting_claim_ids = payload["supporting_claim_ids"]
-        assessment.contradicting_claim_ids = payload[
-            "contradicting_claim_ids"
-        ]
-        assessment.assessment_trace = payload["trace"]
+        # Solo se persisten categorias con score: `strength` no puede ser None
+        # aqui porque el servicio no llama a _persist sin evaluabilidad.
+        assessment.strength = int(payload.strength or 0)
+        assessment.trend = payload.trend
+        assessment.persistence = payload.persistence
+        assessment.confidence = Decimal(str(payload.confidence))
+        assessment.status = payload.status
+        assessment.supporting_claim_ids = payload.supporting_claim_ids
+        assessment.contradicting_claim_ids = payload.contradicting_claim_ids
+        assessment.assessment_trace = payload.trace
         return assessment
