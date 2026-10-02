@@ -3004,7 +3004,11 @@
             "type": "string"
           },
           "input_key": {
-            "const": "fcf_margin",
+            "enum": [
+              "fcf_margin",
+              "wacc",
+              "terminal_growth"
+            ],
             "title": "Input Key",
             "type": "string"
           },
