@@ -5,10 +5,19 @@ on:
     - cron: "23 5 * * 1" # lunes 05:23 UTC (~07:23 Madrid en verano)
   workflow_dispatch:
 
+# FIX-3.8: permisos minimos y EXACTOS. `issues: write` sobraba (este
+# workflow no comenta issues: hace `git push` y, como fallback, `gh pr
+# create`). Sin `pull-requests: write`, el fallback del PR no podria crearse.
+# `contents: write` es necesario porque el efecto del workflow ES escribir
+# opencode.json en main (o en la rama del PR de respaldo).
 permissions:
   contents: write
-  issues: write
   pull-requests: write
+
+# shell por defecto: `bash` explicito (= `bash -eo pipefail`) (FIX-3.2).
+defaults:
+  run:
+    shell: bash
 
 concurrency:
   # Este bloque ya era correcto y se queda como esta, con el porque escrito
@@ -30,18 +39,27 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-python@v7
+      # FIX-3.12: fetch-depth 0 explicito (clon completo). El push a main es
+      # lineal: si main se ha movido desde el checkout, `git push` FALLA en
+      # vez de perder commits ajenos. Sin historial, un `git pull` de
+      # autodefensa no seria posible.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          python-version: "3.12"
+          fetch-depth: 0
+
+      # uv gestiona el interprete (3.12) en todos los workflows de este repo;
+      # --no-project porque este script es stdlib puro (json, os,
+      # urllib.request) y no necesita entorno del proyecto.
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          version: "0.12.5"
 
       - name: Decide el mejor modelo gratuito (Zen + models.dev + LMArena WebDev)
         id: rot
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-        run: python scripts/opencode_model_rotator.py
+        run: uv run --no-project --python 3.12 python scripts/opencode_model_rotator.py
 
       - name: Aplica la rotacion si hay cambio
         if: steps.rot.outputs.changed == 'true'
@@ -50,11 +68,24 @@ jobs:
           MODEL: ${{ steps.rot.outputs.model }}
           REASON: ${{ steps.rot.outputs.reason }}
         run: |
+          # POR QUE `[skip ci]` (FIX-3.12): el commit de rotacion solo cambia
+          # la etiqueta de modelo de opencode.json; no toca codigo, tests ni
+          # dependencias. Ejecutar el gate entero de ci.yml (~25 min de
+          # runner) por un cambio de etiqueta no aporta nada. QUEDA FUERA DEL
+          # GATE a proposito: si alguien mezcla un cambio de codigo en este
+          # commit, ese codigo SI se colaria sin CI -- por eso el commit lo
+          # hace este workflow (que solo escribe opencode.json) y nunca un
+          # humano con cambios extra.
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add opencode.json
           git commit -m "chore(opencode): rotar modelo a $MODEL - $REASON [skip ci]"
-          if git push; then
+          # Nunca --force. `git pull --no-rebase --autostash` integra lo que
+          # se haya mergeado en main (merge, no rebase: no se reescribe
+          # historia ajena) antes de empujar; si algo no cuadra, el push
+          # falla limpio y se cae al PR de respaldo (FIX-3.12).
+          git pull --no-rebase --autostash origin main
+          if git push origin HEAD:main; then
             echo "Rotacion aplicada: push directo a main."
           else
             BR="opencode-rotator/$(date +%Y%m%d-%H%M)"
