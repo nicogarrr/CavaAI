@@ -70,7 +70,7 @@ export const ERROR_MESSAGES = {
   AUTH_FAILED: 'No se pudo iniciar sesión. Revisa tu correo y tu contraseña.',
   AUTH_UNAVAILABLE: 'El servicio de autenticación no está disponible ahora mismo. Inténtalo de nuevo en unos minutos.',
   INVALID_SYMBOL: 'Símbolo con formato no válido. Debe tener entre 1 y 10 caracteres y solo letras, números, puntos y guiones.',
-  MISSING_API_KEY: 'Falta la clave de API. Revisa tus variables de entorno.',
+  MISSING_API_KEY: 'Este servicio no está disponible ahora mismo. Inténtalo más tarde.',
   RATE_LIMIT_EXCEEDED: 'Has superado el límite de peticiones. Inténtalo de nuevo en unos minutos.',
   DATABASE_ERROR: 'No se pudo conectar con la base de datos. Inténtalo de nuevo.',
   EXTERNAL_API_ERROR: 'No se pudieron obtener los datos del servicio externo.',
