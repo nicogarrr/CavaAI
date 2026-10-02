@@ -1,0 +1,63 @@
+# Politica de excepciones del escaneo de imagenes (tarea E3).
+#
+# Este fichero es la UNICA fuente de excepciones de .github/workflows/sbom-scan.yml.
+# No se puede silenciar nada con --ignore, --skip o exit-code dentro del YAML del
+# workflow: una exception inline no se revisa, no caduca y no se puede auditar con
+# un `git log`. Aqui cada entrada esta versionada, con motivo, ticket y fecha.
+#
+# La puerta por defecto (todo lo que NO este listado aqui) es:
+#   - CVE de severidad CRITICAL con fix disponible  -> rojo
+#   - secret encontrado en la imagen (cualquier severidad) -> rojo
+#   - misconfiguration HIGH o CRITICAL -> rojo
+#   - CVE HIGH / MEDIUM / LOW -> se reportan con su numero en el log del job,
+#     no bloquean (se arreglan en el PR de dependencia, no en el de imagen)
+#   - escaner que no se ejecuta, informe que falta o build roto -> rojo
+#
+# FUERA DEL ALCANCE del escaneo de CVEs (a proposito, no es una exception):
+#   - Los modelos de pesos (componentes CycloneDX `machine-learning-model`, hoy el
+#     safetensors de /opt/hf en backend-prod) NO se pasan a grype: no son paquetes
+#     con CVEs que casar, y con ese componente grype 0.118.0 se cuelga (reproducido).
+#     Siguen en el SBOM publicado; el motor 2 lo anota en el resumen del job.
+#     El motor 1 (trivy sobre la imagen) sigue viendo la imagen completa.
+#
+# Reglas que data-engine/scripts/security/gate_image_scan.py verifica en CADA run
+# y que hacen fallar el job si no se cumplen:
+#   1. Cada entrada necesita los cinco campos: id, scope, reason, ticket, expires.
+#   2. `expires` es una fecha ISO (YYYY-MM-DD). Sin fecha la exception es una
+#      vulnerabilidad silenciada para siempre, que es justo lo que este fichero
+#      existe para impedir.
+#   3. Una entrada caducada hace fallar el build (no se ignora en silencio):
+#      hay que borrarla o renovarla con su ticket.
+#   4. `scope` solo puede ser vulnerability | secret | misconfig.
+#
+# Formato de una entrada:
+#
+# exceptions:
+#   - id: CVE-2026-12345              # ID de trivy/misconfig/secret
+#     scope: vulnerability             # vulnerability | secret | misconfig
+#     targets: [backend-prod]          # vacio o ausente = todas las imagenes
+#     reason: "..."
+#     ticket: "SEC-123"                # ticket de seguimiento, obligatorio
+#     expires: "2026-12-31"            # dia en que deja de aplican (inclusive)
+#
+#     paths: [docker/minio/Dockerfile] # opcional: acota a ficheros concretos
+#
+# ---------------------------------------------------------------------------
+# Estado actual: UNA excepcion, fechada y acotada a un fichero.
+#
+# DS-0002 (root) en docker/minio/Dockerfile: la imagen sigue como root para no
+# romper el propietario del volumen minio_data ya existente en produccion. Pasar a
+# un usuario sin privilegios exige un chown del volumen y probarlo sobre una COPIA
+# (el salto de version 2025-04-22 -> 2025-10-15 tambien esta sin probar). Se retira
+# con la migracion a Garage (ticket GARAGE-MIGRATION) o a mas tardar el 2026-10-16.
+# DS-0002 en Dockerfile.dev y .devcontainer/Dockerfile y DS-0029 en
+# data-engine/Dockerfile se arreglan en el Dockerfile, no se silencian.
+# ---------------------------------------------------------------------------
+version: 1
+exceptions:
+  - id: DS-0002
+    scope: misconfig
+    paths: [docker/minio/Dockerfile]
+    reason: "minio corre como root para conservar el propietario del volumen minio_data existente; el cambio exige chown probado sobre una copia."
+    ticket: "GARAGE-MIGRATION"
+    expires: "2026-10-16"
