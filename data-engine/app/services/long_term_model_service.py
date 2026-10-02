@@ -287,9 +287,13 @@ class LongTermModelService:
                 if fact.fiscal_year is not None and _is_annual(fact)
             }
         )
-        pre_revenue = not years and bool(annual_years_any)
+        # Sin ingresos anuales pero con anclaje posible. Solo es pre-revenue si no
+        # hay NINGUN ingreso (ni trimestral): con ingresos solo trimestrales el
+        # motivo honesto es que faltan los anuales.
+        no_annual_revenue = not years and bool(annual_years_any)
+        pre_revenue = no_annual_revenue and not fact_cache["revenue"]
         anchor_year = latest_year if latest_year is not None else (
-            annual_years_any[-1] if pre_revenue else None
+            annual_years_any[-1] if no_annual_revenue else None
         )
         history = self._history_rows(fact_cache, years)
 
@@ -326,7 +330,7 @@ class LongTermModelService:
             if latest_year is not None
             else {
                 "status": "missing_formula_inputs",
-                "missing_inputs": [] if pre_revenue else ["fiscal_year"],
+                "missing_inputs": [] if no_annual_revenue else ["fiscal_year"],
             }
         )
         missing_formula_inputs = list(driver_preview.get("missing_inputs") or [])
@@ -342,10 +346,12 @@ class LongTermModelService:
             )
             if value is None
         ]
-        if pre_revenue:
+        if no_annual_revenue:
             # Un unico motivo honesto: sin ingresos no hay crecimiento ni margen
             # FCF sobre ingresos. Las acciones solo se listan si de verdad faltan.
-            missing_core = ["no_revenue_reported"] + [
+            missing_core = [
+                "no_revenue_reported" if pre_revenue else "annual_revenue_missing"
+            ] + [
                 name for name in missing_core if name == "shares_diluted"
             ]
 

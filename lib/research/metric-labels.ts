@@ -61,6 +61,7 @@ export const METRIC_LABELS: Record<string, string> = {
     // Drivers, KPIs y entradas del modelo a largo plazo (long_term_model_service)
     traceable_wacc: 'WACC con fuente trazable',
     no_revenue_reported: 'ingresos reportados (empresa sin ingresos: el DCF no aplica)',
+    annual_revenue_missing: 'ingresos anuales (solo hay datos trimestrales)',
     revenue_history_two_periods: 'historial de ingresos de dos periodos',
     normalized_fcf_margin: 'margen FCF normalizado',
     price: 'precio',
