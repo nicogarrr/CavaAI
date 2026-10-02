@@ -33,7 +33,9 @@
   {
    "case": "neg-013-filas-duplicadas-del-proveedor",
    "gate": "duplicates_collapsed",
-   "defect": "_add_facts escribe una fila por fila del payload sin colapsar (metrica, periodo): el mismo periodo acaba con dos revenues."
+   "status": "closed",
+   "defect": "_add_facts escribia una fila por fila del payload sin colapsar (metrica, periodo): el mismo periodo acababa con dos revenues. FinancialFact no tiene UNIQUE en (company_id, metric, period) y la base no podia defenderse.",
+   "resolution": "Deduplicacion explicita en la capa de servicio por (metrica, periodo) y borrado de la derivada (is_reported=False) de la clave antes de insertar. Queda PENDIENTE el UNIQUE en entities.py + migraciones (fx1)."
   },
   {
    "case": "neg-015-ixbrl-con-scale-y-sign",
@@ -43,7 +45,7 @@
  ],
  "summary": {
   "cases": 82,
-  "negative_controls": 11,
+  "negative_controls": 10,
   "degradation_cases": 11,
   "families": {
    "sec": 44,
@@ -52,7 +54,6 @@
   },
   "negative_controls_by_gate": {
    "absent_fields_reported_as_null": 2,
-   "duplicates_collapsed": 1,
    "extracted_values_match_fixture": 1,
    "fixture_schema_valid": 1,
    "no_lookahead": 1,
@@ -4100,12 +4101,12 @@
   {
    "id": "neg-013-filas-duplicadas-del-proveedor",
    "family": "fmp",
-   "category": "negative_control",
+   "category": "dedup",
    "scenario": "fmp_statements",
-   "description": "El payload repite (metrica, periodo) y la ingesta escribe dos filas: el proveedor no colapsa duplicados y la base los hereda.",
+   "description": "El payload repite (metrica, periodo) con la misma cifra: la ingesta colapsa la clave y el periodo acaba con UNA fila por metrica. Antes se escribian dos revenues del mismo periodo.",
    "scenario_args": {
     "endpoints": {
-     "income-statement": "fmp/income_statement_foreign_symbol.json"
+     "income-statement": "fmp/income_statement_duplicate_rows.json"
     },
     "limit": 5
    },
@@ -4120,9 +4121,7 @@
       "fiscal_quarter": "FY"
      }
     ],
-    "absent_metrics": [
-     "market_cap"
-    ],
+    "absent_metrics": [],
     "as_of": "2026-10-01",
     "tolerance": {
      "relative": "0",
@@ -4132,10 +4131,22 @@
      "verified": [],
      "official": [],
      "unverified": []
+    },
+    "periods": {
+     "revenue": [
+      "2025-12-31:FY"
+     ]
     }
    },
-   "expect_gate_failure": "duplicates_collapsed",
    "applies_to": [
+    "fixture_schema_valid",
+    "extracted_values_match_fixture",
+    "period_attribution_correct",
+    "no_lookahead",
+    "official_only_if_index_verified",
+    "absent_fields_reported_as_null",
+    "units_consistent",
+    "source_types_declared",
     "duplicates_collapsed"
    ]
   },
