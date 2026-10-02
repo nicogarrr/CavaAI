@@ -34,7 +34,7 @@ class FakeRedis:
     """Doble en memoria del subconjunto de Redis que usa la sonda.
 
     Reproduce el contrato de `RedisBroker` (LIST para la cola, HASH `.msgs`,
-    LIST `.DQ`, ZSET `.XQ`, ZSET `__heartbeats__`) sinâ€œLua ni sockets.
+    LIST `.DQ`, ZSET `.XQ`, ZSET `__heartbeats__`) sin Lua ni sockets.
     """
 
     def __init__(self, *, failing: bool = False) -> None:
@@ -194,7 +194,7 @@ def test_trabajo_parado_es_un_incidente_con_razon():
 def test_una_cola_profunda_con_trabajo_en_curso_no_es_un_incidente():
     # 10.000 pendientes con 4 en curso es backpressure, no una averia: hay quien
     # esta trabajando. Confundir las dos cosas genera paginas de guardia a las
-    # tres de la maÃ±ana.
+    # tres de la mañana.
     client = FakeRedis()
     for index in range(4):
         client.enqueue("default", f"m{index}", NOW_MS - 900_000)
