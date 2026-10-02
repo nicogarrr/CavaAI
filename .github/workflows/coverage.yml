@@ -1,0 +1,107 @@
+name: Coverage
+
+# Job propio y DELIBERADAMENTE INDEPENDIENTE de .github/workflows/ci.yml.
+# Motivo: la cobertura con branch=True tarda bastante mas que `python -m pytest`
+# a secas, y encadenarla al job `backend` alargaria el feedback de todos los
+# PRs para que solo lo paguen los cambios de data-engine. Ademas este job fija
+# un entorno de medicion DETERMINISTA (ver nota de Qdrant mas abajo) que no
+# coincide con el de `backend`, asi que mezclarlos haria la linea base fragil.
+#
+# El gate es fail-closed y fail-closed tambien en la explicacion: si falla, el
+# mensaje dice que paquete bajo y cuantos puntos. Ver data-engine/COVERAGE.md.
+
+on:
+  push:
+    paths:
+      - "data-engine/**"
+      - ".github/workflows/coverage.yml"
+  pull_request:
+    paths:
+      - "data-engine/**"
+      - ".github/workflows/coverage.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: coverage-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  coverage:
+    name: Backend coverage gate
+    runs-on: ubuntu-latest
+    # La suite instrumentada con branch=True tarda bastante mas que la normal.
+    # Sal timeout de margen: cortarlo a mitad dejaria a medias el .coverage y
+    # el gate leeria un numero sin sentido.
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: data-engine
+    env:
+      # Mismo aislamiento que el job `backend` de ci.yml.
+      APP_ENV: test
+      DATABASE_URL: sqlite:///./cavaai_coverage.db
+      RESEARCH_AUTH_REQUIRED: "false"
+      WORKERS_ENABLED: "false"
+      # Sin vector ingest/search/chat: la linea base se midio con esto apagado,
+      # asi que el gate mide siempre el mismo conjunto de tests.
+      CAVAAI_ENABLE_VECTOR_INGEST: "0"
+      CAVAAI_ENABLE_VECTOR_SEARCH: "0"
+      CAVAAI_ENABLE_VECTOR_CHAT: "0"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: data-engine/requirements.txt
+
+      # cache_dir de [tool.pytest.ini_options] es storage/.pytest_cache.
+      - name: Cache pytest and coverage artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            data-engine/storage/.pytest_cache
+            data-engine/htmlcov
+          key: coverage-${{ runner.os }}-${{ hashFiles('data-engine/requirements.txt') }}
+          restore-keys: |
+            coverage-${{ runner.os }}-
+
+      - run: python -m pip install --upgrade pip
+
+      # Mismo instalador que ci.yml, mas pytest-cov. pytest-cov va aqui y no en
+      # requirements.txt a proposito: requirements.txt y
+      # pyproject[project].dependencies estan atados por el job `dep-parity`
+      # (sync_requirements.py --check exige paridad exacta y BIDIRECCIONAL) y
+      # pytest-cov es herramienta de desarrollo, no dependencia de runtime.
+      # INTEGRACION PENDIENTE: anadir pytest-cov a
+      # [project.optional-dependencies].test en data-engine/pyproject.toml para
+      # que `pip install -e .[test]` traiga el gate; hasta entonces la linea de
+      # install de este workflow y la de CONTRIBUTING son la unica via.
+      - run: python -m pip install -r requirements.txt pytest ruff pyright pytest-cov
+
+      - name: Coverage gate (pytest --cov + ratchet por paquete)
+        run: python scripts/run_coverage_gate.py
+
+      - name: Informe legible para logs
+        if: ${{ always() }}
+        run: python -m coverage report --rcfile=.coveragerc --show-missing || true
+
+      # Sin secrets ni tokens: el informe se publica siempre como artefacto, que
+      # es lo que cualquiera puede leer. Si algun dia se quiere subir a un
+      # servicio externo (Codecov, Coveralls) hace falta anadir el secret y el
+      # paso correspondiente; hasta entonces no se pone ningun token.
+      - name: Publish coverage report artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            data-engine/htmlcov/index.html
+            data-engine/htmlcov/coverage.json
+            data-engine/htmlcov/.coverage
+          if-no-files-found: warn
+          retention-days: 14
