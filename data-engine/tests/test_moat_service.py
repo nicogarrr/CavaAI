@@ -1,10 +1,10 @@
-"""MoatService contract tests (MOAT_EVIDENCE_V1).
+"""MoatService contract tests (MOAT_EVIDENCE_V2).
 
-The moat assessment feeds the professional thesis and the red team: it
-must derive strength/trend/persistence ONLY from linked claim evidence
-weighted by the centralized source hierarchy, persist honestly
-(insufficient_evidence, never invented moats), and read() must return
-persisted rows only - never derive on GET.
+The moat assessment feeds the professional thesis and the red team: it must
+derive strength/trend/persistence ONLY from linked claim evidence with a known
+source tier, declare categories without that evidence as NOT evaluable instead
+of scoring a zero, and read() must return persisted rows only - never derive on
+GET.
 """
 
 import pytest
@@ -49,18 +49,36 @@ def _evidence(db: Session, claim_id: int, *, tier: str, kind: str = "supports", 
     db.flush()
 
 
-def test_no_claims_every_moat_insufficient_evidence(db):
+def _moat(result: dict, moat_type: str) -> dict:
+    return next(item for item in result["moats"] if item["type"] == moat_type)
+
+
+def _unevaluated(result: dict, moat_type: str) -> dict:
+    return next(item for item in result["unevaluated_moats"] if item["type"] == moat_type)
+
+
+def test_no_claims_every_moat_no_sourced_evidence_without_a_score(db):
     company = _company(db)
     result = MoatService().assess(db, company)
-    assert result["status"] == "insufficient_evidence"
-    assert len(result["moats"]) == len(MOAT_KEYWORDS)
-    for moat in result["moats"]:
-        assert moat["strength"] == 0
-        assert moat["status"] == "insufficient_evidence"
+    assert result["status"] == "not_evaluable"
+    # Ningun score: `moats` solo contiene categorias con puntuacion trazable.
+    assert result["moats"] == []
+    assert len(result["unevaluated_moats"]) == len(MOAT_KEYWORDS)
+    assert result["categories_total"] == len(MOAT_KEYWORDS)
+    assert result["categories_evaluated"] == 0
+    # Un 0 agregado seria "no hay foso". No hay nada que agregar.
+    assert result["aggregate_strength"] is None
+    assert result["aggregate"]["comparable"] is False
+    for moat in result["unevaluated_moats"]:
+        assert moat["strength"] is None
+        assert moat["evaluable"] is False
+        assert moat["status"] == "no_sourced_evidence"
         assert moat["trend"] == "uncertain"
         assert moat["persistence"] == "unproven"
         assert moat["confidence"] == 0.0
-        assert moat["trace"]["method"] == "MOAT_EVIDENCE_V1"
+        assert moat["supporting_claim_ids"] == []
+        assert moat["evidence_for"] == []
+        assert moat["trace"]["method"] == "MOAT_EVIDENCE_V2"
 
 
 def test_supporting_primary_evidence_builds_strength(db):
@@ -70,13 +88,14 @@ def test_supporting_primary_evidence_builds_strength(db):
     _evidence(db, claim.id, tier="tier_1_regulatory", confidence=0.9)
 
     result = MoatService().assess(db, company)
-    brand = next(m for m in result["moats"] if m["type"] == "brand")
+    brand = _moat(result, "brand")
     # weight = 1.0 * 0.9 per evidence; support = 1.8, total = 1.8,
     # breadth = 2/5 = 0.4 -> strength = 100 * 1 * 0.4 = 40.
     assert brand["strength"] == 40
     # confidence = (1.8/2) * 0.4 = 0.36 -> evidence_backed (>= 2 refs, >= 0.35).
     assert brand["confidence"] == pytest.approx(0.36)
     assert brand["status"] == "evidence_backed"
+    assert brand["evaluable"] is True
     assert brand["trend"] == "stable"  # default when evidence_backed, no marker
     # strength 40 meets the medium bar but confidence 0.36 < 0.4 -> honest unproven.
     assert brand["persistence"] == "unproven"
@@ -84,9 +103,14 @@ def test_supporting_primary_evidence_builds_strength(db):
     assert brand["contradicting_claim_ids"] == []
     assert brand["trace"]["support_score"] == pytest.approx(1.8)
     assert result["status"] == "evidence_backed"
-    # Unrelated moat types stay honestly empty.
-    scale = next(m for m in result["moats"] if m["type"] == "scale")
-    assert scale["status"] == "insufficient_evidence"
+    assert result["aggregate_strength"] == 40
+    # The score is auditable claim by claim, with the tier behind it.
+    assert [item["claim_id"] for item in brand["evidence_for"]] == [claim.id, claim.id]
+    assert all(item["source_tier"] == "tier_1_regulatory" for item in brand["evidence_for"])
+    # Unrelated moat types stay honestly unevaluated, not zero.
+    scale = _unevaluated(result, "scale")
+    assert scale["status"] == "no_sourced_evidence"
+    assert scale["strength"] is None
 
 
 def test_contradicting_evidence_cancels_strength(db):
@@ -96,9 +120,11 @@ def test_contradicting_evidence_cancels_strength(db):
     _evidence(db, claim.id, tier="tier_2_company", kind="contradicts", confidence=0.8)
 
     result = MoatService().assess(db, company)
-    moat = next(m for m in result["moats"] if m["type"] == "switching_costs")
+    moat = _moat(result, "switching_costs")
     # support = against = 0.9 * 0.8 = 0.72 -> balance 0 -> strength 0.
+    # Aqui el 0 si es un dato: hay evidencia de fuente primaria en contra.
     assert moat["strength"] == 0
+    assert moat["evaluable"] is True
     assert moat["supporting_claim_ids"] == [claim.id]
     assert moat["contradicting_claim_ids"] == [claim.id]
     assert len(moat["evidence_against"]) == 1
@@ -116,12 +142,16 @@ def test_metadata_moat_type_matches_without_keyword_and_trend_marker_wins(db):
     _evidence(db, claim.id, tier="tier_unknown", confidence=0.9)
 
     result = MoatService().assess(db, company)
-    scale = next(m for m in result["moats"] if m["type"] == "scale")
-    assert scale["supporting_claim_ids"] == [claim.id]
-    assert scale["trend"] == "eroding"  # metadata marker wins
+    # tier_unknown no sostiene un score: se declara, no se convierte en 40/100.
+    scale = _unevaluated(result, "scale")
+    assert scale["status"] == "only_low_tier_evidence"
+    assert scale["strength"] is None
+    assert scale["evaluable"] is False
+    assert scale["trace"]["low_tier_evidence_refs"] == 2
+    assert result["status"] == "not_evaluable"
     # Note: "scale advantage" is not in the statement, only metadata matched.
-    keyword_only = next(m for m in result["moats"] if m["type"] == "regulation")
-    assert keyword_only["status"] == "insufficient_evidence"
+    keyword_only = _unevaluated(result, "regulation")
+    assert keyword_only["status"] == "no_sourced_evidence"
 
 
 def test_assess_persists_and_read_returns_only_persisted(db):
@@ -133,12 +163,14 @@ def test_assess_persists_and_read_returns_only_persisted(db):
     # read() never derives: with claims but no assessments it stays empty.
     before = MoatService().read(db, company)
     assert before["moats"] == []
-    assert before["status"] == "insufficient_evidence"
+    assert before["status"] == "not_evaluable"
+    assert before["aggregate_strength"] is None
 
     MoatService().assess(db, company)
     rows = db.scalars(select(MoatAssessment).where(MoatAssessment.company_id == company.id)).all()
-    # F29: solo se persiste el tipo con evidencia; los tipos sin evidencia
-    # no se guardan como ceros (una no-evaluacion no es una puntuacion).
+    # F29: solo se persiste el tipo con evidencia de fuente primaria; los tipos
+    # sin evidencia no se guardan como ceros (una no-evaluacion no es una
+    # puntuacion).
     assert sorted(row.moat_type for row in rows) == ["ecosystem", "switching_costs"]
 
     after = MoatService().read(db, company)
@@ -173,7 +205,7 @@ def test_zero_evidence_run_persists_nothing(db):
     # Claim financiero sin keywords de foso y sin evidencia: como en prod.
     _claim(db, company.id, "AAPL revenue is 416161000000.000000 for 2025-09-27:FY.")
     result = MoatService().assess(db, company)
-    assert result["status"] == "insufficient_evidence"
+    assert result["status"] == "not_evaluable"
     rows = db.scalars(select(MoatAssessment).where(MoatAssessment.company_id == company.id)).all()
     assert rows == []
 

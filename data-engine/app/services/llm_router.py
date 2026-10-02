@@ -1,4 +1,24 @@
-from dataclasses import dataclass
+"""Rutas LLM por tarea y capacidades que cada ruta REQUIERE.
+
+`required_capabilities` es la unica fuente de verdad de "que necesita esta
+ruta". Antes el router declaraba `agentic_red_team` como "tool-using
+adversarial review" y `tool_workflow` como "complex tool calling" sin que
+nadie comprobara que el adaptador pudiera usar herramientas: `_complete()`
+nunca enviaba `tools`. Una capacidad afirmada y no implementada es peor que
+no tenerla, porque el resto del sistema razona sobre una mentira.
+
+Ahora el adaptador SI implementa tool calling (ver
+`app.llm.base.ADAPTER_CAPABILITIES`) y `unsupported_routes()` deja la
+coherencia verificable: `tests/test_llm_tool_calling.py` falla si una ruta exige
+algo que el adaptador no hace, y falla si el adaptador deja de hacerlo sin que
+la ruta lo refleje.
+"""
+
+from dataclasses import dataclass, field
+
+#: Tool calling es una capacidad del ADAPTADOR, no de una ruta concreta.
+_TOOL = frozenset({"tool_calling"})
+_TEXT = frozenset({"text"})
 
 
 @dataclass(frozen=True)
@@ -7,12 +27,19 @@ class ModelRoute:
     model: str
     reason: str
     max_materiality: int | None = None
+    required_capabilities: frozenset[str] = field(default=_TEXT)
 
 
 ROUTES = {
     "cheap_extraction": ModelRoute("cheap_extraction", "space-bunny-free", "low-cost structured extraction"),
     "main_financial_analysis": ModelRoute("main_financial_analysis", "space-bunny-free", "source-grounded financial analysis"),
-    "agentic_red_team": ModelRoute("agentic_red_team", "space-bunny-free", "tool-using adversarial review"),
+    "agentic_red_team": ModelRoute(
+        "agentic_red_team",
+        "space-bunny-free",
+        "adversarial review that MAY request tools; no tools are registered, so "
+        "the run stays single-shot and deterministic",
+        required_capabilities=_TOOL,
+    ),
     "news_triage": ModelRoute("news_triage", "space-bunny-free", "cheap high-volume triage"),
     "dedupe_news": ModelRoute("dedupe_news", "space-bunny-free", "cheap semantic dedupe"),
     "claim_extraction": ModelRoute("claim_extraction", "space-bunny-free", "structured extraction"),
@@ -21,9 +48,15 @@ ROUTES = {
     "chat": ModelRoute("chat", "space-bunny-free", "grounded portfolio chat"),
     "thesis_update": ModelRoute("thesis_update", "space-bunny-free", "partial thesis update"),
     "deep_thesis": ModelRoute("deep_thesis", "space-bunny-free", "deep thesis workflow"),
-    "red_team": ModelRoute("red_team", "space-bunny-free", "agentic red team"),
+    "red_team": ModelRoute("red_team", "space-bunny-free", "adversarial review; the model may request tools but none are registered"),
     "source_audit": ModelRoute("source_audit", "space-bunny-free", "critical source audit"),
-    "tool_workflow": ModelRoute("tool_workflow", "space-bunny-free", "complex tool calling"),
+    "tool_workflow": ModelRoute(
+        "tool_workflow",
+        "space-bunny-free",
+        "tool-calling workflow; the adapter sends `tools` when a caller registers "
+        "them, and this app registers none, so the route is single-shot",
+        required_capabilities=_TOOL,
+    ),
     "code": ModelRoute("code", "space-bunny-free", "product coding"),
     "premium_financial_analysis": ModelRoute("premium_financial_analysis", "space-bunny-free", "eval-gated premium escalation"),
     "fallback": ModelRoute("fallback", "space-bunny-free", "cheap fallback"),
@@ -38,6 +71,21 @@ def route_model(task: str, materiality_score: int = 0, portfolio_weight: float =
     return ROUTES.get(task, ROUTES["fallback"])
 
 
+def unsupported_routes(capabilities) -> list[str]:
+    """Rutas que exigen una capacidad que `capabilities` no incluye.
+
+    Con las capacidades reales del adaptador la lista esta vacia. Con un
+    adaptador sin tool calling devuelve `agentic_red_team` y `tool_workflow`:
+    es exactamente el defecto que se quiere hacer visible.
+    """
+    supported = frozenset(capabilities or ())
+    return sorted(
+        route.task
+        for route in ROUTES.values()
+        if not route.required_capabilities <= supported
+    )
+
+
 def route_table() -> list[dict]:
     from app.llm.model_aliases import MODEL_ALIASES
 
@@ -47,6 +95,7 @@ def route_table() -> list[dict]:
         rows.append(
             {
                 **route.__dict__,
+                "required_capabilities": sorted(route.required_capabilities),
                 "provider": alias.provider if alias else None,
                 "provider_model_id": alias.provider_model_id if alias else None,
                 "enabled": alias.enabled if alias else False,

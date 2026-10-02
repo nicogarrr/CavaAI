@@ -37,7 +37,7 @@ export default async function NewsSection({ symbols }: NewsSectionProps) {
     }
 
     return (
-            <section aria-label="Noticias destacadas" className="w-full min-w-0 h-full bg-[#0F0F0F] rounded-lg border border-gray-800 p-4 sm:p-6 overflow-y-auto">
+            <section aria-label="Noticias destacadas" className="w-full min-w-0 h-full bg-surface-1 rounded-lg border border-gray-800 p-4 sm:p-6 overflow-y-auto">
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3 sm:mb-6">
                     <h2 className="text-xl sm:text-2xl font-bold text-white break-words">Noticias destacadas</h2>
                     <Link

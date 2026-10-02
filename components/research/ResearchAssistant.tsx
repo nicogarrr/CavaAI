@@ -8,6 +8,7 @@ import { Panel } from '@/components/ui/panel';
 import { Textarea } from '@/components/ui/textarea';
 import { askResearchAssistantAction, getGuideContextAction } from '@/lib/research/assistant-actions';
 import { safeAssistantSourceUrl, type AssistantMode, type AssistantResponse, type AssistantCitationKind, type AssistantSectionKey, type GuideContext } from '@/lib/research/assistant-contract';
+import { t } from '@/lib/i18n/t';
 
 const SECTION_LABELS: Record<AssistantSectionKey, string> = {
   facts: 'Hechos', calculations: 'Cálculos', hypotheses: 'Hipótesis', inferences: 'Inferencias',
@@ -18,6 +19,26 @@ const CITATION_LABELS: Record<AssistantCitationKind, string> = {
   claim_evidence: 'Evidencia de afirmación', market_observation: 'Observación de mercado',
 };
 
+/**
+ * Copy de una respuesta o sección VACÍA.
+ *
+ * El contrato permite `answer: ''` y `body: ''`: no es un dato que falte, es
+ * texto que el asistente no escribió, y un «Sin datos» a secas no dice si falta
+ * la respuesta, si la evidencia no daba para una o si el modelo se quedó mudo.
+ * Se nombra el caso y se dice dónde está la información que sí hay.
+ */
+function emptyAnswerCopy(status: 'answered' | 'insufficient_data'): string {
+  return status === 'insufficient_data'
+    ? 'El asistente no ha escrito una conclusión: la evidencia disponible no permite una confirmada. Lo que falta está enumerado en «Datos que faltan», más abajo.'
+    : 'El asistente ha devuelto la respuesta sin texto: no hay nada que mostrar como respuesta. Lo que sí ha enviado son las secciones y las citas de abajo.';
+}
+
+function emptySectionCopy(status: 'answered' | 'insufficient_data'): string {
+  return status === 'insufficient_data'
+    ? 'Sección sin cuerpo: el asistente no ha escrito nada aquí porque la evidencia no daba para tanto.'
+    : 'Sección sin cuerpo: el asistente la ha enviado vacía. Sin texto no hay nada que leer.';
+}
+
 function Citation({ citation }: { citation: AssistantResponse['citations'][number] }) {
   const url = safeAssistantSourceUrl(citation.url);
   return <li className="min-w-0 rounded-lg border border-gray-700/50 bg-black/20 p-3 text-xs text-gray-400">
@@ -25,7 +46,7 @@ function Citation({ citation }: { citation: AssistantResponse['citations'][numbe
       <Badge variant="outline">{CITATION_LABELS[citation.kind] ?? 'Fuente sin clasificar'}</Badge>
       {url ? <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex min-w-0 items-center gap-1 break-all text-teal-300 underline underline-offset-2 hover:text-teal-200">{citation.source || 'Fuente sin nombre'}<ExternalLink aria-hidden className="h-3 w-3 shrink-0" /></a> : <span className="min-w-0 break-all text-gray-200">{citation.source || 'Fuente sin nombre'}</span>}
     </div>
-    <div className="mt-2 break-all">ID: {citation.id} · Fecha de referencia (as_of): {citation.as_of || 'Sin datos'}</div>
+    <div className="mt-2 break-all">ID: {citation.id} · Fecha de referencia (as_of): {citation.as_of || t('signals.noDate')}</div>
     {citation.excerpt ? <p className="mt-2 whitespace-pre-wrap break-words text-gray-300">{citation.excerpt}</p> : null}
   </li>;
 }
@@ -98,8 +119,8 @@ export default function ResearchAssistant({ initialMode = 'explore', initialTick
         {result ? <Panel title="Respuesta" icon={LockKeyhole} description={`Modo ${result.mode === 'guide' ? 'guía' : 'explorar'} · Sin escritura${result.review_id !== null ? ` · Ticket #${result.review_id} (solo contexto)` : ''}`}>
           <Badge variant="outline" className="mb-4">Sin escritura · ningún ticket modificado</Badge>
           {result.status === 'insufficient_data' ? <div role="status" className="mb-4 rounded-lg border border-amber-800 bg-amber-950/20 p-3 text-sm text-amber-200"><strong>Datos insuficientes</strong><p className="mt-1">La evidencia disponible no permite una conclusión confirmada.</p></div> : null}
-          <p className="whitespace-pre-wrap break-words text-sm leading-7 text-gray-200">{result.answer || 'Sin datos'}</p>
-          {result.sections.length ? <div className="mt-5 space-y-2">{result.sections.map((section, index) => <details key={`${section.key}-${index}`} className="rounded-lg border border-gray-700/50 bg-black/20" open={section.key === 'conclusion' && result.status === 'answered'}><summary className="min-h-11 cursor-pointer px-3 py-3 text-sm font-semibold text-gray-200">{SECTION_LABELS[section.key] ?? 'Sección sin clasificar'}</summary><div className="border-t border-gray-800 px-3 py-3"><p className="whitespace-pre-wrap break-words text-sm leading-6 text-gray-300">{section.body || 'Sin datos'}</p>{section.citation_ids.length ? <p className="mt-2 break-words text-xs text-gray-500">Citas: {section.citation_ids.join(', ')}</p> : <p className="mt-2 text-xs text-gray-500">Sin citas para esta sección</p>}</div></details>)}</div> : <p className="mt-4 text-sm text-gray-500">Sin secciones adicionales</p>}
+          <p className="whitespace-pre-wrap break-words text-sm leading-7 text-gray-200">{result.answer?.trim() ? result.answer : emptyAnswerCopy(result.status)}</p>
+          {result.sections.length ? <div className="mt-5 space-y-2">{result.sections.map((section, index) => <details key={`${section.key}-${index}`} className="rounded-lg border border-gray-700/50 bg-black/20" open={section.key === 'conclusion' && result.status === 'answered'}><summary className="min-h-11 cursor-pointer px-3 py-3 text-sm font-semibold text-gray-200">{SECTION_LABELS[section.key] ?? 'Sección sin clasificar'}</summary><div className="border-t border-gray-800 px-3 py-3"><p className="whitespace-pre-wrap break-words text-sm leading-6 text-gray-300">{section.body?.trim() ? section.body : emptySectionCopy(result.status)}</p>{section.citation_ids.length ? <p className="mt-2 break-words text-xs text-gray-500">Citas: {section.citation_ids.join(', ')}</p> : <p className="mt-2 text-xs text-gray-500">Sin citas para esta sección</p>}</div></details>)}</div> : <p className="mt-4 text-sm text-gray-500">Sin secciones adicionales</p>}
           {result.missing_data.length || result.status === 'insufficient_data' ? <div className="mt-5 rounded-lg border border-amber-800/60 p-3"><h3 className="text-sm font-semibold text-amber-200">Datos que faltan</h3>{result.missing_data.length ? <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-300">{result.missing_data.map((item, index) => <li key={index}>{item}</li>)}</ul> : <p className="mt-2 text-sm text-gray-400">Sin datos sobre qué información falta.</p>}</div> : null}
           {result.suggested_next_steps.length ? <div className="mt-5"><h3 className="text-sm font-semibold text-gray-200">Próximos pasos sugeridos</h3><ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-400">{result.suggested_next_steps.map((item, index) => <li key={index}>{item}</li>)}</ul></div> : null}
           <div className="mt-5 border-t border-gray-800 pt-4"><h3 className="text-sm font-semibold text-gray-200">Citas y fuentes ({result.citations.length})</h3>{result.citations.length ? <ul className="mt-3 grid min-w-0 gap-2">{result.citations.map((citation, index) => <Citation key={`${citation.id}-${index}`} citation={citation} />)}</ul> : <p className="mt-2 text-sm text-gray-500">Sin datos de fuentes.</p>}</div>

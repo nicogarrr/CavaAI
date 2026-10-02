@@ -28,7 +28,13 @@ export default function ThesisDebatePanel({ ticker, initialVerdict }: ThesisDeba
         setRunning(true);
         setError(null);
         try {
-            setDebate(await runThesisDebate(ticker));
+            const outcome = await runThesisDebate(ticker);
+            if (outcome.ok) {
+                setDebate(outcome.debate);
+            } else {
+                setError(outcome.error);
+                showErrorToast(new Error(outcome.error), { onRetry: run });
+            }
         } catch (exc) {
             if (isNextRedirectError(exc)) throw exc;
             setError(exc instanceof Error ? exc.message : 'No se pudo generar el debate');
