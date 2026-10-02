@@ -155,6 +155,7 @@ jobs:
             --pg-database cavaai_drill_source \
             --pg-user portfolio \
             --minio-endpoint 127.0.0.1:9000 \
+            --minio-access-key "${MINIO_ACCESS_KEY}" --minio-secret-key "${MINIO_SECRET_KEY}" \
             --minio-bucket "${DRILL_BUCKET}" \
             --qdrant-url http://127.0.0.1:6333 \
             --qdrant-collection "${DRILL_COLLECTION}"
