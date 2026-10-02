@@ -88,6 +88,8 @@ jobs:
       MINIO_ENDPOINT: 127.0.0.1:9000
       MINIO_ACCESS_KEY: drilluser
       MINIO_SECRET_KEY: drillpassword123
+      DRILL_MINIO_ACCESS_KEY: drilluser
+      DRILL_MINIO_SECRET_KEY: drillpassword123
       MINIO_BUCKET: research
       DOCUMENT_STORAGE_BACKEND: minio
       DRILL_BUCKET: research
