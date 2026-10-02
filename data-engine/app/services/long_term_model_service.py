@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime
+from decimal import Decimal
 from math import isfinite, sqrt
 from statistics import median
 from typing import Any
@@ -207,6 +208,22 @@ def _calculated_line(
         "basis": basis,
         "evidence": [],
     }
+
+
+def _derived_fcf(ocf: FinancialFact | None, capex: FinancialFact | None) -> Decimal | None:
+    """Free cash flow derived from the two reported legs: ``operating_cash_flow + capital_expenditure``.
+
+    Capex keeps the sign it has in the filing (reported negative, so the sum is
+    a subtraction in practice). Returns ``None`` when either leg is missing or
+    unreadable: substituting a silent 0 would publish a cash flow the issuer
+    never reported, which is exactly what the reported line's absence was
+    telling us.
+    """
+    operating = _float(ocf.value) if ocf is not None else None
+    investing = _float(capex.value) if capex is not None else None
+    if operating is None or investing is None:
+        return None
+    return Decimal(str(operating)) + Decimal(str(investing))
 
 
 def _is_annual(fact: FinancialFact) -> bool:
@@ -701,10 +718,10 @@ class LongTermModelService:
                 if metric == "free_cash_flow" and fact is None:
                     ocf = self._fact_for_year(fact_cache["operating_cash_flow"], year)
                     capex = self._fact_for_year(fact_cache["capital_expenditure"], year)
-                    if ocf and capex:
-                        value = (_float(ocf.value) or 0) + (_float(capex.value) or 0)
+                    derived = _derived_fcf(ocf, capex)
+                    if derived is not None:
                         metrics[metric] = _calculated_line(
-                            value,
+                            float(derived),
                             unit="USD",
                             source_fact_ids=_unique_ids(ocf, capex),
                             calculation="operating_cash_flow + capital_expenditure",
@@ -764,11 +781,12 @@ class LongTermModelService:
                 continue
             ocf = self._fact_for_year(fact_cache["operating_cash_flow"], year)
             capex = self._fact_for_year(fact_cache["capital_expenditure"], year)
-            if ocf and capex:
+            derived = _derived_fcf(ocf, capex)
+            if derived is not None:
                 result.append(
                     {
                         "year": year,
-                        "value": (_float(ocf.value) or 0) + (_float(capex.value) or 0),
+                        "value": float(derived),
                         "fact_ids": _unique_ids(ocf, capex),
                     }
                 )
@@ -1421,9 +1439,8 @@ class LongTermModelService:
             return _float(fact.value)
         ocf = self._fact_for_year(fact_cache["operating_cash_flow"], year)
         capex = self._fact_for_year(fact_cache["capital_expenditure"], year)
-        if ocf and capex:
-            return (_float(ocf.value) or 0) + (_float(capex.value) or 0)
-        return None
+        derived = _derived_fcf(ocf, capex)
+        return float(derived) if derived is not None else None
 
     def _scenario_payload(
         self,
@@ -1842,11 +1859,6 @@ class LongTermModelService:
         if len(years) < 5:
             limitations.append("full_10_year_history")
         return sorted(set(limitations))
-
-    @staticmethod
-    def _current_price(db: Session, company_id: int) -> float | None:
-        price, _as_of, _source = _current_price_with_date(db, company_id)
-        return price
 
     @staticmethod
     def _metric_value(value: float | None, unit: str, source_fact_ids: list[int], calculation: str) -> dict[str, Any]:
