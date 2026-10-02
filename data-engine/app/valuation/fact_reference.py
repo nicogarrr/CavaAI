@@ -3,12 +3,15 @@
 ``FinancialSnapshot`` is the right entry point for the FCFF DCF: it enforces
 temporal coherence between a duration metric (revenue) and its companions.
 The sector engines (banks, insurers, REITs, commodities) and the new
-DDM/FCFE, regulated-utility and relative-multiple engines do not use it
-because their inputs are not a cash-flow statement: a tangible book value, a
-combined ratio, a rate base or a peer multiple are point-in-time or
-cross-company readings, and the snapshot would either drop them (they are not
-in ``DURATION_METRICS``/``INSTANT_METRICS``) or silently pair them with a
-revenue anchor from another fiscal year.
+DDM/FCFE, regulated-utility and relative-multiple engines do not use the
+full snapshot because their inputs are not a cash-flow statement: a tangible
+book value, a combined ratio, a rate base or a peer multiple are
+point-in-time or cross-company readings, and the snapshot would either drop
+them (they are not in ``DURATION_METRICS``/``INSTANT_METRICS``) or silently
+pair them with a revenue anchor from another fiscal year.  But those engines
+still need period coherence: mixing NOI FY2024 with cap rate FY2025 is a
+look-ahead.  The ``anchor`` parameter provides that coherence: when given,
+only facts compatible with the anchor's period are returned.
 
 This module centralises the one thing all those engines were re-implementing:
 "the latest fact for this company for this metric, with its provenance".
@@ -52,9 +55,22 @@ class SourcedFact:
     confidence: float
     source_type: str
     is_reported: bool
+    warnings: tuple[str, ...] = ()
+
+    def with_warning(self, warning: str) -> SourcedFact:
+        return SourcedFact(
+            metric=self.metric,
+            value=self.value,
+            fact_id=self.fact_id,
+            period=self.period,
+            confidence=self.confidence,
+            source_type=self.source_type,
+            is_reported=self.is_reported,
+            warnings=self.warnings + (warning,),
+        )
 
     def as_trace(self) -> dict:
-        return {
+        result = {
             "metric": self.metric,
             "value": self.value,
             "fact_id": self.fact_id,
@@ -63,6 +79,9 @@ class SourcedFact:
             "source_type": self.source_type,
             "is_reported": self.is_reported,
         }
+        if self.warnings:
+            result["warnings"] = list(self.warnings)
+        return result
 
 
 def _to_sourced(fact: FinancialFact) -> SourcedFact | None:
@@ -96,14 +115,21 @@ def latest_fact(db: Session, company_id: int, *metrics: str) -> SourcedFact | No
     return None
 
 
-def latest_facts(db: Session, company_id: int, metrics: Sequence[str]) -> dict[str, SourcedFact]:
+def latest_facts(
+    db: Session,
+    company_id: int,
+    metrics: Sequence[str],
+    *,
+    anchor: FinancialFact | None = None,
+) -> dict[str, SourcedFact]:
     """Latest usable fact per metric, in one query per metric.
 
-    A single grouped query would be cheaper, but "latest" here means
-    ``fiscal_year`` then ``created_at`` and the caller may ask for the same
-    company for six metrics; six indexed lookups are cheaper than the
-    window-function query that would express this portably.
+    When ``anchor`` is provided, only facts whose fiscal period is compatible
+    with the anchor are returned (``_compatible_instant`` semantics: same FY
+    or earlier, never later).
     """
+    from app.valuation.financial_snapshot import _compatible_instant
+
     resolved: dict[str, SourcedFact] = {}
     for metric in metrics:
         row = db.scalar(
@@ -116,6 +142,11 @@ def latest_facts(db: Session, company_id: int, metrics: Sequence[str]) -> dict[s
             .limit(1)
         )
         if row is None:
+            continue
+        if anchor is not None and not _compatible_instant(anchor, row):
+            sourced = _to_sourced(row)
+            if sourced is not None:
+                resolved[metric] = sourced.with_warning("period_mismatch_vs_anchor")
             continue
         sourced = _to_sourced(row)
         if sourced is not None:

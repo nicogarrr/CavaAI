@@ -396,7 +396,7 @@ def test_snapshot_flags_a_cross_year_balance_sheet(db, company):
 
     snapshot = FinancialSnapshotBuilder().build(db, company)
 
-    assert any("net_debt" in warning and "fiscal year" in warning for warning in snapshot.warnings)
+    assert any("net_debt" in warning for warning in snapshot.warnings)
 
 
 # --------------------------------------------------------------------------
@@ -420,7 +420,7 @@ def test_traceable_wacc_prefers_the_persisted_calculated_metric(db, company):
     )
     db.flush()
 
-    assert traceable_wacc(db, company) == pytest.approx(0.062)
+    assert traceable_wacc(db, company)[0] == pytest.approx(0.062)
 
 
 def test_traceable_wacc_ignores_non_ok_and_out_of_range_rows(db, company):
@@ -432,7 +432,7 @@ def test_traceable_wacc_ignores_non_ok_and_out_of_range_rows(db, company):
         )
     )
     db.flush()
-    assert traceable_wacc(db, company) is None
+    assert traceable_wacc(db, company)[0] is None
 
     db.add(
         CalculatedMetric(
@@ -442,8 +442,8 @@ def test_traceable_wacc_ignores_non_ok_and_out_of_range_rows(db, company):
         )
     )
     db.flush()
-    assert traceable_wacc(db, company) is None
+    assert traceable_wacc(db, company)[0] is None
 
 
 def test_traceable_wacc_returns_none_without_a_persisted_metric(db, company):
-    assert traceable_wacc(db, company) is None
+    assert traceable_wacc(db, company)[0] is None

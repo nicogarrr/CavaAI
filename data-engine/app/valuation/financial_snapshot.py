@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from datetime import date
 
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
@@ -89,12 +90,18 @@ def _period_type(period: str | None, fiscal_quarter: str | None) -> str:
     return "FY"
 
 
-def _facts_for_metric(db: Session, company_id: int, metric: str) -> list[FinancialFact]:
+def _facts_for_metric(
+    db: Session, company_id: int, metric: str, *, as_of: date | None = None
+) -> list[FinancialFact]:
+    query = (
+        select(FinancialFact)
+        .where(FinancialFact.company_id == company_id, FinancialFact.metric == metric)
+    )
+    if as_of is not None:
+        query = query.where(FinancialFact.fiscal_year <= as_of.year)
     return list(
         db.scalars(
-            select(FinancialFact)
-            .where(FinancialFact.company_id == company_id, FinancialFact.metric == metric)
-            .order_by(
+            query.order_by(
                 FinancialFact.fiscal_year.desc().nullslast(),
                 desc(FinancialFact.created_at),
             )
@@ -122,12 +129,12 @@ def _same_duration_period(anchor: FinancialFact, candidate: FinancialFact) -> bo
 
 
 def _compatible_instant(anchor: FinancialFact, candidate: FinancialFact) -> bool:
-    """Balance-sheet / shares may be same FY or a later instant in the same year."""
+    """Balance-sheet / shares must be same FY or an earlier instant; a later FY is not knowledge."""
     if anchor.fiscal_year is None or candidate.fiscal_year is None:
         return (anchor.period or "").upper() == (candidate.period or "").upper()
     if candidate.fiscal_year < anchor.fiscal_year:
         return False
-    if candidate.fiscal_year > anchor.fiscal_year + 1:
+    if candidate.fiscal_year > anchor.fiscal_year:
         return False
     return True
 
@@ -148,8 +155,8 @@ def _pick_matching(
 class FinancialSnapshotBuilder:
     """Assemble a coherent valuation snapshot from FinancialFact rows."""
 
-    def build(self, db: Session, company: Company) -> FinancialSnapshot:
-        revenue_candidates = _facts_for_metric(db, company.id, "revenue")
+    def build(self, db: Session, company: Company, *, as_of: date | None = None) -> FinancialSnapshot:
+        revenue_candidates = _facts_for_metric(db, company.id, "revenue", as_of=as_of)
         if not revenue_candidates:
             return FinancialSnapshot(
                 missing_inputs=["revenue", "shares_diluted", "free_cash_flow_or_fcf_margin"],
@@ -169,11 +176,11 @@ class FinancialSnapshotBuilder:
         for metric in DURATION_METRICS:
             if metric == "revenue":
                 continue
-            match = _pick_matching(_facts_for_metric(db, company.id, metric), anchor, instant=False)
+            match = _pick_matching(_facts_for_metric(db, company.id, metric, as_of=as_of), anchor, instant=False)
             if match:
                 snapshot.facts[metric] = match
             else:
-                latest = _facts_for_metric(db, company.id, metric)
+                latest = _facts_for_metric(db, company.id, metric, as_of=as_of)
                 if latest:
                     snapshot.warnings.append(
                         f"{metric} latest period {latest[0].period} does not match "
@@ -181,7 +188,7 @@ class FinancialSnapshotBuilder:
                     )
 
         for metric in INSTANT_METRICS:
-            match = _pick_matching(_facts_for_metric(db, company.id, metric), anchor, instant=True)
+            match = _pick_matching(_facts_for_metric(db, company.id, metric, as_of=as_of), anchor, instant=True)
             if match:
                 snapshot.facts[metric] = match
                 if metric == "net_debt":
@@ -200,7 +207,7 @@ class FinancialSnapshotBuilder:
                 if metric == "shares_diluted":
                     snapshot.shares_period = match.period
             else:
-                latest = _facts_for_metric(db, company.id, metric)
+                latest = _facts_for_metric(db, company.id, metric, as_of=as_of)
                 if latest:
                     snapshot.warnings.append(
                         f"{metric} latest period {latest[0].period} is incompatible "

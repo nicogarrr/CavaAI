@@ -19,7 +19,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.models import FinancialFact
+from app.models import Document, FinancialFact
 from app.models.thesis_backtest import (
     STATUS_INSUFFICIENT_DATA,
     STATUS_NOT_YET_PUBLISHED,
@@ -50,6 +50,7 @@ from tests.backtest_fixtures import (
     make_company,
     make_session,
     seed_company,
+    ts,
 )
 
 
@@ -264,6 +265,16 @@ def test_quarterly_fact_is_visible_only_after_its_quarter_end(no_network):
         session, company, created_at=date(2024, 1, 31), evidence_published_at=date(2024, 1, 31)
     )
     # A Q3 fact whose period ends on 30 September, with no filing date of its own.
+    # FIX-4: sin fecha de publicacion el eje falla cerrado: el hecho no es
+    # verificable y se excluye del replay, aunque su periodo ya haya pasado.
+    doc = Document(
+        company_id=company.id,
+        title="Q3 2024 filing",
+        source_type="sec",
+        published_at=ts(date(2024, 10, 15)),
+    )
+    session.add(doc)
+    session.flush()
     session.add(
         FinancialFact(
             company_id=company.id,
@@ -273,6 +284,7 @@ def test_quarterly_fact_is_visible_only_after_its_quarter_end(no_network):
             period="Q3 2024",
             fiscal_year=2024,
             fiscal_quarter="Q3",
+            source_id=doc.id,
             source_type="sec",
             confidence=Decimal("0.9"),
         )
@@ -288,8 +300,8 @@ def test_quarterly_fact_is_visible_only_after_its_quarter_end(no_network):
     assert not any("Q3 2024" in item for item in antes.excluded_future_inputs)
     assert antes.lookahead_violations == []
 
-    # On the closing date it becomes knowable, and it is the newest revenue fact.
-    despues = service.cell(session, TICKER, date(2024, 9, 30))
+    # After the filing date (2024-10-15) it becomes knowable.
+    despues = service.cell(session, TICKER, date(2024, 10, 15))
     assert despues.point_in_time["valuation_periods"]["revenue"] == "Q3 2024"
     assert despues.fair_value != antes.fair_value
 
@@ -366,15 +378,16 @@ def test_knowledge_is_the_later_of_period_end_and_publication():
 
 
 def test_missing_publication_date_uses_the_period_end_as_the_lower_bound():
-    """Sin fecha de presentacion no se inventa una: se usa el final de periodo.
+    """FIX-4: sin fecha de presentacion el eje falla CERRADO.
 
-    Y queda marcado como no verificado, porque un final de periodo es una cota
-    inferior, no una prueba de que el filing ocurriera ese dia.
+    Antes conoc_on devolvia el final del periodo y unverifiable era False,
+    permitiendo look-ahead silencioso. Ahora sin published_on no hay conocimiento
+    verificable: known_on es None y unverifiable es True.
     """
     bounds = knowledge_bounds(period="2024-12-31", fiscal_year=2024)
     assert bounds.published_on is None
-    assert bounds.known_on == date(2024, 12, 31)
-    assert bounds.unverifiable is False
+    assert bounds.known_on is None
+    assert bounds.unverifiable is True
 
 
 def test_a_fact_with_no_readable_period_at_all_is_unverifiable():
