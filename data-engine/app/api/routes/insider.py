@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -35,6 +37,7 @@ def insider_filings(
     ticker: str = Query(min_length=1, max_length=20),
     limit: int = Query(default=20, ge=1, le=50),
     db: Session = Depends(get_db),
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> dict:
     """Filings Form 4/4-A persistidos para un ticker (lectura durable, PR-2).
 
@@ -50,7 +53,16 @@ def insider_filings(
                 .where(InsiderFiling.issuer_ticker == wanted)
                 .order_by(desc(InsiderFiling.filing_date), desc(InsiderFiling.id))
                 .limit(limit)
+                .offset(offset)
             ).all()
+        )
+        total = (
+            db.scalar(
+                select(func.count())
+                .select_from(InsiderFiling)
+                .where(InsiderFiling.issuer_ticker == wanted)
+            )
+            or 0
         )
         items = []
         for filing in filings:
@@ -91,6 +103,8 @@ def insider_filings(
             "ticker": wanted,
             "status": "ok",
             "count": len(items),
+            # Total persistido del ticker (count = filings de esta pagina).
+            "total": total,
             "filings": items,
         }
     except Exception as exc:  # noqa: BLE001 — best-effort por contrato del modulo
