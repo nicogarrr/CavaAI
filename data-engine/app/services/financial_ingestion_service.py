@@ -1526,6 +1526,7 @@ class FinancialIngestionService:
 
             fcf: FinancialFact | None = None
             if ocf is not None and capex is not None:
+                self._drop_stale_derived(db, company, "free_cash_flow", ocf.period)
                 fcf = FinancialFact(
                     company_id=company.id,
                     metric="free_cash_flow",
@@ -1546,6 +1547,7 @@ class FinancialIngestionService:
                 and revenue is not None
                 and revenue.value > 0
             ):
+                self._drop_stale_derived(db, company, "fcf_margin", revenue.period)
                 db.add(
                     FinancialFact(
                         company_id=company.id,
@@ -1568,6 +1570,7 @@ class FinancialIngestionService:
                 and previous_revenue is not None
                 and previous_revenue.value > 0
             ):
+                self._drop_stale_derived(db, company, "revenue_growth", revenue.period)
                 db.add(
                     FinancialFact(
                         company_id=company.id,
@@ -1585,6 +1588,7 @@ class FinancialIngestionService:
                 )
                 derived += 1
             if debt is not None and cash is not None:
+                self._drop_stale_derived(db, company, "net_debt", debt.period)
                 db.add(
                     FinancialFact(
                         company_id=company.id,
@@ -1630,6 +1634,7 @@ class FinancialIngestionService:
         def add_ratio(metric: str, numerator: FinancialFact, denominator: FinancialFact) -> int:
             if denominator.value is None or denominator.value <= 0:
                 return 0
+            self._drop_stale_derived(db, company, metric, numerator.period)
             db.add(
                 FinancialFact(
                     company_id=company.id,
@@ -1663,6 +1668,7 @@ class FinancialIngestionService:
             fl_noncurrent = year_fact("financial_liabilities_noncurrent", year)
 
             if fl_current is not None and fl_noncurrent is not None:
+                self._drop_stale_derived(db, company, "total_debt", fl_current.period)
                 db.add(
                     FinancialFact(
                         company_id=company.id,
@@ -1682,6 +1688,7 @@ class FinancialIngestionService:
 
             fcf: FinancialFact | None = None
             if ocf is not None and capex is not None:
+                self._drop_stale_derived(db, company, "free_cash_flow", ocf.period)
                 fcf = FinancialFact(
                     company_id=company.id,
                     metric="free_cash_flow",
@@ -1705,6 +1712,7 @@ class FinancialIngestionService:
                 and previous_revenue is not None
                 and previous_revenue.value > 0
             ):
+                self._drop_stale_derived(db, company, "revenue_growth", revenue.period)
                 db.add(
                     FinancialFact(
                         company_id=company.id,
@@ -1735,6 +1743,7 @@ class FinancialIngestionService:
             ):
                 derived += add_ratio("effective_tax_rate", income_tax_expense, income_before_tax)
             if operating_income is not None and depreciation is not None:
+                self._drop_stale_derived(db, company, "ebitda", operating_income.period)
                 db.add(
                     FinancialFact(
                         company_id=company.id,
@@ -1968,11 +1977,53 @@ class FinancialIngestionService:
             count += 1
         return count
 
+    def _latest_fact_for(
+        self, db: Session, company: Company, metric: str, source_type: str
+    ) -> FinancialFact | None:
+        """`latest_fact` restringido a UN proveedor.
+
+        Las derivadas se etiquetan con la fuente de sus insumos: calcular la
+        derivada de FMP sobre filas de SEC era procedencia falsa (FIX5-7).
+        """
+        rows = list(
+            db.scalars(
+                select(FinancialFact)
+                .where(
+                    FinancialFact.company_id == company.id,
+                    FinancialFact.metric == metric,
+                    FinancialFact.source_type == source_type,
+                    FinancialFact.fiscal_quarter == "FY",
+                )
+                .order_by(
+                    FinancialFact.fiscal_year.desc().nullslast(),
+                    FinancialFact.created_at.desc(),
+                    FinancialFact.id.desc(),
+                )
+            ).all()
+        )
+        if not rows:
+            return None
+        latest_year = rows[0].fiscal_year
+        candidates = [row for row in rows if row.fiscal_year == latest_year]
+        return min(
+            candidates,
+            key=lambda row: (SOURCE_PRIORITY.get(row.source_type or "", 50), row.id),
+        )
+
     def _add_derived_facts(self, db: Session, company: Company, document: Document) -> int:
+        # Anclas SOLO del proveedor FMP y SOLO del ejercicio (FY): una fila TTM
+        # u otra fuente como "ultima revenue" fabricaba un crecimiento ~0 entre
+        # un TTM y un FY del mismo cierre, o una derivada FMP sobre datos SEC
+        # (procedencia falsa) (FIX5-7).
         revenue_facts = list(
             db.scalars(
                 select(FinancialFact)
-                .where(FinancialFact.company_id == company.id, FinancialFact.metric == "revenue")
+                .where(
+                    FinancialFact.company_id == company.id,
+                    FinancialFact.metric == "revenue",
+                    FinancialFact.fiscal_quarter == "FY",
+                    FinancialFact.source_type == "FMP",
+                )
                 .order_by(FinancialFact.fiscal_year.desc().nullslast())
                 .limit(2)
             )
@@ -1980,11 +2031,11 @@ class FinancialIngestionService:
         count = 0
         latest_revenue = revenue_facts[0] if revenue_facts else None
         prior_revenue = revenue_facts[1] if len(revenue_facts) > 1 else None
-        latest_fcf = self.latest_fact(db, company, "free_cash_flow")
-        operating_cash_flow = self.latest_fact(db, company, "operating_cash_flow")
-        capex = self.latest_fact(db, company, "capital_expenditure")
-        total_debt = self.latest_fact(db, company, "total_debt")
-        cash = self.latest_fact(db, company, "cash_and_equivalents")
+        latest_fcf = self._latest_fact_for(db, company, "free_cash_flow", "FMP")
+        operating_cash_flow = self._latest_fact_for(db, company, "operating_cash_flow", "FMP")
+        capex = self._latest_fact_for(db, company, "capital_expenditure", "FMP")
+        total_debt = self._latest_fact_for(db, company, "total_debt", "FMP")
+        cash = self._latest_fact_for(db, company, "cash_and_equivalents", "FMP")
 
         if not latest_fcf and operating_cash_flow and capex:
             count += self._add_derived_fact(
@@ -1999,7 +2050,7 @@ class FinancialIngestionService:
                 operating_cash_flow.fiscal_quarter,
             )
             db.flush()
-            latest_fcf = self.latest_fact(db, company, "free_cash_flow")
+            latest_fcf = self._latest_fact_for(db, company, "free_cash_flow", "FMP")
 
         if latest_revenue and latest_fcf and latest_revenue.value:
             count += self._add_derived_fact(
@@ -2051,6 +2102,7 @@ class FinancialIngestionService:
         fiscal_year: int | None,
         fiscal_quarter: str | None,
     ) -> int:
+        self._drop_stale_derived(db, company, metric, period)
         db.add(
             FinancialFact(
                 company_id=company.id,
