@@ -59,7 +59,7 @@ export default async function InsiderPage({ searchParams }: PageProps) {
                         Compras insider con código P (Form 4, SEC EDGAR): clusters, compras de CEO/CFO y grandes operaciones.
                     </p>
                 </div>
-                <div className="flex items-center gap-2 rounded-lg border border-gray-800 bg-[#111111] px-3 py-2 text-sm text-gray-300">
+                <div className="flex items-center gap-2 rounded-lg border border-gray-800 bg-surface-1 px-3 py-2 text-sm text-gray-300">
                     <Users className="h-4 w-4 text-teal-300" />
                     Form 4
                 </div>
