@@ -31,6 +31,7 @@ import { getAstOrbitOverview } from '@/lib/actions/asts-orbits.actions';
 import {
   DecisionAndRealityPanel,
   LongTermModelPanel,
+  termLabel,
 } from '@/components/research/FundamentalModelPanels';
 import { Badge } from '@/components/ui/badge';
 import { exchangeDisplayName } from '@/lib/exchangeName';
@@ -523,7 +524,7 @@ function MarketOpportunityView({ model, ticker }: { model: ResearchLongTermModel
         <div className="flex flex-wrap gap-2">
           <Badge>{label(opportunity.verdict.label)}</Badge>
           <Badge variant="outline">confianza: {label(opportunity.verdict.confidence)}</Badge>
-          <Badge variant="outline">restricción ligante: {opportunity.constraints.binding_constraint ? label(opportunity.constraints.binding_constraint) : 'desconocida'}</Badge>
+          <Badge variant="outline">restricción ligante: {opportunity.constraints.binding_constraint ? termLabel(opportunity.constraints.binding_constraint) : 'desconocida'}</Badge>
         </div>
         <p className="mt-3 text-sm text-gray-300">{opportunity.verdict.conclusion}</p>
       </Panel>
@@ -535,7 +536,7 @@ function MarketOpportunityView({ model, ticker }: { model: ResearchLongTermModel
                 <span className="text-gray-200">{formula.label}</span>
                 <span className="text-teal-300">{formula.value === null ? label(formula.status) : metricValue(formula.value, 'USD')}</span>
               </div>
-              {formula.missing_inputs?.length ? <p className="mt-2 text-xs text-amber-300">Faltan entradas: {formula.missing_inputs.map(metricLabel).join(', ')}</p> : null}
+              {formula.missing_inputs?.length ? <p className="mt-2 text-xs text-amber-300">Faltan entradas: {formula.missing_inputs.map(termLabel).join(', ')}</p> : null}
             </div>
           ))}
         </div>
