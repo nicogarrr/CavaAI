@@ -39,5 +39,5 @@ def test_every_framework_has_a_formula_and_dimension_terms():
 def test_biotech_framework_invents_no_pipeline_economics():
     fw = FRAMEWORKS["biotech_pre_fcf"]
     assert FORMULAS["biotech_pre_fcf"].inputs == ("revenue",)
-    assert "N/D" in fw.unit_economics[0]
+    assert fw.unit_economics == ("reported_revenue_only",)
     assert fw.required_fact_metrics == ()
