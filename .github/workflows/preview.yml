@@ -16,15 +16,25 @@ permissions:
   contents: read
   pull-requests: write
 
+# shell por defecto: `bash` explicito (= `bash --noprofile --norc -eo pipefail
+# {0}`). El paso de deploy ya llevaba `set -o pipefail` inline; el default
+# cubre el resto (FIX-3.2).
+defaults:
+  run:
+    shell: bash
+
 concurrency:
-  # Un grupo por PR (por numero, no por `refs/pull/N/merge`: es lo mismo 1:1 pero
-  # se lee). Este workflow SI cancela en PR y aqui no hay contradiccion con lo
-  # que hace ci.yml: en un preview, un run superseded significa un comentario
-  # apuntando a un build viejo, que es exactamente el fallo que hay que evitar.
-  # Se cancela el run anterior entero, build incluido, y el nuevo vuelve a
-  # desplegar sobre el mismo alias de rama.
-  group: preview-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  # FIX-3.11. Un grupo por PR, PERO `closed` va en su propio grupo
+  # (preview-teardown-N): el evento `closed` tambien es `pull_request`, y con
+  # un grupo comun cancelaba el run de `synchronize` que estaba en vuelo; y un
+  # `reopened` rapido cancelaba el `closed` -> el teardown podia no llegar a
+  # ejecutarse y quedaba un preview vivo de una PR cerrada. Con este group:
+  #   - preview-N: opened/synchronize/reopened se cancelan entre si (un run
+  #     superseded seria un comentario apuntando a un build viejo).
+  #   - preview-teardown-N: el teardown NUNCA se cancela ni cancela nada.
+  # cancel-in-progress solo cuando no es `closed`.
+  group: preview-${{ github.event.action == 'closed' && format('preview-teardown-{0}', github.event.pull_request.number) || format('preview-{0}', github.event.pull_request.number || github.ref) }}
+  cancel-in-progress: ${{ github.event.action != 'closed' && github.event_name == 'pull_request' }}
 
 env:
   # Marcador oculto. Es lo que permite encontrar el comentario de este workflow
@@ -113,10 +123,10 @@ jobs:
       # Sin `ref:` a proposito: el default de `pull_request` es el commit de
       # merge, que es justo lo que se va a mergear. Un preview del head suelto
       # puede no compilar por conflictos que el merge si resuelve.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 1
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
           # `cache: npm` acelera el `npm ci` que hace `vercel build` (el
@@ -181,7 +191,7 @@ jobs:
     steps:
       - name: Marca el comentario como obsoleto
         if: ${{ github.event.action == 'closed' }}
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           # Dos reintentos por rate limit. 403 no se reintenta (esta en la lista
           # de exentos por defecto), asi que un token degradado falla ya y no
@@ -212,7 +222,7 @@ jobs:
             core.info(`Comentarios marcados como obsoletos: ${mine.length}`);
       - name: Publica o actualiza el comentario del preview
         if: ${{ github.event.action != 'closed' }}
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           # Los valores que vienen del PR viajan por env, NUNCA por ${{ }}: el
           # nombre de una rama es input no confiable y expandirlo dentro del

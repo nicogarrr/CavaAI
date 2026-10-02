@@ -21,7 +21,7 @@
 #     esperar a nadie, y es la causa de las RCE que terminan en root del host.
 #   CVE HIGH/MEDIUM/LOW ............... se REPORTA con su numero en el log y en el
 #     artefacto. Bloquear por un HIGH de una dependencia transitiva que nadie usa
-#     enseña al equipo a ignorar el escaneo; se arregla en el PR de dependencia.
+#     enseÃ±a al equipo a ignorar el escaneo; se arregla en el PR de dependencia.
 #   escaner que no se ejecuta .......... ROJO.  Fail-closed, mismo principio que
 #     el gate de Qdrant de ci.yml (que falla si el test se salta): "no lo he
 #     podido comprobar" jamas se reporta como "esta limpio".
@@ -50,9 +50,22 @@ on:
 permissions:
   contents: read
 
+# shell por defecto: `bash` explicito (= `bash --noprofile --norc -eo pipefail
+# {0}`). Los `run:` de este workflow ya usaban `set -euo pipefail` inline; el
+# default cubre tambien los pasos que se anadan (FIX-3.2).
+defaults:
+  run:
+    shell: bash
+
 concurrency:
   group: sbom-scan-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # false SIEMPRE (FIX-3.6): este workflow publica 4 SBOM (CycloneDX + SPDX)
+  # y 4 informes de escaneo como evidencia forense (retention 90 dias),
+  # pensada para investigar un incidente DESPUES. Con true, una rafaga de
+  # pushes cancelaba los runs a mitad y la evidencia del commit cancelado no
+  # existia: un panel con "sin alertas" de un escaneo que no termino. Con
+  # false, GitHub encola el siguiente scan y cada commit conserva sus SBOM.
+  cancel-in-progress: false
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -91,13 +104,13 @@ jobs:
             file: data-engine/Dockerfile
             production: "false"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: docker/setup-buildx-action@v4.4.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: "Construir ${{ matrix.image.name }} (sin push: no depende de registry)"
         id: build
-        uses: docker/build-push-action@v7.4.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ${{ matrix.image.context }}
           file: ${{ matrix.image.file }}
@@ -130,7 +143,7 @@ jobs:
             "${{ matrix.image.production }}" | tee -a "digests/${{ matrix.image.name }}.tsv"
           docker image inspect "$ref" --format 'User={{.Config.User}} Entrypoint={{json .Config.Entrypoint}} Cmd={{json .Config.Cmd}}'
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: ${{ always() }}
         with:
           name: digest-${{ matrix.image.name }}
@@ -175,15 +188,15 @@ jobs:
             file: data-engine/Dockerfile
             production: "false"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: docker/setup-buildx-action@v4.4.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Reconstruir desde la cache del job build
         # Sin registry no hay forma de pasar la imagen entre jobs: se reconstruye
         # y la cache `type=gha` que dejo el job build lo convierte en una capa.
         # El contexto es el mismo commit, asi que es el mismo contenido.
-        uses: docker/build-push-action@v7.4.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ${{ matrix.image.context }}
           file: ${{ matrix.image.file }}
@@ -196,7 +209,7 @@ jobs:
 
       - name: SBOM CycloneDX (syft via anchore/sbom-action)
         id: sbom-cyclonedx
-        uses: anchore/sbom-action@v0.24.2
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
         with:
           image: cavaai/${{ matrix.image.name }}:${{ github.sha }}
           format: cyclonedx-json
@@ -208,7 +221,7 @@ jobs:
 
       - name: SBOM SPDX (syft via anchore/sbom-action)
         id: sbom-spdx
-        uses: anchore/sbom-action@v0.24.2
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
         with:
           image: cavaai/${{ matrix.image.name }}:${{ github.sha }}
           format: spdx-json
@@ -217,7 +230,7 @@ jobs:
           dependency-snapshot: false
 
       - name: Subir SBOM CycloneDX
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: ${{ always() }}
         with:
           name: sbom-${{ matrix.image.name }}-cyclonedx
@@ -226,7 +239,7 @@ jobs:
           retention-days: 90
 
       - name: Subir SBOM SPDX
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: ${{ always() }}
         with:
           name: sbom-${{ matrix.image.name }}-spdx
@@ -272,19 +285,32 @@ jobs:
             file: data-engine/Dockerfile
             production: "false"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
 
-      - name: Dependencias del gate (pyyaml)
-        run: python -m pip install --disable-pip-version-check pyyaml
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          version: "0.12.5"
+          enable-cache: true
+          cache-dependency-glob: "data-engine/uv.lock"
 
-      - uses: docker/setup-buildx-action@v4.4.1
+      # Dependencias del gate desde uv.lock (FIX-3.3/3.4): pyyaml no es una
+      # dependencia declarada del proyecto, pero SI esta fijado en el lock
+      # (dependencia transitiva de la app, 6.0.3 con hash). Antes:
+      # `pip install pyyaml` sin pin, otra version en cada run. El coste del
+      # sync completo es irrelevante junto a los 25-60 min de build + trivy de
+      # este job, y la cache de uv se keya por uv.lock.
+      - name: Dependencias del gate (pyyaml, fijado por uv.lock)
+        run: uv sync --frozen --extra test --extra dev --no-install-project
+        working-directory: data-engine
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Reconstruir desde la cache del job build
-        uses: docker/build-push-action@v7.4.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ${{ matrix.image.context }}
           file: ${{ matrix.image.file }}
@@ -296,7 +322,7 @@ jobs:
           cache-from: type=gha,scope=img-${{ matrix.image.name }}
 
       - name: Motor 2 necesita el SBOM del job sbom
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: sbom-${{ matrix.image.name }}-cyclonedx
           path: sbom
@@ -304,7 +330,7 @@ jobs:
 
       - name: "Motor 1: trivy sobre la imagen (vuln)"
         id: trivy_vuln
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: cavaai/${{ matrix.image.name }}:${{ github.sha }}
           format: json
@@ -326,7 +352,7 @@ jobs:
 
       - name: "Motor 1: trivy sobre la imagen (secret)"
         id: trivy_secret
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           # Paso aparte, no por coste: un secret solo se detecta en las capas de la
           # imagen, y asi el informe de secrets y el de CVEs no se pisan. Si uno
@@ -340,7 +366,7 @@ jobs:
 
       - name: "Motor 1: trivy misconfiguration (los 4 Dockerfiles + los 2 compose)"
         id: trivy_misconfig
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           # Se evalua el repo entero, no solo el Dockerfile de esta imagen: una
           # imagen de produccion tampoco es segura si el compose que la levanta
@@ -355,7 +381,7 @@ jobs:
 
       - name: "Motor 2: anchore/scan-action (trivy sobre el SBOM)"
         id: anchore_scan
-        uses: anchore/scan-action@v7.4.2
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
         with:
           # SBOM -> motor independiente: dos bases de datos de CVE distintas sobre
           # el mismo contenido de imagen. Un motor que se cae lo nota el otro.
@@ -377,7 +403,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p reports
-          python data-engine/scripts/security/gate_image_scan.py \
+          uv run --frozen --project data-engine python data-engine/scripts/security/gate_image_scan.py \
             --image "${{ matrix.image.name }}" \
             --image-ref "cavaai/${{ matrix.image.name }}:${{ github.sha }}" \
             --build-result "${{ needs.build.result }}" \
@@ -393,7 +419,7 @@ jobs:
             --summary "reports/summary-${{ matrix.image.name }}.json"
 
       - name: Subir informes
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: ${{ always() }}
         with:
           name: reports-${{ matrix.image.name }}
