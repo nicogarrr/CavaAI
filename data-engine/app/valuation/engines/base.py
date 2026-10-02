@@ -22,8 +22,8 @@ from app.valuation.moat_framework import empty_moat_framework
 MODEL_VERSION = "valuation-engines-v2"
 
 
-def traceable_wacc(db: Session, company: Company) -> float | None:
-    """Return the persisted, traceable WACC for this company, if any.
+def traceable_wacc(db: Session, company: Company) -> tuple[float | None, str | None]:
+    """Return ``(wacc, fiscal_year)`` for this company, if any.
 
     ``metric_calculation_service`` / ``WaccInputService`` already compute a
     dated, sourced WACC (risk-free + ERP + beta + capital-structure weights).
@@ -46,11 +46,11 @@ def traceable_wacc(db: Session, company: Company) -> float | None:
         .limit(1)
     )
     if metric is None or metric.value is None:
-        return None
+        return None, None
     value = float(metric.value)
     if not math.isfinite(value) or not 0.0 < value < 1.0:
-        return None
-    return value
+        return None, None
+    return value, str(metric.fiscal_year) if metric.fiscal_year is not None else None
 
 
 def clamp_fcf_margin(margin: float, *, ceiling: float) -> tuple[float, bool]:
@@ -93,6 +93,18 @@ def is_adr_without_ratio(company: Company) -> bool:
     tags = {str(tag).strip().lower() for tag in (company.factor_tags or [])}
     is_adr = "adr" in tags or any(tag.startswith(ADR_TAG_PREFIX) for tag in tags)
     return is_adr and adr_ratio(company) is None
+
+
+def adr_comparable_price(company: Company, current_price: float | None) -> tuple[float | None, float | None]:
+    """Return ``(comparable_price, ratio)`` for ADR-aware price comparison.
+
+    ``comparable_price`` is the price per ordinary share (``current_price / ratio``)
+    when the company is an ADR with a usable ratio, otherwise ``current_price``.
+    """
+    ratio = adr_ratio(company)
+    if ratio and current_price:
+        return current_price / ratio, ratio
+    return current_price, ratio
 
 
 @dataclass

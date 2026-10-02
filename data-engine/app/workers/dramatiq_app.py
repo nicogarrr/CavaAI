@@ -2167,3 +2167,9 @@ def generate_thesis_job(run_id: int) -> None:
     from app.services.thesis_job_service import run_thesis_job
 
     run_thesis_job(run_id)
+
+
+import app.workers.thesis_backtest_actors  # noqa: F401  (registra el actor)
+from app.metrics.queue import install_queue_middleware
+
+install_queue_middleware()

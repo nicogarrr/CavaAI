@@ -787,7 +787,12 @@ class ValuationResponse(BaseModel):
     adr_ratio: float | None = None
     value_per_share_basis: str | None = None
     listed_share_values: dict[str, float] | None = None
+    comparable_price_basis: str | None = None
     reverse_dcf: dict = {}
     sensitivity: dict = {}
     moat: dict = {}
     trace: dict = {}
+    ddm: dict | None = None
+    fcfe: dict | None = None
+    dasr: dict | None = None
+    relative: dict | None = None
