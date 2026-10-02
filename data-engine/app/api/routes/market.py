@@ -67,13 +67,20 @@ def _fetch_index(client: httpx.Client, symbol: str) -> dict | None:
         if len(closes) < 2:
             return None
         last, previous = closes[-1], closes[-2]
+        # Sin cierre previo REAL no hay variacion medible, y publicarla como
+        # 0.00% afirma "hoy plano" sobre un dato inexistente. El tipo
+        # MarketIndex declara changePercent como `number` (no null) en
+        # lib/actions/market.actions.ts, asi que en vez de meter un null que
+        # contradiria ese contrato la serie no se publica: el hueco sale por
+        # `coverage` (partial/empty), que la UI ya declara como tal.
+        if previous <= 0:
+            return None
         change = last - previous
-        change_percent = (change / previous) * 100 if previous else 0.0
         return {
             "symbol": symbol,
             "price": round(float(last), 2),
             "change": round(float(change), 2),
-            "changePercent": round(float(change_percent), 2),
+            "changePercent": round((change / previous) * 100, 2),
         }
     except (httpx.HTTPError, KeyError, IndexError, ValueError):
         return None
