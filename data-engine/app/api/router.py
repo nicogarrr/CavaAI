@@ -18,6 +18,7 @@ from app.api.routes import (
     market,
     market_context,
     memory,
+    metrics,
     news,
     obsidian,
     ownership,
@@ -34,6 +35,8 @@ from app.api.routes import (
     sources,
     taxes,
     thesis,
+    thesis_backtest,
+    thesis_realized_return,
     valuation,
     watchlist,
     work_products,
@@ -90,3 +93,6 @@ api_router.include_router(asts.router, prefix="/market/asts", tags=["market", "a
 api_router.include_router(macro.router, prefix="/macro", tags=["macro"])
 api_router.include_router(cnmv.router, prefix="/cnmv", tags=["cnmv"])
 api_router.include_router(workflows.router, prefix="/workflows", tags=["workflows"])
+api_router.include_router(thesis_backtest.router, prefix="/thesis-backtest", tags=["thesis-backtest"])
+api_router.include_router(thesis_realized_return.router, prefix="/thesis-realized-return", tags=["thesis"])
+api_router.include_router(metrics.router, prefix="/metrics", tags=["metrics"])

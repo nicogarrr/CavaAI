@@ -18,8 +18,10 @@ from app.valuation.engines.base import (
     MODEL_VERSION,
     ValuationContext,
     ValuationEngine,
+    adr_comparable_price,
     apply_publication_blockers,
     insufficient_result,
+    is_adr_without_ratio,
     margin_of_safety,
 )
 from app.valuation.moat_framework import empty_moat_framework
@@ -66,6 +68,18 @@ class SOTPEngine(ValuationEngine):
         company = context.company
         snapshot = context.snapshot
         current_price = context.current_price
+
+        if is_adr_without_ratio(company):
+            return insufficient_result(
+                ticker=company.ticker,
+                model_type=company.valuation_model,
+                engine_key=self.key,
+                current_price=current_price,
+                missing_inputs=["adr_ratio"],
+                reason="ADR without adr:N ratio: cannot compare per-ordinary-share NAV to ADR price.",
+            )
+
+        comparable_price, ratio = adr_comparable_price(company, current_price)
 
         facts = list(
             context.db.scalars(
@@ -219,7 +233,10 @@ class SOTPEngine(ValuationEngine):
             "base_value": scenario_results["base"]["value_per_share"],
             "bull_value": scenario_results["bull"]["value_per_share"],
             "expected_value": expected,
-            "margin_of_safety": margin_of_safety(expected, current_price),
+            "margin_of_safety": margin_of_safety(expected, comparable_price),
+            "adr_ratio": ratio,
+            "value_per_share_basis": "ordinary_share",
+            "comparable_price_basis": "ordinary_share" if ratio else "listed_share",
             "missing_inputs": missing_segments,
             "publication_blockers": publication_blockers,
             "reverse_dcf": {},
