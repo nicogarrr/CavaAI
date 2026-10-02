@@ -11,6 +11,13 @@ on:
 permissions:
   contents: read
 
+# shell por defecto: `bash` explicito (= `bash -eo pipefail`) (FIX-3.2). Este
+# workflow no tiene `run:` propios hoy (solo actions), pero el default deja
+# cubierto cualquier paso que se anada.
+defaults:
+  run:
+    shell: bash
+
 concurrency:
   # Por ref, como en ci.yml: sin el, el run de `schedule` (rama por defecto) y
   # el de un push a main se cancelarian entre si.
@@ -41,11 +48,11 @@ jobs:
       matrix:
         language: [javascript-typescript, python]
     steps:
-      - uses: actions/checkout@v7
-      - uses: github/codeql-action/init@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
         with:
           languages: ${{ matrix.language }}
-      - uses: github/codeql-action/autobuild@v4
-      - uses: github/codeql-action/analyze@v4
+      - uses: github/codeql-action/autobuild@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
+      - uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
         with:
           category: "/language:${{ matrix.language }}"
