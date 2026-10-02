@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections import Counter
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
@@ -95,7 +96,13 @@ SEC_METRIC_MAP: list[tuple[str, list[str], str]] = [
     ("interest_expense",   ["InterestExpenseNonOperating", "InterestExpense"],                                      "USD"),
     ("net_income",        ["NetIncomeLoss", "ProfitLoss"],                                                          "USD"),
     ("eps_diluted",       ["EarningsPerShareDiluted"],                                                              "USD/share"),
-    ("shares_diluted",    ["WeightedAverageNumberOfDilutedSharesOutstanding", "CommonStockSharesOutstanding"],      "shares"),
+    # PROMEDIO ponderado de acciones (un denominador de duracion). El saldo
+    # puntual CommonStockSharesOutstanding es otra magnitud (un instantaneo) y
+    # vive en su propia metrica: mezclarlos hacia que el saldo ganara el
+    # colapso de aliases por `filed` mas reciente y se publicara como divisor
+    # del DCF (fix FIX5-8).
+    ("shares_diluted",    ["WeightedAverageNumberOfDilutedSharesOutstanding"],                                      "shares"),
+    ("shares_outstanding", ["CommonStockSharesOutstanding"],                                                         "shares"),
     # Fallback aprobado por Nico (25/9, WWW): el tag combinado incluye caja
     # restringida -> deuda neta fresca pero algo optimista. Va el ULTIMO: por
     # periodo gana el `filed` mas reciente, y los periodos donde se uso quedan
@@ -325,6 +332,7 @@ def _compose_bank_revenue(
     min_span: int | None,
     max_span: int | None,
     annual_anchors: dict[str, str] | None = None,
+    as_of: date | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Revenue compuesto para bancos: intereses netos + ingresos no financieros.
 
@@ -346,6 +354,7 @@ def _compose_bank_revenue(
         min_span=min_span,
         max_span=max_span,
         annual_anchors=annual_anchors,
+        as_of=as_of,
     )
     interest = parts.get("InterestIncomeExpenseNet", {})
     noninterest = parts.get("NoninterestIncome", {})
@@ -417,18 +426,33 @@ def _collect_by_concept(
     min_span: int | None,
     max_span: int | None,
     annual_anchors: dict[str, str] | None = None,
+    as_of: date | None = None,
+    require_start: bool = False,
 ) -> dict[str, dict[str, dict[str, Any]]]:
     """Newest ``filed`` fact per concept and period, before any merging.
 
     Keeping the concepts apart until the caller knows what they are (aliases or
     disjoint parts) is what lets `_collapse_aliases` and
     `_sum_disjoint_components` disagree on purpose instead of by accident.
+
+    ``as_of`` is an information cut-off, not a fiscal filter: an entry whose
+    ``filed`` date is after it was not public on that date and must not enter
+    (FIX5-1). Without a cut-off nothing is date-filtered and the caller says so
+    in the result.
+
+    ``require_start`` keeps only flow facts: a duration metric like
+    ``shares_diluted`` (a weighted average) reported as an instant is a
+    different magnitude and must not enter as one (FIX5-8).
     """
     by_concept: dict[str, dict[str, dict[str, Any]]] = {}
     for concept in concepts:
         entries = us_gaap.get(concept, {}).get("units", {}).get(unit_key, [])
         for entry in entries:
             if entry.get("form") not in forms or entry.get("fp") not in periods:
+                continue
+            if as_of is not None and not _published_by(entry, as_of):
+                continue
+            if require_start and not entry.get("start"):
                 continue
             # A flow fact (one WITH `start`) has to really span the period it
             # claims: `fp="FY"` does not guarantee an annual duration, and the
@@ -578,10 +602,71 @@ def _merge_esef_periods(
     return by_period, coverage
 
 
+def _norm_date(value: Any) -> str | None:
+    """Fecha ISO de un campo `date` (FMP): acepta ISO y epoch (segundos).
+
+    FMP entrega el cierre del periodo como cadena ISO, pero hay filas (y
+    snapshots) que lo entregan como epoch en segundos. Sin normalizar, la
+    etiqueta de periodo salia `1767225600:FY` y ninguna puerta la reconocia
+    como fecha (FIX5-2). Un valor no parseable devuelve None: el caller decide
+    si lo conserva tal cual para que la etiqueta siga inspeccionable.
+    """
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    seconds: int | None = None
+    if re.fullmatch(r"\d{9,12}(\.0+)?", text):
+        seconds = int(float(text))
+    elif re.fullmatch(r"\d{13}(\.0+)?", text):
+        seconds = int(float(text)) // 1000
+    if seconds is not None:
+        try:
+            return datetime.fromtimestamp(seconds, tz=UTC).date().isoformat()
+        except (OverflowError, OSError, ValueError):
+            return None
+    try:
+        return date.fromisoformat(text[:10]).isoformat()
+    except ValueError:
+        return None
+
+
+def _published_by(entry: dict[str, Any], as_of: date) -> bool:
+    """True cuando el hecho YA era publico en `as_of` (fecha de filing).
+
+    Fail closed: sin `filed` (o con uno ilegible) no se puede probar la
+    publicacion, y un hecho sin fecha de publicacion nunca entra bajo un corte.
+    """
+    filed = str(entry.get("filed") or "").strip()
+    if not filed:
+        return False
+    try:
+        return date.fromisoformat(filed[:10]) <= as_of
+    except ValueError:
+        return False
+
+
+def _publication_date(entry: dict[str, Any]) -> date | None:
+    """Fecha de publicacion declarada por la fuente (`filed`), o None."""
+    filed = str(entry.get("filed") or "").strip()
+    if not filed:
+        return None
+    try:
+        return date.fromisoformat(filed[:10])
+    except ValueError:
+        return None
+
+
 def _period(row: dict[str, Any]) -> tuple[str, int | None, str | None]:
     fiscal_year = row.get("calendarYear") or row.get("fiscalYear")
     fiscal_quarter = row.get("period")
-    date_value = row.get("date")
+    raw_date = row.get("date")
+    # Se normaliza lo normalizable (epoch -> ISO) y lo no parseable se
+    # conserva VERBATIM: una fecha imposible como `2025-99-99` debe llegar a
+    # la etiqueta para que la puerta no_lookahead la señale como defecto, no
+    # esfumarse en un `unknown` que ninguna puerta sabria acusar (FIX5-10).
+    date_value = _norm_date(raw_date) or (str(raw_date).strip() if raw_date is not None else None)
 
     year_int: int | None = None
     if fiscal_year is not None:
@@ -783,6 +868,9 @@ class FinancialIngestionService:
 
         statements = 0
         facts = 0
+        rows_rechazadas_por_symbol = 0
+        filling_dates: list[date] = []
+        seen_keys: set[tuple[str, str]] = set()
         for statement_type, rows, specs in [
             ("income", income, INCOME_METRICS),
             ("balance_sheet", balance, BALANCE_METRICS),
@@ -790,6 +878,14 @@ class FinancialIngestionService:
             ("ratios", ratios, RATIO_METRICS),
         ]:
             for row in rows:
+                # Cada fila declara su emisor: una fila de OTRA sociedad en el
+                # payload (el endpoint no siempre filtra) no puede atribuirse a
+                # este ticker - contaminaria la serie y el crecimiento derivado
+                # (FIX5-3). Una fila sin `symbol` no puede contradecirse y se
+                # acepta como hasta ahora.
+                if str(row.get("symbol") or ticker).upper() != ticker:
+                    rows_rechazadas_por_symbol += 1
+                    continue
                 statements += self._add_statement(
                     db=db,
                     company=company,
@@ -803,12 +899,23 @@ class FinancialIngestionService:
                     document=document,
                     row=row,
                     specs=specs,
+                    seen=seen_keys,
                 )
+                filled = _norm_date(row.get("fillingDate"))
+                if filled:
+                    filling_dates.append(date.fromisoformat(filled))
 
         db.flush()
         facts += self._add_derived_facts(db, company, document)
         facts += self._add_profile_facts(db, company, document, profile)
         await self._add_spot_price(db, company, fmp, ticker)
+        if filling_dates:
+            # FIX de la publicacion: los hechos apuntan a este documento y sin
+            # fecha de publicacion el guard point-in-time nunca podia disparar
+            # su eje de publicacion.
+            document.published_at = datetime.combine(
+                max(filling_dates), datetime.min.time(), tzinfo=UTC
+            )
 
         document.metadata_ = {
             **(document.metadata_ or {}),
@@ -828,11 +935,20 @@ class FinancialIngestionService:
             "source_document_id": document.id,
             "facts_imported": facts,
             "statements_imported": statements,
+            "rows_rechazadas_por_symbol": rows_rechazadas_por_symbol,
             "latest_periods": self.latest_periods(db, company),
             "valuation_input_ready": self.valuation_input_ready(db, company),
         }
 
-    async def refresh_from_sec(self, db: Session, company: Company) -> dict[str, Any]:
+    async def refresh_from_sec(
+        self,
+        db: Session,
+        company: Company,
+        as_of: date | None = None,
+    ) -> dict[str, Any]:
+        """Ingesta de fundamentales SEC. ``as_of`` es un corte de INFORMACION:
+        solo entra lo ya publicado (``filed``) en esa fecha. Con ``as_of=None``
+        no se filtra por fecha y el resultado lo declara (FIX5-1)."""
         from app.services.connectors.sec_edgar import drain_mirror_serves
 
         drain_mirror_serves()  # marca el inicio de ESTA corrida
@@ -852,6 +968,31 @@ class FinancialIngestionService:
         except Exception as e:
             raise RuntimeError(f"SEC fetch failed: {e}") from e
 
+        # La entidad del payload debe ser la que se resolvio para el ticker y la
+        # que dice la ficha: `company_tickers.json` tiene entradas duplicadas
+        # para el mismo ticker (tickers reutilizados tras un delisting) y un
+        # manifest local desactualizado puede resolver el CIK de OTRO emisor.
+        # Sin este contraste, los hechos de Apple acababan en la ficha de ABCD
+        # con confidence=0.95 (FIX5-6). Fail closed: sin entidad que contrastar
+        # (payload sin `cik` declarado, que la API real nunca produce) no hay
+        # nada que falsificar y la ingesta sigue igual que antes.
+        payload_cik = str(facts_data.get("cik") or "").strip()
+        resolved_cik = str(cik).zfill(10)
+        card_cik = str(getattr(company, "cik", "") or "").strip()
+        if payload_cik:
+            payload_cik = payload_cik.zfill(10)
+            mismatches = []
+            if payload_cik != resolved_cik:
+                mismatches.append(f"CIK resuelto {resolved_cik}")
+            if card_cik and payload_cik != card_cik.zfill(10):
+                mismatches.append(f"CIK de la ficha {card_cik.zfill(10)}")
+            if mismatches:
+                raise RuntimeError(
+                    f"CIK del payload {payload_cik} != {' y '.join(mismatches)} "
+                    f"para {ticker}: entidad ambigua, no se atribuyen hechos de "
+                    "otro emisor (fail closed)"
+                )
+
         us_gaap = facts_data.get("facts", {}).get("us-gaap", {})
 
         # Evidencia de calendario a nivel de filing (submissions). Fail
@@ -869,6 +1010,11 @@ class FinancialIngestionService:
         facts_imported = 0
         cash_restricted_years: set[int] = set()
         concept_usage: dict[str, dict[str, Any]] = {}
+        # FIX de la publicacion: `FinancialFact` no tiene `available_at` (la
+        # columna y su migracion pertenecen a fx1), asi que la fecha de
+        # publicacion de lo ingerido se persiste en `Document.published_at`
+        # desde el `filed` de cada hecho escrito.
+        publication_dates: list[date] = []
         # La moda SOLO etiqueta trimestres (los 10-Q no declaran su cierre de
         # ejercicio por hecho); la admision anual va por ancla de filing.
         modal_fy_month = _current_fiscal_month_from_anchors(
@@ -901,6 +1047,7 @@ class FinancialIngestionService:
                     min_span=300,
                     max_span=380,
                     annual_anchors=annual_anchors,
+                    as_of=as_of,
                 ),
                 metric,
             )
@@ -913,6 +1060,7 @@ class FinancialIngestionService:
                     min_span=300,
                     max_span=380,
                     annual_anchors=annual_anchors,
+                    as_of=as_of,
                 ).items():
                     by_end.setdefault(end, entry)
             if by_end:
@@ -958,6 +1106,12 @@ class FinancialIngestionService:
                     periods={"Q1", "Q2", "Q3", "Q4"},
                     min_span=70,
                     max_span=110,
+                    as_of=as_of,
+                    # FIX5-8: shares_diluted es un promedio ponderado (flujo).
+                    # Sin ancla trimestral, un saldo instantaneo de portada
+                    # entraba como '<fecha>:Qn' y el mismo trimestre acababa
+                    # con dos filas shares_diluted.
+                    require_start=metric == "shares_diluted",
                 ),
                 metric,
             )
@@ -968,6 +1122,7 @@ class FinancialIngestionService:
                     periods={"Q1", "Q2", "Q3", "Q4"},
                     min_span=70,
                     max_span=110,
+                    as_of=as_of,
                 ).items():
                     by_end_q.setdefault(end, entry)
             if by_end_q:
@@ -1004,6 +1159,9 @@ class FinancialIngestionService:
                         f"{entry['end']}:{fp}"
                     ] = entry.get("_concept")
                     facts_imported += 1
+                    filed_on = _publication_date(entry)
+                    if filed_on is not None:
+                        publication_dates.append(filed_on)
             # Los alias se FUSIONAN, no "gana el primero que informe": muchos
             # filers migraron de tag (Revenues -> SalesRevenueNet ->
             # RevenueFromContractWithCustomer...) y el tag antiguo queda
@@ -1060,11 +1218,23 @@ class FinancialIngestionService:
                         "_concept"
                     )
                     facts_imported += 1
+                    filed_on = _publication_date(entry)
+                    if filed_on is not None:
+                        publication_dates.append(filed_on)
 
         if concept_usage:
             existing_meta = dict(document.metadata_ or {})
             existing_meta["xbrl_concept_by_metric_period"] = concept_usage
             document.metadata_ = existing_meta
+
+        if publication_dates:
+            # Max(filed) = el momento en que TODO lo persistido ya era publico.
+            # Es lo que puede afirmar un documento compartido por todos los
+            # hechos; con `FinancialFact.available_at` (pendiente de fx1) el
+            # guard point-in-time podra afinar por hecho.
+            document.published_at = datetime.combine(
+                max(publication_dates), datetime.min.time(), tzinfo=UTC
+            )
 
         db.flush()
 
@@ -1165,6 +1335,10 @@ class FinancialIngestionService:
             "source_document_id": document.id,
             "facts_imported": facts_imported,
             "cik": cik,
+            # Corte de informacion aplicado (FIX5-1). Con as_of=None el filtro
+            # de fecha NO se aplico y el consumidor lo ve aqui.
+            "as_of": as_of.isoformat() if as_of else None,
+            "date_filter_applied": as_of is not None,
             "conflicts": conflicts,
             "free_data": free_data,
             "fy_periods": fy_periods,
@@ -1190,6 +1364,17 @@ class FinancialIngestionService:
         document = self._source_document_esef(db, company, ticker, snapshot)
         self._replace_esef_data(db, company, document)
         facts_imported = 0
+        # FIX de la publicacion (ver refresh_from_sec): los renders xBRL-JSON no
+        # traen `filed`; lo que si sabemos es cuando el snapshot entro en
+        # local. Es la fecha honesta de disponibilidad del documento.
+        publication_dates: list[date] = []
+        fetched_on: date | None = None
+        fetched_raw = str(snapshot.get("fetched_at") or "").strip()
+        if fetched_raw:
+            try:
+                fetched_on = date.fromisoformat(fetched_raw[:10])
+            except ValueError:
+                fetched_on = None
 
         esef_coverage: dict[str, Any] = {}
         for metric, concepts, unit in ESEF_METRIC_MAP:
@@ -1218,9 +1403,18 @@ class FinancialIngestionService:
                     )
                 )
                 facts_imported += 1
+                filed_on = _publication_date(by_period[period_date])
+                if filed_on is not None:
+                    publication_dates.append(filed_on)
 
         db.flush()  # la sesion de ingestion usa autoflush=False: flush antes de derivar
         facts_imported += self._derive_esef_metrics(db, company, document)
+        if publication_dates or (facts_imported and fetched_on):
+            document.published_at = datetime.combine(
+                max(publication_dates, default=fetched_on),
+                datetime.min.time(),
+                tzinfo=UTC,
+            )
 
         document.metadata_ = {
             **(document.metadata_ or {}),
@@ -1372,6 +1566,7 @@ class FinancialIngestionService:
 
             fcf: FinancialFact | None = None
             if ocf is not None and capex is not None:
+                self._drop_stale_derived(db, company, "free_cash_flow", ocf.period)
                 fcf = FinancialFact(
                     company_id=company.id,
                     metric="free_cash_flow",
@@ -1392,6 +1587,7 @@ class FinancialIngestionService:
                 and revenue is not None
                 and revenue.value > 0
             ):
+                self._drop_stale_derived(db, company, "fcf_margin", revenue.period)
                 db.add(
                     FinancialFact(
                         company_id=company.id,
@@ -1414,6 +1610,7 @@ class FinancialIngestionService:
                 and previous_revenue is not None
                 and previous_revenue.value > 0
             ):
+                self._drop_stale_derived(db, company, "revenue_growth", revenue.period)
                 db.add(
                     FinancialFact(
                         company_id=company.id,
@@ -1431,6 +1628,7 @@ class FinancialIngestionService:
                 )
                 derived += 1
             if debt is not None and cash is not None:
+                self._drop_stale_derived(db, company, "net_debt", debt.period)
                 db.add(
                     FinancialFact(
                         company_id=company.id,
@@ -1476,6 +1674,7 @@ class FinancialIngestionService:
         def add_ratio(metric: str, numerator: FinancialFact, denominator: FinancialFact) -> int:
             if denominator.value is None or denominator.value <= 0:
                 return 0
+            self._drop_stale_derived(db, company, metric, numerator.period)
             db.add(
                 FinancialFact(
                     company_id=company.id,
@@ -1509,6 +1708,7 @@ class FinancialIngestionService:
             fl_noncurrent = year_fact("financial_liabilities_noncurrent", year)
 
             if fl_current is not None and fl_noncurrent is not None:
+                self._drop_stale_derived(db, company, "total_debt", fl_current.period)
                 db.add(
                     FinancialFact(
                         company_id=company.id,
@@ -1528,6 +1728,7 @@ class FinancialIngestionService:
 
             fcf: FinancialFact | None = None
             if ocf is not None and capex is not None:
+                self._drop_stale_derived(db, company, "free_cash_flow", ocf.period)
                 fcf = FinancialFact(
                     company_id=company.id,
                     metric="free_cash_flow",
@@ -1551,6 +1752,7 @@ class FinancialIngestionService:
                 and previous_revenue is not None
                 and previous_revenue.value > 0
             ):
+                self._drop_stale_derived(db, company, "revenue_growth", revenue.period)
                 db.add(
                     FinancialFact(
                         company_id=company.id,
@@ -1581,6 +1783,7 @@ class FinancialIngestionService:
             ):
                 derived += add_ratio("effective_tax_rate", income_tax_expense, income_before_tax)
             if operating_income is not None and depreciation is not None:
+                self._drop_stale_derived(db, company, "ebitda", operating_income.period)
                 db.add(
                     FinancialFact(
                         company_id=company.id,
@@ -1741,6 +1944,35 @@ class FinancialIngestionService:
         )
         return 1
 
+    def _drop_stale_derived(
+        self, db: Session, company: Company, metric: str, period: str
+    ) -> None:
+        """Colapsa la capa de servicio en (metrica, periodo).
+
+        `FinancialFact` no tiene UNIQUE en (company_id, metric, period) (la
+        restriccion vive en `entities.py` + migraciones, fuera de este fix), asi
+        que la base no puede defenderse sola: sin este borrado, una derivada
+        vieja de OTRO proveedor (o de una corrida anterior) convive con la fila
+        nueva y el mismo periodo acaba con dos `fcf_margin` de valores
+        distintos (FIX5-4/FIX5-7). Se borra lo derivado (is_reported=False) de
+        la clave: la fila reportada que acaba de entrar la sustituye.
+        """
+        tenant_id = db.info.get("tenant_id")
+        tenant_filter = (
+            FinancialFact.tenant_id == tenant_id
+            if tenant_id is not None
+            else FinancialFact.tenant_id.is_(None)
+        )
+        db.execute(
+            delete(FinancialFact).where(
+                FinancialFact.company_id == company.id,
+                FinancialFact.metric == metric,
+                FinancialFact.period == period,
+                FinancialFact.is_reported.is_(False),
+                tenant_filter,
+            )
+        )
+
     def _add_facts(
         self,
         db: Session,
@@ -1748,6 +1980,7 @@ class FinancialIngestionService:
         document: Document,
         row: dict[str, Any],
         specs: list[MetricSpec],
+        seen: set[tuple[str, str]] | None = None,
     ) -> int:
         period, fiscal_year, fiscal_quarter = _period(row)
         count = 0
@@ -1755,6 +1988,17 @@ class FinancialIngestionService:
             value = _decimal(row.get(fmp_key))
             if value is None:
                 continue
+            # Deduplicacion explicita por (metrica, periodo): dos filas del
+            # payload que declaran la misma magnitud para el mismo periodo son
+            # UN hecho (o un duplicado sucio del proveedor), nunca dos filas
+            # (FIX5-4). Sin UNIQUE en la tabla, el colapso es responsabilidad
+            # del servicio.
+            if seen is not None:
+                key = (metric, period)
+                if key in seen:
+                    continue
+                seen.add(key)
+            self._drop_stale_derived(db, company, metric, period)
             db.add(
                 FinancialFact(
                     company_id=company.id,
@@ -1773,11 +2017,53 @@ class FinancialIngestionService:
             count += 1
         return count
 
+    def _latest_fact_for(
+        self, db: Session, company: Company, metric: str, source_type: str
+    ) -> FinancialFact | None:
+        """`latest_fact` restringido a UN proveedor.
+
+        Las derivadas se etiquetan con la fuente de sus insumos: calcular la
+        derivada de FMP sobre filas de SEC era procedencia falsa (FIX5-7).
+        """
+        rows = list(
+            db.scalars(
+                select(FinancialFact)
+                .where(
+                    FinancialFact.company_id == company.id,
+                    FinancialFact.metric == metric,
+                    FinancialFact.source_type == source_type,
+                    FinancialFact.fiscal_quarter == "FY",
+                )
+                .order_by(
+                    FinancialFact.fiscal_year.desc().nullslast(),
+                    FinancialFact.created_at.desc(),
+                    FinancialFact.id.desc(),
+                )
+            ).all()
+        )
+        if not rows:
+            return None
+        latest_year = rows[0].fiscal_year
+        candidates = [row for row in rows if row.fiscal_year == latest_year]
+        return min(
+            candidates,
+            key=lambda row: (SOURCE_PRIORITY.get(row.source_type or "", 50), row.id),
+        )
+
     def _add_derived_facts(self, db: Session, company: Company, document: Document) -> int:
+        # Anclas SOLO del proveedor FMP y SOLO del ejercicio (FY): una fila TTM
+        # u otra fuente como "ultima revenue" fabricaba un crecimiento ~0 entre
+        # un TTM y un FY del mismo cierre, o una derivada FMP sobre datos SEC
+        # (procedencia falsa) (FIX5-7).
         revenue_facts = list(
             db.scalars(
                 select(FinancialFact)
-                .where(FinancialFact.company_id == company.id, FinancialFact.metric == "revenue")
+                .where(
+                    FinancialFact.company_id == company.id,
+                    FinancialFact.metric == "revenue",
+                    FinancialFact.fiscal_quarter == "FY",
+                    FinancialFact.source_type == "FMP",
+                )
                 .order_by(FinancialFact.fiscal_year.desc().nullslast())
                 .limit(2)
             )
@@ -1785,11 +2071,11 @@ class FinancialIngestionService:
         count = 0
         latest_revenue = revenue_facts[0] if revenue_facts else None
         prior_revenue = revenue_facts[1] if len(revenue_facts) > 1 else None
-        latest_fcf = self.latest_fact(db, company, "free_cash_flow")
-        operating_cash_flow = self.latest_fact(db, company, "operating_cash_flow")
-        capex = self.latest_fact(db, company, "capital_expenditure")
-        total_debt = self.latest_fact(db, company, "total_debt")
-        cash = self.latest_fact(db, company, "cash_and_equivalents")
+        latest_fcf = self._latest_fact_for(db, company, "free_cash_flow", "FMP")
+        operating_cash_flow = self._latest_fact_for(db, company, "operating_cash_flow", "FMP")
+        capex = self._latest_fact_for(db, company, "capital_expenditure", "FMP")
+        total_debt = self._latest_fact_for(db, company, "total_debt", "FMP")
+        cash = self._latest_fact_for(db, company, "cash_and_equivalents", "FMP")
 
         if not latest_fcf and operating_cash_flow and capex:
             count += self._add_derived_fact(
@@ -1804,7 +2090,7 @@ class FinancialIngestionService:
                 operating_cash_flow.fiscal_quarter,
             )
             db.flush()
-            latest_fcf = self.latest_fact(db, company, "free_cash_flow")
+            latest_fcf = self._latest_fact_for(db, company, "free_cash_flow", "FMP")
 
         if latest_revenue and latest_fcf and latest_revenue.value:
             count += self._add_derived_fact(
@@ -1856,6 +2142,7 @@ class FinancialIngestionService:
         fiscal_year: int | None,
         fiscal_quarter: str | None,
     ) -> int:
+        self._drop_stale_derived(db, company, metric, period)
         db.add(
             FinancialFact(
                 company_id=company.id,

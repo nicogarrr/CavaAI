@@ -529,11 +529,13 @@ def test_llm_classifier_is_disabled_inside_the_harness():
 
 
 def test_dataset_declares_every_measured_gap():
-    """Los controles negativos que fotografian un defecto real estan declarados.
+    """Los defectos medidos estan declarados y su tripwire esta descargado.
 
-    Un `expect_gate_failure` que nadie ha ledo es un test que nadie va a quitar
-    cuando el defecto se arregle. Cada uno va acompanado del caso y del defecto
-    en `known_gaps`, y este test exige que ambos coincidan.
+    Cada `known_gap` fotografio un defecto real. Uno CERRADO exige que su caso
+    ya no sea un control negativo: el tripwire se descargo al arreglar el
+    defecto y el caso paso a positivo (si vuelve a morder, o si el caso vuelve
+    a ser control negativo, el defecto ha vuelto). Uno ABIERTO exige que su
+    caso siga siendo el control negativo que lo mide, con la misma puerta.
     """
     from evals.ingest.ingest_gates import GATES
 
@@ -544,11 +546,17 @@ def test_dataset_declares_every_measured_gap():
     gaps = dataset.get("known_gaps") or []
     assert gaps, "el dataset no declara sus huecos medidos"
     for gap in gaps:
-        case = negatives.get(gap["case"])
-        assert case is not None, f"{gap['case']} no es un control negativo"
-        assert case["expect_gate_failure"] == gap["gate"], gap["case"]
+        case = next((c for c in dataset["cases"] if c["id"] == gap["case"]), None)
+        assert case is not None, f"{gap['case']} no existe en el dataset"
         assert gap["gate"] in GATES, gap["gate"]
         assert len(gap["defect"]) > 60, f"{gap['case']} sin explicar el defecto"
+        if gap.get("status") == "closed":
+            assert gap["case"] not in negatives, (
+                f"{gap['case']} esta cerrado pero su control negativo vuelve a morder"
+            )
+            assert gap.get("resolution"), f"{gap['case']} cerrado sin explicar el fix"
+        else:
+            assert case.get("expect_gate_failure") == gap["gate"], gap["case"]
     measured = {
         "neg-001-lookahead-anclado-filtrado",
         "neg-002-epoch-en-la-etiqueta-de-periodo",
@@ -557,3 +565,38 @@ def test_dataset_declares_every_measured_gap():
         "neg-015-ixbrl-con-scale-y-sign",
     }
     assert measured <= {gap["case"] for gap in gaps}
+    assert all(
+        gap.get("status") == "closed" for gap in gaps if gap["case"] in measured
+    ), "los defectos declarados del FIX5 estan arreglados: sus gaps deben estar cerrados"
+
+
+# --------------------------------------------------------------------------
+# FIX5-10: una sola _period_date y un periodo no parseable FALLA
+# --------------------------------------------------------------------------
+
+
+def test_period_date_is_one_function_and_reports_unparseable_labels():
+    from evals.ingest.ingest_gates import _period_date
+
+    assert _period_date("2025-12-31:FY") == ("2025-12-31", None)
+    assert _period_date("2025-09-30:TTM") == ("2025-09-30", None)
+    assert _period_date("<ingestion-date>") == (None, None)
+    assert _period_date(None) == (None, None)
+    head, problem = _period_date("2025-99-99:FY")
+    assert head is None and "no parseable" in problem
+    head, problem = _period_date("1767225600:FY")
+    assert head is None and "1767225600:FY" in problem
+
+
+def test_no_lookahead_catches_an_impossible_period_label():
+    observed = {"facts": [{**SEC_FACTS[0], "period": "2025-99-99:FY"}]}
+    result = gate_no_lookahead(_case(observed=observed, expected=_full_expected()))
+    assert result["passed"] is False
+    assert "no parseable" in " ".join(result["details"])
+
+
+def test_runner_shares_the_gates_period_date():
+    import scripts.run_ingest_evals as runner
+
+    assert runner._period_date("2025-99-99:FY")[1] is not None
+    assert runner._period_date("2025-12-31:FY") == ("2025-12-31", None)
