@@ -4,7 +4,7 @@
  <xbrli:context id="cC">
   <xbrli:entity><xbrli:identifier scheme="http://www.sec.gov/CIK">1</xbrli:identifier></xbrli:entity>
   <xbrli:period><xbrli:startDate>2025-01-01</xbrli:startDate><xbrli:endDate>2025-12-31</xbrli:endDate></xbrli:period>
-  <xbrli:scenario><xbrldi:explicitMember xmlns:xbrldi="http://xbrl.org/2006/xbrldi">us-gaap:OtherClassZMember</xbrldi:explicitMember></xbrli:scenario>
+  <xbrli:scenario><xbrldi:explicitMember xmlns:xbrldi="http://xbrl.org/2006/xbrldi" dimension="us-gaap:OtherClassAxis">us-gaap:OtherClassZMember</xbrldi:explicitMember></xbrli:scenario>
  </xbrli:context>
  <us-gaap:EarningsPerShareDiluted contextRef="cC" unitRef="uUSD" decimals="2">2.10</us-gaap:EarningsPerShareDiluted>
 </xbrli:xbrl>
