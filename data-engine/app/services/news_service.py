@@ -15,37 +15,65 @@ from app.services.thesis_graph_service import ThesisGraphService
 
 _NAME_NOISE = {"inc", "corp", "corporation", "co", "company", "ltd", "plc", "sa", "nv", "ag", "the", "group", "holdings", "holding", "limited", "sme", "s.a."}
 
+# Siglas que son palabras o abreviaturas comunes: solo vinculan con cashtag,
+# «(NYSE: X)» o el nombre distintivo de la empresa; el contexto no basta.
+_AMBIGUOUS_TICKERS = {
+    "A", "ALL", "IT", "ON", "ARE", "FOR", "AI", "EU", "UK", "US", "FED", "GDP", "CEO", "CFO", "NHS",
+    "T", "F", "C", "V", "K", "D", "NOW", "ONE", "TWO", "WELL", "REAL", "LOVE", "BIG", "CAT", "HAS",
+    "SO", "BE", "BY", "AN", "AS", "AT", "DO", "GO", "IF", "IN", "OR", "TV", "PM", "AM", "MAN", "OUT",
+    "NEW", "OLD", "TOP", "LOW", "HIGH", "FAST", "GOOD", "BEST", "CASH", "FUN", "PLAY", "SEE", "CAN",
+}
 
-_FINANCE_CONTEXT = re.compile(
-    r"\b(stocks?|shares?|equity|earnings|dividends?|guidance|ipo|trading|trade[sd]?|halted|"
-    r"buybacks?|repurchase|upgrade[sd]?|downgrade[sd]?|price target|analysts?|revenue|"
-    r"quarterly|eps|market cap|short interest|10-[kq]|8-k|sec probe|acciones|bolsa|resultados|"
-    r"dividendo)\b",
+_FINANCE_WORDS = re.compile(
+    r"^(stocks?|shares?|equity|earnings|dividends?|guidance|ipo|trading|trades?|traded|halted|"
+    r"buybacks?|repurchase|upgrade[sd]?|downgrade[sd]?|target|analysts?|revenue|quarterly|eps|"
+    r"acciones|bolsa|resultados|dividendo)$",
     flags=re.IGNORECASE,
 )
+_WORD = re.compile(r"[\w$&.\-]+")
+_PROXIMITY_WORDS = 3
+
+EVIDENCE_STRONG = 3  # cashtag o «(NYSE: X)»
+EVIDENCE_NAME = 2  # ticker + nombre distintivo de la empresa
+EVIDENCE_CONTEXT = 1  # ticker + termino financiero a <= 3 palabras
 
 
-def _ticker_evidence(ticker: str, name: str | None, text: str) -> bool:
+def _near_finance_word(ticker: str, text: str) -> bool:
+    words = [w.strip(".,;:()[]\"'") for w in _WORD.findall(text)]
+    for i, w in enumerate(words):
+        if w != ticker:
+            continue
+        lo, hi = max(0, i - _PROXIMITY_WORDS), min(len(words), i + _PROXIMITY_WORDS + 1)
+        if any(_FINANCE_WORDS.match(x) for j, x in enumerate(words[lo:hi], start=lo) if j != i):
+            return True
+    return False
+
+
+def _ticker_evidence_level(ticker: str, name: str | None, text: str) -> int:
+    """0 = sin evidencia; 1-3 = fuerza creciente de la evidencia de que el texto habla de esa empresa."""
     if not ticker or not text:
-        return False
+        return 0
     tk = re.escape(ticker)
     if re.search(rf"\${tk}\b", text, flags=re.IGNORECASE):
-        return True
+        return EVIDENCE_STRONG
     if re.search(rf"\b(?:NYSE|NASDAQ|AMEX|BME|LSE|EPA|ETR)\s*:\s*{tk}\b", text, flags=re.IGNORECASE):
-        return True
+        return EVIDENCE_STRONG
     if not re.search(rf"(?<![\w$]){tk}(?![\w])", text):
-        return False
-    if len(ticker) >= 4:
-        return True
-    # Contexto financiero en el mismo texto: «AMD stock jumps», «KO dividend hike».
-    if _FINANCE_CONTEXT.search(text):
-        return True
+        return 0
     for token in re.findall(r"[A-Za-z][A-Za-z.&'-]+", name or ""):
         if token.lower().strip(".") in _NAME_NOISE or len(token) < 4:
             continue
         if re.search(rf"\b{re.escape(token)}\b", text, flags=re.IGNORECASE):
-            return True
-    return False
+            return EVIDENCE_NAME
+    if ticker.upper() in _AMBIGUOUS_TICKERS or len(ticker) == 1:
+        return 0
+    if len(ticker) >= 4:
+        return EVIDENCE_CONTEXT
+    return EVIDENCE_CONTEXT if _near_finance_word(ticker, text) else 0
+
+
+def _ticker_evidence(ticker: str, name: str | None, text: str) -> bool:
+    return _ticker_evidence_level(ticker, name, text) > 0
 
 
 class NewsService:
@@ -58,17 +86,20 @@ class NewsService:
     def detect_ticker(self, db: Session, text: str) -> Company | None:
         """Vincula un texto a una empresa solo con evidencia suficiente.
 
-        Antes se buscaba el ticker como palabra en el texto en MAYUSCULAS, asi
-        que «A» casaba con cualquier articulo «a» y «AAP» con un partido politico
-        indio. Ahora el ticker se busca respetando mayusculas y, si es corto
-        (< 4 letras), solo vale con evidencia extra: cashtag ($AAP), bolsa
-        ((NYSE: AAP)), el nombre distintivo de la empresa o contexto financiero
-        (stock, shares, earnings, dividend...) en el texto.
+        Se evaluan todas las empresas y gana la de evidencia mas fuerte
+        (cashtag/bolsa > nombre > contexto financiero cercano); si hay empate
+        en el nivel mas alto no se vincula nada. Las siglas ambiguas (A, ALL,
+        IT, ON...) solo valen con cashtag, bolsa o nombre.
         """
+        best_level = 0
+        best: list[Company] = []
         for company in db.scalars(select(Company)).all():
-            if _ticker_evidence(company.ticker, company.name, text):
-                return company
-        return None
+            level = _ticker_evidence_level(company.ticker, company.name, text)
+            if level > best_level:
+                best_level, best = level, [company]
+            elif level == best_level and level > 0:
+                best.append(company)
+        return best[0] if len(best) == 1 else None
 
     def _company_for_item(self, db: Session, text: str, ticker: str | None = None) -> Company | None:
         if ticker:

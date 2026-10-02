@@ -41,11 +41,26 @@ def test_short_ticker_with_evidence_matches():
     assert _ticker_evidence("AAP", "Advance Auto Parts Inc", "Stock $aap jumps")
 
 
-def test_short_ticker_with_financial_context_matches():
+def test_short_ticker_with_nearby_financial_context_matches():
     assert _ticker_evidence("AMD", "Advanced Micro Devices Inc", "AMD stock jumps after guidance")
+    assert _ticker_evidence("IBM", "International Business Machines", "Shares of IBM rise on cloud demand")
     assert _ticker_evidence("IBM", "International Business Machines", "IBM beats earnings estimates")
     assert _ticker_evidence("KO", "Coca-Cola Co", "KO dividend hike announced")
     assert not _ticker_evidence("AAP", "Advance Auto Parts Inc", "AAP names four candidates for Bihar council polls")
+
+
+def test_financial_word_far_from_ticker_does_not_count():
+    far = "AMD was mentioned once in a long list of unrelated topics before anyone discussed the stock market"
+    assert not _ticker_evidence("AMD", "Advanced Micro Devices Inc", far)
+
+
+def test_ambiguous_symbols_need_cashtag_exchange_or_name():
+    assert not _ticker_evidence("ALL", "Allstate Corp", "ALL shares of the fund were sold, stock fell")
+    assert not _ticker_evidence("IT", "Gartner Inc", "IT spending rises while stock markets wobble")
+    assert not _ticker_evidence("ON", "ON Semiconductor Corp", "ON Tuesday, shares of chipmakers rose")
+    assert not _ticker_evidence("EU", "Some EU Fund", "EU bans trading in the product")
+    assert _ticker_evidence("ALL", "Allstate Corp", "Allstate (NYSE: ALL) raises dividend")
+    assert _ticker_evidence("IT", "Gartner Inc", "Gartner $IT stock slides")
 
 
 def test_long_ticker_matches_with_case_sensitivity():
@@ -58,3 +73,19 @@ def test_detect_ticker_uses_evidence(db):
     service = NewsService()
     assert service.detect_ticker(db, "AAP names four candidates for Bihar council polls") is None
     assert service.detect_ticker(db, "Advance Auto Parts (NYSE: AAP) cuts guidance") is not None
+
+
+def test_detect_ticker_picks_strongest_evidence_and_skips_ties(db):
+    _company(db, "A", "Agilent Technologies Inc")
+    _company(db, "AAPL", "Apple Inc")
+    service = NewsService()
+    # «A look at Apple earnings» no debe vincularse a Agilent (sigla de una letra).
+    assert service.detect_ticker(db, "A look at Apple earnings this week") is None
+    got = service.detect_ticker(db, "A look at Apple (NASDAQ: AAPL) earnings this week")
+    assert got is not None and got.ticker == "AAPL"
+    # Cashtag gana al contexto.
+    _company(db, "IBM", "International Business Machines")
+    got = service.detect_ticker(db, "IBM stock steady while $AAPL rallies")
+    assert got is not None and got.ticker == "AAPL"
+    # Empate en el nivel mas alto: ninguna.
+    assert service.detect_ticker(db, "$AAPL and $IBM both up") is None
