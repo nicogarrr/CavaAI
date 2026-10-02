@@ -1,0 +1,32 @@
+{
+ "origin": "synthetic_fixture",
+ "cik": "0000000001",
+ "name": "SYNTHETIC HOLDINGS PLC",
+ "tickers": [
+  "SYNQ"
+ ],
+ "filings": {
+  "recent": {
+   "accessionNumber": [
+    "0000000001-25-000001",
+    "0000000001-24-000001"
+   ],
+   "form": [
+    "10-K",
+    "10-K"
+   ],
+   "filingDate": [
+    "2026-08-20",
+    "2025-08-21"
+   ],
+   "reportDate": [
+    "2026-06-30",
+    "2025-06-30"
+   ],
+   "primaryDocument": [
+    "synth-10k.htm",
+    "synth-10k.htm"
+   ]
+  }
+ }
+}

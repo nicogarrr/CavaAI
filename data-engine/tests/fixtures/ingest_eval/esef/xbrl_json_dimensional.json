@@ -1,0 +1,55 @@
+{
+ "origin": "synthetic_fixture",
+ "id": "dimensional",
+ "lei": "9598SYNTHETIC0000001",
+ "concepts_declarados": [
+  "ifrs-full:ProfitLoss",
+  "ifrs-full:Revenue"
+ ],
+ "facts": {
+  "fact-1": {
+   "value": "7000000000",
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Revenue",
+    "entity": "scheme:9598SYNTHETIC0000001",
+    "period": "2025-01-01T00:00:00/2025-12-31T00:00:00",
+    "unit": "iso4217:EUR"
+   }
+  },
+  "fact-2": {
+   "value": "3100000000",
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Revenue",
+    "entity": "scheme:9598SYNTHETIC0000001",
+    "period": "2025-01-01T00:00:00/2025-12-31T00:00:00",
+    "unit": "iso4217:EUR",
+    "segment": "ifrs-full:SegmentAxis",
+    "explicitMember": "ifrs-full:ConstructionMember"
+   }
+  },
+  "fact-3": {
+   "value": "820000000",
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ProfitLoss",
+    "entity": "scheme:9598SYNTHETIC0000001",
+    "period": "2025-01-01T00:00:00/2025-12-31T00:00:00",
+    "unit": "iso4217:EUR"
+   }
+  },
+  "fact-4": {
+   "value": "410000000",
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ProfitLoss",
+    "entity": "scheme:9598SYNTHETIC0000001",
+    "period": "2025-01-01T00:00:00/2025-12-31T00:00:00",
+    "unit": "iso4217:EUR",
+    "segment": "ifrs-full:SegmentAxis",
+    "explicitMember": "ifrs-full:ConstructionMember"
+   }
+  }
+ }
+}

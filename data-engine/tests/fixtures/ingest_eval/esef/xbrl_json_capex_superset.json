@@ -1,0 +1,42 @@
+{
+ "origin": "synthetic_fixture",
+ "id": "capex_superset",
+ "lei": "9598SYNTHETIC0000001",
+ "concepts_declarados": [
+  "ifrs-full:PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities",
+  "ifrs-full:PurchaseOfPropertyPlantAndEquipmentIntangibleAssetsOtherThanGoodwillInvestmentPropertyAndOtherNoncurrentAssets",
+  "ifrs-full:Revenue"
+ ],
+ "facts": {
+  "fact-1": {
+   "value": "7000000000",
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Revenue",
+    "entity": "scheme:9598SYNTHETIC0000001",
+    "period": "2025-01-01T00:00:00/2025-12-31T00:00:00",
+    "unit": "iso4217:EUR"
+   }
+  },
+  "fact-2": {
+   "value": "450000000",
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities",
+    "entity": "scheme:9598SYNTHETIC0000001",
+    "period": "2025-01-01T00:00:00/2025-12-31T00:00:00",
+    "unit": "iso4217:EUR"
+   }
+  },
+  "fact-3": {
+   "value": "570000000",
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:PurchaseOfPropertyPlantAndEquipmentIntangibleAssetsOtherThanGoodwillInvestmentPropertyAndOtherNoncurrentAssets",
+    "entity": "scheme:9598SYNTHETIC0000001",
+    "period": "2025-01-01T00:00:00/2025-12-31T00:00:00",
+    "unit": "iso4217:EUR"
+   }
+  }
+ }
+}
