@@ -107,7 +107,7 @@ export default function QuickAlertButton({ ticker, currency = 'USD' }: { ticker:
       <Select value={type} onValueChange={(value: AlertType) => setType(value)}>
         <SelectTrigger
           aria-label="Tipo de alerta"
-          className="h-11 w-full bg-[#101010] text-base sm:h-8 sm:w-48 sm:text-xs"
+          className="h-11 w-full bg-surface-1 text-base sm:h-8 sm:w-48 sm:text-xs"
         >
           <SelectValue />
         </SelectTrigger>
@@ -127,7 +127,7 @@ export default function QuickAlertButton({ ticker, currency = 'USD' }: { ticker:
           inputMode="decimal"
           placeholder={meta.needsValue && type !== 'price_change' ? `${meta.valuePlaceholder} ${symbol}` : meta.valuePlaceholder}
           aria-label={type === 'price_change' ? 'Variación objetivo en porcentaje' : `Precio objetivo en ${currency}`}
-          className="h-11 w-full bg-[#101010] text-base sm:h-8 sm:w-44 sm:text-xs"
+          className="h-11 w-full bg-surface-1 text-base sm:h-8 sm:w-44 sm:text-xs"
         />
       ) : null}
       <div className="flex w-full gap-2 sm:w-auto">
