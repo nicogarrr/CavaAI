@@ -2,13 +2,18 @@
 
 A reservation counts attempted calls, including upstream failures. In production,
 Redis failure blocks the LLM path. No expense or money is recorded for a free
-provider model. Exact counts are shown in the endpoint response. Independent
-namespace from the second-order budget so one feature cannot starve the other.
+provider model. Exact counts are shown in the endpoint response.
+
+This module also hosts the generic implementation shared with the second-order
+budget: both paths differ only in the ``QuotaNamespace`` they pass, so
+``second_order_quota`` delegates here. Independent namespace per feature so one
+cannot starve the other.
 """
 
 from __future__ import annotations
 
 import threading
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import cast
 
@@ -30,14 +35,33 @@ return {1, minute, daily}
 """
 
 
-def reserve_llm_call(tenant_id: int | str | None, settings) -> dict:
+@dataclass(frozen=True)
+class QuotaNamespace:
+    """What makes one LLM budget a different budget: Redis keys, caps and error."""
+
+    key: str
+    minute_setting: str
+    day_setting: str
+    missing_tenant_error: str
+
+
+_ASTS_NAMESPACE = QuotaNamespace(
+    key="asts-llm",
+    minute_setting="asts_llm_calls_per_minute",
+    day_setting="asts_llm_calls_per_day",
+    missing_tenant_error="ASTS catalog LLM needs a verified tenant",
+)
+
+
+def reserve_quota(tenant_id: int | str | None, settings, *, namespace: QuotaNamespace) -> dict:
+    """Reserve one LLM call from ``namespace``'s budget, counting failures too."""
     if tenant_id is None:
-        raise RuntimeError("ASTS catalog LLM needs a verified tenant")
+        raise RuntimeError(namespace.missing_tenant_error)
     now = datetime.now(UTC)
-    minute_key = f"cavaai:asts-llm:{tenant_id}:minute:{now:%Y%m%d%H%M}"
-    day_key = f"cavaai:asts-llm:{tenant_id}:day:{now:%Y%m%d}"
-    minute_cap = settings.asts_llm_calls_per_minute
-    day_cap = settings.asts_llm_calls_per_day
+    minute_key = f"cavaai:{namespace.key}:{tenant_id}:minute:{now:%Y%m%d%H%M}"
+    day_key = f"cavaai:{namespace.key}:{tenant_id}:day:{now:%Y%m%d}"
+    minute_cap = getattr(settings, namespace.minute_setting)
+    day_cap = getattr(settings, namespace.day_setting)
     if settings.is_production:
         import redis
 
@@ -62,3 +86,8 @@ def reserve_llm_call(tenant_id: int | str | None, settings) -> dict:
         "minute_limit": minute_cap, "day_used": int(daily), "day_limit": day_cap,
         "reset": "UTC calendar minute/day",
     }
+
+
+def reserve_llm_call(tenant_id: int | str | None, settings) -> dict:
+    """Reserve one ASTS catalog LLM call for ``tenant_id``."""
+    return reserve_quota(tenant_id, settings, namespace=_ASTS_NAMESPACE)
