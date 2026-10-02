@@ -6,6 +6,9 @@ surface as unavailable, never guessed). Ingested splits become UNAPPLIED
 CorporateAction rows with per-row source provenance; the user applies them
 explicitly through the existing corporate-actions flow, which adjusts
 position quantities and the FIFO ledger.
+
+``ProviderIngestionService`` hosts the provider-to-record skeleton that the
+dividend ingestion shares.
 """
 
 from __future__ import annotations
@@ -25,7 +28,17 @@ from app.services.connectors.yahoo import YahooFinanceClient
 from app.services.provenance import Coverage, SourceKind, provenance
 
 
-class SplitIngestionService:
+class ProviderIngestionService:
+    """Skeleton for ingesting declared rows from labeled providers into own records.
+
+    Splits and dividends share everything but the row shape: same Yahoo-then-FMP
+    fallback, same dedupe-then-insert, same three statuses. Subclasses supply the
+    provider row mapping and the record they write.
+    """
+
+    _PROVENANCE_SOURCE = ""
+    _PROVENANCE_NOTE = ""
+
     def __init__(
         self,
         fmp: FMPClient | None = None,
@@ -49,6 +62,95 @@ class SplitIngestionService:
             return datetime.fromtimestamp(int(value), UTC).date()
         except (TypeError, ValueError, OSError, OverflowError):
             return None
+
+    async def _fetch_rows(
+        self, company: Company
+    ) -> tuple[list[dict[str, Any]], str]:
+        raise NotImplementedError
+
+    @staticmethod
+    def _row_is_ingestible(row: dict[str, Any]) -> bool:
+        raise NotImplementedError
+
+    @staticmethod
+    def _existing_record(db: Session, company: Company, row: dict[str, Any]) -> Any:
+        raise NotImplementedError
+
+    @staticmethod
+    def _new_record(
+        company: Company, row: dict[str, Any], source: str, fetched_at: datetime
+    ) -> Any:
+        raise NotImplementedError
+
+    async def sync_company(self, db: Session, *, ticker: str) -> dict[str, Any]:
+        """Ingest this company's declared rows. Returns counts + provenance."""
+        company = resolve_company(db, ticker)
+        if company is None:
+            return {"ticker": ticker.upper(), "status": "unknown_company", "inserted": 0, "existing": 0}
+        try:
+            rows, source = await self._fetch_rows(company)
+        except Exception as exc:  # provider/auth/entitlement/network failure
+            return {
+                "ticker": company.ticker,
+                "status": "unavailable",
+                "error": redact_secrets(f"{type(exc).__name__}: {exc}")[:300],
+                "inserted": 0,
+                "existing": 0,
+            }
+        fetched_at = datetime.now(UTC)
+        inserted = 0
+        existing = 0
+        for row in rows:
+            if not self._row_is_ingestible(row):
+                continue
+            duplicate = self._existing_record(db, company, row)
+            if duplicate is not None:
+                existing += 1
+                continue
+            db.add(self._new_record(company, row, source, fetched_at))
+            inserted += 1
+        db.commit()
+        return {
+            "ticker": company.ticker,
+            "status": "ok",
+            "source": source,
+            "inserted": inserted,
+            "existing": existing,
+            "fetched_at": fetched_at.isoformat(),
+        }
+
+    async def sync_portfolio(self, db: Session) -> dict[str, Any]:
+        """Ingest every currently held company."""
+        company_ids = db.scalars(select(Position.company_id).distinct()).all()
+        tickers = list(
+            db.scalars(select(Company.ticker).where(Company.id.in_(company_ids))).all()
+        ) if company_ids else []
+        results = [await self.sync_company(db, ticker=ticker) for ticker in tickers]
+        ok = sum(1 for r in results if r["status"] == "ok")
+        unavailable = sum(1 for r in results if r["status"] == "unavailable")
+        return {
+            "companies": len(results),
+            "synced": ok,
+            "unavailable": unavailable,
+            "results": results,
+            "provenance": provenance(
+                self._PROVENANCE_SOURCE,
+                SourceKind.UNOFFICIAL,
+                coverage=(
+                    Coverage.OK
+                    if unavailable == 0
+                    else Coverage.PARTIAL if ok else Coverage.UNAVAILABLE
+                ),
+                note=self._PROVENANCE_NOTE,
+            ),
+        }
+
+
+class SplitIngestionService(ProviderIngestionService):
+    _PROVENANCE_SOURCE = "Yahoo Finance chart/splits (fallback FMP stable/splits)"
+    _PROVENANCE_NOTE = (
+        "Splits arrive unapplied; verify against issuer/exchange notices before applying to the ledger."
+    )
 
     @staticmethod
     def _parse_ratio(row: dict) -> Decimal | None:
@@ -93,83 +195,33 @@ class SplitIngestionService:
             if isinstance(row, dict)
         ], "yahoo_finance"
 
-    async def sync_company(self, db: Session, *, ticker: str) -> dict[str, Any]:
-        company = resolve_company(db, ticker)
-        if company is None:
-            return {"ticker": ticker.upper(), "status": "unknown_company", "inserted": 0, "existing": 0}
-        try:
-            rows, source = await self._fetch_rows(company)
-        except Exception as exc:
-            return {
-                "ticker": company.ticker,
-                "status": "unavailable",
-                "error": redact_secrets(f"{type(exc).__name__}: {exc}")[:300],
-                "inserted": 0,
-                "existing": 0,
-            }
-        fetched_at = datetime.now(UTC)
-        inserted = 0
-        existing = 0
-        for row in rows:
-            effective = row["effective_date"]
-            ratio = row["ratio"]
-            if effective is None or ratio is None:
-                continue
-            duplicate = db.scalar(
-                select(CorporateAction).where(
-                    CorporateAction.company_id == company.id,
-                    CorporateAction.effective_date == effective,
-                    CorporateAction.ratio == ratio,
-                    CorporateAction.action_type.in_(["split", "reverse_split"]),
-                )
-            )
-            if duplicate is not None:
-                existing += 1
-                continue
-            db.add(
-                CorporateAction(
-                    company_id=company.id,
-                    action_type="split" if ratio > 1 else "reverse_split",
-                    effective_date=effective,
-                    ratio=ratio,
-                    description=f"Ingested from {source} on {fetched_at.date()}; review and apply explicitly.",
-                    applied=False,
-                    source=source,
-                    fetched_at=fetched_at,
-                )
-            )
-            inserted += 1
-        db.commit()
-        return {
-            "ticker": company.ticker,
-            "status": "ok",
-            "source": source,
-            "inserted": inserted,
-            "existing": existing,
-            "fetched_at": fetched_at.isoformat(),
-        }
+    @staticmethod
+    def _row_is_ingestible(row: dict[str, Any]) -> bool:
+        return row["effective_date"] is not None and row["ratio"] is not None
 
-    async def sync_portfolio(self, db: Session) -> dict[str, Any]:
-        company_ids = db.scalars(select(Position.company_id).distinct()).all()
-        tickers = list(
-            db.scalars(select(Company.ticker).where(Company.id.in_(company_ids))).all()
-        ) if company_ids else []
-        results = [await self.sync_company(db, ticker=ticker) for ticker in tickers]
-        ok = sum(1 for r in results if r["status"] == "ok")
-        unavailable = sum(1 for r in results if r["status"] == "unavailable")
-        return {
-            "companies": len(results),
-            "synced": ok,
-            "unavailable": unavailable,
-            "results": results,
-            "provenance": provenance(
-                "Yahoo Finance chart/splits (fallback FMP stable/splits)",
-                SourceKind.UNOFFICIAL,
-                coverage=(
-                    Coverage.OK
-                    if unavailable == 0
-                    else Coverage.PARTIAL if ok else Coverage.UNAVAILABLE
-                ),
-                note="Splits arrive unapplied; verify against issuer/exchange notices before applying to the ledger.",
-            ),
-        }
+    @staticmethod
+    def _existing_record(db: Session, company: Company, row: dict[str, Any]) -> Any:
+        return db.scalar(
+            select(CorporateAction).where(
+                CorporateAction.company_id == company.id,
+                CorporateAction.effective_date == row["effective_date"],
+                CorporateAction.ratio == row["ratio"],
+                CorporateAction.action_type.in_(["split", "reverse_split"]),
+            )
+        )
+
+    @staticmethod
+    def _new_record(
+        company: Company, row: dict[str, Any], source: str, fetched_at: datetime
+    ) -> Any:
+        ratio = row["ratio"]
+        return CorporateAction(
+            company_id=company.id,
+            action_type="split" if ratio > 1 else "reverse_split",
+            effective_date=row["effective_date"],
+            ratio=ratio,
+            description=f"Ingested from {source} on {fetched_at.date()}; review and apply explicitly.",
+            applied=False,
+            source=source,
+            fetched_at=fetched_at,
+        )
