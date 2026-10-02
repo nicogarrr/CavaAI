@@ -35,3 +35,23 @@ Qdrant, tar de MinIO y DuckDB, manifest por backup; restore exige
   una ejecucion correcta (con `set -e`, un fallo no purga nada).
 - R2: la retencion la impone el lifecycle del bucket (regla de expiracion en
   el dashboard de Cloudflare, p. ej. 30 dias); `rclone copy` nunca borra.
+
+## MongoDB Atlas (sesiones de Better Auth)
+
+Estado oficial: Atlas **no ofrece backups en clusteres Free/M0**; hay que usar
+`mongodump` (https://www.mongodb.com/docs/atlas/backup-restore-cluster/ y
+https://www.mongodb.com/docs/atlas/reference/free-shared-limitations). El tier
+real del cluster de produccion se verifica leyendo el host de `MONGODB_URI`
+(sin imprimir credenciales) y en la consola de Atlas; hasta entonces el tier
+M0 es lo que declara la documentacion del repo, no un dato verificado.
+
+Coste 0 EUR, solo lectura sobre Atlas:
+
+- `scripts/mongo-backup.sh`: `mongodump --archive --gzip` cifrado con `age`
+  (clave publica en la VM, `AGE_RECIPIENT`; la privada la guarda solo Nico).
+  No deja fichero en claro. Opcional: copia a R2 con `RCLONE_REMOTE`.
+  Retencion local: `BACKUP_RETENTION_COUNT` (8 por defecto).
+- `scripts/mongo-restore-drill.sh`: prueba de restauracion en un `mongod`
+  efimero en `127.0.0.1:27099`. Nunca restaura sobre Atlas ni produccion.
+- Programacion (cron semanal) pendiente: se activa solo tras verificar tier y
+  destino. Ejemplo: `0 4 * * 0 cd ~/CavaAI && ./scripts/mongo-backup.sh`.
