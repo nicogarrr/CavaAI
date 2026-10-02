@@ -89,3 +89,43 @@ def test_pre_revenue_sin_acciones_las_sigue_marcando_faltantes():
     finally:
         db.close()
         _cleanup()
+
+
+def test_ingresos_solo_trimestrales_no_se_llaman_pre_revenue():
+    _cleanup()
+    db = SessionLocal()
+    try:
+        company = Company(
+            ticker=TICKER, name="Pre Revenue Bio", exchange="TEST", currency="USD",
+            sector="Health Care", industry="Biotechnology", company_type="standard",
+            valuation_model="standard_dcf", special_sources=[], special_risks=[],
+            factor_tags=[],
+        )
+        db.add(company)
+        db.flush()
+        for year in (2024, 2025):
+            _fact(db, company, "net_income", -60_000_000, year)
+            _fact(db, company, "shares_diluted", 126_000_000, year, unit="shares")
+        db.add(
+            FinancialFact(
+                company_id=company.id,
+                metric="revenue",
+                value=Decimal("1000000"),
+                unit="USD",
+                period="2025-09-30:Q3",
+                fiscal_year=2025,
+                fiscal_quarter="Q3",
+                source_type="SEC",
+                is_reported=True,
+                confidence=Decimal("0.95"),
+            )
+        )
+        db.commit()
+        model = LongTermModelService().build(db, company)
+        missing = model["missing_inputs"]
+        assert missing[0] == "annual_revenue_missing"
+        assert "no_revenue_reported" not in missing
+        assert "fiscal_year" not in missing
+    finally:
+        db.close()
+        _cleanup()
