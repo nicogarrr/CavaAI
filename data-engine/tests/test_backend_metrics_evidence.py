@@ -124,7 +124,7 @@ def test_los_hosts_oficiales_vienen_del_repo_no_de_una_copia():
     from app.services.thesis_provenance import OFFICIAL_HOSTS
 
     assert evidence_stats.official_hosts() == OFFICIAL_HOSTS
-    assert "www.sec.gov" in evidence_stats.official_hosts()
+    assert {"www.sec.gov"} <= set(evidence_stats.official_hosts())
 
 
 # --- materialidad: el corte es el del repo ----------------------------------
