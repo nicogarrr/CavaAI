@@ -48,7 +48,7 @@ export type ResearchTask<T> = {
 /** Resultado de una lectura: o el valor, o el motivo por el que se degrado. */
 export type ResearchSettled<T> =
   | { key: string; ok: true; value: T }
-  | { key: string; ok: false; reason: string };
+  | { key: string; ok: false; reason: string; error?: unknown };
 
 /** Lote en vuelo: las promesas ya existen, solo falta recogerlas. */
 export type ResearchBatch<T> = {
@@ -144,7 +144,7 @@ export async function settleResearchBatch<T>(
         if (result === 'deadline') return { key: entry.key, ok: false, reason: 'timeout' };
         return { key: entry.key, ok: true, value: result.value };
       } catch (error) {
-        return { key: entry.key, ok: false, reason: researchFailureReason(error) };
+        return { key: entry.key, ok: false, reason: researchFailureReason(error), error };
       } finally {
         clearTimeout(timer);
       }

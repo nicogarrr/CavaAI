@@ -224,8 +224,11 @@ describe('la ficha real no serializa sus lecturas', () => {
     const hardReads = PAGE.match(/throw error;/g) ?? [];
     assert.ok(hardReads.length <= 2, 'solo el snapshot y el market de overview pueden propagar');
     assert.match(PAGE, /settleResearchBatch\(\[viewTask\], RESEARCH_RENDER_BUDGET_MS\)/);
-    // El watchlist nunca tumba la ficha: degrada a lista vacia.
-    assert.match(PAGE, /getWatchlist\(\)\)\.catch\(\(\) => \[\]\)/);
+    // El watchlist nunca tumba la ficha, pero tampoco miente: degrada a
+    // "estado desconocido" (null, boton deshabilitado), no a una lista vacia
+    // que pintaria "Seguir" aunque el usuario ya siga el ticker.
+    assert.match(PAGE, /getWatchlist\(\)\)\.catch\(\(\) => null\)/);
+    assert.doesNotMatch(PAGE, /getWatchlist\(\)\)\.catch\(\(\) => \[\]\)/);
   });
 
   it('el chat sale en la primera fase y su rechazo queda drenado', () => {

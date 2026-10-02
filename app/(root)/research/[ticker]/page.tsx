@@ -83,7 +83,6 @@ import { formatCompact, formatDate, formatMarketDate, formatUserDateTime, format
 import { glossary, moatGlossaryKey } from '@/lib/glossary';
 import {
   RESEARCH_RENDER_BUDGET_MS,
-  degradedReasons,
   pick,
   settleResearchBatch,
 } from '@/lib/research/parallel-fetch';
@@ -683,7 +682,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
   const moatPromise = activeView === 'overview' ? withResearchTelemetry('moat-score', () => getMoatQualityScore(ticker)) : undefined;
   // "Estado seguido" real del usuario. Antes esperaba al snapshot para pedirlo,
   // y no hay NINGÚN motivo: el watchlist es del tenant, no depende del ticker.
-  const watchlistPromise = withResearchTelemetry('watchlist', () => getWatchlist()).catch(() => []);
+  const watchlistPromise = withResearchTelemetry('watchlist', () => getWatchlist()).catch(() => null);
   // El workspace de la vista activa también sale aquí, antes de esperar el
   // snapshot: la rama de abajo solo lo recoge. Es la fase que más tiempo
   // añadía (la tesis son 7 llamadas) y no dependía de nada de lo anterior.
@@ -695,7 +694,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
   // en la primera fase. Su rama solo recoge el resultado y conserva el matiz que
   // importa: un backend caído sigue siendo BackendOffline (no un chat vacío),
   // porque el usuario puede reintentar.
-  const chatPromise = query.chat
+  const chatPromise = activeView === 'chat' && query.chat
     ? withResearchTelemetry('company-chat', () => askResearchCompanyChat(ticker, query.chat as string))
     : undefined;
   // En master-miss estas promesas no se consumen: el manejador se adjunta
@@ -763,21 +762,26 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
   // Aquí ya no se encadena ninguna lectura: solo se recogen, cada una con su
   // degradación honesta.
   const [watchlist, viewSettled] = await Promise.all([watchlistPromise, viewPromise]);
-  const isFollowed = watchlist.some((item) => item.symbol.toUpperCase() === ticker);
+  const watchlistUnknown = watchlist === null;
+  const isFollowed = watchlist?.some((item) => item.symbol.toUpperCase() === ticker) ?? false;
   /**
    * Dato del workspace de esta vista. Si la lectura degradó sale el estado
    * vacío HONESTO de `EMPTY_VIEW_DATA` (N/D con el motivo en el aviso), no un
    * error y no un valor inventado.
    */
   const viewData = async <K extends keyof ViewWorkspaces>(key: K): Promise<ViewWorkspaces[K]> => {
-    const degraded = degradedReasons(viewSettled);
-    if (degraded.length) {
-      console.warn(
-        `[research] ${ticker} · ${activeView} degrada: ${degraded.map((entry) => `${entry.key}=${entry.reason}`).join(', ')}`,
-      );
+    // Un fallo o un timeout de la lectura de la vista activa NO se pinta como
+    // "empresa sin datos": es indistinguible de un vacío real y esconde un
+    // backend caído. Se relanza el error original (como antes del paralelismo)
+    // para que lo recoja el error boundary de la ruta con su "Reintentar".
+    // El estado vacío queda para lo que el backend devuelve como vacío (404).
+    const failed = viewSettled.find((entry) => entry.key === key && !entry.ok);
+    if (failed && !failed.ok) {
+      console.warn(`[research] ${ticker} · ${activeView} falla: ${failed.key}=${failed.reason}`);
+      throw failed.error instanceof Error
+        ? failed.error
+        : new Error(`No se pudo cargar la vista ${activeView} de ${ticker}: ${failed.reason}. Reintenta.`);
     }
-    // El lote lanza UN workspace por render y cada rama pide el suyo: la clave
-    // identifica el tipo. Narrowing por clave, no por `any`.
     return pick(viewSettled, key, EMPTY_VIEW_DATA[key]) as ViewWorkspaces[K];
   };
   // Cabecera con cotización: si el proveedor de mercado falla fuera de
@@ -1300,7 +1304,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
             <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500"><span className="inline-flex items-center gap-1"><Database className="h-4 w-4" />captura de solo lectura</span><span className="inline-flex items-center gap-1"><Target className="h-4 w-4" />{holdingBadge}</span><Link className="inline-flex items-center gap-1 text-teal-300 transition hover:text-teal-200" href={`/research/assistant?mode=guide&ticker=${encodeURIComponent(ticker)}`}><BookOpen className="h-4 w-4" />Guía de investigación</Link><Link className="inline-flex items-center gap-1 text-gray-400 transition hover:text-teal-300" href={`/research/${encodeURIComponent(ticker)}?view=changes`}><History className="h-4 w-4" />Qué ha cambiado{recentChangeCount ? <span aria-hidden="true" className="rounded-full bg-gray-800 px-1.5 text-xs font-semibold text-gray-300">{recentChangeCount}</span> : null}</Link></div>
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
               <div className="w-full sm:w-auto sm:min-w-0 sm:flex-1"><QuickAlertButton ticker={ticker} currency={company.currency} /></div>
-              <FollowButton symbol={ticker} company={company.name} isFollowed={isFollowed} />
+              <FollowButton symbol={ticker} company={company.name} isFollowed={isFollowed} stateUnknown={watchlistUnknown} />
             </div>
           </div>
         </header>
