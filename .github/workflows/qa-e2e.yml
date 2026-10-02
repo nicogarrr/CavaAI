@@ -50,9 +50,13 @@ jobs:
           fi
           echo "ok=true" >> "$GITHUB_OUTPUT"
 
-      - name: Ejecuta e2e (paginas publicas)
+      - name: Ejecuta e2e (paginas publicas y rutas autenticadas)
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          # Cuenta desechable "Instinct Audit" con datos ficticios. Si los secrets
+          # no existen, tests/authenticated.e2e.ts se salta y el resumen lo indica.
+          E2E_USER_EMAIL: ${{ secrets.E2E_USER_EMAIL }}
+          E2E_USER_PASSWORD: ${{ secrets.E2E_USER_PASSWORD }}
         run: |
           set +e
           npx e2e run 2>&1 | tee run.log
