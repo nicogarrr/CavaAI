@@ -45,13 +45,13 @@ sube aquí y se re-loca a propósito.
 
 **Índices: fijados y declarados.** `pyproject.toml` declara el índice CPU de
 PyTorch (`[[tool.uv.index]]`, `explicit = true`) y lo ata a `torch` con
-`[tool.uv.sources]`. Sin ese bloque, `uv lock` falla (`torch==2.9.1+cpu` no está
+`[tool.uv.sources]`. Sin ese bloque, `uv lock` falla (`torch==2.14.1+cpu` no está
 en PyPI) o, si se afloja la constraint, resuelve la wheel CUDA. No hay ningún
 otro índice configurado: para el resto de paquetes, PyPI por defecto.
 
 **Hashes: siempre, sin interruptor.** No hay modo "instalación normal sin
 hashes". `uv.lock` guarda `sdist` y `wheels` con `hash = "sha256:..."` para las
-**824 distribuciones** de los **170 paquetes** registrados, y `uv sync` verifica
+**1175 distribuciones** de los **243 paquetes** registrados, y `uv sync` verifica
 esos hashes al descargar. Editar un hash a mano hace fallar la instalación con
 un error de integridad, no una descarga distinta en silencio.
 
@@ -254,7 +254,7 @@ rangos sigue siendo válido) o pasar a auditar el lock.
 ## Números del lock actual
 
 - **171 paquetes** en `uv.lock`: el proyecto raíz más **170** de registro.
-- **824 distribuciones** hasheadas (sdist + wheels).
+- **1175 distribuciones** hasheadas (sdist + wheels).
 - **42 dependencias directas** (las de `requirements.txt`), + extras `test`
   (3 paquetes) y `dev` (2).
 - En `win32` instala **168**: los 2 que no bajan son `uvloop 0.23.0`
