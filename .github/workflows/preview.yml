@@ -1,0 +1,284 @@
+name: Vercel preview
+
+# `closed` esta en la lista a proposito: sin el, el comentario del preview se
+# queda apuntando a un deploy que ya nadie va a actualizar. Los tipos
+# declarados son TODOS los que cambian el codigo del PR; `edited`/`labeled` no
+# desplegan nada.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+  workflow_dispatch:
+
+# Solo lectura por defecto. `pull-requests: write` se concede UNICAMENTE al job
+# `comment` (el que actualiza el comentario del PR); gate y deploy no lo tienen.
+permissions:
+  contents: read
+
+concurrency:
+  # Un grupo por PR (por numero, no por `refs/pull/N/merge`: es lo mismo 1:1 pero
+  # se lee). Este workflow SI cancela en PR y aqui no hay contradiccion con lo
+  # que hace ci.yml: en un preview, un run superseded significa un comentario
+  # apuntando a un build viejo, que es exactamente el fallo que hay que evitar.
+  # Se cancela el run anterior entero, build incluido, y el nuevo vuelve a
+  # desplegar sobre el mismo alias de rama.
+  group: preview-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Marcador oculto. Es lo que permite encontrar el comentario de este workflow
+  # entre los cientos de comentarios del PR y reutilizarlo: 50 pushes = 50
+  # comentarios que nadie lee. Un HTML comment no se renderiza en el PR.
+  PREVIEW_MARKER: "<!-- cavaai-vercel-preview -->"
+  # Pin del CLI: `npm i -g vercel@latest` puede traerse un cambio de comportamiento
+  # en el deploy de un PR sin que nadie toque este repo. Fijado y visible.
+  VERCEL_CLI_VERSION: "60.1.3"
+
+jobs:
+  gate:
+    # Por que un job de gate en vez de `if: ${{ secrets.VERCEL_TOKEN != '' }}` en
+    # el job de deploy: segun la tabla de disponibilidad de contextos de GitHub,
+    # `jobs.<job_id>.if` solo admite github/needs/vars/inputs -- `secrets` NO esta
+    # ahi. Ese `if` evaluaria a cadena vacia (falsy) y el job se saltaria SIEMPRE,
+    # tambien cuando el secret existe. Aqui el secret llega por `env` (que si
+    # admite `secrets`) y la decision sale por un output declarado.
+    name: Decide si hay Vercel configurado
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      deploy: ${{ steps.plan.outputs.deploy }}
+      can_comment: ${{ steps.plan.outputs.can_comment }}
+      reason: ${{ steps.plan.outputs.reason }}
+    steps:
+      - id: plan
+        name: Plan de despliegue
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          # `full_name` en vez de `fork`: cubre tambien el caso de un PR desde
+          # otro repo del mismo owner que no sea un fork estricto.
+          IS_PR: ${{ github.event_name == 'pull_request' }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          BASE_REPO: ${{ github.repository }}
+          IS_CLOSED: ${{ github.event.action == 'closed' }}
+        run: |
+          deploy=false
+          can_comment=true
+          reason=""
+          if [ "$IS_PR" = "true" ] && [ "$HEAD_REPO" != "$BASE_REPO" ]; then
+            can_comment=false
+            reason="PR desde un fork ($HEAD_REPO): los secrets no existen en pull_request de forks, asi que no hay preview. Es intencionado, no un fallo: para dar previews a forks haria falta pull_request_target, que ejecuta codigo no confiable con el GITHUB_TOKEN del repo base."
+          elif [ "$IS_CLOSED" = "true" ]; then
+            reason="PR cerrado: no se despliega, solo se marca el comentario como obsoleto."
+          elif [ -z "$VERCEL_TOKEN" ]; then
+            can_comment=false
+            reason="Secret VERCEL_TOKEN no configurado: el preview se salta. El workflow sigue en verde a proposito; un workflow de preview que rompe CI sin secret se desactiva a la primera."
+          elif [ -z "$VERCEL_ORG_ID" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
+            can_comment=false
+            reason="VERCEL_TOKEN existe pero faltan VERCEL_ORG_ID o VERCEL_PROJECT_ID, y .vercel/ no esta versionado (esta en .gitignore), asi que el proyecto de Vercel no se puede enlazar."
+          else
+            deploy=true
+            reason="Vercel configurado: preview + comentario."
+          fi
+          {
+            echo "deploy=$deploy"
+            echo "can_comment=$can_comment"
+            echo "reason=$reason"
+          } >> "$GITHUB_OUTPUT"
+          if [ "$deploy" != "true" ]; then
+            echo "::notice title=Preview omitido::$reason"
+            echo "$reason" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  deploy:
+    name: Build y deploy del preview
+    needs: gate
+    if: ${{ needs.gate.outputs.deploy == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    # Los secrets NO van a nivel de job: solo los pasos que los necesitan
+    # (enlace, pull, deploy) los reciben. `vercel build` ejecuta scripts del PR
+    # (npm ci / next build) y no recibe VERCEL_TOKEN.
+    outputs:
+      # Declarado de forma explicita porque lo consume `comment` via needs: sin
+      # esta linea el consumidor lee cadena vacia y postea un comentario sin URL.
+      url: ${{ steps.deploy.outputs.url }}
+      commit: ${{ steps.commit.outputs.sha }}
+    steps:
+      # Sin `ref:` a proposito: el default de `pull_request` es el commit de
+      # merge, que es justo lo que se va a mergear. Un preview del head suelto
+      # puede no compilar por conflictos que el merge si resuelve.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          # `cache: npm` acelera el `npm ci` que hace `vercel build` (el
+          # installCommand de vercel.json).
+          cache: npm
+      - name: Instala el CLI de Vercel
+        run: npm install -g "vercel@$VERCEL_CLI_VERSION" && vercel --version
+      - name: Enlaza el proyecto de Vercel
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          if [ -f .vercel/project.json ]; then
+            echo "Reutilizo .vercel/project.json del repo."
+          else
+            mkdir -p .vercel
+            printf '{"orgId":"%s","projectId":"%s"}\n' "$VERCEL_ORG_ID" "$VERCEL_PROJECT_ID" > .vercel/project.json
+          fi
+      - name: Descarga el entorno Preview del proyecto
+        # `vercel pull` es lo que hace que el build use las MISMAS variables que
+        # tiene el proyecto en Vercel, en vez de un juego de placeholders. Si el
+        # proyecto no tiene entorno Preview configurado, el build falla aqui con
+        # un error legible, que es el comportamento correcto: es mejor que un
+        # preview desplegado y roto.
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
+      - name: Build con la configuracion del repo
+        # vercel build lee vercel.json tal cual (framework nextjs, installCommand
+        # npm ci, buildCommand npm run build, regions fra1): no hay ningun
+        # vercel.json paralelo en este workflow.
+        # Sin VERCEL_TOKEN a proposito: el build corre codigo del PR y usa el
+        # entorno ya descargado por `vercel pull` en .vercel/.
+        run: vercel build
+      - id: deploy
+        name: Deploy del preview
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -o pipefail
+          if vercel deploy --prebuilt --yes --token="$VERCEL_TOKEN" 2>&1 | tee /tmp/vercel-deploy.log; then
+            # El CLI imprime "Preview URL: https://<alias>.vercel.app" antes que
+            # el link de Inspect (que es vercel.com y no casa con el patron).
+            # Se toma el primero: es el alias estable de la rama, que sobrevive a
+            # los siguientes pushes. El `|| true` es para que un grep sin
+            # coincidencias no mate el paso por `set -e` antes del chequeo.
+            url=$(grep -oE 'https://[a-z0-9][a-z0-9-]*\.vercel\.app' /tmp/vercel-deploy.log | head -n 1 || true)
+            if [ -z "$url" ]; then
+              echo "::error::el deploy termino sin URL en la salida del CLI"
+              exit 1
+            fi
+            echo "url=$url" >> "$GITHUB_OUTPUT"
+            echo "Preview: $url" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error::vercel deploy devolvio error; ver la salida de arriba"
+            exit 1
+          fi
+      - id: commit
+        name: SHA desplegado
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  comment:
+    name: Comentario del preview en el PR
+    needs: [gate, deploy]
+    # always(): si el deploy falla queremos comentar el fallo, no quedarnos
+    # mudos. can_comment cubre fork y secret ausente; en PR cerrado se ejecuta
+    # igual, porque hay que limpiar el comentario aunque no haya token.
+    if: ${{ always() && github.event_name == 'pull_request' && needs.gate.outputs.can_comment == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Marca el comentario como obsoleto
+        if: ${{ github.event.action == 'closed' }}
+        uses: actions/github-script@v9
+        with:
+          # Dos reintentos por rate limit. 403 no se reintenta (esta en la lista
+          # de exentos por defecto), asi que un token degradado falla ya y no
+          # gasta tres llamadas.
+          retries: "2"
+          script: |
+            const marker = process.env.PREVIEW_MARKER;
+            const issue = context.issue;
+            const { data: comments } = await github.paginate(github.rest.issues.listComments, {
+              ...issue,
+              per_page: 100,
+            });
+            const mine = comments.filter((c) => c.body && c.body.includes(marker));
+            if (mine.length === 0) {
+              core.info('No habia comentario de preview que retirar.');
+              return;
+            }
+            // Se retira el enlace en vez de borrar el comentario: el hilo deja
+            // constancia de que hubo preview y, si alguien reabre el PR, el
+            // siguiente run reutiliza el mismo comentario por el marcador.
+            const body = [
+              marker,
+              '**Preview retirado.** El PR se cerr\u00f3, as\u00ed que este enlace ya no se actualiza.',
+            ].join('\n');
+            for (const c of mine) {
+              await github.rest.issues.updateComment({ ...issue, comment_id: c.id, body });
+            }
+            core.info(`Comentarios marcados como obsoletos: ${mine.length}`);
+      - name: Publica o actualiza el comentario del preview
+        if: ${{ github.event.action != 'closed' }}
+        uses: actions/github-script@v9
+        env:
+          # Los valores que vienen del PR viajan por env, NUNCA por ${{ }}: el
+          # nombre de una rama es input no confiable y expandirlo dentro del
+          # script es inyeccion de codigo.
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          PREVIEW_URL: ${{ needs.deploy.outputs.url }}
+          PREVIEW_SHA: ${{ needs.deploy.outputs.commit }}
+        with:
+          retries: "2"
+          script: |
+            const marker = process.env.PREVIEW_MARKER;
+            const issue = context.issue;
+            const url = process.env.PREVIEW_URL;
+            const sha = (process.env.PREVIEW_SHA || '').slice(0, 7);
+            const { data: comments } = await github.paginate(github.rest.issues.listComments, {
+              ...issue,
+              per_page: 100,
+            });
+            const mine = comments.filter((c) => c.body && c.body.includes(marker));
+            let body;
+            if (!url) {
+              // El job `deploy` fallo: decirlo en el PR es mas util que un
+              // check rojo sin contexto. Se enlaza al run, que es donde esta
+              // el error de verdad.
+              const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+              body = [
+                marker,
+                '**El preview no se ha desplegado.**',
+                '',
+                `El job \`deploy\` no ha dado URL. El error esta en el [run de este workflow](${run}).`,
+              ].join('\n');
+            } else {
+              const rows = [
+                marker,
+                '### Preview de este PR (Vercel)',
+                '',
+                `- Rama: \`${process.env.PR_BRANCH}\``,
+                `- Commit: \`${sha}\``,
+                `- Preview: ${url}`,
+                '',
+                'Se actualiza en cada push. El comentario se reutiliza, no hay uno por push.',
+              ];
+              body = rows.join('\n');
+            }
+            if (mine.length === 0) {
+              await github.rest.issues.createComment({ ...issue, body });
+              core.info('Comentario de preview creado.');
+              return;
+            }
+            // Uno solo: si por lo que sea hubiera duplicados (un workflow
+            // anterior, un run concurrido), se deja el mas reciente y se borran
+            // los demas en vez de sobrescribirlos todos.
+            const keep = mine[mine.length - 1];
+            for (const c of mine) {
+              if (c.id === keep.id) continue;
+              await github.rest.issues.deleteComment({ ...issue, comment_id: c.id });
+            }
+            await github.rest.issues.updateComment({ ...issue, comment_id: keep.id, body });
+            core.info('Comentario de preview actualizado.');
