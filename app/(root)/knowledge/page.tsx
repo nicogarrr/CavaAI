@@ -170,7 +170,7 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
           ['Documentos', documents.length],
           ['Pendientes de aprobación', principles.filter((item) => item.status === 'proposed').length],
         ].map(([label, value]) => (
-          <div className="rounded-xl border border-gray-800 bg-[#101010] p-4" key={label}>
+          <div className="rounded-xl border border-gray-800 bg-surface-1 p-4" key={label}>
             <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</div>
             <div className="mt-2 text-2xl font-semibold text-gray-100">{formatNumber(Number(value), { maximumFractionDigits: 0 })}</div>
           </div>
@@ -189,7 +189,7 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
       ) : null}
 
       <section className="grid grid-cols-1 gap-4 sm:gap-6 xl:grid-cols-2">
-        <MutationForm action={createKnowledgeCollection} className="rounded-xl border border-gray-800 bg-[#101010] p-5" resetOnSuccess successMessage="Colección creada">
+        <MutationForm action={createKnowledgeCollection} className="rounded-xl border border-gray-800 bg-surface-1 p-5" resetOnSuccess successMessage="Colección creada">
           <div className="mb-4 flex items-center gap-2"><Library aria-hidden="true" className="h-5 w-5 text-teal-300" /><h2 className="font-semibold text-gray-100">Nueva colección</h2></div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Input className="h-11 w-full" name="name" placeholder={t('knowledge.qualityCompounders')} required />
@@ -199,7 +199,7 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
           </div>
         </MutationForm>
 
-        <div className="rounded-xl border border-gray-800 bg-[#101010] p-5">
+        <div className="rounded-xl border border-gray-800 bg-surface-1 p-5">
           <div className="mb-4 flex items-center gap-2"><Library aria-hidden="true" className="h-5 w-5 text-teal-300" /><h2 className="font-semibold text-gray-100">Colecciones por defecto</h2></div>
           <p className="mb-4 text-sm text-gray-400">Instala las colecciones base (calidad compounders, operaciones, macro) para tener dónde ingerir sin crear nada a mano.</p>
           <MutationForm action={installKnowledgeDefaults} successMessage="Colecciones por defecto listas">
@@ -208,7 +208,7 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
         </div>
       </section>
 
-      <section className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-4 sm:p-5">
+      <section className="min-w-0 rounded-xl border border-gray-800 bg-surface-1 p-4 sm:p-5">
         <div className="mb-4 flex items-center gap-2">            <BookOpen aria-hidden="true" className="h-5 w-5 text-teal-300" /><h2 className="text-lg font-semibold text-gray-100">{t('knowledge.documents')}</h2></div>
         {!documents.length ? <div className="py-2 text-sm text-gray-500"><p>Aún no hay documentos de conocimiento.</p><Link className="mt-2 inline-flex min-h-[44px] items-center gap-2 rounded-md border border-teal-800 px-3 py-2 text-xs font-medium text-teal-300 hover:border-teal-600 hover:text-teal-200" href="/knowledge?tab=subir">Sube tu primer libro, carta o caso de estudio</Link></div> : null}
         <div aria-label="Documentos de conocimiento" className="hidden overflow-x-auto md:block" role="region" tabIndex={0}>
@@ -261,7 +261,7 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
       </section>
 
       {selectedDocument ? (
-        <section className="min-w-0 rounded-xl border border-teal-900/50 bg-[#101010] p-4 sm:p-5">
+        <section className="min-w-0 rounded-xl border border-teal-900/50 bg-surface-1 p-4 sm:p-5">
           <div className="mb-4 flex items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase text-teal-300">Explorador de fragmentos</p><h2 className="text-lg font-semibold text-gray-100">{selectedDocument.title}</h2></div><Button asChild size="sm" variant="ghost"><Link href="/knowledge">Cerrar</Link></Button></div>
           <div className="grid max-h-[620px] gap-3 overflow-y-auto pr-2">
             {chunks.map((chunk) => <article className="rounded-lg border border-gray-800 bg-black/30 p-4" key={chunk.id}><div className="mb-2 flex justify-between text-xs text-gray-500"><span>Fragmento {formatNumber(Number(chunk.chunk_index) + 1, { maximumFractionDigits: 0 })}</span><span>página {chunk.page_number === null || chunk.page_number === undefined ? NA : formatNumber(chunk.page_number, { maximumFractionDigits: 0 })} · {formatNumber(chunk.token_count, { maximumFractionDigits: 0 })} tokens</span></div><p className="whitespace-pre-wrap text-sm leading-6 text-gray-300">{chunk.content}</p></article>)}
@@ -272,7 +272,7 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
         </TabsContent>
 
         <TabsContent className="mt-2" value={TABS.subir}>
-          <MutationForm id="upload-knowledge" action={uploadKnowledgeDocument} className="rounded-xl border border-gray-800 bg-[#101010] p-5" resetOnSuccess successMessage="Documento ingerido">
+          <MutationForm id="upload-knowledge" action={uploadKnowledgeDocument} className="rounded-xl border border-gray-800 bg-surface-1 p-5" resetOnSuccess successMessage="Documento ingerido">
             <div className="mb-4 flex items-center gap-2"><UploadCloud aria-hidden="true" className="h-5 w-5 text-teal-300" /><h2 className="font-semibold text-gray-100">{t('knowledge.upload')}</h2></div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {/* F142: etiquetas visibles - antes solo había placeholders/valores
@@ -345,7 +345,7 @@ export default async function KnowledgeLibraryPage({ searchParams }: PageProps) 
         </TabsContent>
 
         <TabsContent className="mt-2" value={TABS.principios}>
-      <section className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-4 sm:p-5">
+      <section className="min-w-0 rounded-xl border border-gray-800 bg-surface-1 p-4 sm:p-5">
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center"><div className="flex items-center gap-2"><Sparkles aria-hidden="true" className="h-5 w-5 text-teal-300" /><h2 className="text-lg font-semibold text-gray-100">Principios de inversión</h2></div><div className="flex flex-wrap gap-2 md:ml-auto">{['', 'proposed', 'approved', 'rejected', 'merged', 'superseded'].map((status) => <Button asChild className="min-h-[44px]" key={status || 'all'} size="sm" variant={(query.status ?? '') === status ? 'default' : 'outline'}><Link href={status ? `/knowledge?tab=principios&status=${status}` : '/knowledge?tab=principios'}>{PRINCIPLE_STATUS_LABELS[status] ?? status}</Link></Button>)}</div></div>
         <div className="grid gap-4 xl:grid-cols-2">
           {visiblePrinciples.map((principle) => (

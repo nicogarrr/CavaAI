@@ -64,7 +64,7 @@ export function CriterionFields({ suffix = '', initialLeft = '', initialRight = 
         <datalist id={`${id}-metrics-right`}>{COMMON_METRICS.map((key) => <option key={key} label={METRIC_LABELS[key] ?? key} value={key} />)}</datalist>
       </div>
     </div>
-    <p aria-live="polite" className="mt-3 rounded-md border border-gray-800 bg-[#171717] px-3 py-2 text-sm leading-6 text-gray-300">
+    <p aria-live="polite" className="mt-3 rounded-md border border-gray-800 bg-surface-2 px-3 py-2 text-sm leading-6 text-gray-300">
       {left.trim() && right.trim() ? <><span className="text-gray-500">Vista previa: </span>{describe(left)} {operator} {describe(right)}</> :
         optional ? 'Deja ambos campos vacíos para no añadir esta condición.' : 'Elige una métrica y un valor para ver la condición.'}
     </p>
@@ -91,7 +91,7 @@ export function CustomMetricFields() {
       <div><label className={fieldLabel} htmlFor={`${id}-key`}>Identificador para fórmulas *</label><Input className="min-h-11" id={`${id}-key`} name="metric_key" onChange={(event) => setKey(event.target.value)} pattern="[a-z][a-z0-9_]+" placeholder="roic_spread" required /><p className="mt-1 text-xs text-gray-500">Minúsculas, números y guiones bajos.</p></div>
     </div>
     <div><label className={fieldLabel} htmlFor={`${id}-formula`}>Cálculo *</label><Input className="min-h-11" id={`${id}-formula`} name="formula" onChange={(event) => setFormula(event.target.value)} placeholder="roic - wacc" required /><p className="mt-1 text-xs text-gray-500">Usa claves de métricas, números y operaciones aritméticas; no se ejecuta código.</p></div>
-    <p aria-live="polite" className="rounded-md border border-gray-800 bg-[#171717] px-3 py-2 text-sm text-gray-300">Vista previa: {key || 'identificador'} = {formula || 'fórmula'}</p>
+    <p aria-live="polite" className="rounded-md border border-gray-800 bg-surface-2 px-3 py-2 text-sm text-gray-300">Vista previa: {key || 'identificador'} = {formula || 'fórmula'}</p>
     <div className="grid gap-3 sm:grid-cols-2"><div><label className={fieldLabel} htmlFor={`${id}-unit`}>Unidad</label><select className={selectClasses} defaultValue="decimal" id={`${id}-unit`} name="unit"><option value="decimal">Decimal (ej.: 0,12)</option><option value="percent">Porcentaje</option><option value="USD">Importe en USD</option><option value="ratio">Ratio</option></select></div><div><label className={fieldLabel} htmlFor={`${id}-description`}>Definición (opcional)</label><Input className="min-h-11" id={`${id}-description`} name="description" placeholder="Qué mide y cómo interpretarlo" /></div></div>
   </div>;
 }
