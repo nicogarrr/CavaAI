@@ -88,6 +88,7 @@ COMPANIES: list[dict] = [
     },
     {
         "ticker": "BNK",
+        "trap_full_period": True,
         "name": "Banco del Norte",
         "company_type": "bank",
         "valuation_model": "bank_residual_income",
@@ -102,6 +103,7 @@ COMPANIES: list[dict] = [
     },
     {
         "ticker": "INS",
+        "trap_full_period": True,
         "name": "Seguros Peninsula",
         "company_type": "insurer",
         "valuation_model": "insurance_book_value",
@@ -115,6 +117,7 @@ COMPANIES: list[dict] = [
     },
     {
         "ticker": "REE",
+        "trap_full_period": True,
         "name": "Inmobiliaria Costa",
         "company_type": "reit",
         "valuation_model": "reit_nav",
@@ -346,20 +349,30 @@ def _seed_company(db, spec: dict) -> None:
     # su presencia es lo que demuestra que el filtro point-in-time funciona: sin
     # este hecho, una celda verde no probaría nada.
     if not spec.get("clean"):
-        trap_metric = next(iter(latest_facts))
-        db.add(
-            FinancialFact(
-                company_id=company.id,
-                metric=trap_metric,
-                value=Decimal("999999"),
-                unit="EUR",
-                period="2999-12-31",
-                fiscal_year=2999,
-                fiscal_quarter="FY",
-                source_type="sec",
-                confidence=Decimal("0.99"),
+        # Los motores sectoriales (banco, aseguradora, REIT) leen FinancialFact
+        # directamente y anclan el periodo en la fila MAS RECIENTE de su metrica
+        # ancla (ver _resolve_inputs). Desde #727 una sola fila FY2999 se
+        # convierte en el ancla y el resto de entradas no existen en ese
+        # ejercicio: el motor se abstiene (N/D) en vez de filtrar el futuro, lo
+        # cual es honesto pero deja el guard de look-ahead sin ejercitar. Para
+        # que la trampa llegue al guard, esos sectores reciben el FY2999
+        # COMPLETO (todas las entradas del motor): el motor valora con datos
+        # futuros y el guard publico tiene que rechazar la celda.
+        trap_metrics = list(latest_facts) if spec.get("trap_full_period") else [next(iter(latest_facts))]
+        for trap_metric in trap_metrics:
+            db.add(
+                FinancialFact(
+                    company_id=company.id,
+                    metric=trap_metric,
+                    value=Decimal("999999") if len(trap_metrics) == 1 else Decimal(str(latest_facts[trap_metric])),
+                    unit="EUR",
+                    period="2999-12-31",
+                    fiscal_year=2999,
+                    fiscal_quarter="FY",
+                    source_type="sec",
+                    confidence=Decimal("0.99"),
+                )
             )
-        )
 
     db.add(
         CalculatedMetric(
@@ -966,6 +979,9 @@ def main() -> int:
     dataset = {
         "version": DATASET_VERSION,
         "generated_by": "scripts/build_backtest_eval_dataset.py",
+        # Empresas FICTICIAS y datos sinteticos: esto no es un backtest real ni
+        # sus cifras son de ninguna compania. Que nadie lo lea como tal.
+        "origin": "synthetic_fixture",
         "note": GENERATED_NOTE,
         "cases": cases,
     }
