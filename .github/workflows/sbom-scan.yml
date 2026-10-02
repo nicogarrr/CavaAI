@@ -194,6 +194,9 @@ jobs:
           sbom: false
           cache-from: type=gha,scope=img-${{ matrix.name }}
 
+      - name: Crear el directorio de salida del SBOM
+        run: mkdir -p sbom
+
       - name: SBOM CycloneDX (syft via anchore/sbom-action)
         id: sbom-cyclonedx
         uses: anchore/sbom-action@v0.24.2
