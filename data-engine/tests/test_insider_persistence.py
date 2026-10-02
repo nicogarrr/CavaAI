@@ -152,3 +152,102 @@ def test_get_signals_persists_best_effort(monkeypatch):
     finally:
         _cleanup(db)
         db.close()
+
+
+def test_live_failure_falls_back_to_persisted_filings(monkeypatch):
+    """Si EDGAR no responde (IP baneada) pero el filing esta persistido, las
+    senales salen de la copia persistida y el resultado lo declara."""
+    from app.services import insider_service
+
+    monkeypatch.setattr(insider_service, "_cik_for_ticker", lambda t, client=None: "0001234567")
+    monkeypatch.setattr(
+        form4_connector, "recent_form4_filings", lambda cik, limit=20, client=None: [FILING]
+    )
+
+    def _edgar_down(filing):
+        raise RuntimeError("403 Forbidden")
+
+    db = _db()
+    try:
+        _cleanup(db)
+        # Primera lectura live: persiste el filing.
+        live = insider_service.get_signals_for_ticker(
+            "ACME", fetcher=lambda f: CEO_BUY_XML, db=db  # pyright: ignore[reportArgumentType]
+        )
+        assert live["status"] == "ok"
+        assert "filings_from_persisted" not in live
+
+        # EDGAR cae: se usa la copia persistida.
+        result = insider_service.get_signals_for_ticker("ACME", fetcher=_edgar_down, db=db)
+        assert result["status"] == "ok"
+        assert result["filings_parsed"] == 1
+        assert result["filings_failed"] == 0
+        assert result["filings_from_persisted"] == 1
+        assert result["latest_persisted_filing_date"] == FILING["filing_date"]
+        assert "desde filings persistidos" in result["source_note"]
+        assert FILING["filing_date"] in result["provenance"]["note"]
+        assert result["buy_count"] == live["buy_count"]
+        assert len(result["signals"]) == len(live["signals"])
+    finally:
+        _cleanup(db)
+        db.close()
+
+
+def test_live_failure_without_persisted_copy_stays_degraded(monkeypatch):
+    """Sin lectura live ni copia persistida sigue siendo fallo de lectura."""
+    from app.services import insider_service
+
+    monkeypatch.setattr(insider_service, "_cik_for_ticker", lambda t, client=None: "0001234567")
+    monkeypatch.setattr(
+        form4_connector, "recent_form4_filings", lambda cik, limit=20, client=None: [FILING]
+    )
+
+    def _edgar_down(filing):
+        raise RuntimeError("403 Forbidden")
+
+    db = _db()
+    try:
+        _cleanup(db)
+        result = insider_service.get_signals_for_ticker("ACME", fetcher=_edgar_down, db=db)
+        assert result["status"] == "degraded"
+        assert result["filings_parsed"] == 0
+        assert result["filings_failed"] == 1
+        assert "filings_from_persisted" not in result
+        assert result["signals"] == []
+    finally:
+        _cleanup(db)
+        db.close()
+
+
+def test_partial_fallback_mixes_live_and_persisted(monkeypatch):
+    """Un filing live y otro persistido: status ok y el conteo del fallback."""
+    from app.services import insider_service
+
+    monkeypatch.setattr(insider_service, "_cik_for_ticker", lambda t, client=None: "0001234567")
+    monkeypatch.setattr(
+        form4_connector,
+        "recent_form4_filings",
+        lambda cik, limit=20, client=None: [FILING, AMENDMENT_FILING],
+    )
+
+    db = _db()
+    try:
+        _cleanup(db)
+        parsed = form4_connector.parse_form4_xml(CEO_BUY_XML)
+        insider_persistence.persist_filing(db, FILING, parsed, xml_text=CEO_BUY_XML)
+
+        def _only_amendment_live(filing):
+            if filing["accession_number"] == AMENDMENT_FILING["accession_number"]:
+                return CEO_BUY_XML
+            raise RuntimeError("403 Forbidden")
+
+        result = insider_service.get_signals_for_ticker(
+            "ACME", fetcher=_only_amendment_live, db=db  # pyright: ignore[reportArgumentType]
+        )
+        assert result["status"] == "ok"
+        assert result["filings_scanned"] == 2
+        assert result["filings_parsed"] == 2
+        assert result["filings_from_persisted"] == 1
+    finally:
+        _cleanup(db)
+        db.close()
