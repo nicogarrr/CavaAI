@@ -12,7 +12,7 @@ const LOGIN_PATH = '/sign-in';
 
 const RULES =
   'READ-ONLY. Only navigate, click tabs and read. Never create, edit, delete, import, ' +
-  'save, buy, sell, generate or submit anything. Never click buttons named like Add, ' +
+  'save, buy, sell, generate or submit anything. Never open the user menu or click Cerrar sesion / Logout. Never click buttons named like Add, ' +
   'Remove, Delete, Save, Sync, Import, Upload, Create, Generate, Buy or Sell.';
 
 const FINDINGS = z.object({
@@ -54,13 +54,13 @@ test.describe('rutas autenticadas (solo lectura)', () => {
     await browser.waitForURL(/^(?!.*\/sign-in).*$/, { timeout: 30_000 });
   });
 
-  // Prueba controlada del bloqueo: POST/PUT/DELETE a una ruta que no existe. Si el
+  // Prueba controlada del bloqueo: POST/PUT/PATCH/DELETE a una ruta que no existe. Si el
   // bloqueo funciona, fetch falla en el navegador; si no, el servidor respondera 404
   // (sin efecto). Debe quedar bloqueado en cada run.
-  test('el bloqueo de escritura aborta POST, PUT y DELETE', async ({ browser }) => {
+  test('el bloqueo de escritura aborta POST, PUT, PATCH y DELETE', async ({ browser }) => {
     const results = await browser.evaluate(async () => {
       const out: Record<string, string> = {};
-      for (const method of ['POST', 'PUT', 'DELETE']) {
+      for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
         try {
           const r = await fetch('/api/qa-write-probe', { method });
           out[method] = `pasa:${r.status}`;
@@ -71,7 +71,7 @@ test.describe('rutas autenticadas (solo lectura)', () => {
       return out;
     });
     console.log('[bloqueo-escritura]', JSON.stringify(results));
-    for (const method of ['POST', 'PUT', 'DELETE']) {
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
       if (results[method] !== 'bloqueado') throw new Error(`${method} NO fue bloqueado: ${results[method]}`);
     }
   });
