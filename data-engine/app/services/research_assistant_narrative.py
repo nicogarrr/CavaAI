@@ -17,7 +17,10 @@ _OUTPUT_SCHEMA = {
 
 
 def _validated_sentences(payload, citations: list[dict]) -> list[dict]:
-    """Reject uncited/unknown claims, and uncited numbers in a sentence."""
+    """The validator cannot prove a model's free-form sentence is entailed
+    by a citation. Fail closed: only exact extractive quotations from a single
+    citation are admissible. Numeric overlap alone is not verification (e.g.
+    '344 satellites were approved' versus '344 satellites were filed')."""
     if not isinstance(payload, dict) or not isinstance(payload.get("sentences"), list):
         return []
     allowed = {citation["id"]: citation for citation in citations}
@@ -29,10 +32,6 @@ def _validated_sentences(payload, citations: list[dict]) -> list[dict]:
         ids = item.get("citation_ids")
         if not body or len(body) > 400 or not isinstance(ids, list) or not ids or any(cid not in allowed for cid in ids):
             continue
-        # The validator cannot prove a model's free-form sentence is entailed
-        # by a citation. Fail closed: only exact extractive quotations are
-        # admissible. Numeric overlap alone is not verification (e.g. '344
-        # satellites were approved' versus '344 satellites were filed').
         if len(ids) != 1:
             continue
         cited = allowed[ids[0]]

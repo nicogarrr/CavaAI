@@ -1,6 +1,6 @@
 'use client';
 
-import { formatCompact, formatUserDateTime, formatMoney, formatNumber, formatPercent, NA } from '@/lib/format';
+import { formatCompact, formatUserDateTime, formatMoney, formatNumber, formatPercent, isValidCurrencyCode, NA } from '@/lib/format';
 import {
     DCF_CANDIDATE_LIMIT,
     DCF_MIN_UPSIDE_PCT,
@@ -18,7 +18,6 @@ import { Activity, ArrowRight, BellRing, Eye, Gem, Minus, TrendingDown, Trending
 import { getPortfolioSummary, type PortfolioHolding, type PortfolioSummary } from '@/lib/actions/portfolio.actions';
 import { getWatchlist, getWatchlistEntryData } from '@/lib/actions/watchlist.actions';
 import { sectionError } from '@/lib/section-error';
-import { getStockQuote } from '@/lib/actions/finnhub.actions';
 import { getScreenerStocksReal, getFairValue } from '@/lib/actions/screener.actions';
 import {
     getRecentTriggeredAlerts,
@@ -48,6 +47,8 @@ interface UndervaluedStock {
     symbol: string;
     name: string;
     price: number;
+    /** Divisa del LISTADO real (master), no del ticker desnudo: null = N/D. */
+    currency: string | null;
     fairValue: number;
     upside: number;
 }
@@ -286,14 +287,19 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
             const candidates = (screenerResult.data?.map((s) => s.symbol) ?? []).slice(0, DCF_CANDIDATE_LIMIT);
             const results = await Promise.all(candidates.map(async (sym: string) => {
                 try {
-                    const [fairValue, quote] = await Promise.all([getFairValue(sym), getStockQuote(sym)]);
-                    const currentPrice = quote?.c || 0;
+                    // Precio y divisa del LISTADO REAL (master), igual que la
+                    // watchlist de este mismo inicio: getStockQuote con el ticker
+                    // desnudo resolvía en la línea US (ADR u homónimo) y además
+                    // no traía divisa, así que el importe salía en «US$» sin que
+                    // nadie lo verificara.
+                    const [fairValue, listing] = await Promise.all([getFairValue(sym), getWatchlistEntryData(sym)]);
+                    const currentPrice = listing.price ?? 0;
                     if (fairValue && currentPrice > 0) {
                         const upside = ((fairValue - currentPrice) / currentPrice) * 100;
                         return {
                             evaluated: true,
                             opportunity: upside > DCF_MIN_UPSIDE_PCT
-                                ? { symbol: sym, name: sym, price: currentPrice, fairValue, upside }
+                                ? { symbol: sym, name: sym, price: currentPrice, currency: listing.currency, fairValue, upside }
                                 : null,
                         };
                     }
@@ -574,7 +580,7 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                         <div className="shrink-0 text-right">
                                             {stock.price != null ? (
                                                 <>
-                                                    <div className="text-white font-mono">{stock.currency ? formatMoney(stock.price, stock.currency) : formatNumber(stock.price)}</div>
+                                                    <div className="text-white font-mono">{isValidCurrencyCode(stock.currency) ? formatMoney(stock.price, stock.currency) : formatNumber(stock.price)}</div>
                                                     {stock.changePercent != null && (
                                                         <div className={`text-xs ${stock.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                                                             {formatPercent(stock.changePercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
@@ -637,28 +643,38 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                 )}
                             </p>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                {visibleOpportunities.map((op) => (
-                                    <Link key={op.symbol} href={`/research/${op.symbol}`} prefetch>
-                                        <div className="p-4 bg-gray-900/40 rounded-xl border border-gray-700/30 hover:border-purple-500/50 hover:bg-gray-800 transition-all group">
-                                            <div className="flex justify-between items-start mb-2">
-                                                <div>
-                                                    <h3 className="font-bold text-white group-hover:text-purple-400 transition-colors">{op.symbol}</h3>
-                                                    <p className="text-xs text-gray-400">Precio: {formatMoney(op.price)}</p>
+                                {visibleOpportunities.map((op) => {
+                                    // La ficha DCF muestra el precio en la divisa del
+                                    // listado y el valor justo SIN símbolo: el modelo
+                                    // (/api/valuation/{ticker}) sí trae `currency` pero
+                                    // getFairValue no la propaga, así que se declara N/D
+                                    // en la etiqueta en vez de suponer dólares.
+                                    const priceLabel = isValidCurrencyCode(op.currency) ? 'Precio' : 'Precio (divisa N/D)';
+                                    return (
+                                        <Link key={op.symbol} href={`/research/${op.symbol}`} prefetch>
+                                            <div className="p-4 bg-gray-900/40 rounded-xl border border-gray-700/30 hover:border-purple-500/50 hover:bg-gray-800 transition-all group">
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <div>
+                                                        <h3 className="font-bold text-white group-hover:text-purple-400 transition-colors">{op.symbol}</h3>
+                                                        <p className="text-xs text-gray-400">
+                                                            {priceLabel}: {isValidCurrencyCode(op.currency) ? formatMoney(op.price, op.currency) : formatNumber(op.price)}
+                                                        </p>
+                                                    </div>
+                                                    <Badge className="bg-green-900/30 text-green-400 border-green-800">
+                                                        {formatPercent(op.upside, { fromRatio: false, digits: 1, signDisplay: 'always' })} potencial
+                                                    </Badge>
                                                 </div>
-                                                <Badge className="bg-green-900/30 text-green-400 border-green-800">
-                                                    {formatPercent(op.upside, { fromRatio: false, digits: 1, signDisplay: 'always' })} potencial
-                                                </Badge>
+                                                <div className="w-full bg-gray-800 h-1.5 rounded-full mt-2 overflow-hidden">
+                                                    <div
+                                                        className="h-full bg-gradient-to-r from-green-600 to-green-400"
+                                                        style={{ width: `${Math.min(op.upside, 100)}%` }}
+                                                    />
+                                                </div>
+                                                <p className="text-xs text-gray-500 mt-2 text-right">Valor justo (divisa N/D): {formatNumber(op.fairValue)}</p>
                                             </div>
-                                            <div className="w-full bg-gray-800 h-1.5 rounded-full mt-2 overflow-hidden">
-                                                <div
-                                                    className="h-full bg-gradient-to-r from-green-600 to-green-400"
-                                                    style={{ width: `${Math.min(op.upside, 100)}%` }}
-                                                />
-                                            </div>
-                                            <p className="text-xs text-gray-500 mt-2 text-right">Valor justo: {formatMoney(op.fairValue)}</p>
-                                        </div>
-                                    </Link>
-                                ))}
+                                        </Link>
+                                    );
+                                })}
                             </div>
                             {/* Recortar la parrilla no puede callar lo que queda fuera. */}
                             {opportunities.length > OPPORTUNITY_TILE_LIMIT && (

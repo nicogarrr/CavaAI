@@ -35,7 +35,7 @@ export default async function SavedScreenResultsPage({ params }: { params: Promi
       <section className="grid gap-3">
         {result.results.map((row) => (
           <article
-            className={`rounded-xl border p-4 ${row.matched ? 'border-teal-900/70 bg-teal-950/10' : 'border-gray-800 bg-[#101010]'}`}
+            className={`rounded-xl border p-4 ${row.matched ? 'border-teal-900/70 bg-teal-950/10' : 'border-gray-800 bg-surface-1'}`}
             key={row.company_id}
           >
             <div className="flex flex-col gap-3 md:flex-row md:items-center">
