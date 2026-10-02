@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- origin: synthetic_fixture. Cifras y miembros inventados para el eval. -->
+<xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:us-gaap="http://fasb.org/us-gaap/2024">
+ <xbrli:context id="cA">
+  <xbrli:entity><xbrli:identifier scheme="http://www.sec.gov/CIK">1</xbrli:identifier></xbrli:entity>
+  <xbrli:period><xbrli:startDate>2025-01-01</xbrli:startDate><xbrli:endDate>2025-12-31</xbrli:endDate></xbrli:period>
+  <xbrli:scenario><xbrldi:explicitMember xmlns:xbrldi="http://xbrl.org/2006/xbrldi">us-gaap:CommonClassAMember</xbrldi:explicitMember></xbrli:scenario>
+ </xbrli:context>
+ <xbrli:context id="cB">
+  <xbrli:entity><xbrli:identifier scheme="http://www.sec.gov/CIK">1</xbrli:identifier></xbrli:entity>
+  <xbrli:period><xbrli:startDate>2025-01-01</xbrli:startDate><xbrli:endDate>2025-12-31</xbrli:endDate></xbrli:period>
+  <xbrli:scenario><xbrldi:explicitMember xmlns:xbrldi="http://xbrl.org/2006/xbrldi">us-gaap:CommonClassBMember</xbrldi:explicitMember></xbrli:scenario>
+ </xbrli:context>
+ <us-gaap:EarningsPerShareDiluted contextRef="cA" unitRef="uUSD" decimals="2">4.25</us-gaap:EarningsPerShareDiluted>
+ <us-gaap:EarningsPerShareDiluted contextRef="cB" unitRef="uUSD" decimals="2">0.75</us-gaap:EarningsPerShareDiluted>
+ <us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding contextRef="cA" unitRef="ushares" decimals="0">1176000000</us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding>
+</xbrli:xbrl>

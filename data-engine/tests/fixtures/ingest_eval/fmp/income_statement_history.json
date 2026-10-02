@@ -1,0 +1,64 @@
+{
+ "origin": "synthetic_fixture",
+ "endpoint": "income-statement",
+ "rows": [
+  {
+   "symbol": "SYNQ",
+   "date": "2025-12-31",
+   "period": "FY",
+   "calendarYear": 2025,
+   "fillingDate": "2026-02-12",
+   "revenue": 5000000000,
+   "costOfRevenue": 3000000000,
+   "grossProfit": 2000000000,
+   "operatingIncome": 700000000,
+   "incomeBeforeTax": 620000000,
+   "incomeTaxExpense": 120000000,
+   "interestExpense": 80000000,
+   "netIncome": 500000000,
+   "ebitda": 880000000,
+   "epsdiluted": 4.25,
+   "weightedAverageShsOutDil": 1176000000
+  },
+  {
+   "symbol": "SYNQ",
+   "date": "2024-12-31",
+   "period": "FY",
+   "calendarYear": 2024,
+   "fillingDate": "2025-02-13",
+   "revenue": 4000000000,
+   "costOfRevenue": 2400000000,
+   "grossProfit": 1600000000,
+   "operatingIncome": 560000000,
+   "incomeBeforeTax": 496000000,
+   "incomeTaxExpense": 96000000,
+   "interestExpense": 72000000,
+   "netIncome": 400000000,
+   "ebitda": 720000000,
+   "epsdiluted": 3.5,
+   "weightedAverageShsOutDil": 1143000000
+  },
+  {
+   "symbol": "SYNQ",
+   "date": "2025-09-30",
+   "period": "TTM",
+   "calendarYear": 2025,
+   "fillingDate": "2025-11-14",
+   "revenue": 4800000000,
+   "netIncome": 470000000,
+   "epsdiluted": 4.0,
+   "weightedAverageShsOutDil": 1160000000
+  },
+  {
+   "symbol": "SYNQ",
+   "date": "2025-03-31",
+   "period": "Q",
+   "calendarYear": 2025,
+   "fillingDate": "2026-05-02",
+   "revenue": 1000000000,
+   "netIncome": 100000000,
+   "epsdiluted": 0.95,
+   "weightedAverageShsOutDil": 1170000000
+  }
+ ]
+}
