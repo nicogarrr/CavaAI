@@ -7,7 +7,8 @@ import { z } from 'zod';
 // explicita (el resumen lo dice) en vez de pasar en verde sin haber mirado nada.
 const EMAIL = process.env.E2E_USER_EMAIL ?? '';
 const PASSWORD = process.env.E2E_USER_PASSWORD ?? '';
-const LOGIN_PATH = '/api/auth/sign-in/email';
+// El login es una server action de Next: hace POST a la propia ruta /sign-in.
+const LOGIN_PATH = '/sign-in';
 
 const RULES =
   'READ-ONLY. Only navigate, click tabs and read. Never create, edit, delete, import, ' +
