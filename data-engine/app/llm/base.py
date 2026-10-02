@@ -43,8 +43,39 @@ def redact_secrets(text: str, known_secrets: Sequence[str] = ()) -> str:
     return text
 
 
+#: Capacidades que los adaptadores de ESTA app implementan de verdad.
+#:
+#: El registro de aliases (`app/llm/model_aliases.py`) declara lo que el
+#: MODELO soporta; este conjunto declara lo que el CODIGO hace. Los dos deben
+#: quedar en correspondencia: `tests/test_llm_tool_calling.py` falla si
+#: un alias activo afirma una capacidad que no esta aqui, y falla tambien si
+#: esta lista afirma algo que el adaptador dejo de enviar.
+#:
+#: - ``text``: toda respuesta pasa por aqui.
+#: - ``structured_output``: ``ResponseFormat`` viaja como ``response_format``
+#:   (``json_object`` y ``json_schema`` con ``strict``).
+#: - ``reasoning``: ``reasoning_effort`` se reenvia al proveedor, pero SOLO
+#:   para los modelos de ``reasoning_effort_models``. Es una capacidad del
+#:   adaptador con alcance por modelo, no del canal.
+#: - ``tool_calling``: ``tools``/``tool_choice`` se envian cuando la peticion
+#:   los trae, y ``choices[0].message.tool_calls`` se parsea y valida.
+#:
+#: Lo que NO esta aqui y por tanto nadie puede afirmar: multimodalidad
+#: (el adaptador no serializa adjuntos), batching, streaming y cache de
+#: prompts en el proveedor.
+ADAPTER_CAPABILITIES: frozenset[str] = frozenset(
+    {"text", "structured_output", "reasoning", "tool_calling"}
+)
+
+#: Alias de la capacidad de tool calling, usada por las rutas y los tests.
+TOOL_CALLING = "tool_calling"
+
+
 class LLMProvider(ABC):
     name: str
+    #: Lo que ESTE adaptador implementa. Vacio por defecto: un adaptador que no
+    #: lo declare no puede afirmar ninguna capacidad (fail closed).
+    supported_capabilities: frozenset[str] = frozenset()
 
     def __init__(
         self,

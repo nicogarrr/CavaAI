@@ -1,0 +1,206 @@
+name: PR hygiene
+
+# Lo que un revisor pediria de verdad antes de leer el diff, y que ningun otro
+# workflow cubre. Tres cosas y ni una mas:
+#   1. `.env` o un secreto en el diff (el checklist de la plantilla lo pide
+#      explicitamente, pero nadie lo comprueba y un `.env` con token filtrado no
+#      lo pilla ningun linter).
+#   2. Diff tan grande que no se puede revisar de verdad.
+#   3. Plantilla de PR sin rellenar.
+# Lo que NO se comprueba aqui y por que: licence headers (el repo no las usa en
+# ningun fichero, comprobarlas solo anadiria ruido), tamano de cada fichero
+# individual, y el contenido de los secrets de runtime (eso es CodeQL + el
+# secret scanning de GitHub, que ya corren en codeql.yml).
+#
+# Sin secrets y sin checkout: todo sale de la API con el GITHUB_TOKEN de solo
+# lectura, asi que funciona tambien en PRs de fork.
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  # Un grupo por PR y siempre se cancela lo anterior: este workflow no publica
+  # nada, solo informa, y el aviso que ve el autor tiene que ser el de su
+  # ultimo push.
+  group: pr-hygiene-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  hygiene:
+    name: Diff, secretos y plantilla
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      # Declarado: el resumen del run lo leen el autor y el revisor.
+      findings: ${{ steps.check.outputs.findings }}
+    steps:
+      - id: check
+        uses: actions/github-script@v9
+        env:
+          # Datos no confiables del PR via env, nunca por ${{ }} dentro del
+          # script (inyeccion).
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_ADDITIONS: ${{ github.event.pull_request.additions }}
+          PR_DELETIONS: ${{ github.event.pull_request.deletions }}
+          PR_CHANGED_FILES: ${{ github.event.pull_request.changed_files }}
+          # `git diff --numstat` no se usa a proposito: exigiria clonar el
+          # historico. La API da additions/deletions/changed_files en el propio
+          # payload del evento.
+          DIFF_WARN_LINES: "600"
+          DIFF_FAIL_LINES: "1500"
+          MAX_FILES_SCANNED: "300"
+        with:
+          script: |
+            const additions = Number(process.env.PR_ADDITIONS || 0);
+            const deletions = Number(process.env.PR_DELETIONS || 0);
+            const changedFiles = Number(process.env.PR_CHANGED_FILES || 0);
+            const warnLines = Number(process.env.DIFF_WARN_LINES);
+            const failLines = Number(process.env.DIFF_FAIL_LINES);
+            const maxFiles = Number(process.env.MAX_FILES_SCANNED);
+            const errors = [];
+            const warnings = [];
+            const lines = [];
+
+            lines.push('| check | resultado |', '| --- | --- |');
+            const record = (kind, name, ok, detail) => {
+              const mark = kind === 'fail' ? 'x' : ok ? 'ok' : 'aviso';
+              lines.push(`| ${name} | ${mark}: ${detail} |`);
+            };
+
+            // 1. Tamano del diff.
+            const total = additions + deletions;
+            if (total > failLines) {
+              record('fail', 'diff', false, `+${additions}/-${deletions} (${total} lineas) por encima de ${failLines}`);
+              errors.push(
+                `Diff de ${total} lineas (+${additions}/-${deletions}) por encima del limite de ${failLines}. ` +
+                  'Dividelo en varios PRs: uno de este tamano no se revisa de verdad.',
+              );
+            } else if (total > warnLines) {
+              record('warn', 'diff', false, `+${additions}/-${deletions} (${total} lineas) grande`);
+              warnings.push(`Diff de ${total} lineas: por encima de ${warnLines}, el revisor deberia confirmar que es revisable.`);
+            } else {
+              record('ok', 'diff', true, `+${additions}/-${deletions} (${total} lineas)`);
+            }
+
+            // 2. Ficheros prohibidos + formas de secreto en las lineas anadidas.
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              per_page: 100,
+            });
+            if (files.length > maxFiles) {
+              warnings.push(
+                `El PR toca ${files.length} ficheros y solo se han inspeccionado los ${maxFiles} primeros (limite de la API).`,
+              );
+            }
+            // .gitignore ya bloquea casi todo esto; es la ultima linea de defensa
+            // para cuando alguien hace `git add -f` o cambia .gitignore en el
+            // mismo PR. Los .example si se versionan a proposito.
+            const envAllow = new Set(['.env.example', '.env.production.example', 'docker.env.example']);
+            const badPaths = [];
+            for (const f of files) {
+              const base = f.filename.split('/').pop();
+              if (envAllow.has(f.filename) || envAllow.has(base)) continue;
+              if (/^\.env(\..+)?$/.test(f.filename)) badPaths.push(f.filename);
+              else if (/\.(pem|p12|pfx|keystore|jks)$/i.test(f.filename)) badPaths.push(f.filename);
+              else if (/^(id_rsa|id_dsa|id_ecdsa|id_ed25519)(\.pub)?$/.test(base)) badPaths.push(f.filename);
+            }
+            if (badPaths.length > 0) {
+              record('fail', 'ficheros', false, badPaths.join(', '));
+              errors.push(
+                `Ficheros que no deberian estar versionados: ${badPaths.join(', ')}. ` +
+                  'Si son ejemplos, el nombre tiene que acabar en .example.',
+              );
+            } else {
+              record('ok', 'ficheros', true, 'ningun .env, clave ni keystore');
+            }
+
+            // Solo se miran lineas AÑADIDidas (las que empiezan por +): un
+            // placeholder preexistente en un test no es un hallazgo nuevo.
+            const secretShapes = [
+              [/-----BEGIN [A-Z ]*PRIVATE KEY-----/, 'clave privada PEM'],
+              [/\bghp_[A-Za-z0-9]{30,}/, 'token GitHub (ghp_)'],
+              [/\bgithub_pat_[A-Za-z0-9_]{40,}/, 'token GitHub (github_pat_)'],
+              [/\bhf_[A-Za-z0-9]{30,}/, 'token HuggingFace (hf_)'],
+              [/\bsk-[A-Za-z0-9]{32,}/, 'clave estilo OpenAI (sk-)'],
+              [/\bAKIA[0-9A-Z]{16}\b/, 'clave de acceso AWS'],
+              [/mongodb(\+srv)?:\/\/[^:\s/]+:[^@\s]+@/, 'MongoDB URI con usuario y clave'],
+              [/postgres(ql)?:\/\/[^:\s/]+:[^@\s]+@/, 'Postgres URI con usuario y clave'],
+            ];
+            // Aviso, no error: los tests de este repo usan tokens falsos a
+            // proposito y este patron las pilla. Falla solo la lista de arriba.
+            const looseShape = /(api[_-]?key|secret|token|password)\s*[:=]\s*['"][^'"\s]{16,}['"]/i;
+            const found = [];
+            const loose = [];
+            for (const f of files.slice(0, maxFiles)) {
+              if (!f.patch) continue;
+              for (const line of f.patch.split('\n')) {
+                if (!line.startsWith('+') || line.startsWith('+++')) continue;
+                for (const [re, label] of secretShapes) {
+                  if (re.test(line)) found.push(`${f.filename} (${label})`);
+                }
+                if (looseShape.test(line)) loose.push(f.filename);
+              }
+            }
+            const uniq = (a) => [...new Set(a)];
+            if (found.length > 0) {
+              const list = uniq(found);
+              record('fail', 'secretos', false, list.join(', '));
+              errors.push(
+                `Posibles secretos en lineas anadidas: ${list.join(', ')}. ` +
+                  'Si son de prueba, se falsean con una constante con nombre obviousemente falsa, no con la forma real.',
+              );
+            } else {
+              record('ok', 'secretos', true, 'sin formas de secreto en las lineas anadidas');
+            }
+            if (loose.length > 0) {
+              warnings.push(`Asignaciones tipo clave=... con valor largo en ${uniq(loose).join(', ')}: revisar que sean falsos.`);
+            }
+
+            // 3. Plantilla de PR. Solo aviso salvo cuerpo vacio: una plantilla
+            // sin marcar casillas no es motivo para bloquear un PR, un cuerpo
+            // vacio si lo es.
+            const body = (process.env.PR_BODY || '').trim();
+            if (body.length === 0) {
+              record('fail', 'plantilla', false, 'cuerpo del PR vacio');
+              errors.push('El PR no tiene descripcion. Como minimo, que cambia y como probarlo.');
+            } else {
+              let headings = [];
+              try {
+                const tpl = await github.rest.repos.getContent({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  path: '.github/pull_request_template.md',
+                });
+                const text = Buffer.from(tpl.data.content, 'base64').toString('utf8');
+                headings = [...text.matchAll(/^##\s+(.*)$/gm)].map((m) => m[1].trim());
+              } catch {
+                warnings.push('No se ha podido leer .github/pull_request_template.md; se omite el check de secciones.');
+              }
+              const missing = headings.filter((h) => !body.includes(h));
+              if (missing.length > 0) {
+                record('warn', 'plantilla', false, `faltan las secciones: ${missing.join(' | ')}`);
+                warnings.push(
+                  `La plantilla pide las secciones ${missing.join(' | ')}. No bloquea, pero el revisor va a pedirlas.`,
+                );
+              } else {
+                record('ok', 'plantilla', true, `${headings.length} secciones de la plantilla presentes`);
+              }
+            }
+
+            await core.summary.addRaw(lines.join('\n')).addEOL().write();
+            if (warnings.length > 0) {
+              for (const w of warnings) core.warning(w);
+            }
+            if (errors.length > 0) {
+              for (const e of errors) core.error(e);
+              process.exitCode = 1;
+              return;
+            }
+            core.info(`PR limpio (${changedFiles} ficheros, +${additions}/-${deletions}).`);

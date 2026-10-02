@@ -63,10 +63,10 @@ function MoversTable({ rows, caption, tickerSets, showVolume = false }: { rows: 
                   watchlistTickers={tickerSets.watchlistTickers}
                 />
               </th>
-              <td className="py-3 px-2 text-right whitespace-nowrap text-gray-300">
-                {formatPrice(row.price, safeCurrency(row.currency))}
+              <td className="py-3 px-2 text-right text-gray-300">
+                <span className="whitespace-nowrap">{formatPrice(row.price, safeCurrency(row.currency))}</span>
                 {row.date ? (
-                  <div className="text-xs text-gray-500">
+                  <div className="ml-auto max-w-[7.5rem] text-xs text-gray-500">
                     del {row.date}
                     {row.registered_at ? ` · ${formatUserDateTime(row.registered_at, { hour: '2-digit', minute: '2-digit' })}` : ''}
                   </div>
@@ -115,7 +115,7 @@ export default async function MoversPage() {
       </header>
 
       {movers.universe === 0 ? (
-        <section className="rounded-xl border border-gray-800 bg-[#101010] p-5">
+        <section className="rounded-xl border border-gray-800 bg-surface-1 p-5">
           <h2 className="font-semibold text-gray-100">Sin movimientos todavía</h2>
           <p className="mt-2 text-sm text-gray-400">
             Esta página se llena sola cuando el refresco de mercado guarde precios.
@@ -125,7 +125,7 @@ export default async function MoversPage() {
         </section>
       ) : (
         <div className="grid gap-6 xl:grid-cols-3 md:grid-cols-1">
-          <section className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-5">
+          <section className="min-w-0 rounded-xl border border-gray-800 bg-surface-1 p-5">
             <div className="mb-4 flex items-center gap-2">
               <TrendingUp aria-hidden="true" className="h-5 w-5 text-teal-300" />
               <h2 className="font-semibold text-gray-100">Subidas</h2>
@@ -133,7 +133,7 @@ export default async function MoversPage() {
             <MoversTable rows={movers.gainers} caption="Mayores subidas" tickerSets={tickerSets} />
           </section>
 
-          <section className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-5">
+          <section className="min-w-0 rounded-xl border border-gray-800 bg-surface-1 p-5">
             <div className="mb-4 flex items-center gap-2">
               <TrendingDown aria-hidden="true" className="h-5 w-5 text-red-400" />
               <h2 className="font-semibold text-gray-100">Bajadas</h2>
@@ -141,7 +141,7 @@ export default async function MoversPage() {
             <MoversTable rows={movers.losers} caption="Mayores bajadas" tickerSets={tickerSets} />
           </section>
 
-          <section className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-5">
+          <section className="min-w-0 rounded-xl border border-gray-800 bg-surface-1 p-5">
             <div className="mb-4 flex items-center gap-2">
               <Activity aria-hidden="true" className="h-5 w-5 text-teal-300" />
               <h2 className="font-semibold text-gray-100">Más activas</h2>
