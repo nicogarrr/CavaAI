@@ -4626,9 +4626,9 @@ export interface components {
             base: string;
             /**
              * Input Key
-             * @constant
+             * @enum {string}
              */
-            input_key: "fcf_margin";
+            input_key: "fcf_margin" | "wacc" | "terminal_growth";
             /**
              * Origin
              * @default llm

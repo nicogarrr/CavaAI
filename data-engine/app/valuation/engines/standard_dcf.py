@@ -22,12 +22,10 @@ from app.valuation.engines.base import (
     apply_publication_blockers,
     clamp_fcf_margin,
     default_growth,
-    default_terminal_growth,
-    default_wacc,
     insufficient_result,
     is_adr_without_ratio,
     margin_of_safety,
-    traceable_wacc,
+    resolve_rates,
 )
 from app.valuation.moat_framework import empty_moat_framework
 from app.valuation.reverse_dcf import ReverseDCFInputs, solve_required_growth
@@ -154,14 +152,9 @@ class StandardDCFEngine(ValuationEngine):
         growth = max(min(raw_growth, 0.45), -0.15)
         margin, margin_clamped = clamp_fcf_margin(margin, ceiling=0.50)
 
-        wacc_traceable = traceable_wacc(context.db, company)
-        if wacc_traceable is not None:
-            wacc = wacc_traceable
-            wacc_source = "calculated_metric"
-        else:
-            wacc = default_wacc(company)
-            wacc_source = "tag_default"
-        terminal = default_terminal_growth(company)
+        wacc, wacc_source, terminal, terminal_source, dropped_inferred = resolve_rates(
+            context.db, company
+        )
 
         net_debt = snapshot.value("net_debt")
         if net_debt is None:
@@ -351,6 +344,8 @@ class StandardDCFEngine(ValuationEngine):
                 "fcf_margin_source": "financial_facts",
                 "fcf_margin_clamped_from": raw_margin if margin_clamped else None,
                 "wacc_source": wacc_source,
+                "terminal_source": terminal_source,
+                "inferred_inputs_ignored": dropped_inferred,
                 "wacc": wacc,
                 "net_debt": net_debt,
                 "adr_ratio": ratio,
