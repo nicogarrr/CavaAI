@@ -1,0 +1,12 @@
+{
+  "name": "cavaai-qa-e2e",
+  "private": true,
+  "description": "QA de solo lectura contra produccion (TesterArmy e2e + OpenCode Zen gratuito)",
+  "devDependencies": {
+    "@ai-sdk/openai-compatible": "latest",
+    "@e2e-dev/web": "latest",
+    "ai": "latest",
+    "e2e": "latest",
+    "typescript": "latest"
+  }
+}
