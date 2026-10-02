@@ -244,7 +244,10 @@ jobs:
     # y el gate dice POR QUE esta en rojo. Un job saltado se lee como verde.
     if: ${{ always() }}
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    # 60 min y no 40: en la auditoria E3 el analisis de trivy de la imagen de
+    # backend (3,4 GB) se comio mas de 25 min solo, y este job encadena
+    # reconstruccion + vuln + secrets + misconfig + motor 2 + gate.
+    timeout-minutes: 60
     permissions:
       contents: read
       actions: write
@@ -315,7 +318,11 @@ jobs:
           # fix) lo aplica gate_image_scan.py. Con exit-code 1, trivy fallaria
           # tambien por un HIGH de una dependencia transitiva.
           exit-code: "0"
-          timeout: 15m
+          # Medido en la auditoria E3: el analisis de la imagen de backend
+          # (3,4 GB, ~150 paquetes) se pasa del default de 5 min de trivy por
+          # poco. Un timeout aqui es un build rojo que no significa ni una CVE
+          # ni un fallo: es la razon de que el gate sea fail-closed.
+          timeout: 25m
 
       - name: "Motor 1: trivy sobre la imagen (secret)"
         id: trivy_secret
@@ -329,7 +336,7 @@ jobs:
           output: reports/trivy-secret-${{ matrix.image.name }}.json
           scanners: secret
           exit-code: "0"
-          timeout: 10m
+          timeout: 15m
 
       - name: "Motor 1: trivy misconfiguration (los 4 Dockerfiles + los 2 compose)"
         id: trivy_misconfig
