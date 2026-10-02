@@ -169,10 +169,9 @@ def test_dataset_is_big_enough_and_declares_its_traps(dataset):
     assert {
         "valid_replay",
         "insufficient_data",
-        "lookahead_trap_fiscal_year_2999",
+        "lookahead_trap_period_leak",
         "lookahead_trap_filing_date",
         "lookahead_trap_thesis_publication",
-        "lookahead_trap_period_leak",
         "negative_control",
     } <= categories
 

@@ -17,7 +17,8 @@ test('F283: el padre con la página actual en un hijo ya no recibe el estilo act
 
 test('F283: el estado rama es texto claro sin fondo ni barra', () => {
     for (const src of [sidebar, navItems]) {
-        assert.match(src, /: branch\n/);
+        // \r?\n: el patron aguanta CRLF (checkout Windows) y LF.
+        assert.match(src, /: branch\r?\n/);
         assert.match(src, /\? 'text-gray-100 hover:bg-gray-800/);
     }
 });

@@ -111,8 +111,8 @@ class HistoricalValuationService:
                     "eps": eps,
                     "fcf_per_share": self._divide(fcf, shares),
                     "revenue_per_share": self._divide(revenue, shares),
-                    "pe": self._divide(price, eps),
-                    "ev_to_fcf": self._divide(enterprise_value, fcf),
+                    "pe": self._multiple(price, eps),
+                    "ev_to_fcf": self._multiple(enterprise_value, fcf),
                     "ev_to_revenue": self._divide(enterprise_value, revenue),
                     "source_ids": {
                         "market_price": price_row.id if price_row else None,
@@ -174,6 +174,17 @@ class HistoricalValuationService:
         if numerator is None or denominator is None or denominator == 0:
             return None
         return numerator / denominator
+
+    @staticmethod
+    def _multiple(
+        numerator: Decimal | None, denominator: Decimal | None
+    ) -> Decimal | None:
+        if numerator is None or denominator is None or denominator == 0:
+            return None
+        value = numerator / denominator
+        if value <= 0:
+            return None
+        return value
 
     def _statistics(self, values: list[Decimal]) -> dict[str, Decimal | None]:
         ordered = sorted(values)

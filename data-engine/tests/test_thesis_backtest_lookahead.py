@@ -19,7 +19,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.models import FinancialFact
+from app.models import Document, FinancialFact
 from app.models.thesis_backtest import (
     STATUS_INSUFFICIENT_DATA,
     STATUS_NOT_YET_PUBLISHED,
@@ -39,8 +39,11 @@ from app.valuation.period_bounds import (
 from app.valuation.point_in_time import LookaheadError
 from app.valuation.point_in_time_snapshot import PointInTimeSnapshotBuilder
 from tests.backtest_fixtures import (
+    CUTOFF_LATE,
     CUTOFF_MID,
+    FILING_DAY,
     FUTURE_PERIOD,
+    FY_PERIOD,
     TICKER,
     add_accounts,
     add_future_price,
@@ -50,6 +53,7 @@ from tests.backtest_fixtures import (
     make_company,
     make_session,
     seed_company,
+    ts,
 )
 
 
@@ -117,6 +121,134 @@ def test_the_future_fact_is_never_a_violation_because_it_is_never_used(no_networ
     assert cell.excluded_future_inputs
     assert cell.lookahead_violations == []
     assert cell.status == STATUS_OK
+
+
+def test_el_eje_de_publicacion_excluye_la_misma_cuenta_presentada_mas_tarde(no_network):
+    """El segundo eje: no es solo el periodo, es CUANDO se publico.
+
+    La trampa FY2999 de arriba la para el eje de periodo, y sola: periodo y
+    ejercicio son de por si el futuro. Este caso es el que de verdad separa los
+    dos ejes, porque el periodo es IDENTICO en las dos filas: los mismos numeros
+    de FY2024, presentados dos veces. Un filtro que solo mirase el periodo las
+    aceptaria a las dos y devolveria, segun el orden de la consulta, la
+    presentacion mas reciente — es decir, un numero de 2026supporting a una
+    valoracion de junio de 2025.
+
+    Lo unico que distingue las dos filas es ``Document.published_at``, la fecha
+    que escribe la ingesta (max(filed) de lo ingerido). Por eso este test mira
+    el MOTIVO del descarte y no solo que la celda salga buena: un descarte por
+    cualquier otra causa pasaria igual.
+    """
+    session = make_session()
+    company = make_company(session)
+    # Presentacion temprana: la que el analista del corte tiene.
+    add_accounts(session, company, published_at=FILING_DAY)
+    # Presentacion tardia de LOS MISMOS numeros de FY2024.
+    presentacion_tardia = date(2026, 4, 20)
+    add_accounts(
+        session,
+        company,
+        published_at=presentacion_tardia,
+        facts={
+            "revenue": 999999.0,
+            "free_cash_flow": 999999.0,
+            "net_debt": 1.0,
+            "shares_diluted": 1.0,
+        },
+        include_wacc=False,
+    )
+    session.commit()
+
+    builder = PointInTimeSnapshotBuilder(as_of=CUTOFF_MID)
+    snapshot = builder.build(session, company)
+
+    # Las dos filas declaran el mismo periodo: ninguna regla de periodo las separa.
+    periodos = {
+        fact.period
+        for fact in session.query(FinancialFact).filter(FinancialFact.metric == "revenue").all()
+    }
+    assert periodos == {FY_PERIOD}, f"el caso solo vale si el periodo es el mismo: {periodos}"
+
+    # Y aun asi la tardia queda fuera, por publicacion, diciendo la fecha.
+    rechazos = [
+        item
+        for item in builder.audit.dropped_future
+        if f"publicable el {presentacion_tardia.isoformat()}" in item.reason
+        and f"despues del corte {CUTOFF_MID.isoformat()}" in item.reason
+    ]
+    assert rechazos, f"el eje de publicacion no disparo: {builder.audit.as_dict()}"
+    metrics_rechazadas = {item.metric for item in rechazos}
+    assert metrics_rechazadas == {"revenue", "free_cash_flow", "net_debt", "shares_diluted"}
+
+    # La cuenta que se valora es la que ya estaba publicada, no la re-presentada.
+    assert float(snapshot.facts["revenue"].value) == 1000.0
+    # Y el descarte queda nombrado en la celda, no descartado en silencio.
+    assert builder.audit.lookahead_violations
+    assert all("2999" not in item for item in builder.audit.lookahead_violations)
+
+
+def test_ingesta_escribe_la_fecha_de_publicacion_que_el_eje_lee(no_network):
+    """El otro lado del mismo eje: una fuente oficial SIN fecha no se presume publica.
+
+    Es la contraprueba de que ``_published_dates`` se esta leyendo de verdad. Si
+    el filtro ignorara la columna, estos hechos entrarian igual por su periodo
+    (2024-12-31 es anterior al corte) y el backtest devolveria un numero hecho de
+    una fuente cuya fecha de presentacion nadie conoce. El guard es fail-closed a
+    proposito: sin fecha no hay prueba de que fuera publico.
+    """
+    session = make_session()
+    company = make_company(session)
+    add_accounts(session, company, published_at=FILING_DAY)
+    session.commit()
+    # Se vacia la fecha en todos los documentos: es el estado de una ingesta que
+    # no la conoce, y el que dejaria un guard de publication ausente o ignorado.
+    for fila in session.query(Document).all():
+        fila.published_at = None
+    session.commit()
+
+    builder = PointInTimeSnapshotBuilder(as_of=CUTOFF_LATE)
+    snapshot = builder.build(session, company)
+
+    # NADA se presume publico: revenue tiene el periodo ANTERIOR al corte y aun
+    # asi no entra, porque no hay fecha que pruebe que estaba publicado.
+    assert builder.audit.kept == [], builder.audit.as_dict()
+    assert snapshot.facts == {}
+    assert not snapshot.coherent
+    assert "revenue" in snapshot.missing_inputs
+    assert builder.audit.dropped_future == []
+    # El descarte esta nombrado y dice que falta la prueba, no solo que se cae.
+    reasons = [item.reason for item in builder.audit.unverifiable]
+    assert reasons, builder.audit.as_dict()
+    assert all("no se puede probar que fuera publico" in reason for reason in reasons), reasons
+    assert all(item.bounds.published_on is None for item in builder.audit.unverifiable)
+    assert builder.audit.unverifiable_inputs
+
+    # Mensaje dedicado cuando la fuente es oficial: no es «no se sabe», es
+    # «esta fuente oficial no tiene fecha, asi que no se presume publicada».
+    oficial = FinancialFact(
+        metric="revenue",
+        period=FY_PERIOD,
+        fiscal_year=2024,
+        fiscal_quarter="FY",
+        source_type="sec_filing",
+    )
+    veredicto = PointInTimeSnapshotBuilder(as_of=CUTOFF_LATE).verdict(oficial, None)
+    assert not veredicto.usable
+    assert veredicto.reason == "sin fecha de publicacion: no se puede probar que fuera publico"
+
+
+def test_una_fuente_no_oficial_sin_fecha_no_se_trata_como_oficial():
+    """El mensaje dedicado es para fuente oficial, no un veto universal.
+
+    Un hecho sin ``source_type`` de fuente oficial y sin ``published_at`` cae en
+    el motivo generico (no verificable), no en «sin fecha de publicacion»: la
+    distincion es de mensaje y de severidad del motivo, no de si se descarta.
+    """
+    sin_tipo = FinancialFact(metric="revenue", period=FY_PERIOD, fiscal_year=2024, fiscal_quarter="FY")
+    veredicto = PointInTimeSnapshotBuilder(as_of=CUTOFF_LATE).verdict(sin_tipo, None)
+    assert not veredicto.usable
+    assert "sin fecha utilizable" in veredicto.reason
+    assert veredicto.bounds.published_on is None
 
 
 def test_a_leak_is_rejected_and_counted_not_discarded(no_network, monkeypatch):
@@ -264,6 +396,16 @@ def test_quarterly_fact_is_visible_only_after_its_quarter_end(no_network):
         session, company, created_at=date(2024, 1, 31), evidence_published_at=date(2024, 1, 31)
     )
     # A Q3 fact whose period ends on 30 September, with no filing date of its own.
+    # FIX-4: sin fecha de publicacion el eje falla cerrado: el hecho no es
+    # verificable y se excluye del replay, aunque su periodo ya haya pasado.
+    doc = Document(
+        company_id=company.id,
+        title="Q3 2024 filing",
+        source_type="sec",
+        published_at=ts(date(2024, 10, 15)),
+    )
+    session.add(doc)
+    session.flush()
     session.add(
         FinancialFact(
             company_id=company.id,
@@ -273,6 +415,7 @@ def test_quarterly_fact_is_visible_only_after_its_quarter_end(no_network):
             period="Q3 2024",
             fiscal_year=2024,
             fiscal_quarter="Q3",
+            source_id=doc.id,
             source_type="sec",
             confidence=Decimal("0.9"),
         )
@@ -288,8 +431,8 @@ def test_quarterly_fact_is_visible_only_after_its_quarter_end(no_network):
     assert not any("Q3 2024" in item for item in antes.excluded_future_inputs)
     assert antes.lookahead_violations == []
 
-    # On the closing date it becomes knowable, and it is the newest revenue fact.
-    despues = service.cell(session, TICKER, date(2024, 9, 30))
+    # After the filing date (2024-10-15) it becomes knowable.
+    despues = service.cell(session, TICKER, date(2024, 10, 15))
     assert despues.point_in_time["valuation_periods"]["revenue"] == "Q3 2024"
     assert despues.fair_value != antes.fair_value
 
@@ -366,15 +509,16 @@ def test_knowledge_is_the_later_of_period_end_and_publication():
 
 
 def test_missing_publication_date_uses_the_period_end_as_the_lower_bound():
-    """Sin fecha de presentacion no se inventa una: se usa el final de periodo.
+    """FIX-4: sin fecha de presentacion el eje falla CERRADO.
 
-    Y queda marcado como no verificado, porque un final de periodo es una cota
-    inferior, no una prueba de que el filing ocurriera ese dia.
+    Antes conoc_on devolvia el final del periodo y unverifiable era False,
+    permitiendo look-ahead silencioso. Ahora sin published_on no hay conocimiento
+    verificable: known_on es None y unverifiable es True.
     """
     bounds = knowledge_bounds(period="2024-12-31", fiscal_year=2024)
     assert bounds.published_on is None
-    assert bounds.known_on == date(2024, 12, 31)
-    assert bounds.unverifiable is False
+    assert bounds.known_on is None
+    assert bounds.unverifiable is True
 
 
 def test_a_fact_with_no_readable_period_at_all_is_unverifiable():
