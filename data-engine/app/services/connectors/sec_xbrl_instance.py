@@ -25,6 +25,20 @@ METRIC_TAGS: dict[str, tuple[str, ...]] = {
     ),
 }
 
+# Unidades declaradas (`unitRef`) que admiten cada metrica. Un BPA etiquetado
+# en acciones, o un saldo de acciones etiquetado en moneda, es OTRA magnitud
+# y no se lee como la metrica (FIX5-5). Sin `unitRef` no hay unidad que
+# contradecir: el hecho entra tal cual (el corpus sintetico y los fixtures de
+# test declaran hechos sin unidad, y real iXBRL siempre la declara).
+_EPS_UNITS = frozenset({"uUSD", "usd", "USD", "EUR", "iso4217:EUR", "iso4217:USD", "usdPerShare"})
+_SHARE_UNITS = frozenset({"ushares", "shares", "xbrli:shares", "pure"})
+ALLOWED_UNITS: dict[str, frozenset[str]] = {
+    "EarningsPerShareDiluted": _EPS_UNITS,
+    "EarningsPerShareBasic": _EPS_UNITS,
+    "WeightedAverageNumberOfDilutedSharesOutstanding": _SHARE_UNITS,
+    "WeightedAverageNumberOfSharesOutstandingBasic": _SHARE_UNITS,
+}
+
 _ALL_TAGS = {tag for tags in METRIC_TAGS.values() for tag in tags}
 
 
@@ -69,15 +83,17 @@ def parse_instance_dimensioned_facts(
     dimension ya los cubre companyfacts) y con duracion dentro de
     [min_days, max_days] (anual; absorbe anos de 52/53 semanas). Valores no
     numericos o no finitos se descartan: nunca llegan a la BD.
+
+    El valor es el DECLARADO en el elemento: iXBRL expresa la magnitud real en
+    el literal escalado por `scale` y con `sign="-"` negada (FIX5-5). Un
+    `unitRef` que la metrica no admite descarta el hecho entero.
     """
-    contexts: dict[str, tuple[date | None, date | None, date | None, tuple[str, ...]]] = {}
+    contexts: dict[str, tuple[date | None, date | None, date | None, tuple[tuple[str, str], ...]]] = {}
     facts: list[DimensionedFact] = []
     for _event, el in ET.iterparse(stream):
         tag = _local(el.tag)
         if tag == "context":
-            members = tuple(
-                _local(m.text) for m in el.iter() if _local(m.tag) == "explicitMember" and m.text
-            )
+            members = _member_pairs(el)
             start = end = instant = None
             for node in el.iter():
                 node_tag = _local(node.tag)
@@ -99,6 +115,19 @@ def parse_instance_dimensioned_facts(
             if not value.is_finite():
                 el.clear()
                 continue
+            unit_ref = (el.get("unitRef") or "").strip() or None
+            allowed = ALLOWED_UNITS.get(tag)
+            if unit_ref is not None and allowed is not None and unit_ref not in allowed:
+                el.clear()
+                continue
+            scale = el.get("scale") or "0"
+            try:
+                value = value * (Decimal(10) ** int(scale))
+            except (InvalidOperation, ValueError):
+                el.clear()
+                continue
+            if el.get("sign") == "-":
+                value = -value
             start, end, instant, members = contexts.get(
                 el.get("contextRef") or "", (None, None, None, ())
             )
