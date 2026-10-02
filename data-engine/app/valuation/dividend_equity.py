@@ -46,10 +46,11 @@ return on it is arithmetically impossible).
 
 That disagreement is the product of this module. ``reconcile_dividend_model``
 returns both legs, the residual, and the growth that *would* reconcile them,
-so "my DDM says 42" can be audited into "my DDM says 42 because the dividend
-is 1.80 growing 3% against a 9% ke — and if the payout were the company's
-verifiable 60% of 3.00 EPS, it would say 37.50, and the 4.50 gap is the
-dividend policy, not the discount rate".
+so "my DDM says 30.90" can be audited into "my DDM says 30.90 because the
+dividend is 1.80 growing 3% against a 9% ke (D1 = 1.854, P = 30.90) — and the
+company's verifiable 60% payout on 3.00 EPS (EPS1 = 3.09, P = 30.90) agrees
+exactly, because D0 = EPS * payout. If the observed dividend were 1.50 instead,
+the gap would be the dividend policy, not the discount rate".
 
 Clamps
 ------
@@ -231,11 +232,14 @@ def reconcile_dividend_model(
         "justified_forward_pe": justified_pe,
         "eps_implied_value": eps_implied,
         "residual_per_share": residual,
-        # The identity is exact, not approximate: with a constant ROE, a
-        # constant payout and g = ROE * (1 - payout), both legs are the same
-        # number. Anything left over is a policy gap, so the tolerance is
-        # relative and tight.
+        # The two legs coincide iff D0 == EPS * payout (the residual is
+        # (1+g)(D0 - EPS*payout)/(ke-g)); g = ROE*(1-payout) is a separate
+        # sustainability condition, checked below.
         "reconciles": abs(residual) <= 1e-9 * max(1.0, abs(gordon)),
+        "g_is_sustainable_at_payout": (
+            return_on_equity is not None
+            and abs(terminal_growth - return_on_equity * (1 - payout_ratio)) <= 1e-9
+        ),
         "reconciliation_status": "ok" if abs(residual) <= 1e-9 * max(1.0, abs(gordon)) else "divergent",
         "sustainable_growth_at_payout": reconciliation_growth,
         "sustainable_growth_gap": (
@@ -282,6 +286,13 @@ def _validate_ddm(
             "cost_of_equity_above_minus_one",
             f"cost of equity {inputs.cost_of_equity:.4f} <= -1 makes (1 + ke) ** t "
             "alternate in sign, so the discount factors are not a discount.",
+        )
+    if inputs.return_on_equity is not None and inputs.return_on_equity <= 0:
+        raise DdmInputError(
+            "positive_return_on_equity",
+            f"return on equity is {inputs.return_on_equity:.4f}: a company earning a "
+            "negative return on its equity base cannot be valued on sustainable "
+            "dividend growth, because the growth assumption has no referent.",
         )
     if inputs.return_on_equity is not None and raw_growth >= inputs.return_on_equity:
         raise DdmInputError(
@@ -556,6 +567,13 @@ def reconcile_fcfe_against_dividend_model(
         "net_income_gordon_price": pure_ddm_price,
         "bridge_gap_per_share": fcfe_price - pure_ddm_price,
         "fcfe_minus_net_income": bridge_gap,
+        "sign_regime": "positive" if fcfe > 0 and net_income > 0 else "non_positive_flow",
+        "caveat": None
+        if fcfe > 0 and net_income > 0
+        else (
+            "FCFE and/or net income are not positive: the capitalised values below are "
+            "arithmetic, not prices, and must not be read as a per-share valuation."
+        ),
         "bridge_formula": "FCFE - NI = -(1 - b)(capex - D&A) + delta_total_debt - delta_working_capital",
         "net_reinvestment_capex_less_depreciation": net_reinvestment_capex_less_depreciation,
         "identity_conditions": conditions,
@@ -578,6 +596,13 @@ def _validate_fcfe(
             "cost_of_equity_above_minus_one",
             f"cost of equity {inputs.cost_of_equity:.4f} <= -1 makes the discount "
             "factors alternate in sign.",
+        )
+    if inputs.return_on_equity is not None and inputs.return_on_equity <= 0:
+        raise DdmInputError(
+            "positive_return_on_equity",
+            f"return on equity is {inputs.return_on_equity:.4f}: a company earning a "
+            "negative return on its equity base cannot be valued on sustainable "
+            "growth, because the growth assumption has no referent.",
         )
     if inputs.return_on_equity is not None:
         # The same impossibility as in the DDM: a growing equity base cannot
@@ -684,8 +709,8 @@ def run_fcfe(inputs: FcfeInputs) -> FcfeResult:
     present_value += pv_terminal
 
     reconciliation = reconcile_fcfe_against_dividend_model(
-        fcfe=base_fcfe,
-        net_income=inputs.net_income,
+        fcfe=base_fcfe / inputs.shares_diluted,
+        net_income=inputs.net_income / inputs.shares_diluted,
         retention_ratio=inputs.retention_ratio,
         delta_total_debt=inputs.delta_total_debt,
         delta_working_capital=inputs.delta_working_capital,
@@ -778,7 +803,7 @@ def equity_method_sensitivity(
     for cost in costs:
         cells: list[dict] = []
         for growth in growths:
-            if cost <= growth or 1 + cost <= 0:
+            if cost <= growth or 1 + cost <= 0 or (cost - growth) < MIN_COST_OF_EQUITY_SPREAD:
                 cells.append(
                     {
                         "terminal_growth": growth,
@@ -826,7 +851,7 @@ def ddm_sensitivity_rows(
                     stage1_growth=terminal_growth,
                     stage1_years=stage1_years,
                     stage2_growth=terminal_growth,
-                    payout_ratio=payout_ratio,
+                    payout_ratio=max(payout_ratio, 0.01),
                     shares_diluted=1.0,
                 )
             ).value_per_share
