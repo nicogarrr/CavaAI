@@ -1,8 +1,10 @@
-"""Tests herméticos de exportación de tesis a EPUB.
+"""Tests herméticos de exportación de tesis a EPUB con EbookLib.
 
-Sin red y sin ebooklib: el EPUB se construye con la stdlib (ZIP) y aquí se
-valida la estructura (mimetype primero y sin comprimir, container, OPF,
-nº de capítulos) tanto a nivel de servicio como del endpoint
+Sin red y sin binarios externos: el EPUB se construye 100 % en Python con
+EbookLib y aquí se valida la estructura (mimetype primero y sin comprimir,
+container, OPF, capítulos), los metadatos (título, CavaAI, es, identificador
+estable, fecha), el TOC desde las secciones reales, las tildes/ñ/€, las
+tablas como tablas y el escape de HTML inyectado; además del endpoint
 GET /api/thesis/{ticker}/epub (200 descarga / 404 limpio sin tesis).
 
 Run from data-engine/:
@@ -12,10 +14,12 @@ Run from data-engine/:
 from __future__ import annotations
 
 import io
+import re
 import zipfile
-from xml.etree import ElementTree as ET
+from pathlib import Path
 
 import pytest
+from ebooklib import epub
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -30,6 +34,7 @@ from app.services.thesis_epub_service import (
     EpubSection,
     ThesisEpubData,
     build_thesis_epub,
+    markdown_lite_to_html,
 )
 
 
@@ -41,10 +46,13 @@ def _sample_data() -> ThesisEpubData:
         rating="buy",
         status="final",
         generated_on="2026-09-21",
-        executive_summary="Resumen **sólido** del banco.\n\nSegundo párrafo.",
+        executive_summary="Resumen **sólido** del banco: valoración, cigüeña, niño, 8€.",
         sections=[
-            EpubSection(title="Valoración", body="# Rango\n\n- Toro: 8€\n- Base: 6€"),
-            EpubSection(title="Riesgos", body="Riesgo de tipos y **mora**."),
+            EpubSection(
+                title="Valoración",
+                body="# Rango\n\n| Escenario | Valor |\n|---|---|\n| Toro | 8€ |\n| Base | 6€ |",
+            ),
+            EpubSection(title="Riesgos", body="Riesgo de tipos y **mora**: ¿qué pasa si sube la mora?"),
         ],
         citations=["[verified] El margen crece (https://ejemplo.com/fuente)"],
     )
@@ -52,6 +60,29 @@ def _sample_data() -> ThesisEpubData:
 
 def _open_epub(payload: bytes) -> zipfile.ZipFile:
     return zipfile.ZipFile(io.BytesIO(payload))
+
+
+def _read_book(payload: bytes) -> epub.EpubBook:
+    return epub.read_epub(io.BytesIO(payload))
+
+
+def _toc_titles(book: epub.EpubBook) -> list[str]:
+    titles: list[str] = []
+    for entry in book.toc:
+        if isinstance(entry, tuple):
+            _section, children = entry
+            titles.extend(getattr(child, "title", "") for child in children)
+        else:
+            titles.append(getattr(entry, "title", ""))
+    return titles
+
+
+def _chapter_raw(payload: bytes, suffix: str) -> str:
+    with _open_epub(payload) as zf:
+        names = [name for name in zf.namelist() if name.endswith(suffix)]
+        assert names, f"capítulo *{suffix} no encontrado en {zf.namelist()}"
+        assert len(names) == 1, f"capítulo *{suffix} ambiguo: {names}"
+        return zf.read(names[0]).decode("utf-8")
 
 
 def test_build_epub_es_zip_valido_con_mimetype_primero():
@@ -64,45 +95,144 @@ def test_build_epub_es_zip_valido_con_mimetype_primero():
         info = zf.getinfo("mimetype")
         assert info.compress_type == zipfile.ZIP_STORED
         assert zf.read("mimetype").decode("ascii") == EPUB_MIMETYPE
-        assert "META-INF/container.xml" in names
-        assert "OEBPS/content.opf" in names
+        container = zf.read("META-INF/container.xml").decode("utf-8")
+        assert "EPUB/content.opf" in container
+        assert "EPUB/content.opf" in names
+        assert "EPUB/toc.ncx" in names
+        assert "EPUB/nav.xhtml" in names
+
+
+def test_build_epub_parseable_por_ebooklib_con_metadatos_byte_compatibles():
+    payload = build_thesis_epub(_sample_data())
+    book = _read_book(payload)
+
+    assert book.get_metadata("DC", "title") == [("Tesis de inversión: SAN — Banco Santander", {})]
+    assert book.get_metadata("DC", "creator") == [("CavaAI", {"id": "creator"})]
+    assert book.get_metadata("DC", "language") == [("es", {})]
+    assert book.get_metadata("DC", "identifier") == [("cavaai-thesis-SAN-v2", {"id": "id"})]
+    assert book.get_metadata("DC", "date") == [("2026-09-21", {})]
+
+
+def test_build_epub_toc_con_las_secciones_reales():
+    payload = build_thesis_epub(_sample_data())
+    book = _read_book(payload)
+
+    assert _toc_titles(book) == [
+        "Tesis de inversión: SAN — Banco Santander",
+        "Resumen ejecutivo",
+        "Valoración",
+        "Riesgos",
+        "Citas y evidencia",
+        "Aviso legal",
+    ]
 
 
 def test_build_epub_numero_de_capitulos_y_contenido():
-    data = _sample_data()
-    with _open_epub(build_thesis_epub(data)) as zf:
-        opf = ET.fromstring(zf.read("OEBPS/content.opf"))
-        ns = {"opf": "http://www.idpf.org/2007/opf"}
-        spine_refs = [i.get("idref") for i in opf.findall("./opf:spine/opf:itemref", ns)]
-        # portada + resumen + 2 secciones + citas + aviso
-        assert spine_refs == ["portada", "resumen", "sec1", "sec2", "citas", "aviso"]
+    payload = build_thesis_epub(_sample_data())
 
-        manifest = {i.get("id"): i.get("href") for i in opf.findall("./opf:manifest/opf:item", ns)}
-        for ref in spine_refs:
-            assert ref in manifest, f"capítulo {ref} sin entrada en manifest"
+    with _open_epub(payload) as zf:
+        chapters = sorted(name for name in zf.namelist() if name.endswith(".xhtml") and not name.endswith("nav.xhtml"))
+        # portada + resumen + 2 secciones + citas + aviso (+ nav.xhtml aparte)
+        assert len(chapters) == 6, chapters
+        assert any(name.endswith("portada.xhtml") for name in chapters)
+        assert any(name.endswith("resumen.xhtml") for name in chapters)
+        assert any(name.endswith("seccion-01-valoracion.xhtml") for name in chapters)
+        assert any(name.endswith("seccion-02-riesgos.xhtml") for name in chapters)
+        assert any(name.endswith("citas.xhtml") for name in chapters)
+        assert any(name.endswith("aviso.xhtml") for name in chapters)
 
-        aviso = zf.read("OEBPS/aviso.xhtml").decode("utf-8")
-        assert "asesoramiento" in aviso
-        assert DISCLAIMER_ES.split(".")[0][:40] in aviso
+    aviso = _chapter_raw(payload, "aviso.xhtml")
+    assert "asesoramiento" in aviso
+    assert DISCLAIMER_ES.split(".")[0][:40] in aviso
 
-        citas = zf.read("OEBPS/citas.xhtml").decode("utf-8")
-        assert "margen crece" in citas
+    citas = _chapter_raw(payload, "citas.xhtml")
+    assert "margen crece" in citas
 
-        resumen = zf.read("OEBPS/resumen.xhtml").decode("utf-8")
-        assert "<strong>sólido</strong>" in resumen
+    resumen = _chapter_raw(payload, "resumen.xhtml")
+    assert "<strong>sólido</strong>" in resumen
 
-        container = zf.read("META-INF/container.xml").decode("utf-8")
-        assert "OEBPS/content.opf" in container
+
+def test_build_epub_tablas_sobreviven_como_tablas():
+    payload = build_thesis_epub(_sample_data())
+    valoracion = _chapter_raw(payload, "seccion-01-valoracion.xhtml")
+
+    assert "<table>" in valoracion
+    assert "<th>Escenario</th>" in valoracion
+    assert "<th>Valor</th>" in valoracion
+    assert "<td>Toro</td>" in valoracion
+    assert "<td>8€</td>" in valoracion
+
+
+def test_build_epub_caracteres_espanoles_intactos():
+    payload = build_thesis_epub(_sample_data())
+    resumen = _chapter_raw(payload, "resumen.xhtml")
+    riesgos = _chapter_raw(payload, "seccion-02-riesgos.xhtml")
+
+    for token in ("sólido", "valoración", "cigüeña", "niño", "8€", "¿qué pasa si"):
+        assert token in resumen + riesgos, f"{token!r} perdido en el EPUB"
 
 
 def test_build_epub_escapa_html_inyectado():
     data = _sample_data()
     data.sections = [EpubSection(title="<script>alert(1)</script>", body="<img src=x onerror=y>")]
-    with _open_epub(build_thesis_epub(data)) as zf:
-        chapter = zf.read("OEBPS/seccion-01-script-alert-1-script.xhtml").decode("utf-8")
-        assert "<script>" not in chapter
-        assert "&lt;script&gt;" in chapter
-        assert "<img" not in chapter
+    payload = build_thesis_epub(data)
+
+    # Sigue siendo un EPUB válido aunque el contenido sea hostil.
+    book = _read_book(payload)
+    assert book.get_metadata("DC", "identifier") == [("cavaai-thesis-SAN-v2", {"id": "id"})]
+
+    chapter = _chapter_raw(payload, "seccion-01-script-alert-1-script.xhtml")
+    assert "<script>" not in chapter
+    assert "&lt;script&gt;" in chapter
+    assert "<img" not in chapter
+
+
+def test_build_epub_identificador_estable_entre_generaciones():
+    first = _read_book(build_thesis_epub(_sample_data()))
+    second = _read_book(build_thesis_epub(_sample_data()))
+    assert first.get_metadata("DC", "identifier") == second.get_metadata("DC", "identifier")
+
+    other_version = _sample_data()
+    other_version.version = 3
+    third = _read_book(build_thesis_epub(other_version))
+    assert third.get_metadata("DC", "identifier") == [("cavaai-thesis-SAN-v3", {"id": "id"})]
+
+
+def test_build_epub_contenido_malformado_no_rompe_y_tipos_fallan_en_alto():
+    # Markup roto (tags sin cerrar, entidades): se escapa, no se rompe.
+    broken = markdown_lite_to_html("<b>sin cerrar & <img src=x onerror=y>")
+    assert "<img" not in broken
+    payload = build_thesis_epub(
+        ThesisEpubData(ticker="SAN", sections=[EpubSection(title="Rota", body=broken)])
+    )
+    assert _read_book(payload) is not None
+
+    # Tipos rotos: error honesto (TypeError con mensaje), nunca EPUB corrupto.
+    with pytest.raises(TypeError):
+        build_thesis_epub("no-soy-thesis-epub-data")  # type: ignore[arg-type]
+    with pytest.raises(TypeError):
+        build_thesis_epub(ThesisEpubData(ticker="SAN", sections=[EpubSection(title="T", body=123)]))  # type: ignore[arg-type]
+    with pytest.raises(TypeError):
+        markdown_lite_to_html(123)  # type: ignore[arg-type]
+
+
+def test_build_epub_sin_binario_externo():
+    source = (Path(__file__).resolve().parent.parent / "app" / "services" / "thesis_epub_service.py").read_text(
+        encoding="utf-8"
+    )
+    assert "from ebooklib import epub" in source
+    # Patrones de invocación real (no menciones en prosa): ni pandoc como
+    # comando ni subprocess/OS para lanzar herramientas de sistema.
+    for pattern in (
+        r"(?m)^\s*(import|from)\s+subprocess\b",
+        r"subprocess\.",
+        r"Popen\s*\(",
+        r"os\.system\s*\(",
+        r"shutil\.which\s*\(",
+        r"check_output\s*\(",
+        r"['\"]pandoc['\"]",
+    ):
+        assert not re.search(pattern, source), f"{pattern!r} no puede aparecer en el camino del EPUB"
 
 
 @pytest.fixture
@@ -187,13 +317,14 @@ def test_epub_endpoint_devuelve_descarga_valida(client):
         names = zf.namelist()
         assert names[0] == "mimetype"
         assert zf.read("mimetype").decode("ascii") == EPUB_MIMETYPE
-        opf = ET.fromstring(zf.read("OEBPS/content.opf"))
-        ns = {"opf": "http://www.idpf.org/2007/opf"}
-        spine_refs = [i.get("idref") for i in opf.findall("./opf:spine/opf:itemref", ns)]
-        # portada + resumen + 1 sección + citas + aviso
-        assert spine_refs == ["portada", "resumen", "sec1", "citas", "aviso"]
-        citas = zf.read("OEBPS/citas.xhtml").decode("utf-8")
-        assert "margen de intereses" in citas
+
+    book = _read_book(response.content)
+    assert book.get_metadata("DC", "identifier") == [("cavaai-thesis-SAN-v3", {"id": "id"})]
+    assert book.get_metadata("DC", "language") == [("es", {})]
+    assert "Valoración" in _toc_titles(book)
+
+    citas = _chapter_raw(response.content, "citas.xhtml")
+    assert "margen de intereses" in citas
 
 
 def test_epub_endpoint_404_limpio_sin_tesis(client):

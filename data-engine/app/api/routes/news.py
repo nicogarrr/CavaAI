@@ -1,3 +1,5 @@
+from typing import Annotated, Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
@@ -22,12 +24,21 @@ def ingest_news(payload: NewsIngestRequest, db: Session = Depends(get_db)) -> Ne
 
 
 @router.get("")
-def news_events(db: Session = Depends(get_db)) -> list[dict]:
+def news_events(
+    db: Session = Depends(get_db),
+    limit: Annotated[int, Query(ge=1, le=100)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    lane: Literal["empresa", "macro"] | None = None,
+) -> list[dict]:
+    """Eventos por pagina (scroll infinito). ``lane`` filtra en SQL:
+    ``empresa`` = atribuido a una empresa real; ``macro`` = carril macro GDELT."""
+    stmt = select(NewsEvent, Company).outerjoin(Company, NewsEvent.company_id == Company.id)
+    if lane == "empresa":
+        stmt = stmt.where(NewsEvent.company_id.is_not(None))
+    elif lane == "macro":
+        stmt = stmt.where(NewsEvent.metadata_["news_lane"].as_string() == "macro")
     rows = db.execute(
-        select(NewsEvent, Company)
-        .outerjoin(Company, NewsEvent.company_id == Company.id)
-        .order_by(desc(NewsEvent.date))
-        .limit(100)
+        stmt.order_by(desc(NewsEvent.date), desc(NewsEvent.id)).limit(limit).offset(offset)
     ).all()
     events = []
     for event, company in rows:
