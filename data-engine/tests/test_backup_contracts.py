@@ -693,10 +693,13 @@ def test_workflow_no_asume_secretos():
     assert "secrets." not in text
 
 
-def test_workflow_cachea_la_instalacion_de_python():
+def test_workflow_instala_congelado_desde_uv_lock_y_lo_cachea():
     text = WORKFLOW.read_text(encoding="utf-8")
-    assert "cache: pip" in text
-    assert "requirements.txt" in text
+    assert "astral-sh/setup-uv@" in text
+    assert 'cache-dependency-glob: "data-engine/uv.lock"' in text
+    assert "uv sync --frozen" in text
+    # el drill no resuelve versiones por su cuenta: nada de pip install -r
+    assert "pip install" not in text
 
 
 def test_workflow_es_yaml_valido():
