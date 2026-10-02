@@ -7,7 +7,7 @@ WORKDIR /app
 # para no duplicar la sonda ni enmascarar el estado real del compose.
 
 # System deps for scipy / numpy / arch
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     libffi-dev \
