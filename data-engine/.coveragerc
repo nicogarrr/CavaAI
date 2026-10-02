@@ -13,6 +13,7 @@
 #   - por paquete: data-engine/coverage_baseline.json, aplicado por
 #     scripts/run_coverage_gate.py con regla de ratchet (caida maxima por
 #     paquete). El baseline es la medicion real, nunca un objetivo optimista.
+# Documentacion: docs/COVERAGE.md. Indice de todos los gates: docs/QUALITY_GATES.md
 
 [run]
 # Que se mide. Todo lo demas queda fuera por construccion:
@@ -41,7 +42,13 @@
 # extension `numpy._core._multiarray_umath`, que CPython rechaza con
 # "ImportError: cannot load module more than once per process". Reproducible
 # 3/3 con main.py, 0/3 sin el. Consecuencia aceptada: 230 lineas de entrypoint
-# quedan fuera de la cifra gateada. Ver COVERAGE.md.
+# quedan fuera de la cifra gateada. Ver docs/COVERAGE.md.
+#
+# ESTE FICHERO ES LA UNICA CONFIGURACION DE LA MEDICION. No anadir
+# [tool.coverage] en pyproject.toml: coverage.py lee .coveragerc y
+# [tool.coverage] con la MISMA precedencia, y cuando coexisten .coveragerc gana y
+# el resto se ignora EN SILENCIO. Dos ficheros de configuracion para la misma
+# medicion es el fallo que hace que un numero deje de gatear sin que nadie lo note.
 source =
     app
     alembic

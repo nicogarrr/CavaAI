@@ -38,6 +38,11 @@ yarn-error.log*
 .env*
 !.env.example
 !docker.env.example
+# docker.env NO lo casa `.env*` (no empieza por `.env`): es el fichero de
+# credenciales que `docker.env.example` manda crear y `docker compose
+# --env-file docker.env` lee. Sin esta linea era commiteable, y .dockerignore
+# tampoco lo cubria de forma que se viera al revisarlo.
+docker.env
 
 # vercel
 .vercel

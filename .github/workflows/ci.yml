@@ -107,7 +107,18 @@ jobs:
           cache: pip
           cache-dependency-path: data-engine/requirements.txt
       - run: python -m pip install --upgrade pip
-      - run: python -m pip install -r requirements.txt pytest ruff pyright
+      # Versiones de herramientas pineadas a proposito. Sin pin, "ruff hoy" es una
+      # cifra distinta cada semana y una regresion de lint aparece sin que nadie
+      # haya tocado codigo. `pytest>=8.0.0` es lo que declara
+      # [project.optional-dependencies] test de data-engine/pyproject.toml.
+      # pytest-cov NO va aqui: el gate de cobertura tiene su propio workflow
+      # (.github/workflows/coverage.yml) y su propia linea de install.
+      - run: >-
+          python -m pip install
+          -r requirements.txt
+          "pytest>=8.0.0"
+          "ruff==0.16.10"
+          "pyright==1.1.414"
       - run: python -m ruff check .
       - run: pyright
       - run: python -m pytest
@@ -119,12 +130,252 @@ jobs:
           CAVAAI_ENABLE_VECTOR_SEARCH: "1"
           CAVAAI_ENABLE_VECTOR_CHAT: "1"
         run: |
+          # `set -o pipefail` NO es cosmetico: sin el, el codigo de salida de un
+          # `pytest ... | tee log` es el de `tee` (0 siempre) y un test en rojo
+          # pasaria. El `grep` de abajo solo caza los skips; este lignea caza los
+          # fallos. Los dos hacen falta.
+          set -o pipefail
           python -m pytest tests/test_rag_activation.py -v -rs | tee /tmp/rag_activation.log
           if grep -Eq "[0-9]+ skipped" /tmp/rag_activation.log; then
             echo "RAG activation tests skipped: Qdrant service not reachable" >&2
             exit 1
           fi
       - run: python scripts/run_financial_evals.py
+
+  # ==========================================================================
+  # FASE C: los 4 evals como puertas de verdad.
+  #
+  # Antes de este job los evals de la fase C entraban en CI solo porque
+  # `python -m pytest` recoge sus ficheros de tests. Eso es un gate real, pero
+  # incompleto: los runners de scripts/run_*.py son la via principal (son los que
+  # imprimen el numero y el exit code) y nadie los ejecutaba. Este job los ejecuta.
+  #
+  # Por que un job propio y no pasos dentro de `backend`:
+  #   - `backend` ya esta cerca de su timeout-minutes: 30 con la suite completa,
+  #     ruff, pyright y el round trip contra Qdrant. Anadirle 4 runners (uno de
+  #     ellos con el embedder real) haria que TODOS los PRs esperaran a los evals.
+  #   - este job necesita su propio servicio de Qdrant, su propia descarga
+  #     previa del embedder y su propio timeout, y nada de eso puede tener
+  #     sentido dentro de `backend`.
+  #   - el mismo criterio que justifico el workflow aparte de cobertura.
+  #
+  # Por que los 4 aqui aunque C3 y C4 tengan ademas su propio workflow:
+  #   - `llm-evals.yml` esta filtrado por paths que solo miran evals/, el runner y
+  #     los tests: un cambio en app/llm/** o app/workflows/** NO lo dispara, que es
+  #     justo el codigo que esos gates existen para vigilar.
+  #   - `ci.yml` no lleva filtros de paths: corre en cada push y cada PR. Ser el
+  #     unico sitio donde los 4 evals se ejecutan siempre elimina esa clase de
+  #     hueco, y el coste es que C3 y C4 se ejecutan dos veces en un PR que toque
+  #     sus ficheros.
+  # ==========================================================================
+  evals:
+    name: Phase C evals (RAG, valuation, LLM, ingest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      qdrant:
+        image: qdrant/qdrant:v1.12.5
+        ports:
+          - 6333:6333
+    defaults:
+      run:
+        working-directory: data-engine
+    env:
+      APP_ENV: test
+      DATABASE_URL: sqlite:///./cavaai_evals_ci.db
+      RESEARCH_AUTH_REQUIRED: "false"
+      WORKERS_ENABLED: "false"
+      HF_HOME: /tmp/hf-cache
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: data-engine/requirements.txt
+      - run: python -m pip install --upgrade pip
+      # Solo pytest: este job no linteriza (eso es del job `backend`) ni mide
+      # cobertura (eso es de coverage.yml). Una linea de install minima es una
+      # linea que no puede derivar.
+      - run: >-
+          python -m pip install
+          -r requirements.txt
+          "pytest>=8.0.0"
+
+      # El embedder (all-MiniLM-L6-v2, ~90 MB) se baja UNA vez aqui, en un paso
+      # propio y FUERA del guardian de red del runner de evals. Es exactamente lo
+      # que hace data-engine/Dockerfile.prod, y el motivo de que sea aqui y no
+      # dentro del runner:
+      #
+      #   el harness instala un guardian que sustituye socket.connect y solo
+      #   permite loopback mas una lista de NOMBRES de Hugging Face. La descarga
+      #   real no conecta a "huggingface.co": huggingface_hub resuelve el nombre y
+      #   llama a create_connection con la IP ('18.67.250.47', 443), que no esta
+      #   en la lista de nombres y queda bloqueada. Por eso
+      #   RAG_EVALS_ALLOW_MODEL_DOWNLOAD=1 no puede funcionar y aqui NO se usa.
+      #
+      # Con el modelo ya en la cache, el runner arranca con HF_HUB_OFFLINE=1 (lo
+      # pone evals/rag/rag_harness.py al importarse) y todo el proceso sigue
+      # siendo hermetico: la puerta se mide contra el pipeline real sin que el
+      # runner pueda abrir un socket a ningun sitio.
+      - name: Cache the RAG embedder (all-MiniLM-L6-v2)
+        uses: actions/cache@v4
+        with:
+          path: /tmp/hf-cache
+          key: hf-all-minilm-l6-v2-v1
+      - name: Pre-download the RAG embedder (outside the harness network guard)
+        run: >-
+          python -c "from sentence_transformers import SentenceTransformer;
+          SentenceTransformer('all-MiniLM-L6-v2')"
+
+      - name: Wait for Qdrant
+        run: for i in $(seq 1 30); do curl -fs http://localhost:6333/collections && break || sleep 2; done
+
+      # ---- patron fail-closed comun a los 4 pasos siguientes ------------------
+      # Cada runner trae su propia lista `failures` en el informe JSON. Cuando el
+      # exit code es 1 el log de este paso dice, sin ambiguedad, QUE runner fallo y
+      # QUE gate, y lista los fallos concretos del dataset: un "exit 1" a secas
+      # obliga a abrir el log de 400 lineas de C1 para saber que se rompio.
+      #
+      #   set -o pipefail        sin esto, `cmd | tee log` devuelve el codigo de
+      #                         tee (0 siempre) y un fallo real pasaria
+      #   python ... > informe  el informe JSON va a fichero, no a stdout
+      #   ... || true           imprime el diagnosis y NO decide el paso
+      #   exit 1                el paso decide, y por nombre
+      # -----------------------------------------------------------------------
+
+      - name: C1 RAG golden set (runner run_rag_evals.py, Qdrant real)
+        run: |
+          set -o pipefail
+          runner="scripts/run_rag_evals.py"
+          gate="rag_gates + 6 metricas RAGAS"
+          informe=/tmp/rag_evals.json
+          if python "$runner" --json "$informe"; then
+            echo "OK $runner ($gate)"
+          else
+            echo "::error::runner=$runner gate=$gate FALLIDO (modo real, refuse-to-skip)"
+            python - "$informe" <<'PY' || true
+          import json, sys
+          try:
+              report = json.loads(open(sys.argv[1], encoding="utf-8").read())
+          except Exception as exc:
+              print(f"  no se genero informe JSON ({exc}); ver el stderr del runner arriba")
+              raise SystemExit(0)
+          if report.get("error"):
+              print(f"  harness no disponible: {report['error']}")
+          for failure in report.get("failures") or ["(sin lista de fallos; ver el log)"]:
+              print(f"  - {failure}")
+          PY
+            exit 1
+          fi
+
+      - name: C2 valuation engines (runner run_valuation_evals.py)
+        run: |
+          set -o pipefail
+          runner="scripts/run_valuation_evals.py"
+          gate="valuation_gates (13 puertas x 8 motores)"
+          informe=/tmp/valuation_evals.json
+          if python "$runner" --json > "$informe"; then
+            echo "OK $runner ($gate)"
+          else
+            echo "::error::runner=$runner gate=$gate FALLIDO"
+            python - "$informe" <<'PY' || true
+          import json, sys
+          try:
+              report = json.loads(open(sys.argv[1], encoding="utf-8").read())
+          except Exception as exc:
+              print(f"  sin informe JSON utilizable ({exc}); ver el stderr del runner arriba")
+              raise SystemExit(0)
+          print(f"  dataset={report.get('dataset')} v={report.get('dataset_version')} "
+                f"casos={report.get('case_count')} checks={report.get('checks')}")
+          for failure in report.get("failures") or ["(sin lista de fallos; ver el log)"]:
+              print(f"  - {failure}")
+          PY
+            exit 1
+          fi
+
+      - name: C3 LLM layers (runner run_llm_evals.py)
+        run: |
+          set -o pipefail
+          runner="scripts/run_llm_evals.py"
+          gate="llm_gates (12 puertas x 4 capas)"
+          informe=/tmp/llm_evals.json
+          if python "$runner" --json > "$informe"; then
+            echo "OK $runner ($gate)"
+          else
+            echo "::error::runner=$runner gate=$gate FALLIDO"
+            python - "$informe" <<'PY' || true
+          import json, sys
+          try:
+              report = json.loads(open(sys.argv[1], encoding="utf-8").read())
+          except Exception as exc:
+              print(f"  sin informe JSON utilizable ({exc}); ver el stderr del runner arriba")
+              raise SystemExit(0)
+          print(f"  dataset={report.get('dataset')} casos={report.get('cases')} "
+                f"checks={report.get('total_checks')} capas={len(report.get('per_layer') or {})}")
+          for failure in report.get("failures") or ["(sin lista de fallos; ver el log)"]:
+              print(f"  - {failure}")
+          PY
+            exit 1
+          fi
+
+      - name: C4 ingest precision (runner run_ingest_evals.py)
+        run: |
+          set -o pipefail
+          runner="scripts/run_ingest_evals.py"
+          gate="ingest_gates (10 puertas x 3 familias de fuente)"
+          informe=/tmp/ingest_evals.json
+          if python "$runner" --json > "$informe"; then
+            echo "OK $runner ($gate)"
+          else
+            echo "::error::runner=$runner gate=$gate FALLIDO"
+            python - "$informe" <<'PY' || true
+          import json, sys
+          try:
+              report = json.loads(open(sys.argv[1], encoding="utf-8").read())
+          except Exception as exc:
+              print(f"  sin informe JSON utilizable ({exc}); ver el stderr del runner arriba")
+              raise SystemExit(0)
+          print(f"  dataset={report.get('dataset')} casos={report.get('cases')} "
+                f"checks={report.get('checks')} passed={report.get('passed')}")
+          for name, data in sorted((report.get("metrics") or {}).items()):
+              print(f"  - {name}: {data.get('value')} (>= {data.get('threshold')}) "
+                    f"{'OK' if data.get('passed') else 'FALLA'}")
+          for failure in (report.get("failures") or [])[:40]:
+              print(f"  - {failure}")
+          PY
+            exit 1
+          fi
+
+      # El contrato de C1 que exige que el numero gateado salga del pipeline REAL
+      # se auto-skipea sin Qdrant (tests/test_rag_evals_contracts.py), y un skip
+      # silencioso ahi es la puerta del RAG evaporandose. Mismo criterio fail-closed
+      # que el paso RAG activation del job `backend`: si aparece como skipped, el
+      # job falla diciendo por que.
+      - name: "C1 contract: the gateable numbers come from the real pipeline (must not skip)"
+        run: |
+          set -o pipefail
+          python -m pytest tests/test_rag_evals_contracts.py -v -rs | tee /tmp/rag_eval_contracts.log
+          if grep -Eq "[0-9]+ skipped" /tmp/rag_eval_contracts.log; then
+            echo "::error::tests/test_rag_evals_contracts.py skipped: Qdrant service not reachable" >&2
+            exit 1
+          fi
+
+      # Los 4 informes JSON de los evals. Sin secrets ni tokens: son artefactos
+      # publicos, que es lo que cualquiera puede leer para saber que numero salio
+      # sin tener que abrir un log de 400 lineas.
+      - name: Publish eval reports artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase-c-evals-reports
+          path: |
+            /tmp/rag_evals.json
+            /tmp/valuation_evals.json
+            /tmp/llm_evals.json
+            /tmp/ingest_evals.json
+          if-no-files-found: warn
+          retention-days: 14
 
   openapi-drift:
     name: OpenAPI generated client drift
