@@ -1,0 +1,32 @@
+{
+ "origin": "synthetic_fixture",
+ "data": [
+  {
+   "attributes": {
+    "fxo_id": "9598SYNTHETIC0000001-2025-12-31",
+    "country": "ES",
+    "period_end": "2025-12-31",
+    "json_url": "/9598SYNTHETIC0000001/xbrl-json/2025",
+    "package_url": "/9598SYNTHETIC0000001/package/2025.zip",
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "error_count": 0,
+    "warning_count": 2
+   }
+  },
+  {
+   "attributes": {
+    "fxo_id": "9598SYNTHETIC0000001-2025-06-30",
+    "country": "ES",
+    "period_end": "2025-06-30",
+    "json_url": null,
+    "package_url": "/9598SYNTHETIC0000001/package/2025h1.zip",
+    "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "error_count": 0,
+    "warning_count": 0
+   }
+  }
+ ],
+ "meta": {
+  "count": 2
+ }
+}

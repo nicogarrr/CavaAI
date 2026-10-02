@@ -1,0 +1,137 @@
+{
+ "origin": "synthetic_fixture",
+ "id": "core",
+ "lei": "9598SYNTHETIC0000001",
+ "concepts_declarados": [
+  "ifrs-full:Assets",
+  "ifrs-full:CashAndCashEquivalents",
+  "ifrs-full:CashFlowsFromUsedInOperatingActivities",
+  "ifrs-full:CurrentFinancialLiabilities",
+  "ifrs-full:DepreciationAndAmortisationExpense",
+  "ifrs-full:NoncurrentFinancialLiabilities",
+  "ifrs-full:ProfitLoss",
+  "ifrs-full:Revenue"
+ ],
+ "facts": {
+  "fact-1": {
+   "value": "7000000000",
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Revenue",
+    "entity": "scheme:9598SYNTHETIC0000001",
+    "period": "2025-01-01T00:00:00/2025-12-31T00:00:00",
+    "unit": "iso4217:EUR"
+   }
+  },
+  "fact-2": {
+   "value": "6500000000",
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Revenue",
+    "entity": "scheme:9598SYNTHETIC0000001",
+    "period": "2024-01-01T00:00:00/2024-12-31T00:00:00",
+    "unit": "iso4217:EUR"
+   }
+  },
+  "fact-3": {
+   "value": "5900000000",
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Revenue",
+    "entity": "scheme:9598SYNTHETIC0000001",
+    "period": "2023-01-01T00:00:00/2023-12-31T00:00:00",
+    "unit": "iso4217:EUR"
+   }
+  },
+  "fact-4": {
+   "value": "820000000",
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ProfitLoss",
+    "entity": "scheme:9598SYNTHETIC0000001",
+    "period": "2025-01-01T00:00:00/2025-12-31T00:00:00",
+    "unit": "iso4217:EUR"
+   }
+  },
+  "fact-5": {
+   "value": "770000000",
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ProfitLoss",
+    "entity": "scheme:9598SYNTHETIC0000001",
+    "period": "2024-01-01T00:00:00/2024-12-31T00:00:00",
+    "unit": "iso4217:EUR"
+   }
+  },
+  "fact-6": {
+   "value": "20000000000",
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Assets",
+    "entity": "scheme:9598SYNTHETIC0000001",
+    "period": "2025-12-31T00:00:00",
+    "unit": "iso4217:EUR"
+   }
+  },
+  "fact-7": {
+   "value": "19000000000",
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Assets",
+    "entity": "scheme:9598SYNTHETIC0000001",
+    "period": "2024-12-31T00:00:00",
+    "unit": "iso4217:EUR"
+   }
+  },
+  "fact-8": {
+   "value": "1500000000",
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CashAndCashEquivalents",
+    "entity": "scheme:9598SYNTHETIC0000001",
+    "period": "2025-12-31T00:00:00",
+    "unit": "iso4217:EUR"
+   }
+  },
+  "fact-9": {
+   "value": "900000000",
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CurrentFinancialLiabilities",
+    "entity": "scheme:9598SYNTHETIC0000001",
+    "period": "2025-12-31T00:00:00",
+    "unit": "iso4217:EUR"
+   }
+  },
+  "fact-10": {
+   "value": "3100000000",
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:NoncurrentFinancialLiabilities",
+    "entity": "scheme:9598SYNTHETIC0000001",
+    "period": "2025-12-31T00:00:00",
+    "unit": "iso4217:EUR"
+   }
+  },
+  "fact-11": {
+   "value": "1100000000",
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:CashFlowsFromUsedInOperatingActivities",
+    "entity": "scheme:9598SYNTHETIC0000001",
+    "period": "2025-01-01T00:00:00/2025-12-31T00:00:00",
+    "unit": "iso4217:EUR"
+   }
+  },
+  "fact-12": {
+   "value": "260000000",
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:DepreciationAndAmortisationExpense",
+    "entity": "scheme:9598SYNTHETIC0000001",
+    "period": "2025-01-01T00:00:00/2025-12-31T00:00:00",
+    "unit": "iso4217:EUR"
+   }
+  }
+ }
+}
