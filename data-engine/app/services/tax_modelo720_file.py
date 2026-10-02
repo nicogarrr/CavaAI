@@ -586,23 +586,3 @@ class Modelo720FileService:
         )
         assert len(r) == RECORD_LEN, f"detalle V: {len(r)} bytes"
         return r
-
-    def _detail_cuenta(
-        self, fiscal_year, nif, apellidos_nombre, bal, value, cash_country,
-    ) -> str:
-        r = self._detail_head(fiscal_year, nif, apellidos_nombre, "C", "1", cash_country)
-        r += "0"                                   # 131: sin contenido (no V/I)
-        r += " " * 12                              # 132-143: solo V/I
-        r += "O"                                   # 144: otra identificación
-        r += " " * 11                              # 145-155: BIC (sin dato)
-        r += _text(bal["currency"], 34)            # 156-189: código de cuenta
-        r += _text("ENTIDAD GESTORA DE LA CUENTA", 41)  # 190-230
-        r += " " * 20                              # 231-250
-        r += " " * 164                             # 251-414
-        r += self._detail_tail(
-            "", "A", "",
-            value, Decimal("0"), " ",
-            Decimal("0"),
-        )
-        assert len(r) == RECORD_LEN, f"detalle C: {len(r)} bytes"
-        return r

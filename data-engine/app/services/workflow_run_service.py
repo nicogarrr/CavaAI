@@ -180,8 +180,3 @@ def begin_run(
     db.add(run)
     _safe_commit(db, "run start")
     return WorkflowEnvelope(db, run)
-
-
-def envelope_from_existing(db: Session, run: WorkflowRun) -> WorkflowEnvelope:
-    """Wrap an already-persisted run (used when a route returns early)."""
-    return WorkflowEnvelope(db, run)
