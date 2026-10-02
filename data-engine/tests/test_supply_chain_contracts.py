@@ -154,6 +154,25 @@ def test_el_workflow_construye_las_cuatro_imagenes():
     assert _matrix("build") == EXPECTED_IMAGES
 
 
+def test_toda_clave_matrix_usada_existe_en_el_include():
+    """Una expresion `matrix.X` sin clave X en el include se evalua a vacio:
+    tags y nombres en blanco y el build de las imagenes roto sin avisar."""
+    import re
+
+    text = WORKFLOW.read_text(encoding="utf-8")
+    for job in ("build", "sbom", "scan"):
+        keys = set(_job(job)["strategy"]["matrix"]["include"][0])
+        for entry in _job(job)["strategy"]["matrix"]["include"]:
+            assert set(entry) == keys, f"{job}: entradas con claves distintas"
+    used = set(re.findall(r"matrix\.([A-Za-z_][A-Za-z0-9_]*)", text))
+    assert used, "el workflow no usa la matriz"
+    for job in ("build", "sbom", "scan"):
+        declared = set(_job(job)["strategy"]["matrix"]["include"][0])
+        job_text = yaml.safe_dump(_job(job))
+        job_used = set(re.findall(r"matrix\.([A-Za-z_][A-Za-z0-9_]*)", job_text))
+        assert job_used <= declared, f"{job}: matrix.{sorted(job_used - declared)} no existe en el include"
+
+
 def test_las_tres_matrices_declaran_las_mismas_imagenes():
     """Una imagen que se construye y no se escanea es una imagen sin escaneo."""
     assert _matrix("sbom") == _matrix("build")

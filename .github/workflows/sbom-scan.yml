@@ -59,7 +59,7 @@ jobs:
   # 1) BUILD: las 4 imagenes, cache en el propio runner, sin registry.
   # ---------------------------------------------------------------------------
   build:
-    name: Build ${{ matrix.image.name }}
+    name: Build ${{ matrix.name }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -95,13 +95,13 @@ jobs:
 
       - uses: docker/setup-buildx-action@v4.4.1
 
-      - name: "Construir ${{ matrix.image.name }} (sin push: no depende de registry)"
+      - name: "Construir ${{ matrix.name }} (sin push: no depende de registry)"
         id: build
         uses: docker/build-push-action@v7.4.0
         with:
-          context: ${{ matrix.image.context }}
-          file: ${{ matrix.image.file }}
-          tags: cavaai/${{ matrix.image.name }}:${{ github.sha }}
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          tags: cavaai/${{ matrix.name }}:${{ github.sha }}
           load: true
           # push:false a proposito. Las attestations de buildx (sbom/provenance)
           # solo existen cuando hay un registry al que empujarlas; el SBOM de
@@ -109,8 +109,8 @@ jobs:
           push: false
           provenance: false
           sbom: false
-          cache-from: type=gha,scope=img-${{ matrix.image.name }}
-          cache-to: type=gha,mode=max,scope=img-${{ matrix.image.name }}
+          cache-from: type=gha,scope=img-${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=img-${{ matrix.name }}
 
       - name: Registrar digest y usuario efectivo
         # El digest es lo unico que identifica el contenido escaneado; sin el,
@@ -120,21 +120,21 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p digests
-          ref="cavaai/${{ matrix.image.name }}:${{ github.sha }}"
+          ref="cavaai/${{ matrix.name }}:${{ github.sha }}"
           digest="${{ steps.build.outputs.digest }}"
           if [ -z "$digest" ]; then
             digest="$(docker image inspect --format '{{.Id}}' "$ref")"
           fi
           user="$(docker image inspect --format '{{.Config.User}}' "$ref")"
           printf 'image\tdigest\tuser\tproduction\t%s\n' "$digest" "${user:-<root:0>}" \
-            "${{ matrix.image.production }}" | tee -a "digests/${{ matrix.image.name }}.tsv"
+            "${{ matrix.production }}" | tee -a "digests/${{ matrix.name }}.tsv"
           docker image inspect "$ref" --format 'User={{.Config.User}} Entrypoint={{json .Config.Entrypoint}} Cmd={{json .Config.Cmd}}'
 
       - uses: actions/upload-artifact@v4
         if: ${{ always() }}
         with:
-          name: digest-${{ matrix.image.name }}
-          path: digests/${{ matrix.image.name }}.tsv
+          name: digest-${{ matrix.name }}
+          path: digests/${{ matrix.name }}.tsv
           if-no-files-found: warn
           retention-days: 90
 
@@ -144,7 +144,7 @@ jobs:
   #    fue bien no sirve en una investigacion posterior a un incidente.
   # ---------------------------------------------------------------------------
   sbom:
-    name: SBOM ${{ matrix.image.name }}
+    name: SBOM ${{ matrix.name }}
     needs: build
     if: ${{ always() }}
     runs-on: ubuntu-latest
@@ -185,22 +185,22 @@ jobs:
         # El contexto es el mismo commit, asi que es el mismo contenido.
         uses: docker/build-push-action@v7.4.0
         with:
-          context: ${{ matrix.image.context }}
-          file: ${{ matrix.image.file }}
-          tags: cavaai/${{ matrix.image.name }}:${{ github.sha }}
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          tags: cavaai/${{ matrix.name }}:${{ github.sha }}
           load: true
           push: false
           provenance: false
           sbom: false
-          cache-from: type=gha,scope=img-${{ matrix.image.name }}
+          cache-from: type=gha,scope=img-${{ matrix.name }}
 
       - name: SBOM CycloneDX (syft via anchore/sbom-action)
         id: sbom-cyclonedx
         uses: anchore/sbom-action@v0.24.2
         with:
-          image: cavaai/${{ matrix.image.name }}:${{ github.sha }}
+          image: cavaai/${{ matrix.name }}:${{ github.sha }}
           format: cyclonedx-json
-          output-file: sbom/${{ matrix.image.name }}.cdx.json
+          output-file: sbom/${{ matrix.name }}.cdx.json
           # La subida la hace el paso siguiente con `if: always()`: la interna de
           # la action no existe si la action falla, que es justo cuando hace falta.
           upload-artifact: false
@@ -210,9 +210,9 @@ jobs:
         id: sbom-spdx
         uses: anchore/sbom-action@v0.24.2
         with:
-          image: cavaai/${{ matrix.image.name }}:${{ github.sha }}
+          image: cavaai/${{ matrix.name }}:${{ github.sha }}
           format: spdx-json
-          output-file: sbom/${{ matrix.image.name }}.spdx.json
+          output-file: sbom/${{ matrix.name }}.spdx.json
           upload-artifact: false
           dependency-snapshot: false
 
@@ -220,8 +220,8 @@ jobs:
         uses: actions/upload-artifact@v4
         if: ${{ always() }}
         with:
-          name: sbom-${{ matrix.image.name }}-cyclonedx
-          path: sbom/${{ matrix.image.name }}.cdx.json
+          name: sbom-${{ matrix.name }}-cyclonedx
+          path: sbom/${{ matrix.name }}.cdx.json
           if-no-files-found: warn
           retention-days: 90
 
@@ -229,8 +229,8 @@ jobs:
         uses: actions/upload-artifact@v4
         if: ${{ always() }}
         with:
-          name: sbom-${{ matrix.image.name }}-spdx
-          path: sbom/${{ matrix.image.name }}.spdx.json
+          name: sbom-${{ matrix.name }}-spdx
+          path: sbom/${{ matrix.name }}.spdx.json
           if-no-files-found: warn
           retention-days: 90
 
@@ -238,7 +238,7 @@ jobs:
   # 3) SCAN: dos motores independientes + gate con umbral.
   # ---------------------------------------------------------------------------
   scan:
-    name: Scan ${{ matrix.image.name }}
+    name: Scan ${{ matrix.name }}
     needs: [build, sbom]
     # always() + gate explicito: si build o sbom fallaron, este job corre igual
     # y el gate dice POR QUE esta en rojo. Un job saltado se lee como verde.
@@ -286,19 +286,19 @@ jobs:
       - name: Reconstruir desde la cache del job build
         uses: docker/build-push-action@v7.4.0
         with:
-          context: ${{ matrix.image.context }}
-          file: ${{ matrix.image.file }}
-          tags: cavaai/${{ matrix.image.name }}:${{ github.sha }}
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          tags: cavaai/${{ matrix.name }}:${{ github.sha }}
           load: true
           push: false
           provenance: false
           sbom: false
-          cache-from: type=gha,scope=img-${{ matrix.image.name }}
+          cache-from: type=gha,scope=img-${{ matrix.name }}
 
       - name: Motor 2 necesita el SBOM del job sbom
         uses: actions/download-artifact@v4
         with:
-          name: sbom-${{ matrix.image.name }}-cyclonedx
+          name: sbom-${{ matrix.name }}-cyclonedx
           path: sbom
           if-no-files-found: ignore
 
@@ -306,9 +306,9 @@ jobs:
         id: trivy_vuln
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: cavaai/${{ matrix.image.name }}:${{ github.sha }}
+          image-ref: cavaai/${{ matrix.name }}:${{ github.sha }}
           format: json
-          output: reports/trivy-vuln-${{ matrix.image.name }}.json
+          output: reports/trivy-vuln-${{ matrix.name }}.json
           scanners: vuln
           severity: CRITICAL,HIGH,MEDIUM,LOW
           # Los CVEs sin fix tambien se listan: que no haya parche es informacion,
@@ -331,9 +331,9 @@ jobs:
           # Paso aparte, no por coste: un secret solo se detecta en las capas de la
           # imagen, y asi el informe de secrets y el de CVEs no se pisan. Si uno
           # de los dos escaneres no llega a correr, el gate lo nota por separado.
-          image-ref: cavaai/${{ matrix.image.name }}:${{ github.sha }}
+          image-ref: cavaai/${{ matrix.name }}:${{ github.sha }}
           format: json
-          output: reports/trivy-secret-${{ matrix.image.name }}.json
+          output: reports/trivy-secret-${{ matrix.name }}.json
           scanners: secret
           exit-code: "0"
           timeout: 15m
@@ -349,7 +349,7 @@ jobs:
           scan-ref: .
           scanners: misconfig
           format: json
-          output: reports/trivy-misconfig-${{ matrix.image.name }}.json
+          output: reports/trivy-misconfig-${{ matrix.name }}.json
           severity: CRITICAL,HIGH,MEDIUM,LOW,UNKNOWN
           exit-code: "0"
 
@@ -359,9 +359,9 @@ jobs:
         with:
           # SBOM -> motor independiente: dos bases de datos de CVE distintas sobre
           # el mismo contenido de imagen. Un motor que se cae lo nota el otro.
-          sbom: sbom/${{ matrix.image.name }}.cdx.json
+          sbom: sbom/${{ matrix.name }}.cdx.json
           output-format: json
-          output-file: reports/anchore-${{ matrix.image.name }}.json
+          output-file: reports/anchore-${{ matrix.name }}.json
           # El veredicto lo da el gate, no el corte binario de la action: aqui el
           # corte caeria en cualquier CVE, sin importar la severidad ni si tiene
           # fix, que no es la politica de este repo.
@@ -378,25 +378,25 @@ jobs:
           set -euo pipefail
           mkdir -p reports
           python data-engine/scripts/security/gate_image_scan.py \
-            --image "${{ matrix.image.name }}" \
-            --image-ref "cavaai/${{ matrix.image.name }}:${{ github.sha }}" \
+            --image "${{ matrix.name }}" \
+            --image-ref "cavaai/${{ matrix.name }}:${{ github.sha }}" \
             --build-result "${{ needs.build.result }}" \
             --policy scripts/security/trivy-policy.yaml \
-            --vuln-report "reports/trivy-vuln-${{ matrix.image.name }}.json" \
+            --vuln-report "reports/trivy-vuln-${{ matrix.name }}.json" \
             --vuln-status "${{ steps.trivy_vuln.outcome }}" \
-            --secret-report "reports/trivy-secret-${{ matrix.image.name }}.json" \
+            --secret-report "reports/trivy-secret-${{ matrix.name }}.json" \
             --secret-status "${{ steps.trivy_secret.outcome }}" \
-            --misconfig-report "reports/trivy-misconfig-${{ matrix.image.name }}.json" \
+            --misconfig-report "reports/trivy-misconfig-${{ matrix.name }}.json" \
             --misconfig-status "${{ steps.trivy_misconfig.outcome }}" \
-            --second-report "reports/anchore-${{ matrix.image.name }}.json" \
+            --second-report "reports/anchore-${{ matrix.name }}.json" \
             --second-status "${{ steps.anchore_scan.outcome }}" \
-            --summary "reports/summary-${{ matrix.image.name }}.json"
+            --summary "reports/summary-${{ matrix.name }}.json"
 
       - name: Subir informes
         uses: actions/upload-artifact@v4
         if: ${{ always() }}
         with:
-          name: reports-${{ matrix.image.name }}
+          name: reports-${{ matrix.name }}
           path: reports/
           if-no-files-found: warn
           retention-days: 90
