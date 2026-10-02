@@ -4,45 +4,41 @@
 - index.json del filing para localizar el information table XML.
 - parse tolerante del XML con xml.etree (local-name; campos ausentes -> None).
 - rate-limit SEC: 10 req/s + User-Agent de contacto (mismo contrato que form4).
+  El throttle y el estado NO se redefinen aqui: se importan de ``form4`` /
+  ``connectors/base.py`` porque la SEC limita por IP/proceso. Con un reloj
+  propio, un fetch 13F y un Form 4 seguidos creerian ambos que ha pasado su
+  intervalo y disparar a la vez -> 403 de la SEC en los dos.
 - Enmiendas (13F-HR/A): accession propio e inmutable; nunca se reescribe un
   filing previo.
 """
 
 from __future__ import annotations
 
-import threading
-import time
 from xml.etree import ElementTree as ET
 
 import httpx
 
-from app.services.connectors.form4 import default_headers, filing_index_url
+# Unica definicion de la URL de submissions (la de form4) y UN unico estado de
+# throttle, el de connectors/base.py.
+from app.services.connectors.base import SEC_MIN_INTERVAL_SECONDS, sec_throttle
+from app.services.connectors.form4 import SUBMISSIONS_URL, default_headers, filing_index_url
 
-SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
-MIN_INTERVAL_SECONDS = 0.1
+MIN_INTERVAL_SECONDS = SEC_MIN_INTERVAL_SECONDS
 FORMS = {"13F-HR", "13F-HR/A"}
 
-_lock = threading.Lock()
-_last_request_at = 0.0
-
-
-def _throttle() -> None:
-    """Respeta el rate-limit SEC (10 req/s) en cliente sincrono."""
-    global _last_request_at
-    with _lock:
-        elapsed = time.monotonic() - _last_request_at
-        wait = MIN_INTERVAL_SECONDS - elapsed
-        if wait > 0:
-            time.sleep(wait)
-        _last_request_at = time.monotonic()
+# Alias directo al throttle compartido (ver form4._throttle).
+_throttle = sec_throttle
 
 
 def _get(url: str, client: httpx.Client | None) -> httpx.Response:
+    # Cabeceras antes del throttle (ver form4.recent_form4_filings): el sello
+    # del intervalo debe fijarse lo mas pegado posible a la salida a la red.
+    headers = default_headers()
     _throttle()
     if client is not None:
-        response = client.get(url, headers=default_headers())
+        response = client.get(url, headers=headers)
     else:
-        with httpx.Client(timeout=30, headers=default_headers()) as owned:
+        with httpx.Client(timeout=30, headers=headers) as owned:
             response = owned.get(url)
     response.raise_for_status()
     return response
