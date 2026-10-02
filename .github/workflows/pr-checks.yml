@@ -22,6 +22,13 @@ permissions:
   contents: read
   pull-requests: read
 
+# shell por defecto: `bash` explicito (= `bash -eo pipefail`) (FIX-3.2). El
+# unico paso es github-script (node), pero el default deja cubierto cualquier
+# `run:` que se anada.
+defaults:
+  run:
+    shell: bash
+
 concurrency:
   # Un grupo por PR y siempre se cancela lo anterior: este workflow no publica
   # nada, solo informa, y el aviso que ve el autor tiene que ser el de su
@@ -39,7 +46,7 @@ jobs:
       findings: ${{ steps.check.outputs.findings }}
     steps:
       - id: check
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           # Datos no confiables del PR via env, nunca por ${{ }} dentro del
           # script (inyeccion).
@@ -130,7 +137,7 @@ jobs:
               record('ok', 'ficheros', true, 'ningun .env, clave ni keystore');
             }
 
-            // Solo se miran lineas AÑADIDidas (las que empiezan por +): un
+            // Solo se miran lineas AÑADIDAS (las que empiezan por +): un
             // placeholder preexistente en un test no es un hallazgo nuevo.
             const secretShapes = [
               [/-----BEGIN [A-Z ]*PRIVATE KEY-----/, 'clave privada PEM'],
