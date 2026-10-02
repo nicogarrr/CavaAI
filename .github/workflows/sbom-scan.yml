@@ -305,6 +305,9 @@ jobs:
           path: sbom
           if-no-files-found: ignore
 
+      - name: Crear el directorio de informes
+        run: mkdir -p reports
+
       - name: "Motor 1: trivy sobre la imagen (vuln)"
         id: trivy_vuln
         uses: aquasecurity/trivy-action@v0.36.0
