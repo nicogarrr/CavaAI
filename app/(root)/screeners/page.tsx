@@ -37,7 +37,7 @@ const operators: ScreenCriterion['operator'][] = ['>', '>=', '<', '<=', '==', '!
 function Results({ result }: { result: ScreenResult }) {
   const newMatches = new Set(result.new_match_company_ids ?? []);
   return (
-    <section className="rounded-xl border border-gray-800 bg-[#101010] p-5">
+    <section className="rounded-xl border border-gray-800 bg-surface-1 p-5">
       <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center"><div><h2 className="text-lg font-semibold text-gray-100">Resultados del filtro</h2><p className="text-sm text-gray-500">{formatNumber(result.match_count, { maximumFractionDigits: 0 })} coincidencias en {formatNumber(result.company_count, { maximumFractionDigits: 0 })} empresas</p></div>{result.ranking_formula ? <Badge className="md:ml-auto" variant="outline">ranking: {result.ranking_formula} · {result.ranking_direction}</Badge> : null}</div>
       <div aria-label="Resultados del filtro" className="overflow-x-auto" role="region" tabIndex={0}><table className="w-full min-w-[980px] text-left text-sm"><caption className="sr-only">Empresas que cumplen el filtro, con coincidencia, ranking, cobertura de datos y confianza</caption><thead className="text-xs uppercase text-gray-500"><tr><th className="border-b border-gray-800 py-2" scope="col">Empresa</th><th className="border-b border-gray-800 py-2" scope="col">Coincidencia</th><th className="border-b border-gray-800 py-2 text-right" scope="col">Ranking</th><th className="border-b border-gray-800 py-2 text-right" scope="col">Cobertura</th><th className="border-b border-gray-800 py-2 text-right" scope="col">Confianza</th><th className="border-b border-gray-800 py-2" scope="col">Últimos datos</th><th className="border-b border-gray-800 py-2" scope="col">Faltantes</th></tr></thead><tbody>
         {result.results.map((row) => <tr className="border-b border-gray-900" key={row.company_id}><th className="py-3 text-left text-sm font-normal" scope="row"><Link className="font-semibold text-teal-300 hover:text-teal-200" href={`/research/${row.ticker}`}>{row.ticker}</Link><div className="text-xs text-gray-500">{row.name}</div></th><td className="py-3"><div className="flex gap-2"><Badge className={row.matched ? 'border-teal-800 text-teal-300' : 'border-gray-700 text-gray-400'} variant="outline">{row.matched ? t('screener.match') : t('screener.noMatch')}</Badge>{newMatches.has(row.company_id) ? <Badge>{t('screener.newMatch')}</Badge> : null}</div></td><td className="py-3 text-right text-gray-300">{row.rank_value ?? NA}</td><td className="py-3 text-right text-gray-300">{formatPercent(row.coverage_percent, { fromRatio: false, digits: 0 })}</td><td className="py-3 text-right text-gray-300">{formatPercent(Number(row.confidence), { digits: 0 })}</td><td className="py-3 text-gray-500">{row.latest_data_at ? formatDate(row.latest_data_at) : NA}</td><td className="py-3 text-amber-300">{row.missing_fields.join(', ') || NA}</td></tr>)}
@@ -96,7 +96,7 @@ export default async function ScreenersPage({ searchParams }: PageProps) {
       ) : null}
       {result ? <Results result={result} /> : null}
 
-      <section className="rounded-xl border border-gray-800 bg-[#101010] p-5">
+      <section className="rounded-xl border border-gray-800 bg-surface-1 p-5">
         <div className="mb-4 flex items-center gap-2"><Filter aria-hidden="true" className="h-5 w-5 text-teal-300" /><h2 className="font-semibold text-gray-100">Ejecutar un filtro ad-hoc</h2></div>
         <form className="space-y-4" method="get">
           <CriterionFields initialLeft={query.left ?? ''} initialOperator={operator} initialRight={query.right ?? ''} required />
@@ -104,11 +104,11 @@ export default async function ScreenersPage({ searchParams }: PageProps) {
         </form>
       </section>
 
-      <section className="rounded-xl border border-gray-800 bg-[#101010] p-5"><h2 className="font-semibold text-gray-100">Filtros guardados</h2><div className="mt-4 grid gap-3">{screens.map((screen) => <article className="rounded-lg border border-gray-800 bg-black/30 p-4" key={screen.id}><div className="flex items-start gap-3"><div><h3 className="font-semibold text-gray-200">{screen.name}</h3><p className="mt-1 text-xs text-gray-500">{formatNumber(screen.criteria.length, { maximumFractionDigits: 0 })} criterios · {screen.alerts_enabled ? 'alertas activadas' : 'alertas desactivadas'} · última {formatDate(screen.last_run_at, { day: 'numeric', month: 'short', year: 'numeric' }, NO_CORRIDO)}</p></div><Button asChild className="ml-auto" size="sm"><Link href={`/screeners/${screen.id}`}><Play aria-hidden="true" className="h-4 w-4" />Ejecutar</Link></Button></div>{screen.description ? <p className="mt-3 text-sm text-gray-400">{screen.description}</p> : null}</article>)}{!screens.length ? <p className="text-sm text-gray-500">Aún no hay filtros guardados.</p> : null}</div></section>
+      <section className="rounded-xl border border-gray-800 bg-surface-1 p-5"><h2 className="font-semibold text-gray-100">Filtros guardados</h2><div className="mt-4 grid gap-3">{screens.map((screen) => <article className="rounded-lg border border-gray-800 bg-black/30 p-4" key={screen.id}><div className="flex items-start gap-3"><div><h3 className="font-semibold text-gray-200">{screen.name}</h3><p className="mt-1 text-xs text-gray-500">{formatNumber(screen.criteria.length, { maximumFractionDigits: 0 })} criterios · {screen.alerts_enabled ? 'alertas activadas' : 'alertas desactivadas'} · última {formatDate(screen.last_run_at, { day: 'numeric', month: 'short', year: 'numeric' }, NO_CORRIDO)}</p></div><Button asChild className="ml-auto" size="sm"><Link href={`/screeners/${screen.id}`}><Play aria-hidden="true" className="h-4 w-4" />Ejecutar</Link></Button></div>{screen.description ? <p className="mt-3 text-sm text-gray-400">{screen.description}</p> : null}</article>)}{!screens.length ? <p className="text-sm text-gray-500">Aún no hay filtros guardados.</p> : null}</div></section>
 
       {/* Los dos formularios de creación son configuración, no consulta: van
           plegados para que no compitan con los resultados ni con la lista. */}
-      <details className="rounded-xl border border-gray-800 bg-[#101010] p-5">
+      <details className="rounded-xl border border-gray-800 bg-surface-1 p-5">
         <summary className="flex min-h-[44px] cursor-pointer list-none items-center gap-2 font-semibold text-gray-100"><Save aria-hidden="true" className="h-5 w-5 text-teal-300" />Constructor visual de filtros<ChevronDown aria-hidden="true" className="ml-auto h-4 w-4 text-gray-500" /></summary>
         <div className="mt-4">
           <MutationForm action={createSavedScreen} resetOnSuccess successMessage="Filtro guardado">
@@ -124,7 +124,7 @@ export default async function ScreenersPage({ searchParams }: PageProps) {
         </div>
       </details>
 
-      <details className="rounded-xl border border-gray-800 bg-[#101010] p-5">
+      <details className="rounded-xl border border-gray-800 bg-surface-1 p-5">
         <summary className="flex min-h-[44px] cursor-pointer list-none items-center gap-2 font-semibold text-gray-100"><Calculator aria-hidden="true" className="h-5 w-5 text-teal-300" />Métrica personalizada<ChevronDown aria-hidden="true" className="ml-auto h-4 w-4 text-gray-500" /></summary>
         <div className="mt-4">
           <MutationForm action={createCustomMetric} resetOnSuccess successMessage="Métrica personalizada guardada">
@@ -134,7 +134,7 @@ export default async function ScreenersPage({ searchParams }: PageProps) {
         </div>
       </details>
 
-      <section className="rounded-xl border border-gray-800 bg-[#101010] p-5"><h2 className="font-semibold text-gray-100">Métricas personalizadas activas</h2><div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">{metrics.map((metric) => <article className="rounded-lg border border-gray-800 bg-black/30 p-4" key={metric.id}><div className="flex items-center justify-between gap-3"><span className="font-semibold text-gray-200">{metric.name}</span><Badge variant="outline">v{metric.version}</Badge></div><code className="mt-3 block text-sm text-teal-300">{metric.metric_key} = {metric.formula}</code><p className="mt-2 text-xs text-gray-500">{metric.unit} · {metric.description || 'Sin descripción'}</p></article>)}{!metrics.length ? <p className="text-sm text-gray-500">Aún no hay métricas personalizadas.</p> : null}</div></section>
+      <section className="rounded-xl border border-gray-800 bg-surface-1 p-5"><h2 className="font-semibold text-gray-100">Métricas personalizadas activas</h2><div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">{metrics.map((metric) => <article className="rounded-lg border border-gray-800 bg-black/30 p-4" key={metric.id}><div className="flex items-center justify-between gap-3"><span className="font-semibold text-gray-200">{metric.name}</span><Badge variant="outline">v{metric.version}</Badge></div><code className="mt-3 block text-sm text-teal-300">{metric.metric_key} = {metric.formula}</code><p className="mt-2 text-xs text-gray-500">{metric.unit} · {metric.description || 'Sin descripción'}</p></article>)}{!metrics.length ? <p className="text-sm text-gray-500">Aún no hay métricas personalizadas.</p> : null}</div></section>
     </main>
   );
 }

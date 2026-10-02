@@ -39,7 +39,7 @@ export default async function CorporateActionsPage() {
                         Dividendos, splits, spin-offs y fusiones: revisa los eventos pendientes y aplícalos a tu cartera.
                     </p>
                 </div>
-                <div className="flex items-center gap-2 rounded-lg border border-gray-800 bg-[#111111] px-3 py-2 text-sm text-gray-300">
+                <div className="flex items-center gap-2 rounded-lg border border-gray-800 bg-surface-1 px-3 py-2 text-sm text-gray-300">
                     <Building2 className="h-4 w-4 text-teal-300" />
                     {formatNumber(actions.length, { maximumFractionDigits: 0 })} eventos
                 </div>

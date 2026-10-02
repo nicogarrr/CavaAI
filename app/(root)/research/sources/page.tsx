@@ -94,7 +94,7 @@ export default async function ResearchSourcesPage({
             Documentos, transcripts y auditorías que alimentan tesis, RAG y valoraciones.
           </p>
         </div>
-        <div className="rounded-lg border border-gray-800 bg-[#111111] px-4 py-3 text-sm text-gray-300">
+        <div className="rounded-lg border border-gray-800 bg-surface-1 px-4 py-3 text-sm text-gray-300">
           {documentsTotal !== null
             ? ticker
               ? `${formatNumber(documentsTotal, { maximumFractionDigits: 0 })} documentos de ${ticker}`
@@ -105,7 +105,7 @@ export default async function ResearchSourcesPage({
       </header>
 
       <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-        <MutationForm action={importResearchSource} className="rounded-lg border border-gray-800 bg-[#111111] p-5" resetOnSuccess successMessage="Fuente importada">
+        <MutationForm action={importResearchSource} className="rounded-lg border border-gray-800 bg-surface-1 p-5" resetOnSuccess successMessage="Fuente importada">
           <div className="mb-4 flex items-center gap-2">
             <UploadCloud aria-hidden="true" className="h-5 w-5 text-teal-300" />
             <h2 className="text-lg font-semibold text-gray-100">Importar fuente manual</h2>
@@ -145,7 +145,7 @@ export default async function ResearchSourcesPage({
         </MutationForm>
 
         <section className="grid gap-6">
-          <MutationForm action={importResearchDocumentFile} className="rounded-lg border border-gray-800 bg-[#111111] p-5" resetOnSuccess successMessage="Documento importado">
+          <MutationForm action={importResearchDocumentFile} className="rounded-lg border border-gray-800 bg-surface-1 p-5" resetOnSuccess successMessage="Documento importado">
             <div className="mb-4 flex items-center gap-2">
               <UploadCloud aria-hidden="true" className="h-5 w-5 text-teal-300" />
               <h2 className="text-lg font-semibold text-gray-100">Subir documento</h2>
@@ -178,7 +178,7 @@ export default async function ResearchSourcesPage({
             </div>
           </MutationForm>
 
-          <MutationForm action={importResearchDocumentUrl} className="rounded-lg border border-gray-800 bg-[#111111] p-5" resetOnSuccess successMessage="URL importada">
+          <MutationForm action={importResearchDocumentUrl} className="rounded-lg border border-gray-800 bg-surface-1 p-5" resetOnSuccess successMessage="URL importada">
             <div className="mb-4 flex items-center gap-2">
               <FileText aria-hidden="true" className="h-5 w-5 text-teal-300" />
               <h2 className="text-lg font-semibold text-gray-100">Ingerir desde URL</h2>
@@ -208,7 +208,7 @@ export default async function ResearchSourcesPage({
           </MutationForm>
         </section>
 
-        <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+        <section className="rounded-lg border border-gray-800 bg-surface-1 p-5">
           <div className="mb-4 flex items-center gap-2">
             <ShieldCheck aria-hidden="true" className="h-5 w-5 text-teal-300" />
             <h2 className="text-lg font-semibold text-gray-100">Auditorías de fuentes</h2>
@@ -242,7 +242,7 @@ export default async function ResearchSourcesPage({
         </section>
       </section>
 
-      <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+      <section className="rounded-lg border border-gray-800 bg-surface-1 p-5">
         <div className="mb-4 flex items-center gap-2">
           <FileText aria-hidden="true" className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">Documentos</h2>

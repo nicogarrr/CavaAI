@@ -217,7 +217,7 @@ export default function MetodologiaPage() {
         <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2">
           {sources.map((source) => (
             <article
-              className="flex min-w-0 flex-col rounded-xl border border-gray-800 bg-[#101010] p-4 break-words sm:p-5"
+              className="flex min-w-0 flex-col rounded-xl border border-gray-800 bg-surface-1 p-4 break-words sm:p-5"
               key={source.title}
             >
               <div className="flex items-center gap-2">
@@ -245,7 +245,7 @@ export default function MetodologiaPage() {
         </p>
       </section>
 
-      <section className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-4 sm:p-5">
+      <section className="min-w-0 rounded-xl border border-gray-800 bg-surface-1 p-4 sm:p-5">
         <h2 className="text-lg font-semibold text-gray-100">Señal orbital AST: semieje mayor</h2>
         <p className="mt-2 text-sm leading-6 text-gray-400">Para cada objeto del grupo AST de CelesTrak calculamos el semieje mayor con
           a = (μ / (2πn / 86.400)²)^(1/3), con μ terrestre = 398.600,4418 km³/s² y n en revoluciones al día.
@@ -261,7 +261,7 @@ export default function MetodologiaPage() {
           La época orbital y la fecha de descarga son distintas.</p>
       </section>
 
-      <section className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-4 sm:p-5">
+      <section className="min-w-0 rounded-xl border border-gray-800 bg-surface-1 p-4 sm:p-5">
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <Calculator className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">Motores de valoración</h2>
@@ -298,7 +298,7 @@ export default function MetodologiaPage() {
         </p>
       </section>
 
-      <section className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-4 sm:p-5">
+      <section className="min-w-0 rounded-xl border border-gray-800 bg-surface-1 p-4 sm:p-5">
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <Sparkles className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">Cómo se generan los ProPicks</h2>
@@ -332,7 +332,7 @@ export default function MetodologiaPage() {
         </p>
       </section>
 
-      <section className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-4 sm:p-5">
+      <section className="min-w-0 rounded-xl border border-gray-800 bg-surface-1 p-4 sm:p-5">
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <Search className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">
@@ -389,7 +389,7 @@ export default function MetodologiaPage() {
         </div>
       </section>
 
-      <section className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-4 sm:p-5">
+      <section className="min-w-0 rounded-xl border border-gray-800 bg-surface-1 p-4 sm:p-5">
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <ShieldCheck className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">Marco de calidad (MOAT)</h2>
@@ -452,7 +452,7 @@ export default function MetodologiaPage() {
         <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2">
           {limits.map((limit) => (
             <article
-              className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-4 break-words sm:p-5"
+              className="min-w-0 rounded-xl border border-gray-800 bg-surface-1 p-4 break-words sm:p-5"
               key={limit.title}
             >
               <div className="flex items-center gap-2">
@@ -473,7 +473,7 @@ export default function MetodologiaPage() {
         <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-3">
           {costs.map((cost) => (
             <article
-              className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-4 break-words sm:p-5"
+              className="min-w-0 rounded-xl border border-gray-800 bg-surface-1 p-4 break-words sm:p-5"
               key={cost.title}
             >
               <div className="flex items-center gap-2">

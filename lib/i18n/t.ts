@@ -3,10 +3,10 @@
  *
  * Por qué NO next-intl: la app es íntegramente es-ES, no hay enrutado por
  * locale ni i18n de terceros. next-intl añade middleware, carga de mensajes
- * por request y un provider de cliente paraTranslatedMessage
- * (precarga de mensajes) que aquí no se usan. Con un JSON + una función
- * tipada por `typeof es` se consigue lo mismo (te autocompletado de claves y
- * error en desarrollo si te equivocas al escribir la clave) sin dependencias.
+ * por request y un `NextIntlClientProvider` para precargar los mensajes,
+ * que aquí no se usan. Con un JSON + una función tipada por `typeof es` se
+ * consigue lo mismo (autocompletado de claves y error de compilación si
+ * escribes una clave que no existe) sin dependencias.
  *
  * Módulo puro: se importa igual desde server y client components.
  */
@@ -15,9 +15,11 @@ import es from './es.json';
 
 export { es };
 
-type Leaves<T> = {
-  [K in keyof T]: T[K] extends string ? K : Leaves<T[K]>;
-}[keyof T];
+type Leaves<T> = T extends string
+  ? ''
+  : {
+      [K in keyof T & string]: T[K] extends string ? K : `${K}.${Leaves<T[K]>}`;
+    }[keyof T & string];
 
 /** Claves aceptadas: "portfolio.tearsheet.maxDrawdown" (hoja del diccionario). */
 export type TranslationKey = Leaves<typeof es>;
@@ -47,9 +49,11 @@ function lookup(path: string): unknown {
  * - En PRODUCCIÓN devuelve la propia clave: la UI se mantiene legible y no se
  *   rompe la página por un texto que falta.
  */
-export function t(path: TranslationKey, vars?: TranslationVars): string;
-export function t(path: string, vars?: TranslationVars): string;
-export function t(path: string, vars?: TranslationVars): string {
+export function t(path: TranslationKey, vars?: TranslationVars): string {
+  return translate(path, vars);
+}
+
+function translate(path: string, vars?: TranslationVars): string {
   const value = lookup(path);
   if (typeof value !== 'string') {
     if (process.env.NODE_ENV !== 'production') {

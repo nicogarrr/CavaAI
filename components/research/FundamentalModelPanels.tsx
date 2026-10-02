@@ -92,7 +92,7 @@ function translate(map: Record<string, string>, value: string | null | undefined
 
 function ModelStat({ label, value, positive = false }: { label: string; value: string; positive?: boolean }) {
   return (
-    <div className="rounded-lg border border-gray-800 bg-[#111111] p-4">
+    <div className="rounded-lg border border-gray-800 bg-surface-1 p-4">
       <div className="text-xs font-semibold uppercase text-gray-500">{label}</div>
       <div className={`mt-2 text-2xl font-semibold ${positive ? 'text-teal-300' : 'text-gray-100'}`}>{value}</div>
     </div>
@@ -102,7 +102,7 @@ function ModelStat({ label, value, positive = false }: { label: string; value: s
 export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | null }) {
   if (!model) {
     return (
-      <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+      <section className="rounded-lg border border-gray-800 bg-surface-1 p-5">
         <div className="flex items-center gap-2">
           <BrainCircuit aria-hidden="true" className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">Modelo fundamental a largo plazo</h2>
@@ -119,7 +119,7 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
   const marginAssumption = model.assumptions.fcf_margin;
 
   return (
-    <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+    <section className="rounded-lg border border-gray-800 bg-surface-1 p-5">
       <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center">
         <div className="flex items-center gap-2">
           <BrainCircuit aria-hidden="true" className="h-5 w-5 text-teal-300" />
@@ -316,7 +316,7 @@ export function DecisionAndRealityPanel({
 }) {
   return (
     <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-      <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+      <div className="rounded-lg border border-gray-800 bg-surface-1 p-5">
         <div className="mb-4 flex items-center gap-2">
           <GitBranch aria-hidden="true" className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">Diario de decisiones</h2>
@@ -355,7 +355,7 @@ export function DecisionAndRealityPanel({
         </div>
       </div>
 
-      <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+      <div className="rounded-lg border border-gray-800 bg-surface-1 p-5">
         <div className="mb-4 flex items-center gap-2">
           <BarChart3 aria-hidden="true" className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">Expectativa vs realidad</h2>
