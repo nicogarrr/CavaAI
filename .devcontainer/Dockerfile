@@ -5,3 +5,7 @@ FROM node:22-alpine
 RUN apk add --no-cache libc6-compat git python3 py3-pip
 
 WORKDIR /app
+
+# Usuario sin privilegios (Trivy DS-0002).
+RUN chown node:node /app
+USER node
