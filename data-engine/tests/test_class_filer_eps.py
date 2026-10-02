@@ -28,16 +28,16 @@ INSTANCE_XML = """<?xml version="1.0"?>
       xmlns:us-gaap="http://fasb.org/us-gaap/2023"
       xmlns:v="http://www.example.com/v">
   <context id="c1"><entity><identifier scheme="s">X</identifier>
-    <segment><explicitMember dimension="d">us-gaap:CommonClassAMember</explicitMember></segment></entity>
+    <segment><explicitMember dimension="v:CommonClassAxis">us-gaap:CommonClassAMember</explicitMember></segment></entity>
     <period><startDate>2024-10-01</startDate><endDate>2025-09-30</endDate></period></context>
   <context id="c2"><entity><identifier scheme="s">X</identifier>
-    <segment><explicitMember dimension="d">us-gaap:CommonClassAMember</explicitMember></segment></entity>
+    <segment><explicitMember dimension="v:CommonClassAxis">us-gaap:CommonClassAMember</explicitMember></segment></entity>
     <period><startDate>2023-10-01</startDate><endDate>2024-09-30</endDate></period></context>
   <context id="c3"><entity><identifier scheme="s">X</identifier>
-    <segment><explicitMember dimension="d">v:CommonClassB1Member</explicitMember></segment></entity>
+    <segment><explicitMember dimension="v:CommonClassAxis">v:CommonClassBMember</explicitMember></segment></entity>
     <period><startDate>2024-10-01</startDate><endDate>2025-09-30</endDate></period></context>
   <context id="c4"><entity><identifier scheme="s">X</identifier>
-    <segment><explicitMember dimension="d">us-gaap:CommonClassAMember</explicitMember></segment></entity>
+    <segment><explicitMember dimension="v:CommonClassAxis">us-gaap:CommonClassAMember</explicitMember></segment></entity>
     <period><startDate>2025-04-01</startDate><endDate>2025-06-30</endDate></period></context>
   <context id="c5"><entity><identifier scheme="s">X</identifier></entity>
     <period><startDate>2024-10-01</startDate><endDate>2025-09-30</endDate></period></context>
@@ -57,14 +57,27 @@ BRK_INSTANCE_XML = """<?xml version="1.0"?>
       xmlns:us-gaap="http://fasb.org/us-gaap/2023"
       xmlns:brka="http://www.example.com/brka">
   <context id="a1"><entity><identifier scheme="s">X</identifier>
-    <segment><explicitMember dimension="d">brka:EquivalentClassAMember</explicitMember></segment></entity>
+    <segment><explicitMember dimension="brka:EquivalentClassAxis">brka:EquivalentClassAMember</explicitMember></segment></entity>
     <period><startDate>2025-01-01</startDate><endDate>2025-12-31</endDate></period></context>
   <context id="b1"><entity><identifier scheme="s">X</identifier>
-    <segment><explicitMember dimension="d">brka:EquivalentClassBMember</explicitMember></segment></entity>
+    <segment><explicitMember dimension="brka:EquivalentClassAxis">brka:EquivalentClassBMember</explicitMember></segment></entity>
     <period><startDate>2025-01-01</startDate><endDate>2025-12-31</endDate></period></context>
   <us-gaap:EarningsPerShareBasic contextRef="a1">61900</us-gaap:EarningsPerShareBasic>
   <us-gaap:EarningsPerShareBasic contextRef="b1">41.27</us-gaap:EarningsPerShareBasic>
   <us-gaap:WeightedAverageNumberOfSharesOutstandingBasic contextRef="b1">2157335139</us-gaap:WeightedAverageNumberOfSharesOutstandingBasic>
+</xbrl>
+"""
+
+SEGMENT_INSTANCE_XML = """<?xml version="1.0"?>
+<!-- origin: synthetic_fixture. Un unico hecho dimensionado por SEGMENTO: es
+     el BPA de un negocio, no el del emisor, y no puede escribirse como
+     eps_diluted del consolidado (FIX5-9). -->
+<xbrl xmlns="http://www.xbrl.org/2003/instance"
+      xmlns:us-gaap="http://fasb.org/us-gaap/2023">
+  <context id="s1"><entity><identifier scheme="s">X</identifier>
+    <segment><explicitMember dimension="us-gaap:StatementBusinessSegmentsAxis">us-gaap:DomesticMember</explicitMember></segment></entity>
+    <period><startDate>2025-01-01</startDate><endDate>2025-12-31</endDate></period></context>
+  <us-gaap:EarningsPerShareDiluted contextRef="s1" unitRef="uUSD" decimals="2">1.25</us-gaap:EarningsPerShareDiluted>
 </xbrl>
 """
 
@@ -91,9 +104,57 @@ def test_parse_accepts_53_week_years():
 def test_pick_member_prefers_configured_then_single_member():
     facts = _parse(INSTANCE_XML)
     assert pick_member(facts, "CommonClassAMember") == "CommonClassAMember"
-    assert pick_member(facts, None) is None  # A y B1: varias clases, no se elige a ciegas
-    single = [f for f in facts if f.members == ("CommonClassAMember",)]
+    assert pick_member(facts, None) is None  # A y B: varias clases, no se elige a ciegas
+    single = [f for f in facts if f.member_names == ("CommonClassAMember",)]
     assert pick_member(single, None) == "CommonClassAMember"
+
+
+def test_parse_propagates_the_axis_of_each_member():
+    facts = _parse(INSTANCE_XML)
+    pairs = {pair for f in facts for pair in f.members}
+    assert ("v:CommonClassAxis", "CommonClassAMember") in pairs
+    assert ("v:CommonClassAxis", "CommonClassBMember") in pairs
+
+
+def test_pick_member_refuses_a_segment_member():
+    """Un hecho por SEGMENTO es el BPA de un negocio, no el del emisor: ni el
+    eje es de clase ni el miembro es una clase (FIX5-9)."""
+    facts = _parse(SEGMENT_INSTANCE_XML)
+    assert facts, "el hecho dimensionado del segmento debe parsearse"
+    assert pick_member(facts, "CommonClassAMember") is None
+    assert pick_member(facts, None) is None
+
+
+def test_backfill_writes_nothing_for_a_segment_only_instance(db):
+    company = _company(db, "ZZZ")
+    fetch_json, fetch_bytes = _fake_fetchers(SEGMENT_INSTANCE_XML)
+    result = backfill_class_based_eps(
+        db, company, cik="1", fetch_json=fetch_json, fetch_bytes=fetch_bytes
+    )
+    assert result.facts_written == 0
+    assert result.member_used is None
+    assert result.skipped_reason == "sin miembros de clase"
+    assert db.scalars(select(FinancialFact)).all() == []
+
+
+def test_parse_applies_scale_and_sign():
+    """iXBRL declara la magnitud real en el literal escalado y negado:
+    scale="3" sign="-" sobre 1.25 es -1250, no 1.25 (FIX5-5)."""
+    xml = SEGMENT_INSTANCE_XML.replace(
+        'contextRef="s1" unitRef="uUSD" decimals="2"',
+        'contextRef="s1" unitRef="uUSD" decimals="2" scale="3" sign="-"',
+    )
+    facts = _parse(xml)
+    assert facts[0].value == Decimal("-1250")
+
+
+def test_parse_rejects_a_wrong_unitref_but_tolerates_none():
+    """Un BPA etiquetado en acciones es otra magnitud: se descarta. Sin
+    unitRef no hay unidad que contradecir (FIX5-5)."""
+    wrong_unit = SEGMENT_INSTANCE_XML.replace('unitRef="uUSD"', 'unitRef="ushares"')
+    assert _parse(wrong_unit) == []
+    facts = _parse(INSTANCE_XML)  # sin unitRef en ningun hecho
+    assert facts
 
 
 @pytest.fixture()
