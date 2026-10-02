@@ -61,7 +61,29 @@ const CLIENT_JUSTIFICATIONS = [
     'IntersectionObserver',
 ];
 
-const CLIENT_RE = /^(?:\/\/[^\n]*\n|\/\*[\s\S]*?\*\/|\s)*['"]use client['"]/;
+/**
+ * Salta espacios y comentarios iniciales sin regex anidada (evita backtracking
+ * exponencial) y comprueba si lo primero es la directiva 'use client'.
+ */
+function startsWithUseClient(source: string): boolean {
+    let i = 0;
+    while (i < source.length) {
+        if (/\s/.test(source[i])) {
+            i += 1;
+        } else if (source.startsWith('//', i)) {
+            const end = source.indexOf('\n', i);
+            if (end === -1) return false;
+            i = end + 1;
+        } else if (source.startsWith('/*', i)) {
+            const end = source.indexOf('*/', i + 2);
+            if (end === -1) return false;
+            i = end + 2;
+        } else {
+            break;
+        }
+    }
+    return /^['"]use client['"]/.test(source.slice(i, i + 14));
+}
 
 /**
  * Regla 1 y 2: el grafo tiene que ser manipulable y legible sin ratón.
@@ -125,7 +147,7 @@ export function checkInteractiveGraph(source: string): Violation[] {
 
 /** Un `'use client'` sin ningun hook ni handler no justifica el bundle de cliente. */
 export function checkUseClientJustified(source: string): Violation[] {
-    if (!CLIENT_RE.test(source)) return [];
+    if (!startsWithUseClient(source)) return [];
     if (CLIENT_JUSTIFICATIONS.some((token) => source.includes(token))) return [];
     return [{ rule: 'use-client-huerfano', message: "'use client' sin useState/useEffect/useRef/useCallback ni handler: el fichero no necesita ser cliente" }];
 }
