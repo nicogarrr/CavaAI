@@ -126,7 +126,12 @@ class SOTPEngine(ValuationEngine):
                 or ["segment_*_operating_metric", "segment_*_valuation_multiple"]
             )
 
-        if missing or not segments or shares is None or shares <= 0 or net_debt is None:
+        # `missing` recoge exactamente lo que bloquearia: shares nulos o no
+        # positivos, deuda neta ausente, descuento fuera de [0, 1) o ningun
+        # segmento valorable. Preguntar de nuevo por cada termino repetia la
+        # condicion y hacia imposible saber cual habia bloqueado, que es justo
+        # lo que `missing_inputs` publica.
+        if missing:
             result = insufficient_result(
                 ticker=company.ticker,
                 model_type=company.valuation_model,
