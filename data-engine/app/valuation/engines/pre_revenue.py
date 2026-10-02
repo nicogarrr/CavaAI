@@ -23,11 +23,9 @@ from app.valuation.engines.base import (
     ValuationEngine,
     apply_publication_blockers,
     default_growth,
-    default_terminal_growth,
-    default_wacc,
     insufficient_result,
     margin_of_safety,
-    traceable_wacc,
+    resolve_rates,
 )
 from app.valuation.funding_gap import estimate_funding_gap
 from app.valuation.moat_framework import empty_moat_framework
@@ -35,23 +33,6 @@ from app.valuation.reverse_dcf import ReverseDCFInputs, solve_required_growth
 from app.valuation.scenario_definitions import speculative_causal_scenarios
 from app.valuation.scenario_model import Scenario, probability_weighted_value
 from app.valuation.sensitivity import sensitivity_grid
-
-
-def _resolve_wacc(db, company) -> tuple[float, str]:
-    """WACC del modelo y su procedencia.
-
-    El WACC por tags (13% para pre-FCF/speculative) es un supuesto, no un
-    dato. Si existe un ``CalculatedMetric`` fechado (rf + ERP + beta +
-    estructura de capital) se usa ese: con g terminal 2,5% la diferencia entre
-    un 13% supuesto y un 8,5% trazable mueve el factor de descuento del valor
-    terminal de 1,80 a 1,29 (~-35% de valor por accion). ``db=None`` solo
-    ocurre en unit tests sin sesion: ahi no hay metric persistido y el
-    supuesto es lo unico disponible.
-    """
-    wacc_traceable = traceable_wacc(db, company) if db is not None else None
-    if wacc_traceable is not None:
-        return wacc_traceable, "calculated_metric"
-    return default_wacc(company), "tag_default"
 
 
 class PreRevenueScenarioEngine(ValuationEngine):
@@ -162,8 +143,7 @@ class PreRevenueScenarioEngine(ValuationEngine):
         # devuelve un EV negativo, que es lo correcto. Para las quemas, el
         # modelo de funding-gap/dilucion es el que informa.
         margin = min(margin, 0.40)
-        wacc, wacc_source = _resolve_wacc(context.db, company)
-        terminal = default_terminal_growth(company)
+        wacc, wacc_source, terminal, terminal_source, dropped_inferred = resolve_rates(context.db, company)
         net_debt = snapshot.value("net_debt")
         if net_debt is None:
             # El puente de equity es EV - net_debt. Heredarlo como 0.0 no dice
@@ -315,9 +295,20 @@ class PreRevenueScenarioEngine(ValuationEngine):
                 "treat as non-final."
             )
         if publication_blockers:
+            if wacc_source == "inferred_input":
+                notices.append(
+                    "WACC is an INFERRED input (documented basis and URLs), not a "
+                    "traceable CalculatedMetric: treat the value as non-final."
+                )
+            else:
+                notices.append(
+                    "WACC is a tag default with no traceable CalculatedMetric: the discount "
+                    "rate is an assumption, not a dated source."
+                )
+        if dropped_inferred:
             notices.append(
-                "WACC is a tag default with no traceable CalculatedMetric: the discount "
-                "rate is an assumption, not a dated source."
+                "Inferred inputs ignored because wacc - terminal_growth < 2pp: "
+                + ", ".join(dropped_inferred)
             )
 
         return apply_publication_blockers(
@@ -350,6 +341,8 @@ class PreRevenueScenarioEngine(ValuationEngine):
                 "growth_source": growth_source,
                 "wacc": wacc,
                 "wacc_source": wacc_source,
+                "terminal_source": terminal_source,
+                "inferred_inputs_ignored": dropped_inferred,
                 "net_debt": net_debt,
                 "valuation_basis": (
                     "inferred_inputs" if inferred_margin is not None else "reported_facts"
@@ -476,8 +469,7 @@ class PreRevenueScenarioEngine(ValuationEngine):
             growth = default_growth(company)
         growth = max(min(growth, 0.60), -0.15)
         assumed_margin_base = float(inferred.value) if inferred is not None else 0.15
-        wacc, wacc_source = _resolve_wacc(db, company)
-        terminal = default_terminal_growth(company)
+        wacc, wacc_source, terminal, terminal_source, dropped_inferred = resolve_rates(db, company)
         net_debt = snapshot.value("net_debt")
         net_debt_missing = net_debt is None
         # El puente de equity sigue siendo EV - net_debt. Sin el dato, el
@@ -639,6 +631,8 @@ class PreRevenueScenarioEngine(ValuationEngine):
                 "growth_source": growth_source,
                 "wacc": wacc,
                 "wacc_source": wacc_source,
+                "terminal_source": terminal_source,
+                "inferred_inputs_ignored": dropped_inferred,
                 "net_debt": net_debt,
                 "net_debt_source": "missing_assumed_zero" if net_debt_missing else "financial_facts",
                 "scenario_style": "causal_speculative_indicative",

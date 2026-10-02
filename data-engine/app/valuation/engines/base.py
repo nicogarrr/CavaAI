@@ -11,6 +11,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.models import CalculatedMetric, Company
+from app.services.inferred_input_service import InferredInputService, pick_rate_pair
 from app.valuation.financial_snapshot import FinancialSnapshot, FinancialSnapshotBuilder
 from app.valuation.moat_framework import empty_moat_framework
 
@@ -274,3 +275,43 @@ def apply_publication_blockers(result: dict[str, Any]) -> dict[str, Any]:
             "source; the numbers are an orientation, not a final valuation.",
         )
     return result
+
+
+def resolve_rates(db, company) -> tuple[float, str, float, str, list[str]]:
+    """(wacc, wacc_source, terminal, terminal_source, inferidos_descartados).
+
+    Prioridad: CalculatedMetric trazable > InferredInput (base + URLs) > tags.
+    Un par que no deje spread minimo wacc - g descarta el inferido (nunca
+    llega a run_dcf, que lanzaria ValueError). ``db=None`` solo en unit tests.
+    """
+    wacc_default = default_wacc(company)
+    terminal_default = default_terminal_growth(company)
+    if db is None:
+        return wacc_default, "tag_default", terminal_default, "tag_default", []
+    service = InferredInputService()
+    traceable = traceable_wacc(db, company)
+    inferred_w = service.latest_valid(db, company.id, "wacc") if traceable is None else None
+    inferred_g = service.latest_valid(db, company.id, "terminal_growth")
+    if traceable is not None:
+        wacc, wacc_source = traceable, "calculated_metric"
+    elif inferred_w is not None:
+        wacc, wacc_source = float(inferred_w.value), "inferred_input"
+    else:
+        wacc, wacc_source = wacc_default, "tag_default"
+    if inferred_g is not None:
+        terminal, terminal_source = float(inferred_g.value), "inferred_input"
+    else:
+        terminal, terminal_source = terminal_default, "tag_default"
+    wacc, terminal, dropped = pick_rate_pair(
+        wacc=wacc,
+        wacc_inferred=wacc_source == "inferred_input",
+        terminal=terminal,
+        terminal_inferred=terminal_source == "inferred_input",
+        default_wacc_value=wacc_default,
+        default_terminal_value=terminal_default,
+    )
+    if "wacc" in dropped:
+        wacc_source = "tag_default"
+    if "terminal_growth" in dropped:
+        terminal_source = "tag_default"
+    return wacc, wacc_source, terminal, terminal_source, dropped
