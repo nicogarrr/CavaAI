@@ -183,21 +183,6 @@ class ModelAliasRegistry:
             )
         return alias.provider_model_id
 
-    def translated_overrides(
-        self,
-        *,
-        provider: str,
-        overrides: Mapping[str, str] | None = None,
-    ) -> dict[str, str]:
-        translated = {
-            alias.internal_alias: alias.provider_model_id
-            for alias in self._by_alias.values()
-            if alias.provider == provider and alias.enabled
-        }
-        for key, model in (overrides or {}).items():
-            translated[key] = self.resolve(model, provider=provider)
-        return translated
-
     def validate_active_routes(
         self,
         routes: Iterable[_ModelRoute],

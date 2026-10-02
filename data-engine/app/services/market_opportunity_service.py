@@ -192,14 +192,8 @@ class MarketOpportunityEngine:
 
         if framework.market_opportunity_mode == "reinvestment_runway":
             status = "runway_review" if source_fact_ids else "insufficient_data"
-            conclusion = (
-                "TAM is secondary for this framework; evaluate reinvestment runway, asset base and capital allocation."
-            )
         else:
             status = "ok" if top_down["status"] in {"partial", "ok"} or bottom_up["status"] == "ok" else "insufficient_data"
-            # `verdict` ya aporta el conclusión en su propio payload; esta
-            # variable intermedia no se consume y por eso ruff la marca.
-            conclusion = verdict["conclusion"]  # noqa: F841
 
         return {
             "status": status,
