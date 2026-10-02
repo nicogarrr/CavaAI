@@ -557,3 +557,38 @@ def test_dataset_declares_every_measured_gap():
         "neg-015-ixbrl-con-scale-y-sign",
     }
     assert measured <= {gap["case"] for gap in gaps}
+    assert all(
+        gap.get("status") == "closed" for gap in gaps if gap["case"] in measured
+    ), "los defectos declarados del FIX5 estan arreglados: sus gaps deben estar cerrados"
+
+
+# --------------------------------------------------------------------------
+# FIX5-10: una sola _period_date y un periodo no parseable FALLA
+# --------------------------------------------------------------------------
+
+
+def test_period_date_is_one_function_and_reports_unparseable_labels():
+    from evals.ingest.ingest_gates import _period_date
+
+    assert _period_date("2025-12-31:FY") == ("2025-12-31", None)
+    assert _period_date("2025-09-30:TTM") == ("2025-09-30", None)
+    assert _period_date("<ingestion-date>") == (None, None)
+    assert _period_date(None) == (None, None)
+    head, problem = _period_date("2025-99-99:FY")
+    assert head is None and "no parseable" in problem
+    head, problem = _period_date("1767225600:FY")
+    assert head is None and "1767225600:FY" in problem
+
+
+def test_no_lookahead_catches_an_impossible_period_label():
+    observed = {"facts": [{**SEC_FACTS[0], "period": "2025-99-99:FY"}]}
+    result = gate_no_lookahead(_case(observed=observed, expected=_full_expected()))
+    assert result["passed"] is False
+    assert "no parseable" in " ".join(result["details"])
+
+
+def test_runner_shares_the_gates_period_date():
+    import scripts.run_ingest_evals as runner
+
+    assert runner._period_date("2025-99-99:FY")[1] is not None
+    assert runner._period_date("2025-12-31:FY") == ("2025-12-31", None)
