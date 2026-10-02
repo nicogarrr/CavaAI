@@ -9,6 +9,11 @@ on:
 permissions:
   contents: read
 
+# shell por defecto: `bash` explicito (= `bash -eo pipefail`) (FIX-3.2).
+defaults:
+  run:
+    shell: bash
+
 concurrency:
   # Sin `${{ github.ref }}` a proposito, y con cancel-in-progress SIEMPRE false.
   # Este workflow corre cada 6 horas y su unico efecto es escribir en el dataset
@@ -24,19 +29,28 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v7
-      # 3.11 a proposito: es el piso de data-engine/pyproject.toml
-      # (requires-python = ">=3.11") y este script no usa nada de 3.12. El resto
-      # de workflows van a 3.12 porque ejecutan ruff/pyright, que declaran
-      # py312.
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # FIX-3.5: "3.12", como el resto de jobs y como exige el contrato de
+      # data-engine (requires-python = ">=3.12,<3.13", .python-version,
+      # ruff.toml py312, pyrightconfig.json 3.12).
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
-          python-version: "3.11"
-      - run: pip install httpx huggingface_hub
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          version: "0.12.5"
+          enable-cache: true
+          cache-dependency-glob: "data-engine/uv.lock"
+      # FIX-3.3/3.4: httpx y huggingface_hub salen de uv.lock (httpx es
+      # dependencia directa; huggingface-hub, transitiva), fijados y con hash.
+      # Antes `pip install httpx huggingface_hub` sin pin: la sync de las 6h
+      # podia correr con un huggingface_hub distinto cada vez.
+      - run: uv sync --frozen --no-install-project
+        working-directory: data-engine
       - name: Sync SEC -> HuggingFace dataset
         env:
           HF_TOKEN: ${{ secrets.HF_MIRROR_TOKEN }}
           HF_DATASET: ${{ vars.HF_MIRROR_DATASET }}
           # Contacto real declarado a la SEC (la SEC banea placeholders).
           SEC_USER_AGENT: ${{ vars.SEC_USER_AGENT }}
-        run: python data-engine/scripts/sec_hf_mirror_sync.py
+        run: uv run --frozen --project data-engine python data-engine/scripts/sec_hf_mirror_sync.py

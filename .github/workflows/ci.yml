@@ -173,6 +173,11 @@ jobs:
           CAVAAI_ENABLE_VECTOR_SEARCH: "1"
           CAVAAI_ENABLE_VECTOR_CHAT: "1"
         run: |
+          # `set -o pipefail` NO es cosmetico: sin el, el codigo de salida de un
+          # `pytest ... | tee log` es el de `tee` (0 siempre) y un test en rojo
+          # pasaria. El `grep` de abajo solo caza los skips; este lignea caza los
+          # fallos. Los dos hacen falta.
+          set -o pipefail
           python -m pytest tests/test_rag_activation.py -v -rs | tee /tmp/rag_activation.log
           if grep -Eq "[0-9]+ skipped" /tmp/rag_activation.log; then
             echo "RAG activation tests skipped: Qdrant service not reachable" >&2
@@ -240,10 +245,11 @@ jobs:
             echo "Se ejecutan:${present:- ninguno}"
             echo "Ausentes (NO ejecutados):${missing:- ninguno}"
           } >> "$GITHUB_STEP_SUMMARY"
-          # Obligatorios: ya estan integrados en main; si se borran o renombran
-          # el CI se pone en rojo en vez de quedar en verde sin evaluar nada.
-          # Anadir aqui rag/llm/ingest/backtest segun entren en main.
-          required="run_valuation_evals run_realized_evals"
+          # Obligatorios: los 6 estan integrados en main y corren verdes en CI
+          # (rag, valuation, llm, ingest, backtest, realized). Si se borra o
+          # renombra uno, el CI se pone en rojo en vez de quedar en verde
+          # evaluando menos (antes solo valuation y realized eran obligatorios).
+          required="run_rag_evals run_valuation_evals run_llm_evals run_ingest_evals run_backtest_evals run_realized_evals"
           for r in $required; do
             if [ ! -f "scripts/$r.py" ]; then
               echo "::error title=Eval obligatorio ausente::scripts/$r.py no existe"
@@ -393,6 +399,32 @@ jobs:
           cache-dependency-path: data-engine/requirements.txt
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -r requirements.txt
+      # Gate de cadena de Alembic, ANTES de tocar la base de datos.
+      #
+      # Sin este paso, el unico sintoma de una cadena rota es el efecto
+      # secundario críptico del paso siguiente: `alembic upgrade head` aborta
+      # con "Multiple head revisions are present for given argument 'head'" y
+      # `Dockerfile.prod` (que hace upgrade antes de uvicorn) deja el contenedor
+      # sin arrancar. El mensaje no dice que fichero duplica el prefijo, ni que
+      # hay que renombrar; este gate lo dice antes y en el sitio.
+      #
+      # Doble cinturon a proposito:
+      #   1. `alembic heads | wc -l` sobre la herramienta real, que es la que
+      #      aborta en produccion.
+      #   2. `test_alembic_chain.py`, que ademas caza lo que `heads` no ve
+      #      (prefijo de 4 digitos duplicado, revision != stem, down_revision
+      #      huerfano, ciclo, rama colgante) y explica el por que.
+      - name: Gate de cadena de Alembic (un solo head)
+        run: |
+          set -euo pipefail
+          heads=$(python -m alembic heads | wc -l)
+          if [ "$heads" -ne 1 ]; then
+            echo "::error::alembic tiene $heads heads; la cadena debe ser lineal"
+            python -m alembic heads
+            exit 1
+          fi
+          python -m pip install --quiet pytest
+          python -m pytest tests/test_alembic_chain.py -q
       - name: Empty database to head
         run: python -m alembic upgrade head
       - name: 0032 rejects a clean downgrade (forward-only)

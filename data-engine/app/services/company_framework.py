@@ -197,6 +197,18 @@ FRAMEWORKS: dict[str, CompanyFramework] = {
         active_modules=COMMON_MODULES + ("market_opportunity", "unit_economics", "segment_model", "macro_sensitivity"),
         required_fact_metrics=("production_volume", "realized_price", "all_in_cost", "reserve_life"),
     ),
+    "biotech_pre_fcf": CompanyFramework(
+        key="biotech_pre_fcf",
+        label="Biotech / AI-biology pre-FCF",
+        primary_question="Can the pipeline or platform reach durable revenue before the cash runway and dilution capacity run out?",
+        market_opportunity_mode="recommended",
+        revenue_drivers=("revenue", "collaboration_revenue", "product_revenue", "milestones", "pipeline_stage"),
+        kpis=("revenue", "cash_burn", "cash_and_investments", "runway", "dilution", "pipeline_stage", "partner_dependence"),
+        unit_economics=("reported_revenue_only",),
+        segment_model=("reported_segments", "product", "collaboration"),
+        binding_constraints=("funding", "clinical_or_technical_validation", "regulation", "partner_dependence", "dilution"),
+        active_modules=COMMON_MODULES + ("market_opportunity", "segment_model", "macro_sensitivity"),
+    ),
     "generic_fcf": CompanyFramework(
         key="generic_fcf",
         label="FCF compounder",
@@ -225,6 +237,10 @@ def resolve_company_framework(company: Company) -> CompanyFramework:
         "PYPL": "platform",
         "UBER": "platform",
         "HIMS": "subscriber",
+        "IBRX": "biotech_pre_fcf",
+        "NAUT": "biotech_pre_fcf",
+        "RXRX": "biotech_pre_fcf",
+        "ABCL": "biotech_pre_fcf",
         "NFLX": "subscriber",
         "NBIS": "capacity_infrastructure",
         "IREN": "capacity_infrastructure",
@@ -235,6 +251,8 @@ def resolve_company_framework(company: Company) -> CompanyFramework:
     }
     if ticker in explicit_tickers:
         return FRAMEWORKS[explicit_tickers[ticker]]
+    if "biotech" in company_type or "biotech" in tags:
+        return FRAMEWORKS["biotech_pre_fcf"]
     if "bank" in company_type or "bank" in model:
         return FRAMEWORKS["bank"]
     if "insur" in company_type or "insur" in model:

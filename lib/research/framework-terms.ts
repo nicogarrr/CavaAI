@@ -9,6 +9,10 @@ export const FRAMEWORK_TERMS: Record<string, string> = {
     arpu: 'ARPU', arr: 'ARR', aum: 'AUM', nav: 'NAV', noi: 'NOI', rpo: 'RPO', sbc: 'compensación en acciones (SBC)',
     tpv: 'volumen total de pagos (TPV)', 'r&d': 'I+D', cet1_ratio: 'ratio CET1', rote: 'ROTE', affo_per_share: 'AFFO por acción',
     // métricas y drivers
+    collaboration_revenue: 'ingresos por colaboraciones', product_revenue: 'ingresos por producto', milestones: 'hitos de colaboración',
+    pipeline_stage: 'fase del pipeline', cash_and_investments: 'caja e inversiones', partner_dependence: 'dependencia de socios',
+    reported_revenue_only: 'solo ingresos reportados (economía por activo: N/D hasta que una fuente la documente)',
+    collaboration: 'colaboración', clinical_or_technical_validation: 'validación clínica o técnica',
     active_accounts: 'cuentas activas', adjacent_products: 'productos adyacentes', advertising: 'publicidad',
     all_in_cost: 'coste total (all-in)', asset_management: 'gestión de activos', asset_value: 'valor de los activos', asset_values: 'valor de los activos',
     backlog: 'cartera de pedidos', backlog_conversion: 'conversión de la cartera de pedidos', book_value: 'valor contable',
@@ -70,6 +74,7 @@ export const FRAMEWORK_LABELS: Record<string, string> = {
     'Insurance underwriter': 'Aseguradora',
     'REIT / property owner': 'SOCIMI / propietario de inmuebles',
     'Commodity / royalty / resource': 'Materias primas / royalties / recursos',
+    'Biotech / AI-biology pre-FCF': 'Biotecnología / IA-biología pre-FCF',
     'FCF compounder': 'Compounder de flujo de caja libre',
 };
 

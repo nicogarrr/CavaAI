@@ -8,7 +8,8 @@ name: Coverage
 # coincide con el de `backend`, asi que mezclarlos haria la linea base fragil.
 #
 # El gate es fail-closed y fail-closed tambien en la explicacion: si falla, el
-# mensaje dice que paquete bajo y cuantos puntos. Ver data-engine/COVERAGE.md.
+# mensaje dice que paquete bajo y cuantos puntos. Ver docs/COVERAGE.md, y
+# data-engine/COVERAGE.md como enlace a ese documento.
 
 on:
   push:
@@ -24,9 +25,22 @@ on:
 permissions:
   contents: read
 
+# shell por defecto: `bash` explicito (= `bash --noprofile --norc -eo pipefail
+# {0}`). Sin `shell:`, GitHub usa `bash -e {0}` (SIN pipefail) y cualquier
+# `cmd | tee log` devuelve el exit code de `tee` (FIX-3.2).
+defaults:
+  run:
+    shell: bash
+
 concurrency:
   group: coverage-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # PR -> true: el run viejo ya no describe el codigo que se revisa.
+  # push -> false: este workflow PUBLICA el informe de cobertura como
+  #   artefacto (retention 14 dias). Cancelar un push a mitad deja el commit
+  #   sin informe y sin evidencia de que el gate se ejecuto: la evidencia
+  #   publicada no se cancela (mismo criterio que restore-drill y sbom-scan).
+  #   El coste es que una rafaga de pushes encole runs completos; se acepta.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   coverage:
@@ -51,44 +65,65 @@ jobs:
       CAVAAI_ENABLE_VECTOR_SEARCH: "0"
       CAVAAI_ENABLE_VECTOR_CHAT: "0"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-python@v7
+      # setup-python SOLO aporta el interprete 3.12; instalar lo hace uv, con
+      # el lock (FIX-3.3/3.4). Sin `cache: pip` ni pins de herramientas: el
+      # lock trae ruff==0.16.10 y pyright==1.1.414 via el extra `dev`.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: data-engine/requirements.txt
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          version: "0.12.5"
+          enable-cache: true
+          cache-dependency-glob: "data-engine/uv.lock"
 
       # cache_dir de [tool.pytest.ini_options] es storage/.pytest_cache.
+      # La cache se keya por uv.lock (quien decide que se instala), no por
+      # requirements.txt.
       - name: Cache pytest and coverage artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             data-engine/storage/.pytest_cache
             data-engine/htmlcov
-          key: coverage-${{ runner.os }}-${{ hashFiles('data-engine/requirements.txt') }}
+          key: coverage-${{ runner.os }}-${{ hashFiles('data-engine/uv.lock') }}
           restore-keys: |
             coverage-${{ runner.os }}-
 
-      - run: python -m pip install --upgrade pip
+      # Instalacion congelada desde uv.lock (FIX-3.3). --extra test trae
+      # pytest-cov (que a proposito NO esta en requirements.txt: el job
+      # dep-parity exige paridad exacta y bidireccional entre
+      # [project].dependencies y requirements.txt, y pytest-cov vive en
+      # [project.optional-dependencies]). --extra dev trae ruff y pyright.
+      - run: uv sync --frozen --extra test --extra dev --no-install-project
 
-      # Mismo instalador que ci.yml, mas pytest-cov. pytest-cov va aqui y no en
-      # requirements.txt a proposito: requirements.txt y
-      # pyproject[project].dependencies estan atados por el job `dep-parity`
-      # (sync_requirements.py --check exige paridad exacta y BIDIRECCIONAL) y
-      # pytest-cov es herramienta de desarrollo, no dependencia de runtime.
-      # INTEGRACION PENDIENTE: anadir pytest-cov a
-      # [project.optional-dependencies].test en data-engine/pyproject.toml para
-      # que `pip install -e .[test]` traiga el gate; hasta entonces la linea de
-      # install de este workflow y la de CONTRIBUTING son la unica via.
-      - run: python -m pip install -r requirements.txt pytest ruff pyright pytest-cov
-
+      # PEAJE DOCUMENTADO (FIX-3.10, decision (a)): la suite entera de pytest
+      # corre DOS veces por push y por PR -- aqui (instrumentada, branch=True)
+      # y en el job `backend` de ci.yml (sin instrumentar). Medido:
+      #   - docs/COVERAGE.md: 12 min (724 s) la suite con cobertura en Windows.
+      #   - job `backend` de ci.yml: ~11 min la suite sin instrumentar.
+      #   => ~24 min de runner duplicados por push y por PR.
+      # Se mantiene asi a proposito (feedback desacoplado + medicion
+      # determinista con su propia linea base), pero el entorno ya NO es tan
+      # distinto como justificaba C5: ambos jobs fijan APP_ENV=test,
+      # CAVAAI_ENABLE_VECTOR_*=0 e instalan AHORA el mismo uv.lock; solo
+      # difiere DATABASE_URL (sqlite de cobertura vs sqlite de CI) y la
+      # instrumentacion. Si algun dia se quiere ahorrar el duplicado, el
+      # candidato es fusionar el gate de cobertura como paso final de
+      # `backend` con un unico `pytest --cov`, manteniendo
+      # run_coverage_gate.py como ratchet. NO se hace aqui (FIX-3: solo
+      # workflows, y fusionar cambia el contrato del gate).
+      # decision (b) pendiente: partir Playwright entre e2e y browser-e2e
+      # (--grep @ui / --grep-invert @ui) exige etiquetar e2e/*.spec.ts, que
+      # esta fuera de la propiedad de este cambio. Reportado.
       - name: Coverage gate (pytest --cov + ratchet por paquete)
-        run: python scripts/run_coverage_gate.py
+        run: uv run --frozen python scripts/run_coverage_gate.py
 
       - name: Informe legible para logs
         if: ${{ always() }}
-        run: python -m coverage report --rcfile=.coveragerc --show-missing || true
+        run: uv run --frozen python -m coverage report --rcfile=.coveragerc --show-missing || true
 
       # Sin secrets ni tokens: el informe se publica siempre como artefacto, que
       # es lo que cualquiera puede leer. Si algun dia se quiere subir a un
@@ -96,7 +131,7 @@ jobs:
       # paso correspondiente; hasta entonces no se pone ningun token.
       - name: Publish coverage report artifact
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: coverage-report
           path: |
