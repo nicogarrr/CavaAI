@@ -18,7 +18,7 @@ import test from 'node:test';
 
 const MAX_TRACKED_BYTES = 5 * 1024 * 1024;
 
-function git(args, opts = {}) {
+function git(args: string[], opts: Record<string, unknown> = {}) {
   return execFileSync('git', args, { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024, ...opts });
 }
 
@@ -30,7 +30,7 @@ const tracked = () => git(['ls-files', '-z']).split('\0').filter(Boolean);
  * is what we need: we are asking "if someone committed this, would it be
  * caught?", not "is this file present right now?".
  */
-function isIgnored(path) {
+function isIgnored(path: string) {
   try {
     git(['check-ignore', '--no-index', '-q', path]);
     return true;
@@ -42,7 +42,7 @@ function isIgnored(path) {
 // ------------------------------------------------------------ pure helpers
 
 /** Tracked paths matching any of the forbidden residue patterns. */
-export function findForbiddenPaths(paths) {
+export function findForbiddenPaths(paths: string[]) {
   const RULES = [
     { id: 'cache-dir', re: /(^|\/)__pycache__(\/|$)/ },
     { id: 'cache-dir', re: /(^|\/)\.pytest_cache(\/|$)/ },
@@ -73,12 +73,12 @@ export function findForbiddenPaths(paths) {
 }
 
 /** Scratch debug scripts at the repo root. `dbg*.js` is the known offender. */
-export function findScratchScripts(paths) {
+export function findScratchScripts(paths: string[]) {
   return paths.filter((p) => !p.includes('/') && /^dbg\d*\.[cm]?js$/i.test(p));
 }
 
 /** Tracked blobs over the size budget, biggest first. */
-export function findOversized(entries, maxBytes = MAX_TRACKED_BYTES) {
+export function findOversized(entries: Array<[number, string]>, maxBytes = MAX_TRACKED_BYTES) {
   return entries
     .filter(([size]) => size > maxBytes)
     .sort((a, b) => b[0] - a[0])
@@ -145,7 +145,7 @@ test('E6/H4: storage/ (c raw) no esta versionado', () => {
 });
 
 test(`E6/H5: ningun fichero versionado supera ${MAX_TRACKED_BYTES / 1048576} MB`, () => {
-  const entries = [];
+  const entries: Array<[number, string]> = [];
   for (const p of tracked()) {
     try {
       entries.push([statSync(p).size, p]);
@@ -213,8 +213,8 @@ const KNOWN_DOCKERIGNORE_GAPS = new Set([
   'playwright-report/index.html',
 ]);
 
-function dockerignoreCovers(sample, rules) {
-  return rules.some((line) => {
+function dockerignoreCovers(sample: string, rules: string[]): boolean {
+  return rules.some((line: string) => {
     const re = new RegExp(
       `^${line
         .replace(/[.+^${}()|[\]\\]/g, '\\$&')
@@ -291,7 +291,7 @@ test('E6/N3: el detector de residuo muerde (caso negativo)', () => {
 });
 
 test('E6/N4: el detector de tamano muerde (caso negativo)', () => {
-  const entries = [
+  const entries: Array<[number, string]> = [
     [6 * 1024 * 1024, 'data-engine/data/esef_blob.bin'],
     [59 * 1024 * 1024, 'data-engine/data/big_esef.htm'],
     [1024, 'README.md'],

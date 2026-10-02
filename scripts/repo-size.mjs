@@ -21,26 +21,6 @@ const topIdx = args.indexOf('--top');
 const TOP = topIdx === -1 ? 20 : Number(args[topIdx + 1] ?? 20);
 
 const IGNORED_DIRS = new Set(['.git', 'node_modules', '.venv', 'venv', '.next', '.next-e2e']);
-/** Directories in the index that are generated and safe to exclude from a
- *  "what does a developer actually clone and read" answer. */
-const SKIP_DIRS = new Set([
-  '.git',
-  'node_modules',
-  '.venv',
-  'venv',
-  '.next',
-  '.next-e2e',
-  '__pycache__',
-  '.pytest_cache',
-  '.ruff_cache',
-  '.mypy_cache',
-  'htmlcov',
-  'coverage',
-  'test-results',
-  'playwright-report',
-  'storage',
-]);
-
 function human(bytes) {
   const units = ['B', 'kB', 'MB', 'GB'];
   let v = bytes;
