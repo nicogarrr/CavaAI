@@ -31,54 +31,6 @@ DEUDA_CONOCIDA = [
     "revision '0016_principle_jobs_snapshots' != fichero '0016_principle_jobs_and_portfolio_snapshots'",
 ]
 
-# ---------------------------------------------------------------------
-# PENDIENTE DE ENCADENAR AL MERGEAR (no es deuda, es una instruccion).
-#
-# En el worktree principal hay un 0047_instrument_references.py SIN COMMITEAR
-# (autoria del agente que trabaja en chore/slop-dead-code-backend), declarado
-# asi:
-#
-#     revision = "0047_instrument_references"
-#     down_revision = "0046_inferred_inputs"
-#
-# Al mergearlo aqui tal cual rompe la cadena por partida doble: el prefijo
-# 0047 ya lo tiene 0047_thesis_backtest, y su down_revision 0046_inferred_inputs
-# convierte la cadena en una rama (dos hijos de 0046). Con este gate, el fallo
-# que sale es exactamente:
-#
-#     - hay 2 heads (0047_instrument_references, 0049_backend_metrics); debe haber exactamente 1
-#     - la cadena se ramifica en '0046_inferred_inputs': down_revision de
-#       0047_instrument_references, 0047_thesis_backtest
-#     - prefijo 0047 repetido en 0047_instrument_references.py, 0047_thesis_backtest.py
-#
-# Sin el gate, lo unico que se ve es el efecto secundario de
-# `alembic upgrade head` ("Multiple head revisions are present..."), que
-# deja el contenedor de produccion sin arrancar sin decir que fichero sobra.
-#
-# Encadenado exacto cuando ese fichero entre:
-#
-#     git mv data-engine/alembic/versions/0047_instrument_references.py \
-#            data-engine/alembic/versions/0050_instrument_references.py
-#     # cabeceras: revision = "0050_instrument_references"
-#     #            down_revision = "0049_backend_metrics"
-#
-# Ojo al orden de llegada: 0050 es el siguiente libre HOY (head 0049). Si
-# entra antes otra migracion, este pasa a 0051 y su down_revision al head que
-# exista entonces, no a 0049. La regla la impone el propio test: revision ==
-# stem del fichero, prefijo de 4 digitos unico y un solo head.
-# ---------------------------------------------------------------------
-MIGRACION_PENDIENTE_DE_ENCADENAR = (
-    "0047_instrument_references.py (sin commitear en el worktree principal) "
-    "llega con down_revision '0046_inferred_inputs': hay que renombrarlo a "
-    "0050_instrument_references y encadenarlo con down_revision "
-    "'0049_backend_metrics'."
-)
-
-STEM_PENDIENTE_DE_ENCADENAR = "0047_instrument_references"
-HINT_MIGRACION_PENDIENTE = (
-    "PENDIENTE DE ENCADENAR: " + MIGRACION_PENDIENTE_DE_ENCADENAR + " Ver el bloque de comentario de este modulo."
-)
-
 _PATRON_PREFIJO = re.compile(r"^\d{4}_.+")
 _AUSENTE = object()
 
@@ -147,11 +99,6 @@ def violaciones_cadena(versions_dir: Path) -> list[str]:
     for prefijo, nombres in sorted(prefijos.items()):
         if len(nombres) > 1:
             problemas.append(f"prefijo {prefijo} repetido en {', '.join(sorted(nombres))}")
-            # Si el culpable es la migracion pendiente documentada arriba, el
-            # gate dice QUE hacer en vez de solo que hay dos ficheros con el
-            # mismo prefijo (que es lo que hace perder el rato a quien llega).
-            if any(stems[nombre] == STEM_PENDIENTE_DE_ENCADENAR for nombre in nombres):
-                problemas.append(HINT_MIGRACION_PENDIENTE)
 
     revisiones: dict[str, Path] = {}
     for path, _stem, revision, _down in entradas:
@@ -255,27 +202,7 @@ def test_prefijo_de_4_digitos_duplicado_se_detecta(tmp_path):
     assert any("prefijo 0001 repetido" in p for p in problemas), problemas
 
 
-def test_el_prefijo_duplicado_dice_QUE_hacer_si_es_la_migracion_pendiente(tmp_path):
-    # El caso real de este gate: la migracion de instrument_references llega
-    # con el stem y el down_revision de su worktree de origen. «Prefijo 0047
-    # repetido» no basta para arreglarlo; el gate tiene que recitar el
-    # encadenado (0050 + down_revision 0049_backend_metrics).
-    _migracion_sintetica(tmp_path, "0047_thesis_backtest", "0047_thesis_backtest", "0046_inferred_inputs")
-    _migracion_sintetica(
-        tmp_path,
-        STEM_PENDIENTE_DE_ENCADENAR,
-        STEM_PENDIENTE_DE_ENCADENAR,
-        "0046_inferred_inputs",
-    )
-    problemas = violaciones_cadena(tmp_path)
-    assert any("prefijo 0047 repetido" in p for p in problemas), problemas
-    assert any("0050_instrument_references" in p for p in problemas), problemas
-    assert any("0049_backend_metrics" in p for p in problemas), problemas
-
-
-def test_el_hint_no_aparece_en_una_cadena_limpia(tmp_path):
-    # El hint es un diagnostico, no una regla: en una cadena valida (y en la
-    # real) no puede ensuciar la lista de problemas.
+def test_una_cadena_limpia_no_da_problemas(tmp_path):
     _cadena_valida(tmp_path)
     assert violaciones_cadena(tmp_path) == []
 
