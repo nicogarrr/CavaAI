@@ -51,7 +51,22 @@ def _resolve_wacc(db, company) -> tuple[float, str]:
     wacc_traceable = traceable_wacc(db, company) if db is not None else None
     if wacc_traceable is not None:
         return wacc_traceable, "calculated_metric"
+    if db is not None:
+        # INFERIDO documentado (base + URLs): vale como numero del modelo pero
+        # no como WACC trazable, asi que el blocker de publicacion se mantiene.
+        inferred = InferredInputService().latest_valid(db, company.id, "wacc")
+        if inferred is not None:
+            return float(inferred.value), "inferred_input"
     return default_wacc(company), "tag_default"
+
+
+def _resolve_terminal(db, company) -> float:
+    """g terminal: InferredInput documentado si existe; si no, politica por tags."""
+    if db is not None:
+        inferred = InferredInputService().latest_valid(db, company.id, "terminal_growth")
+        if inferred is not None:
+            return float(inferred.value)
+    return default_terminal_growth(company)
 
 
 class PreRevenueScenarioEngine(ValuationEngine):
@@ -163,7 +178,7 @@ class PreRevenueScenarioEngine(ValuationEngine):
         # modelo de funding-gap/dilucion es el que informa.
         margin = min(margin, 0.40)
         wacc, wacc_source = _resolve_wacc(context.db, company)
-        terminal = default_terminal_growth(company)
+        terminal = _resolve_terminal(context.db, company)
         net_debt = snapshot.value("net_debt")
         if net_debt is None:
             # El puente de equity es EV - net_debt. Heredarlo como 0.0 no dice
@@ -477,7 +492,7 @@ class PreRevenueScenarioEngine(ValuationEngine):
         growth = max(min(growth, 0.60), -0.15)
         assumed_margin_base = float(inferred.value) if inferred is not None else 0.15
         wacc, wacc_source = _resolve_wacc(db, company)
-        terminal = default_terminal_growth(company)
+        terminal = _resolve_terminal(db, company)
         net_debt = snapshot.value("net_debt")
         net_debt_missing = net_debt is None
         # El puente de equity sigue siendo EV - net_debt. Sin el dato, el

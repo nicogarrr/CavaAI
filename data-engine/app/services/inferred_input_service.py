@@ -17,7 +17,12 @@ from sqlalchemy.orm import Session
 from app.models import Company, InferredInput
 
 # clave -> (min exclusivo, max inclusivo) del valor aceptado.
-ALLOWED_KEYS: dict[str, tuple[float, float]] = {"fcf_margin": (-1.0, 0.60)}
+ALLOWED_KEYS: dict[str, tuple[float, float]] = {
+    "fcf_margin": (-1.0, 0.60),
+    # WACC y g terminal: solo cuando no hay CalculatedMetric/dato oficial.
+    "wacc": (0.04, 0.30),
+    "terminal_growth": (0.0, 0.05),
+}
 MIN_BASE_CHARS = 20
 MAX_URLS = 10
 

@@ -31,6 +31,7 @@ from app.services.driver_assumption_service import DriverAssumptionService
 from app.services.driver_dimensions import driver_metadata
 from app.services.driver_operating_model import DriverOperatingModel
 from app.services.fundamental_model_repository import FundamentalModelRepository
+from app.services.inferred_input_service import InferredInputService
 from app.services.market_opportunity_service import MarketOpportunityEngine
 from app.valuation.engines.base import default_terminal_growth, default_wacc
 from app.valuation.reverse_dcf import ReverseDCFInputs, solve_required_growth
@@ -66,9 +67,10 @@ class Assumption:
     basis: str
     source_fact_ids: list[int]
     confidence: float
+    source_urls: tuple[str, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "value": self.value,
             "unit": self.unit,
             "source_type": self.source_type,
@@ -76,6 +78,10 @@ class Assumption:
             "source_fact_ids": self.source_fact_ids,
             "confidence": self.confidence,
         }
+        if self.source_urls:
+            # INFERIDO documentado (InferredInput): URLs https de la base.
+            out["source_urls"] = list(self.source_urls)
+        return out
 
 
 def _float(value: Any) -> float | None:
@@ -898,6 +904,25 @@ class LongTermModelService:
                 "source_fact_ids": list(wacc_metric.source_fact_ids or []),
                 "calculation_trace": wacc_metric.calculation_trace or {},
             }
+        elif (
+            wacc_inferred := InferredInputService().latest_valid(db, company.id, "wacc")
+        ) is not None:
+            wacc = Assumption(
+                value=_float(wacc_inferred.value),
+                unit="decimal",
+                source_type="inferred_input",
+                basis=f"InferredInput #{wacc_inferred.id}: {wacc_inferred.base}",
+                source_fact_ids=[],
+                confidence=0.5,
+                source_urls=tuple(wacc_inferred.source_urls or ()),
+            )
+            wacc_trace = {
+                "status": "inferred_input",
+                "calculated_metric_id": None,
+                "inferred_input_id": wacc_inferred.id,
+                "source_fact_ids": [],
+                "source_urls": list(wacc_inferred.source_urls or []),
+            }
         else:
             wacc = Assumption(
                 value=default_wacc(company),
@@ -912,14 +937,26 @@ class LongTermModelService:
                 "calculated_metric_id": None,
                 "source_fact_ids": [],
             }
-        terminal = Assumption(
-            value=default_terminal_growth(company),
-            unit="decimal",
-            source_type="model_policy",
-            basis="terminal growth policy from company framework",
-            source_fact_ids=[],
-            confidence=0.40,
-        )
+        terminal_inferred = InferredInputService().latest_valid(db, company.id, "terminal_growth")
+        if terminal_inferred is not None:
+            terminal = Assumption(
+                value=_float(terminal_inferred.value),
+                unit="decimal",
+                source_type="inferred_input",
+                basis=f"InferredInput #{terminal_inferred.id}: {terminal_inferred.base}",
+                source_fact_ids=[],
+                confidence=0.5,
+                source_urls=tuple(terminal_inferred.source_urls or ()),
+            )
+        else:
+            terminal = Assumption(
+                value=default_terminal_growth(company),
+                unit="decimal",
+                source_type="model_policy",
+                basis="terminal growth policy from company framework",
+                source_fact_ids=[],
+                confidence=0.40,
+            )
 
         capex_intensity = ratio_assumption("capex_to_revenue", "capital_expenditure", "revenue")
         if capex_intensity.value is not None:
