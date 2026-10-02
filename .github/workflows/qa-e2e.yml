@@ -64,9 +64,15 @@ jobs:
 
       - name: Resumen del run
         if: always()
+        env:
+          E2E_USER_EMAIL: ${{ secrets.E2E_USER_EMAIL }}
+          E2E_USER_PASSWORD: ${{ secrets.E2E_USER_PASSWORD }}
         run: |
           {
             echo "### QA e2e (solo lectura) contra ${E2E_BASE_URL:-https://cavaai.vercel.app}"
+            if [ -z "$E2E_USER_EMAIL" ] || [ -z "$E2E_USER_PASSWORD" ]; then
+              echo "**Rutas autenticadas NO ejecutadas: faltan los secrets E2E_USER_EMAIL / E2E_USER_PASSWORD (solo se probaron las paginas publicas).**"
+            fi
             echo "Resultado: salida $(cat exit.code 2>/dev/null || echo n/d)"
             echo
             echo "#### Problemas de UI detectados"
@@ -86,6 +92,7 @@ jobs:
           name: qa-e2e-resultados
           path: qa-e2e/test-results
           if-no-files-found: ignore
+          retention-days: 3
 
       - name: Falla si el e2e falla
         run: test "$(cat exit.code)" = "0"

@@ -1,12 +1,13 @@
 import { test } from '@e2e-dev/web';
 import { z } from 'zod';
 
-// Pasada de SOLO LECTURA con la cuenta desechable "Instinct Audit" (datos ficticios).
+// Pasada de SOLO LECTURA con la cuenta que indiquen los secrets (la cuenta real de Nico, con su OK).
 // Las credenciales llegan por secrets del repo (E2E_USER_EMAIL / E2E_USER_PASSWORD),
 // nunca estan en el codigo ni en los logs. Sin ellas, el fichero se salta de forma
 // explicita (el resumen lo dice) en vez de pasar en verde sin haber mirado nada.
 const EMAIL = process.env.E2E_USER_EMAIL ?? '';
 const PASSWORD = process.env.E2E_USER_PASSWORD ?? '';
+const LOGIN_PATH = '/api/auth/sign-in/email';
 
 const RULES =
   'READ-ONLY. Only navigate, click tabs and read. Never create, edit, delete, import, ' +
@@ -29,11 +30,49 @@ test.describe('rutas autenticadas (solo lectura)', () => {
   test.skip(!EMAIL || !PASSWORD, 'Faltan los secrets E2E_USER_EMAIL / E2E_USER_PASSWORD: no se ejecuta.');
 
   test.beforeEach(async ({ app, browser }) => {
+    // BLOQUEO MECANICO de escritura (la sesion es la cuenta real de Nico contra
+    // produccion): todo metodo distinto de GET/HEAD/OPTIONS se aborta en el
+    // contexto del navegador, salvo el POST del login. Un clic destructivo del
+    // agente falla aunque lo intente; el prompt de solo lectura es la segunda capa.
+    await browser.route('**/*', async (route) => {
+      const req = route.request;
+      const method = req.method.toUpperCase();
+      const path = new URL(req.url).pathname;
+      const isLogin = method === 'POST' && path === LOGIN_PATH;
+      if (['GET', 'HEAD', 'OPTIONS'].includes(method) || isLogin) {
+        await route.continue();
+        return;
+      }
+      console.log(`[bloqueado] ${method} ${path}`);
+      await route.abort();
+    });
     await app.open('/sign-in');
     await browser.getByPlaceholder('email@ejemplo.com').fill(EMAIL);
     await browser.getByPlaceholder('Introduce tu contraseña').fill(PASSWORD);
     await browser.getByRole('button', { name: /iniciar sesi|entrar|acceder/i }).click();
     await browser.waitForURL((url) => !url.pathname.startsWith('/sign-in'), { timeout: 30_000 });
+  });
+
+  // Prueba controlada del bloqueo: POST/PUT/DELETE a una ruta que no existe. Si el
+  // bloqueo funciona, fetch falla en el navegador; si no, el servidor respondera 404
+  // (sin efecto). Debe quedar bloqueado en cada run.
+  test('el bloqueo de escritura aborta POST, PUT y DELETE', async ({ browser }) => {
+    const results = await browser.evaluate(async () => {
+      const out: Record<string, string> = {};
+      for (const method of ['POST', 'PUT', 'DELETE']) {
+        try {
+          const r = await fetch('/api/qa-write-probe', { method });
+          out[method] = `pasa:${r.status}`;
+        } catch {
+          out[method] = 'bloqueado';
+        }
+      }
+      return out;
+    });
+    console.log('[bloqueo-escritura]', JSON.stringify(results));
+    for (const method of ['POST', 'PUT', 'DELETE']) {
+      if (results[method] !== 'bloqueado') throw new Error(`${method} NO fue bloqueado: ${results[method]}`);
+    }
   });
 
   const scenarios: Array<{ tag: string; path: string; task: string }> = [
@@ -58,7 +97,7 @@ test.describe('rutas autenticadas (solo lectura)', () => {
     test(`${s.tag}: navega pestanas y detecta problemas`, async ({ app, agent }) => {
       await app.open(s.path);
       await agent.act(`${RULES} ${s.task}`);
-      await agent.assert('the page is not showing a crash, a blank screen or an unhandled error');
+      await agent.assert('the page is not showing a crash, a blank screen or an unhandled error', { screenshot: false });
       const info = await agent.extract(REPORT, { schema: FINDINGS });
       console.log(`[${s.tag}]`, JSON.stringify(info.problems.length ? info.problems : 'ninguno'));
     });
