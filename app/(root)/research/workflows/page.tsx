@@ -73,7 +73,7 @@ export default async function ResearchWorkflowsPage() {
 
               <div className="mb-4 space-y-1">
                 {workflow.steps.map((step, index) => (
-                  <div key={`${workflow.name}-${index}`} className="flex items-start gap-2 text-xs">
+                  <div key={`${workflow.name}-${step}`} className="flex items-start gap-2 text-xs">
                     <span className="mt-0.5 font-mono text-teal-300/60">{String(index + 1).padStart(2, '0')}</span>
                     <span className="min-w-0 break-all font-mono text-gray-400">{step}</span>
                   </div>

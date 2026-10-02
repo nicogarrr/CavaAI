@@ -67,8 +67,8 @@ export default async function SavedScreenResultsPage({ params }: { params: Promi
               </p>
             ) : null}
             <div className="mt-3 grid gap-2 md:grid-cols-2">
-              {row.criteria.map((criterion, index) => (
-                <div className="rounded-md border border-gray-800 p-3 text-xs" key={index}>
+              {row.criteria.map((criterion) => (
+                <div className="rounded-md border border-gray-800 p-3 text-xs" key={`${criterion.left} ${criterion.operator} ${criterion.right}`}>
                   <span className={criterion.passed ? 'text-teal-300' : 'text-red-300'}>
                     {criterion.passed ? 'CUMPLE' : 'NO CUMPLE'}
                   </span>

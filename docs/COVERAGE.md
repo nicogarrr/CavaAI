@@ -83,6 +83,25 @@ la suite sin instrumentar anda en el mismo orden de magnitud. En un runner
 `ubuntu-latest` de GitHub se espera menos, pero el job tiene `timeout-minutes: 45`
 por si acaso.
 
+### El peaje de la suite doble (dicho, no escondido)
+
+La suite entera de pytest corre **DOS veces** por push y por PR: una en
+`coverage.yml` (instrumentada, `branch=True`) y otra en el job `backend` de
+`ci.yml` (sin instrumentar). Medido: **~12 min** con cobertura (los 724 s de
+arriba) y **~11 min** la suite sin instrumentar => **~24 min de runner
+duplicados por push y por PR** (FIX-3.10, decision (a), documentado en
+`.github/workflows/coverage.yml`).
+
+Se mantiene así a propósito: feedback desacoplado (un PR que solo toca
+`data-engine/` no espera la instrumentación de todos los demás) y una medición
+determinista con su propia línea base. Desde INT-E los dos jobs ya fijan el
+mismo entorno (`APP_ENV=test`, `CAVAAI_ENABLE_VECTOR_* = 0`, el mismo
+`uv.lock`): solo difieren `DATABASE_URL` y la instrumentación. Si algún día se
+quiere ahorrar el duplicado, el candidato es fusionar el gate de cobertura como
+paso final de `backend` con un único `pytest --cov`, manteniendo
+`run_coverage_gate.py` como ratchet. No se hace automáticamente: fusionar cambia
+el contrato del gate.
+
 ## Umbrales: por que son estos
 
 El umbral **no es un objetivo**: es `floor(linea_base) - max_drop_points`, con
@@ -301,11 +320,17 @@ Lo que sigue pendiente:
 
 ## Nota sobre fallos preexistentes
 
-En el commit base (`0be7186c`) la suite ya venia con **14 tests rojos**, sin
-relacion con la cobertura: 13 en `tests/test_retitle_sec_news_es.py` (por
-`os.O_DIRECTORY`, que no existe en `win32`) y 1 en
-`tests/test_company_snapshot_batch.py` (comparacion de `recent_changes` que no
-coincide). Se reproducen igual con `python -m pytest` sin `--cov`. El job de
-cobertura saldra en rojo por ellos hasta que se arreglen, con el informe de
-cobertura igualmente impreso antes de fallar: el gate imprime la medicion y luego
-falla, nunca al reves.
+En el commit base (`0be7186c`) la suite ya venia con **14 tests rojos** que son
+**solo-Windows**: en `ubuntu-latest` (todos los runners de CI, incluido el job
+de cobertura) **pasan**. Se reproducen igual con `python -m pytest` sin `--cov`
+en un venv de Windows:
+
+- **13** en `tests/test_retitle_sec_news_es.py`: mueren en el `os.O_DIRECTORY`
+  de `data-engine/scripts/retitle_sec_news_es.py`, que no existe en `win32`.
+- **1** en `tests/test_company_snapshot_batch.py`: comparacion de
+  `recent_changes` que no coincide fuera de Linux.
+
+No son fallos de CI y no deben confundirse con una caida del gate de cobertura:
+quien corra la suite en Windows los vera en rojo hasta que se hagan portables
+(anotado como TODO(#fixes) en `ci.yml`). El job de cobertura imprime la medicion
+y luego falla si el numero bajo, nunca al reves.

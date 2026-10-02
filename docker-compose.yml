@@ -7,7 +7,10 @@ services:
   # MongoDB - auth and existing app data
   # ==========================================
   mongodb:
-    image: mongo:7
+    # Etiqueta + digest del manifest list: móvil sin él (el mismo compose
+    # levanta un SBOM distinto cada día). Digest de
+    # docker buildx imagetools inspect mongo:7.
+    image: mongo:7@sha256:1f995ad6fdb93244a1addab1b58f934a0bc2f5643c38e02f5e9d7f0c7d227a7b
     container_name: cavaai-mongodb
     restart: unless-stopped
     ports:
@@ -28,7 +31,8 @@ services:
   # PostgreSQL - research canonical store
   # ==========================================
   postgres:
-    image: postgres:17
+    # Digest del manifest list: docker buildx imagetools inspect postgres:17.
+    image: postgres:17@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f
     container_name: cavaai-postgres
     restart: unless-stopped
     ports:
@@ -52,7 +56,8 @@ services:
   # Redis - cache, locks, budgets and jobs
   # ==========================================
   redis:
-    image: redis:7-alpine
+    # Digest del manifest list: docker buildx imagetools inspect redis:7-alpine.
+    image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
     container_name: cavaai-redis
     restart: unless-stopped
     ports:
@@ -67,7 +72,8 @@ services:
   # Qdrant - vector store for RAG
   # ==========================================
   qdrant:
-    image: qdrant/qdrant:v1.12.5
+    # Digest del manifest list: docker buildx imagetools inspect qdrant/qdrant:v1.12.5.
+    image: qdrant/qdrant:v1.12.5@sha256:05fecce7dce45d1254e0468bc037e8210e187fd56fa847688b012293d5f08aae
     container_name: cavaai-qdrant
     restart: unless-stopped
     ports:
@@ -89,6 +95,9 @@ services:
   # MinIO - local S3-compatible raw document store
   # ==========================================
   minio:
+    # TODO(digest): quay.io exige token (401 a HEAD anónimo) y desde este entorno
+    # no se pudo resolver el manifest list. Tag de release ya inmutable; cuando
+    # haya acceso: docker buildx imagetools inspect quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
     image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
     container_name: cavaai-minio
     restart: unless-stopped
@@ -304,6 +313,12 @@ services:
       dockerfile: Dockerfile.dev
     container_name: cavaai-frontend
     restart: unless-stopped
+    # El uid sale del HOST, no de la imagen: `.:/app` es un bind mount con el
+    # ownership del host y `npm run dev` escribe .next/ sobre él. Sin esto el
+    # frontend corre como root y todo lo que toca (incluido el código) queda
+    # root-owned. Dockerfile.dev pone USER node como default para `docker run`
+    # a pelo; esta linea es la que decide en compose.
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     ports:
       - "3000:3000"
     volumes:
@@ -345,7 +360,7 @@ services:
   # ==========================================
   clickhouse:
     profiles: ["observability"]
-    image: clickhouse/clickhouse-server:24.8
+    image: clickhouse/clickhouse-server:24.8@sha256:1ffa82edee000a42c09313bd9f1293d94c570aee74babc1b3ca9983a35fa597b
     container_name: cavaai-clickhouse
     restart: unless-stopped
     user: "101:101"
@@ -366,7 +381,7 @@ services:
 
   langfuse-worker:
     profiles: ["observability"]
-    image: langfuse/langfuse-worker:3
+    image: langfuse/langfuse-worker:3@sha256:8a28c946bb5401eef488153fa294db5a79bd99dd5c90db8e4d39559374c9ebd3
     container_name: cavaai-langfuse-worker
     restart: unless-stopped
     depends_on:
@@ -406,7 +421,7 @@ services:
 
   langfuse-web:
     profiles: ["observability"]
-    image: langfuse/langfuse:3
+    image: langfuse/langfuse:3@sha256:a343f64e035eb01aeea358703a0428945d909d01e19452509a5a830862dda878
     container_name: cavaai-langfuse-web
     restart: unless-stopped
     depends_on:
