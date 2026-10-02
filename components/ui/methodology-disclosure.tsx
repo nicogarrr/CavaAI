@@ -4,8 +4,7 @@ import type { ReactNode } from 'react';
 /**
  * Muro de metodología colapsado (quick win UX 2): la página abre con el
  * contenido y la explicación queda a un toque. <details> nativo: funciona
- * sin JS de cliente y cerrado por defecto en TODOS los viewports (al
- * contrario que CollapsiblePanel, pensado para lo contrario).
+   * sin JS de cliente y cerrado por defecto en TODOS los viewports.
  */
 export function MethodologyDisclosure({
     title = 'Metodología y límites',
@@ -15,7 +14,7 @@ export function MethodologyDisclosure({
     children: ReactNode;
 }) {
     return (
-        <details className="group rounded-xl border border-gray-800 bg-[#101010] px-4 py-1">
+        <details className="group rounded-xl border border-gray-800 bg-surface-1 px-4 py-1">
             <summary className="flex min-h-[44px] cursor-pointer list-none items-center gap-2 text-sm font-medium text-gray-300 [&::-webkit-details-marker]:hidden">
                 <CircleHelp aria-hidden="true" className="h-4 w-4 shrink-0 text-teal-300" />
                 {title}
