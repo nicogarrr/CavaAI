@@ -44,6 +44,8 @@ Reglas que valen para todas las filas:
 | **Ingest abstention_rate** | Ausente se reporta como ausente, no como 0 | **1.0000** (189/189) | **= 1.0** | el mismo | el mismo |
 | **Valuation engines** | 13 puertas deterministas sobre 8 motores: estado publicable, banda bear/base/bull, valor contra forma cerrada, probabilidades, sensibilidad, entradas ausentes declaradas, cero de deuda neta silencioso, signo del FCF negativo, routing, trazabilidad de evidencia, base ADR, y que ninguna puerta pueda omitirse | **999 checks, 0 fallos** | cualquier fallo = exit 1 | `data-engine/scripts/run_valuation_evals.py` | `ci.yml` job `evals` |
 | **LLM layers** | 12 puertas sobre 4 capas (`kpi_extraction`, `narrative`, `principles`, `debate`): schema de salida, etiquetas conocidas, confianza en rango, sin cifras alucinadas, toda afirmacion con evidencia, veredicto de debate permitido, orden de escenarios, probabilidades que suman 1, fallo de proveedor degradado y no contestado, abstention con evidencia insuficiente, capas cubiertas, controles negativos presentes | **517 checks, 0 fallos** | cualquier fallo = exit 1 | `data-engine/scripts/run_llm_evals.py` | `ci.yml` job `evals` + [`llm-evals.yml`](../.github/workflows/llm-evals.yml) |
+| **Restore drill** | El ciclo backup -> destruir -> restore -> verify de los 3 pilares (Postgres, MinIO, Qdrant) en un entorno efimero: manifiesto, SHA-256 por artefacto y las 6 comprobaciones fail-closed (`a_esquema`, `b_conteos`, `c_alembic`, `d_aplicacion`, `e_objetos`, `f_vectores`) | **6 checks, 0 omitidos, desviacion de conteos 0** | cualquier check omitido o desviado = exit 1 | `data-engine/scripts/backup/disaster_drill.py` + `data-engine/scripts/restore/verify_restore.py` | [`restore-drill.yml`](../.github/workflows/restore-drill.yml) (bloqueante en `main`, no en PR; el contrato corto `tests/test_backup_contracts.py` bloquea en PR) |
+| **Escaneo de imagenes (SBOM + trivy)** | Las 4 imagenes Docker construidas en CI: CVE con fix, secretos quemados en capas y misconfiguracion del Dockerfile | **criterios fijos** | CVE CRITICAL con fix, cualquier secreto en la imagen, misconfiguration HIGH/CRITICAL o escaner que no corre = exit 1 (los HIGH/MEDIUM/LOW se reportan) | `data-engine/scripts/security/gate_image_scan.py` + `scripts/security/trivy-policy.yaml` | [`sbom-scan.yml`](../.github/workflows/sbom-scan.yml) |
 
 Los tres ultimos no tienen un "umbral decimal": el dataset **es** el umbral. Cada
 caso lleva el valor o el comportamiento exacto que se espera, incluidas las
@@ -99,6 +101,15 @@ Detalle de los controles negativos por dataset:
 | [`.github/workflows/coverage.yml`](../.github/workflows/coverage.yml) | `coverage` | push/PR que tocan `data-engine/**` | `run_coverage_gate.py` con `branch=True`, sin Qdrant (la medicion tiene que ser determinista). Publica `htmlcov/` y el `.coverage` como artefacto. |
 | [`llm-evals.yml`](../.github/workflows/llm-evals.yml) | `llm-layer-evals` | push/PR filtrados por paths de evals | `run_llm_evals.py` + contratos, sin `requirements.txt` ni red. |
 | [`ingest-evals.yml`](../.github/workflows/ingest-evals.yml) | `ingest-precision` | cada push y cada PR | `run_ingest_evals.py` + contratos de puerta y guardian de red. |
+| [`restore-drill.yml`](../.github/workflows/restore-drill.yml) | `restore-drill` | cada push y cada PR (bloqueante solo en `main`) | Backup -> destruir -> restore -> 6 comprobaciones contra Postgres, MinIO y Qdrant efimeros. ~10 min en runner frio. |
+| [`sbom-scan.yml`](../.github/workflows/sbom-scan.yml) | `sbom + escaneo` | push a `main`, PR y manual | Construye las 4 imagenes, genera SBOM y gatea CVE/secrets/misconfiguration con `gate_image_scan.py`. |
+
+### El peaje de la suite doble, dicho aqui tambien
+
+La suite de pytest corre dos veces por push y PR (`backend` sin instrumentar
+~11 min + `coverage` con `branch=True` ~12 min => **~24 min duplicados**). Es
+una decision tomada (FIX-3.10, feedback desacoplado + medicion determinista),
+no un accidente: ver [COVERAGE.md](COVERAGE.md#el-peaje-de-la-suite-doble-dicho-no-escondido).
 
 ### Por que el job `evals` es un job y no pasos dentro de `backend`
 
@@ -144,8 +155,10 @@ python scripts/run_coverage_gate.py --report
 
 | Documento | Que responde |
 |---|---|
-| [`docs/COVERAGE.md`](COVERAGE.md) | Que se mide, que se excluye y por que, los dos totales (84.17 % gateado / 81.59 % con exentos), el ratchet por paquete, la exencion de `alembic` y por que `include_namespace_packages = True` no es cosmetica. |
+| [`docs/COVERAGE.md`](COVERAGE.md) | Que se mide, que se excluye y por que, los dos totales (84.16 % gateado / 81.58 % con exentos), el ratchet por paquete, la exencion de `alembic`, por que `include_namespace_packages = True` no es cosmetica y el peaje de la suite doble (~24 min duplicados por push y PR). |
+| [`docs/BACKUP_RESTORE.md`](BACKUP_RESTORE.md) | El camino de backup/restore VERIFICADO (manifiesto, 6 comprobaciones fail-closed, versionado de bucket de MinIO, drill de CI) y lo que los scripts de bash no verifican. |
 | [`data-engine/evals/rag/README.md`](../data-engine/evals/rag/README.md) | De donde sale el corpus del golden set, las 5 puertas del RAG, las 6 metricas y el por que de cada umbral, y que se mediria con un LLM real. |
 | `data-engine/evals/llm/README.md`, `data-engine/evals/valuation/README.md`, `data-engine/evals/ingest/README.md` | **PENDIENTE**: todavia no existen. Los tres runners imprimen su cobertura por puerta, por capa/motor y por familia de fuente, que es la parte que estos README documentarian. |
 | [`data-engine/scripts/run_coverage_gate.py`](../data-engine/scripts/run_coverage_gate.py) | El gate, con las 10 situaciones en las que falla cerrado. |
-| `data-engine/LOCKFILE.md` | **PENDIENTE (INT-E)**: el lockfile con las versiones exactas del arbol de dependencias. Hasta que exista, las herramientas de desarrollo van pineadas a mano en los workflows (`ruff==0.16.10`, `pyright==1.1.414`) y las de runtime por rango en `data-engine/requirements.txt`, cuya paridad con `pyproject.toml` vigila el job `dep-parity`. |
+| [`data-engine/LOCKFILE.md`](../data-engine/LOCKFILE.md) | El lockfile de dependencias del engine (`data-engine/uv.lock`) y su contrato de congelacion: los workflows de CI instalan con `uv sync --frozen` y no con pins sueltos. |
+| [`data-engine/scripts/backup/README.md`](../data-engine/scripts/backup/README.md) + [`RUNBOOK.md`](../data-engine/scripts/backup/RUNBOOK.md) | Por que cada decision del backup (formato custom, globals, head de Alembic, snapshot de Qdrant, versionado de MinIO) y el runbook de recuperacion paso a paso. |

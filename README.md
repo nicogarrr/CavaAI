@@ -115,6 +115,12 @@ Genera secretos con `openssl rand -base64 32`. **Nunca commitees el `.env`** (es
 npm run lint
 npm run build
 
+# Guards del repo (scripts/*.test.ts: copy, honestidad, accesibilidad, i18n,
+# knowledge-graph, fechas...). El glob los descubre TODOS: un guard nuevo no
+# necesita cablearse en ninguna lista para correr.
+node --experimental-strip-types --test scripts/*.test.ts
+npm run check:i18n
+
 # Backend (suite completa ~2 min)
 cd data-engine && ./.venv/Scripts/python.exe -m pytest tests/ -q
 
