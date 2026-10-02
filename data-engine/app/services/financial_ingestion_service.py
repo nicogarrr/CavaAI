@@ -326,6 +326,7 @@ def _compose_bank_revenue(
     min_span: int | None,
     max_span: int | None,
     annual_anchors: dict[str, str] | None = None,
+    as_of: date | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Revenue compuesto para bancos: intereses netos + ingresos no financieros.
 
@@ -347,6 +348,7 @@ def _compose_bank_revenue(
         min_span=min_span,
         max_span=max_span,
         annual_anchors=annual_anchors,
+        as_of=as_of,
     )
     interest = parts.get("InterestIncomeExpenseNet", {})
     noninterest = parts.get("NoninterestIncome", {})
@@ -418,18 +420,33 @@ def _collect_by_concept(
     min_span: int | None,
     max_span: int | None,
     annual_anchors: dict[str, str] | None = None,
+    as_of: date | None = None,
+    require_start: bool = False,
 ) -> dict[str, dict[str, dict[str, Any]]]:
     """Newest ``filed`` fact per concept and period, before any merging.
 
     Keeping the concepts apart until the caller knows what they are (aliases or
     disjoint parts) is what lets `_collapse_aliases` and
     `_sum_disjoint_components` disagree on purpose instead of by accident.
+
+    ``as_of`` is an information cut-off, not a fiscal filter: an entry whose
+    ``filed`` date is after it was not public on that date and must not enter
+    (FIX5-1). Without a cut-off nothing is date-filtered and the caller says so
+    in the result.
+
+    ``require_start`` keeps only flow facts: a duration metric like
+    ``shares_diluted`` (a weighted average) reported as an instant is a
+    different magnitude and must not enter as one (FIX5-8).
     """
     by_concept: dict[str, dict[str, dict[str, Any]]] = {}
     for concept in concepts:
         entries = us_gaap.get(concept, {}).get("units", {}).get(unit_key, [])
         for entry in entries:
             if entry.get("form") not in forms or entry.get("fp") not in periods:
+                continue
+            if as_of is not None and not _published_by(entry, as_of):
+                continue
+            if require_start and not entry.get("start"):
                 continue
             # A flow fact (one WITH `start`) has to really span the period it
             # claims: `fp="FY"` does not guarantee an annual duration, and the
@@ -983,6 +1000,7 @@ class FinancialIngestionService:
                     min_span=300,
                     max_span=380,
                     annual_anchors=annual_anchors,
+                    as_of=as_of,
                 ),
                 metric,
             )
@@ -995,6 +1013,7 @@ class FinancialIngestionService:
                     min_span=300,
                     max_span=380,
                     annual_anchors=annual_anchors,
+                    as_of=as_of,
                 ).items():
                     by_end.setdefault(end, entry)
             if by_end:
@@ -1050,6 +1069,7 @@ class FinancialIngestionService:
                     periods={"Q1", "Q2", "Q3", "Q4"},
                     min_span=70,
                     max_span=110,
+                    as_of=as_of,
                 ).items():
                     by_end_q.setdefault(end, entry)
             if by_end_q:
@@ -1247,6 +1267,10 @@ class FinancialIngestionService:
             "source_document_id": document.id,
             "facts_imported": facts_imported,
             "cik": cik,
+            # Corte de informacion aplicado (FIX5-1). Con as_of=None el filtro
+            # de fecha NO se aplico y el consumidor lo ve aqui.
+            "as_of": as_of.isoformat() if as_of else None,
+            "date_filter_applied": as_of is not None,
             "conflicts": conflicts,
             "free_data": free_data,
             "fy_periods": fy_periods,
