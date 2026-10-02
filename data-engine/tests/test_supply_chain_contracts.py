@@ -184,7 +184,7 @@ def test_el_build_no_depende_de_ningun_secreto_externo():
     """Sin secrets de Vercel ni Docker Hub: GITHUB_TOKEN ya viene siempre."""
     texto = WORKFLOW.read_text(encoding="utf-8")
     assert "secrets." not in texto
-    for step in _steps("build") + _steps("sbom") + _steps("scan"):
+    for step in _steps("build") + _steps("sbom") + _steps("engine2") + _steps("scan"):
         assert "secrets." not in json.dumps(step)
 
 
@@ -246,7 +246,7 @@ def test_los_escáneres_no_deciden_el_veredicto_por_su_cuenta():
     desactivar desde el YAML, que es justo lo que este workflow no permite."""
     for step in _using(_steps("scan"), "aquasecurity/trivy-action"):
         assert str(step["with"]["exit-code"]) == "0", step.get("name")
-    for step in _using(_steps("scan"), "anchore/scan-action"):
+    for step in _using(_steps("engine2"), "anchore/scan-action"):
         assert step["with"]["fail-build"] is False
 
 
@@ -262,13 +262,28 @@ def test_se_escanean_vulnerabilidades_secrets_y_misconfiguration():
 
 def test_hay_dos_motores_independientes():
     trivy = _using(_steps("scan"), "aquasecurity/trivy-action")
-    anchore = _using(_steps("scan"), "anchore/scan-action")
+    anchore = _using(_steps("engine2"), "anchore/scan-action")
     assert trivy and anchore
     # el motor 2 consume el SBOM del job sbom, no la imagen: dos motores sobre el
     # mismo contenido
     assert anchore[0]["with"]["sbom"].endswith(".cdx.json")
-    downloads = _using(_steps("scan"), "actions/download-artifact")
+    downloads = _using(_steps("engine2"), "actions/download-artifact")
     assert any("sbom-" in str(step["with"]["name"]) for step in downloads)
+
+
+def test_el_motor_2_corre_en_su_propio_job_y_su_caida_es_rojo_para_el_gate():
+    """grype dentro del job scan mato el runner de backend-prod (4 intentos).
+    Vive en el job engine2; si ese job muere no sube artefacto y el gate recibe
+    "missing", que es distinto de success (escaneo incompleto, rojo)."""
+    workflow = _workflow()
+    assert "engine2" in workflow["jobs"]
+    assert "engine2" in workflow["jobs"]["scan"]["needs"]
+    assert not _using(_steps("scan"), "anchore/scan-action")
+    recogida = next(step for step in _steps("scan") if step.get("id") == "engine2_result")
+    assert "status=missing" in str(recogida["run"])
+    assert "steps.engine2_result.outputs.status" in str(_gate_step()["run"])
+    subida = _using(_steps("engine2"), "actions/upload-artifact")
+    assert subida and str(subida[0].get("if", "")).strip() in {"${{ always() }}", "always()"}
 
 
 def test_la_misconfiguration_se_evalua_sobre_los_dockerfiles_y_el_compose():

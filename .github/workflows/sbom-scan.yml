@@ -238,11 +238,64 @@ jobs:
           retention-days: 90
 
   # ---------------------------------------------------------------------------
+  # 2b) MOTOR 2 en su propio job: grype sobre el SBOM ya generado. Dentro del job
+  # scan, el runner de backend-prod recibia "shutdown signal" en grype (4
+  # intentos, siempre ahi; disco y memoria sobrados). Un runner limpio por
+  # imagen que solo corre grype. Si muere, no sube artefacto y el gate lo lee
+  # como "missing" (rojo), nunca como verde.
+  # ---------------------------------------------------------------------------
+  engine2:
+    name: Motor 2 ${{ matrix.name }}
+    needs: [sbom]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        name: [frontend-dev, frontend-prod, backend-dev, backend-prod]
+    steps:
+      - name: SBOM del job sbom
+        uses: actions/download-artifact@v4
+        with:
+          name: sbom-${{ matrix.name }}-cyclonedx
+          path: sbom
+          if-no-files-found: ignore
+
+      - name: Crear el directorio de informes
+        run: mkdir -p reports
+
+      - name: "Motor 2: anchore/scan-action (grype sobre el SBOM)"
+        id: anchore_scan
+        uses: anchore/scan-action@v7.4.2
+        with:
+          sbom: sbom/${{ matrix.name }}.cdx.json
+          output-format: json
+          output-file: reports/anchore-${{ matrix.name }}.json
+          # El veredicto lo da el gate, no el corte binario de la action.
+          fail-build: false
+
+      - name: Resultado del motor 2
+        if: ${{ always() }}
+        run: echo "${{ steps.anchore_scan.outcome }}" > reports/status.txt
+
+      - name: Subir informe del motor 2
+        uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: engine2-${{ matrix.name }}
+          path: reports/
+          if-no-files-found: warn
+          retention-days: 90
+
+  # ---------------------------------------------------------------------------
   # 3) SCAN: dos motores independientes + gate con umbral.
   # ---------------------------------------------------------------------------
   scan:
     name: Scan ${{ matrix.name }}
-    needs: [build, sbom]
+    needs: [build, sbom, engine2]
     # always() + gate explicito: si build o sbom fallaron, este job corre igual
     # y el gate dice POR QUE esta en rojo. Un job saltado se lee como verde.
     if: ${{ always() }}
@@ -298,15 +351,25 @@ jobs:
           sbom: false
           cache-from: type=gha,scope=img-${{ matrix.name }}
 
-      - name: Motor 2 necesita el SBOM del job sbom
+      - name: Informe del motor 2 (job engine2)
         uses: actions/download-artifact@v4
         with:
-          name: sbom-${{ matrix.name }}-cyclonedx
-          path: sbom
+          name: engine2-${{ matrix.name }}
+          path: engine2
           if-no-files-found: ignore
 
-      - name: Crear el directorio de informes
-        run: mkdir -p reports
+      - name: Crear el directorio de informes y recoger el motor 2
+        id: engine2_result
+        run: |
+          mkdir -p reports
+          # Si engine2 murio (runner caido) no hay artefacto: estado "missing",
+          # que el gate lee como escaneo incompleto (fail-closed), no como verde.
+          status=missing
+          if [ -f engine2/status.txt ]; then status=$(cat engine2/status.txt); fi
+          if [ -f engine2/anchore-${{ matrix.name }}.json ]; then
+            cp engine2/anchore-${{ matrix.name }}.json reports/
+          fi
+          echo "status=$status" >> "$GITHUB_OUTPUT"
 
       - name: "Motor 1: trivy sobre la imagen (vuln)"
         id: trivy_vuln
@@ -359,35 +422,6 @@ jobs:
           severity: CRITICAL,HIGH,MEDIUM,LOW,UNKNOWN
           exit-code: "0"
 
-      - name: Liberar disco y memoria antes del motor 2
-        # En el run 37017581687 el runner recibio "shutdown signal" dos veces
-        # seguidas, siempre en grype sobre el SBOM de backend-prod (imagen de
-        # 3,4 GB reconstruida en este mismo job). El motor 1 ya termino: la
-        # imagen, la cache de capas y los toolchains del runner no se usan mas.
-        # Solo borra del runner efimero; no toca informes ni el SBOM.
-        if: ${{ always() }}
-        run: |
-          df -h / | tail -1
-          docker image rm -f "cavaai/${{ matrix.name }}:${{ github.sha }}" || true
-          docker system prune -af --volumes || true
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc || true
-          df -h / | tail -1
-          free -m | sed -n 2p
-
-      - name: "Motor 2: anchore/scan-action (trivy sobre el SBOM)"
-        id: anchore_scan
-        uses: anchore/scan-action@v7.4.2
-        with:
-          # SBOM -> motor independiente: dos bases de datos de CVE distintas sobre
-          # el mismo contenido de imagen. Un motor que se cae lo nota el otro.
-          sbom: sbom/${{ matrix.name }}.cdx.json
-          output-format: json
-          output-file: reports/anchore-${{ matrix.name }}.json
-          # El veredicto lo da el gate, no el corte binario de la action: aqui el
-          # corte caeria en cualquier CVE, sin importar la severidad ni si tiene
-          # fix, que no es la politica de este repo.
-          fail-build: false
-
       - name: Puerta (unico punto de decision, rojo/verde)
         # Sin `continue-on-error` y con `if: always()`: este paso corre siempre y
         # su exit code es el veredicto de la imagen. Los `outcome` de cada
@@ -410,7 +444,7 @@ jobs:
             --misconfig-report "reports/trivy-misconfig-${{ matrix.name }}.json" \
             --misconfig-status "${{ steps.trivy_misconfig.outcome }}" \
             --second-report "reports/anchore-${{ matrix.name }}.json" \
-            --second-status "${{ steps.anchore_scan.outcome }}" \
+            --second-status "${{ steps.engine2_result.outputs.status }}" \
             --summary "reports/summary-${{ matrix.name }}.json"
 
       - name: Subir informes
