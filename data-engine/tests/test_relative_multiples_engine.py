@@ -614,8 +614,18 @@ def test_relative_engine_reports_the_divergence_with_the_fcff_dcf(db):
 
 def test_relative_engine_declines_to_divergence_without_a_dcf(db):
     """No coherent FCFF snapshot: there is nothing to disagree with, and the
-    engine says that instead of implying agreement."""
-    company = _subject(db)
+    engine says that instead of implying agreement.
+
+    Since main derives ``net_debt = total_debt - cash`` when both are
+    reported, the subject must report neither for the DCF to stay without a
+    coherent snapshot."""
+    company = _company(db, "RELSUBJ")
+    _facts(
+        db,
+        company,
+        {k: v for k, v in SUBJECT_FACTS.items() if k not in ("total_debt", "cash_and_equivalents")},
+    )
+    _price(db, company, 20.0)
     _peers(db)
     result = _value(db, company)
 
