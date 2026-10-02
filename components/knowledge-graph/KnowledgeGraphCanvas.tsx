@@ -32,13 +32,11 @@ import {
     buildScene,
     describeDetail,
     EDGE_COLOR,
+    exportFullGraph,
     focusIds,
     MAX_SCENE_NODES,
     neighborRows,
     searchNodes,
-    serializeJson,
-    serializeSvg,
-    subgraphFor,
     type GraphPayload,
     type SceneNode,
 } from '@/lib/knowledge-graph/graph-model';
@@ -376,16 +374,19 @@ export default function KnowledgeGraphCanvas({ graph }: Props) {
         fit(null);
     }, [fit, writeFocus]);
 
-    const exportSubgraph = useCallback(
+    const exportGraph = useCallback(
         (kind: 'svg' | 'json') => {
-            const count = subgraphFor(scene, keep).nodes.length;
+            // El volcado NO pasa por el recorte del dibujo: `truncatedHint`
+            // promete «el subgrafo completo» y una exportación de los 80 nodos
+            // dibujados no lo era. El nombre del fichero declara lo que lleva.
+            const count = graph.nodes.length;
             if (kind === 'svg') {
-                download(`cavaai-grafo-${count}-nodos.svg`, serializeSvg(scene, { keep, selectedId }), 'image/svg+xml');
+                download(`cavaai-grafo-${count}-nodos.svg`, exportFullGraph(graph, 'svg', { selectedId }), 'image/svg+xml');
                 return;
             }
-            download(`cavaai-grafo-${count}-nodos.json`, serializeJson(scene, { keep }), 'application/json');
+            download(`cavaai-grafo-${count}-nodos.json`, exportFullGraph(graph, 'json'), 'application/json');
         },
-        [keep, scene, selectedId],
+        [graph, selectedId],
     );
 
     /* -------------------------------------------------------------- *
@@ -448,11 +449,11 @@ export default function KnowledgeGraphCanvas({ graph }: Props) {
                         <span className="text-xs text-gray-500">
                             {t('knowledgeGraph.canvas.zoomLimits', { min: Math.round(MIN_SCALE * 100), max: Math.round(MAX_SCALE * 100) })}
                         </span>
-                        <Button data-testid="kg-export-svg" onClick={() => exportSubgraph('svg')} size="sm" type="button" variant="ghost">
+                        <Button data-testid="kg-export-svg" onClick={() => exportGraph('svg')} size="sm" type="button" variant="ghost">
                             <Download aria-hidden="true" className="h-4 w-4" />
                             {t('knowledgeGraph.canvas.exportSvg')}
                         </Button>
-                        <Button data-testid="kg-export-json" onClick={() => exportSubgraph('json')} size="sm" type="button" variant="ghost">
+                        <Button data-testid="kg-export-json" onClick={() => exportGraph('json')} size="sm" type="button" variant="ghost">
                             <Download aria-hidden="true" className="h-4 w-4" />
                             {t('knowledgeGraph.canvas.exportJson')}
                         </Button>
