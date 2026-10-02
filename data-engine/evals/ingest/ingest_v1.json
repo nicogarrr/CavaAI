@@ -12,7 +12,9 @@
   {
    "case": "neg-001-lookahead-anclado-filtrado",
    "gate": "no_lookahead",
-   "defect": "FinancialIngestionService.refresh_from_sec no recibe as_of: un hecho anual cuyo accession resuelve a un 10-K en submissions y cuya portada declara el mismo cierre entra como FY. La unica barrera es el filtro de ancla (F353), no un corte por fecha."
+   "status": "closed",
+   "defect": "FinancialIngestionService.refresh_from_sec no recibia as_of: un hecho anual cuyo accession resuelve a un 10-K en submissions y cuya portada declara el mismo cierre entraba como FY. La unica barrera era el filtro de ancla (F353), de calendario fiscal y no de informacion.",
+   "resolution": "refresh_from_sec acepta as_of y filtra por fecha de publicacion (filed <= as_of, fail closed sin filed); el caso paso a positivo con as_of en scenario_args y declara el filtro en su resultado."
   },
   {
    "case": "neg-002-epoch-en-la-etiqueta-de-periodo",
@@ -41,7 +43,7 @@
  ],
  "summary": {
   "cases": 80,
-  "negative_controls": 12,
+  "negative_controls": 11,
   "degradation_cases": 11,
   "families": {
    "sec": 42,
@@ -53,7 +55,7 @@
    "duplicates_collapsed": 1,
    "extracted_values_match_fixture": 1,
    "fixture_schema_valid": 1,
-   "no_lookahead": 2,
+   "no_lookahead": 1,
    "official_only_if_index_verified": 2,
    "period_attribution_correct": 1,
    "source_types_declared": 1,
@@ -3573,16 +3575,19 @@
   {
    "id": "neg-001-lookahead-anclado-filtrado",
    "family": "sec",
-   "category": "negative_control",
+   "category": "lookahead",
    "scenario": "sec_companyfacts",
-   "description": "El 10-K de FY2999 esta ancla de verdad: la admision anual lo deja pasar. El gate no_lookahead existe justo para que esto se vea.",
+   "description": "Corte de informacion: los hechos de los 10-K de 2999/2998/2997 (filed posteriores a as_of) no entran pese a estar anclados; solo se ingeri el FY2025 ya publicado. Antes el defecto (sin as_of) dejaba entrar 2999-12-31:FY.",
    "scenario_args": {
     "companyfacts": "sec/companyfacts_lookahead.json",
-    "submissions": "sec/submissions_lookahead.json"
+    "submissions": "sec/submissions_lookahead.json",
+    "as_of": "2026-10-01"
    },
    "expected": {
     "forbidden_values": [
-     42000000000
+     42000000000,
+     21000000000,
+     99000000000
     ],
     "as_of": "2026-10-01",
     "tolerance": {
@@ -3595,12 +3600,27 @@
      "unverified": []
     },
     "absent_metrics": [],
-    "facts": [],
-    "extracts_nothing": true
+    "facts": [
+     {
+      "metric": "revenue",
+      "period": "2025-12-31:FY",
+      "value": 5000000000,
+      "unit": "USD",
+      "fiscal_year": 2025,
+      "fiscal_quarter": "FY"
+     }
+    ]
    },
-   "expect_gate_failure": "no_lookahead",
    "applies_to": [
-    "no_lookahead"
+    "fixture_schema_valid",
+    "extracted_values_match_fixture",
+    "period_attribution_correct",
+    "no_lookahead",
+    "official_only_if_index_verified",
+    "absent_fields_reported_as_null",
+    "units_consistent",
+    "source_types_declared",
+    "duplicates_collapsed"
    ]
   },
   {
