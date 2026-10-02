@@ -44,7 +44,11 @@ from app.services.connectors.edgartools_ownership import (
     ownership_transactions,
 )
 from app.services.connectors.edgartools_thirteenf import infotable_holdings
-from app.services.fact_deletion import delete_financial_facts
+from app.services.fact_deletion import (
+    delete_financial_facts,
+    drop_shadowed_facts,
+    tenant_condition,
+)
 from app.services.financial_ingestion_service import BANK_REVENUE_TICKERS
 from app.services.provenance import Coverage, SourceKind, provenance
 
@@ -282,6 +286,7 @@ def refresh_from_edgartools(
                 confidence=fact.get("confidence", Decimal("0.95")),
             )
         )
+    drop_shadowed_facts(db, company.id, document.id, tenant_condition(db))
     fy_periods = sorted({f["period"] for f in facts if f["period"].endswith(":FY")}, reverse=True)
     fetched_at = datetime.now(UTC)
     document.metadata_ = {

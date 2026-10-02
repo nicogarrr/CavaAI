@@ -18,11 +18,12 @@ from sqlalchemy.orm import sessionmaker
 from app.models.entities import (
     Base,
     Company,
+    Document,
     FactRevision,
     FinancialFact,
     ManagementPromise,
 )
-from app.services.fact_deletion import delete_financial_facts
+from app.services.fact_deletion import delete_financial_facts, drop_shadowed_facts
 
 
 @pytest.fixture
@@ -102,3 +103,44 @@ def test_helper_keeps_other_companies_facts(db):
     delete_financial_facts(db, FinancialFact.company_id == company.id)
     db.commit()
     assert db.scalar(select(FinancialFact.id).where(FinancialFact.id == keep.id)) == keep.id
+
+
+def _approved_revision(db, fact):
+    rev = db.scalar(select(FactRevision).where(FactRevision.financial_fact_id == fact.id))
+    rev.status = "approved"
+    db.commit()
+
+
+def test_helper_keeps_fact_with_approved_revision(db):
+    company, fact, promise = _seed(db)
+    _approved_revision(db, fact)
+    kept = delete_financial_facts(db, FinancialFact.company_id == company.id)
+    db.commit()
+    assert kept == 1
+    assert db.scalar(select(FinancialFact.id).where(FinancialFact.id == fact.id)) == fact.id
+    assert db.scalar(select(FactRevision.id)) is not None
+    db.refresh(promise)
+    assert promise.actual_fact_id == fact.id
+
+
+def test_provider_duplicate_of_approved_fact_is_dropped_after_reingest(db):
+    company, fact, _promise = _seed(db)
+    _approved_revision(db, fact)
+    # el refresh no pudo borrar el aprobado; la reingesta inserta el valor del proveedor
+    doc = Document(company_id=company.id, title="10-K", source_type="SEC")
+    db.add(doc)
+    db.flush()
+    dup = FinancialFact(company_id=company.id, metric=fact.metric, value=Decimal("9"),
+                        unit="USD", period=fact.period, fiscal_year=2025,
+                        source_type="SEC", is_reported=True, source_id=doc.id)
+    db.add(dup)
+    other = FinancialFact(company_id=company.id, metric="revenue", value=Decimal("7"),
+                          unit="USD", period=fact.period, fiscal_year=2025,
+                          source_type="SEC", is_reported=True, source_id=doc.id)
+    db.add(other)
+    db.commit()
+    dropped = drop_shadowed_facts(db, company.id, doc.id, FinancialFact.tenant_id.is_(None))
+    db.commit()
+    assert dropped == 1
+    ids = set(db.scalars(select(FinancialFact.id)))
+    assert fact.id in ids and other.id in ids and dup.id not in ids
