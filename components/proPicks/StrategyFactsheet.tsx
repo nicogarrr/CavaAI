@@ -150,7 +150,7 @@ export default function StrategyFactsheet({
                 {strategy ? (
                     <div className="mt-4">
                         <h4 className="text-sm font-semibold text-gray-300">Qué decide esta estrategia</h4>
-                        <div className="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
+                        <div className="mt-2 grid grid-cols-1 gap-x-8 gap-y-1 sm:grid-cols-2">
                             {CATEGORY_KEYS.map((key) => (
                                 <div
                                     key={key}
@@ -158,7 +158,7 @@ export default function StrategyFactsheet({
                                 >
                                     <span className="text-gray-400">{CATEGORY_LABEL_ES[key]}</span>
                                     <span className="font-medium text-gray-200">
-                                        {formatPercent(strategy.categoryWeights[key], { fromRatio: false, digits: 0 })}
+                                        {formatPercent(strategy.categoryWeights[key], { digits: 0 })}
                                     </span>
                                 </div>
                             ))}

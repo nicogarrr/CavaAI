@@ -335,16 +335,11 @@ function AlertsManager() {
                         <Send aria-hidden="true" className="h-4 w-4" />
                         Telegram sin configurar: las alertas solo llegan en la app
                     </p>
-                    <ol className="mt-2 list-decimal space-y-1 pl-5 text-xs leading-5 text-amber-100/80">
-                        <li>Habla con @BotFather en Telegram y crea un bot para obtener el token.</li>
-                        <li>Escribe al bot y averigua tu chat id (p. ej. con @userinfobot).</li>
-                        <li>
-                            Configura en el servidor: TELEGRAM_ENABLED=true, TELEGRAM_BOT_TOKEN y
-                            TELEGRAM_CHAT_ID {!telegram.has_bot_token ? '(falta el token)' : ''}{' '}
-                            {!telegram.has_chat_id ? '(falta el chat id)' : ''}.
-                        </li>
-                        <li>Las reglas nuevas incluirán el canal Telegram automáticamente.</li>
-                    </ol>
+                    <p className="mt-2 text-xs leading-5 text-amber-100/80">
+                        El canal Telegram no está activado en este servidor. Las reglas se evalúan igual y
+                        sus avisos aparecen aquí; el administrador puede activar Telegram desde la
+                        configuración del servidor.
+                    </p>
                 </div>
             ) : null}
 
