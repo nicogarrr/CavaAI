@@ -44,17 +44,17 @@
   }
  ],
  "summary": {
-  "cases": 82,
-  "negative_controls": 10,
+  "cases": 83,
+  "negative_controls": 11,
   "degradation_cases": 11,
   "families": {
-   "sec": 44,
+   "sec": 45,
    "fmp": 20,
    "esef": 18
   },
   "negative_controls_by_gate": {
    "absent_fields_reported_as_null": 2,
-   "extracted_values_match_fixture": 1,
+   "extracted_values_match_fixture": 2,
    "fixture_schema_valid": 1,
    "no_lookahead": 1,
    "official_only_if_index_verified": 2,
@@ -4389,6 +4389,64 @@
     "units_consistent",
     "source_types_declared",
     "duplicates_collapsed"
+   ]
+  },
+  {
+   "id": "neg-016-cik-del-payload-no-casa",
+   "family": "sec",
+   "category": "negative_control",
+   "scenario": "sec_companyfacts",
+   "description": "El mapa de la SEC tiene DOS emisores para el mismo ticker (ticker reutilizado tras un delisting) y la resolucion elige el primero, el del emisor viejo (CIK 320193); el payload es del emisor real (CIK 1). Mientras la entidad sea ambigua la ingesta no atribuye nada: lo que deberia salir (la cifra del emisor correcto) no llega y la puerta de valores muerde, y las no-omitibles verifican que lo ajeno (5.000.000.000) no se cuela.",
+   "scenario_args": {
+    "companyfacts": "sec/companyfacts_calendar_fy.json",
+    "submissions": "sec/submissions_calendar_fy.json",
+    "ticker": "ABCD",
+    "cik": "0000000001",
+    "ticker_map": {
+     "1": {
+      "cik_str": 320193,
+      "ticker": "ABCD",
+      "title": "Aardvark Industries (delisted 2019; ticker reutilizado)"
+     },
+     "2": {
+      "cik_str": 1,
+      "ticker": "ABCD",
+      "title": "Aardvark Global PLC"
+     }
+    }
+   },
+   "expected": {
+    "facts": [
+     {
+      "metric": "revenue",
+      "period": "2025-12-31:FY",
+      "value": 7000000000,
+      "unit": "USD",
+      "fiscal_year": 2025,
+      "fiscal_quarter": "FY"
+     }
+    ],
+    "absent_metrics": [],
+    "absent_values": [
+     5000000000
+    ],
+    "forbidden_values": [
+     5000000000
+    ],
+    "as_of": "2026-10-01",
+    "tolerance": {
+     "relative": "0",
+     "absolute": "0.000001"
+    },
+    "index": {
+     "verified": [],
+     "official": [],
+     "unverified": []
+    }
+   },
+   "expect_gate_failure": "extracted_values_match_fixture",
+   "applies_to": [
+    "extracted_values_match_fixture"
    ]
   }
  ]
