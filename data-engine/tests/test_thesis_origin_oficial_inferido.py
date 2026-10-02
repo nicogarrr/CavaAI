@@ -198,5 +198,6 @@ def test_latest_inputs_provenance_resolves_sources_from_persisted_documents():
         by_key = {i["key"]: i for i in latest_inputs_provenance(db, company.id)}
     assert by_key["revenue"]["origen"] == ORIGEN_OFICIAL
     assert by_key["revenue"]["fuentes"][0]["url"] == SEC
-    assert by_key["ghost"]["origen"] == ORIGEN_INFERIDO
+    # INFERIDO sin base documentada no se etiqueta: se omite (N/D honesto).
+    assert "ghost" not in by_key
     assert by_key["revenue_wrong_value"]["origen"] == ORIGEN_INFERIDO

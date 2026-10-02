@@ -8,7 +8,7 @@ import test from 'node:test';
 // @ts-expect-error TS5097: la extensión explícita la exige node --experimental-strip-types.
 import { openPositionTickers, tickerBadgesFor, TICKER_BADGE_LABELS } from '../lib/ticker-badges.ts';
 
-const news = readFileSync('app/(root)/research/news/page.tsx', 'utf8');
+const news = (readFileSync('app/(root)/research/news/page.tsx', 'utf8') + readFileSync('components/research/NewsEventsFlow.tsx', 'utf8'));
 const movers = readFileSync('app/(root)/movers/page.tsx', 'utf8');
 const action = readFileSync('lib/actions/ticker-context.actions.ts', 'utf8');
 

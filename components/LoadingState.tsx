@@ -1,8 +1,13 @@
-'use client';
-
 import { Skeleton } from '@/components/ui/skeleton';
 
 /**
+ * Server Component: solo pinta esqueletos estaticos, sin estado, sin refs y
+ * sin handlers, asi que no necesita 'use client'. Ambos usos son de servidor
+ * (`app/(root)/inicio/page.tsx` lo usa como fallback de <Suspense> y
+ * `app/(root)/research/[ticker]/loading.tsx` como loading de ruta), asi que
+ * la directiva solo anadia un modulo de JS al paquete del cliente para pintar
+ * HTML que ya venia en el SSR.
+ *
  * Reusable loading states for better UX
  * Improves perceived performance during data fetching
  *

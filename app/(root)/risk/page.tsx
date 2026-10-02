@@ -58,7 +58,7 @@ export default async function RiskPage() {
                         </p>
                     </MethodologyDisclosure>
                 </div>
-                <div className="flex items-center gap-2 rounded-lg border border-gray-800 bg-[#111111] px-3 py-2 text-sm text-gray-300">
+                <div className="flex items-center gap-2 rounded-lg border border-gray-800 bg-surface-1 px-3 py-2 text-sm text-gray-300">
                     <Gauge className="h-4 w-4 text-teal-300" />
                     Exposiciones
                 </div>
