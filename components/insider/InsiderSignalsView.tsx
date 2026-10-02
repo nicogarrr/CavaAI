@@ -15,7 +15,7 @@ import { formatRecordValue, type DataRecord } from '@/components/data/RecordView
 import type { InsiderFilingsResult, InsiderSignalsResult } from '@/lib/actions/insider.actions';
 import { getInsiderSignals, loadMoreInsiderFilings } from '@/lib/actions/insider.actions';
 import type { InsiderFilingEntry } from '@/lib/actions/insider.actions';
-import { analyzedCountCopy, degradedCopy, durableReadCopy } from '@/lib/insider-status-copy';
+import { analyzedCountCopy, degradedCopy, persistedSourceCopy, durableReadCopy } from '@/lib/insider-status-copy';
 import { toast } from 'sonner';
 
 interface InsiderSignalsViewProps {
@@ -283,6 +283,11 @@ export default function InsiderSignalsView({ initialTicker, initialResult, initi
                             {countText(initialResult.filings_scanned)} Form 4 leídos (
                             {countText(initialResult.filings_failed)} con error). Las señales de abajo
                             cubren solo los filings legibles.
+                        </p>
+                    ) : null}
+                    {persistedSourceCopy(initialTicker, initialResult, countText) ? (
+                        <p className="rounded-lg border border-amber-900/60 bg-amber-950/20 p-6 text-sm text-amber-200">
+                            {persistedSourceCopy(initialTicker, initialResult, countText)}
                         </p>
                     ) : null}
                     {signals.length === 0 ? (
