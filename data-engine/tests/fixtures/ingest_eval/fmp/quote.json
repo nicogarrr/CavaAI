@@ -1,0 +1,12 @@
+{
+ "origin": "synthetic_fixture",
+ "endpoint": "quote",
+ "rows": [
+  {
+   "symbol": "SYNQ",
+   "price": 42.37,
+   "volume": 1234567,
+   "timestamp": 1767225600
+  }
+ ]
+}

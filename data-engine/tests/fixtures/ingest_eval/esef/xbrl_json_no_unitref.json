@@ -1,0 +1,30 @@
+{
+ "origin": "synthetic_fixture",
+ "id": "no_unitref",
+ "lei": "9598SYNTHETIC0000001",
+ "concepts_declarados": [
+  "ifrs-full:ProfitLoss",
+  "ifrs-full:Revenue"
+ ],
+ "facts": {
+  "fact-1": {
+   "value": "7000000000",
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:Revenue",
+    "entity": "scheme:9598SYNTHETIC0000001",
+    "period": "2025-01-01T00:00:00/2025-12-31T00:00:00"
+   }
+  },
+  "fact-2": {
+   "value": "820000000",
+   "decimals": -6,
+   "dimensions": {
+    "concept": "ifrs-full:ProfitLoss",
+    "entity": "scheme:9598SYNTHETIC0000001",
+    "period": "2025-01-01T00:00:00/2025-12-31T00:00:00",
+    "unit": "iso4217:EUR"
+   }
+  }
+ }
+}
