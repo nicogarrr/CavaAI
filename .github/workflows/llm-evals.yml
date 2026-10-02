@@ -1,0 +1,55 @@
+name: LLM layer evals
+
+# Gate rapido y HERMETICO de los evals de las 4 capas LLM
+# (evals/llm/*). Deliberadamente no instala requirements.txt ni levanta
+# Postgres/Qdrant: el judge es codigo puro (solo stdlib) y su unica
+# dependencia es `evals.gates._norm_number`. Si algun dia el judge empezara a
+# importar app.llm o a abrir red, esta workflow es la que se rompe primero.
+
+on:
+  pull_request:
+    paths:
+      - "data-engine/evals/**"
+      - "data-engine/scripts/run_llm_evals.py"
+      - "data-engine/tests/test_llm_*.py"
+      - ".github/workflows/llm-evals.yml"
+  push:
+    branches: [main]
+    paths:
+      - "data-engine/evals/**"
+      - "data-engine/scripts/run_llm_evals.py"
+      - "data-engine/tests/test_llm_*.py"
+      - ".github/workflows/llm-evals.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: llm-evals-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  llm-layer-evals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: data-engine
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install pytest ruff pydantic pydantic-settings
+      - name: Ruff sobre el judge y sus gates
+        run: python -m ruff check evals scripts tests
+      - name: Los gates de las 4 capas LLM (sin red, sin proveedor)
+        run: python scripts/run_llm_evals.py
+      - name: Informe JSON para el resumen del PR
+        run: python scripts/run_llm_evals.py --json > llm-evals-report.json
+      - name: Tests de la puerta de CI
+        run: python -m pytest tests/test_llm_layer_evals.py -q
+      - uses: actions/upload-artifact@v4
+        with:
+          name: llm-evals-report
+          path: data-engine/llm-evals-report.json
+          if-no-files-found: error
