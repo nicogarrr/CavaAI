@@ -267,11 +267,33 @@ jobs:
       - name: Crear el directorio de informes
         run: mkdir -p reports
 
+      - name: Copia del SBOM para grype sin componentes machine-learning-model
+        # Reproducido en local (grype 0.118.0, DB 2026-10-02): el SBOM de
+        # backend-prod, identico al de backend-dev salvo 1 componente
+        # `machine-learning-model` (el modelo safetensors de /opt/hf, sin purl ni
+        # version), deja a grype girando sin salida (>100 s, exit 124 por
+        # timeout) y en el runner acaba en "shutdown signal" (4 intentos, tambien
+        # en un runner limpio). Sin ese componente grype termina en 18 s. Un
+        # modelo de pesos no es un paquete con CVEs que grype pueda casar; el
+        # SBOM publicado como artefacto conserva el componente, solo se quita de
+        # la copia que lee grype. Se registra cuantos se quitan.
+        run: |
+          python3 - <<'PY'
+          import json
+          src = "sbom/${{ matrix.name }}.cdx.json"
+          dst = "sbom/${{ matrix.name }}.grype.cdx.json"
+          bom = json.load(open(src, encoding="utf-8"))
+          kept = [c for c in bom.get("components", []) if c.get("type") != "machine-learning-model"]
+          print(f"componentes: {len(bom.get('components', []))}, quitados para grype: {len(bom.get('components', [])) - len(kept)}")
+          bom["components"] = kept
+          json.dump(bom, open(dst, "w", encoding="utf-8"))
+          PY
+
       - name: "Motor 2: anchore/scan-action (grype sobre el SBOM)"
         id: anchore_scan
         uses: anchore/scan-action@v7.4.2
         with:
-          sbom: sbom/${{ matrix.name }}.cdx.json
+          sbom: sbom/${{ matrix.name }}.grype.cdx.json
           output-format: json
           output-file: reports/anchore-${{ matrix.name }}.json
           # El veredicto lo da el gate, no el corte binario de la action.

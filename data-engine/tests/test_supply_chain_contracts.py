@@ -271,6 +271,11 @@ def test_hay_dos_motores_independientes():
     assert any("sbom-" in str(step["with"]["name"]) for step in downloads)
 
 
+def anchore_sbom_apunta_a_la_copia_limpia() -> bool:
+    anchore = _using(_steps("engine2"), "anchore/scan-action")
+    return bool(anchore) and str(anchore[0]["with"]["sbom"]).endswith(".grype.cdx.json")
+
+
 def test_el_motor_2_corre_en_su_propio_job_y_su_caida_es_rojo_para_el_gate():
     """grype dentro del job scan mato el runner de backend-prod (4 intentos).
     Vive en el job engine2; si ese job muere no sube artefacto y el gate recibe
@@ -282,6 +287,11 @@ def test_el_motor_2_corre_en_su_propio_job_y_su_caida_es_rojo_para_el_gate():
     recogida = next(step for step in _steps("scan") if step.get("id") == "engine2_result")
     assert "status=missing" in str(recogida["run"])
     assert "steps.engine2_result.outputs.status" in str(_gate_step()["run"])
+    # grype se cuelga con el componente machine-learning-model de backend-prod
+    # (reproducido): la copia que lee grype se limpia antes del escaneo.
+    limpieza = next(step for step in _steps("engine2") if "machine-learning-model" in str(step.get("run", "")))
+    assert ".grype.cdx.json" in str(limpieza["run"])
+    assert anchore_sbom_apunta_a_la_copia_limpia()
     subida = _using(_steps("engine2"), "actions/upload-artifact")
     assert subida and str(subida[0].get("if", "")).strip() in {"${{ always() }}", "always()"}
 
