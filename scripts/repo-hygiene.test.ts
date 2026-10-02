@@ -195,37 +195,31 @@ const DOCKERIGNORE_SAMPLES = [
 ];
 
 /**
- * Gaps in `.dockerignore` confirmed present, reported as INTEGRACION PENDIENTE
- * rather than patched here (the integrator owns that file).
+ * Gaps in `.dockerignore` still open. This list is a ratchet, not a waiver: a
+ * NEW uncovered sample fails the test, and an entry whose sample is already
+ * covered also fails ("quita la entrada"), so nothing rots here.
  *
- * They exist because Docker matches `.dockerignore` patterns with Go's
- * filepath.Match semantics, where `*` does NOT cross `/`. So the existing
- * `*.db` line covers `cavaai_e2e.db` but NOT `data-engine/cavaai_test.db`, and
- * `node_modules` covers the directory entry but not `node_modules/next/package.json`.
- *
- * This list is a ratchet, not a waiver: a NEW uncovered sample fails the test.
- * Deleting an entry from this list before adding the rule also fails, because
- * the sample then shows up as uncovered.
+ * The historic gaps (nested `*.db`, `node_modules/x`, `test-results/`,
+ * `.next/`, `coverage/`, `playwright-report/`, `htmlcov/`, `*.tsbuildinfo`)
+ * were closed by the integrator with the globstar patterns (two stars and a
+ * slash) of the closing section of `.dockerignore`; with `**` matching zero
+ * or more segments (the moby/patternmatcher semantics that section
+ * documents) none of them is a gap anymore, so the list is empty until
+ * someone finds a real one.
  */
-const KNOWN_DOCKERIGNORE_GAPS = new Set([
-  'data-engine/cavaai_test_1_a.db',
-  '.next/BUILD_ID',
-  'node_modules/x',
-  'test-results/.last-run.json',
-  'tsconfig.tsbuildinfo',
-  'coverage/lcov.info',
-  'data-engine/htmlcov/index.html',
-  'playwright-report/index.html',
-]);
+const KNOWN_DOCKERIGNORE_GAPS = new Set<string>();
 
 function dockerignoreCovers(sample: string, rules: readonly string[]): boolean {
   return rules.some((line) => {
+    // `**` matches zero or more path segments (`**/x` covers `x` at the root
+    // and `a/b/x`); a lone `*` still does NOT cross `/`, as in filepath.Match.
     const re = new RegExp(
       `^${line
         .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-        .replace(/\*\*/g, ' ')
+        .replace(/\*\*\//g, '\u0000')
+        .replace(/\*\*/g, '.*')
         .replace(/\*/g, '[^/]*')
-        .replace(/ /g, '.*')
+        .replace(/\u0000/g, '(?:.*/)?')
         .replace(/\/$/, '(/.*)?$')}$`,
     );
     return re.test(sample);
