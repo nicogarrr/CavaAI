@@ -27,9 +27,13 @@ export const metadata: Metadata = {
 export default async function KnowledgeGraphPage({ searchParams }: { searchParams: Promise<{ node_types?: string; ticker?: string; limit?: string; node?: string; depth?: string }> }) {
   const query = await searchParams;
   const selectedNode = Number(query.node) || null;
-  const retryHref = `/knowledge-graph?${new URLSearchParams(
+  // Con query vacío `URLSearchParams.toString()` es '' y la plantilla
+  // producía '/knowledge-graph?': el guard `retryHref || '/knowledge-graph'`
+  // no lo neutraliza porque '…?' es truthy.
+  const queryString = new URLSearchParams(
     Object.entries(query).filter(([, value]) => typeof value === 'string' && value !== ''),
-  ).toString()}`;
+  ).toString();
+  const retryHref = queryString ? `/knowledge-graph?${queryString}` : '/knowledge-graph';
   // El motor caido se dice con su motivo (BackendOffline), no con un lienzo
   // vacio: el grafo sin backend no es "un grafo sin nodos", es un grafo que no
   // se ha podido leer. Cualquier otro error (un 404 del backend por un nodo o
@@ -40,7 +44,7 @@ export default async function KnowledgeGraphPage({ searchParams }: { searchParam
       ? await getKnowledgeNeighborhood(selectedNode, Number(query.depth) || 2)
       : await getKnowledgeGraph({ nodeTypes: query.node_types, ticker: query.ticker, limit: Number(query.limit) || 120 });
   } catch (error) {
-    if (isBackendUnavailableError(error)) return <BackendOffline feature={t('knowledgeGraph.canvas.feature')} retryHref={retryHref || '/knowledge-graph'} />;
+    if (isBackendUnavailableError(error)) return <BackendOffline feature={t('knowledgeGraph.canvas.feature')} retryHref={retryHref} />;
     throw error;
   }
   const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
