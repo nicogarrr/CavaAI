@@ -132,7 +132,7 @@
       "hoverNode": "Nodo bajo el puntero: {label}, tipo {type}, {degree} relaciones.",
       "nodesDrawn": "Nodos dibujados: {drawn} de {total}",
       "edgesDrawn": "Relaciones dibujadas: {drawn} de {total}",
-      "truncatedHint": "El dibujo se limita a {max} nodos. Acota con los filtros de arriba o exporta el JSON para ver el subgrafo completo.",
+      "truncatedHint": "El dibujo se limita a {max} nodos. Acota con los filtros de arriba o exporta el JSON para ver el subgrafo cargado completo: el volcado no pasa por el recorte del dibujo.",
       "isolatedOn": "Mostrando el nodo seleccionado y sus {count} vecinos; el resto queda atenuado.",
       "isolatedOff": "Vista completa: sin nodos atenuados.",
       "isolate": "Aislar nodo",
