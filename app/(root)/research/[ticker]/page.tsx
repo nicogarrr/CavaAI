@@ -666,23 +666,26 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
   //
   // D2a: la ficha era una cadena de `await` secuenciales. Estas lecturas NO
   // tienen dependencia de datos entre si: el snapshot no necesita el watchlist,
-  // el workspace se pide por `ticker` (ya conocido) y el market no depende del
-  // research. Se lanzan juntas y el coste pasa de SUMA a MAXIMO.
+  // el workspace se pide por `ticker` (ya conocido) y el chat es un POST aparte.
+  // Se lanzan juntas y el coste pasa de SUMA a MAXIMO.
   //
-  // Snapshot (backend) y market (Finnhub: profile+quote+candles) son
-  // independientes: se lanzan juntos y el coste pasa de suma a máximo.
-  // market solo se consume en 'overview'; en el resto de vistas la promesa
-  // ni se crea.
+  // El market YA NO va en esta fase: su primer paso era getResearchCompanyBasics
+  // (/api/companies/{ticker}), que repite name/exchange/currency del snapshot
+  // que estamos esperando aqui (el 50 % de la fase 1) y encadenaba una segunda
+  // fase serial dentro de getCompanyMarketSnapshot. Con los basics del snapshot
+  // en la mano se lanza DESPUES (abajo): se elimina el round-trip redundante y,
+  // en master-miss, ni se lanza (sin trabajo desperdiciado).
   const snapshotPromise = withResearchTelemetry('company-snapshot', () => readSnapshot(ticker));
-  // La cabecera muestra precio + variación + sparkline en TODAS las vistas,
-  // así que market se lanza siempre; solo 'overview' lo consume en estricto
-  // (BackendOffline), el resto degrada a cabecera sin cotización.
-  const marketPromise = withResearchTelemetry('market-snapshot', () => getCompanyMarketSnapshot(ticker));
   // MOAT V2: solo lectura del score persistido; su fallo degrada a omitir el panel.
   const moatPromise = activeView === 'overview' ? withResearchTelemetry('moat-score', () => getMoatQualityScore(ticker)) : undefined;
   // "Estado seguido" real del usuario. Antes esperaba al snapshot para pedirlo,
   // y no hay NINGÚN motivo: el watchlist es del tenant, no depende del ticker.
-  const watchlistPromise = withResearchTelemetry('watchlist', () => getWatchlist()).catch(() => []);
+  // Su fallo NO equivale a «no sigues esta empresa»: degrada con una señal
+  // explícita para que la cabecera diga «estado desconocido» en vez de
+  // pintar «Seguir» sobre una lista vacía inventada.
+  const watchlistPromise = withResearchTelemetry('watchlist', () => getWatchlist())
+    .then((items) => ({ items, degraded: false as const }))
+    .catch(() => ({ items: [] as Awaited<ReturnType<typeof getWatchlist>>, degraded: true as const }));
   // El workspace de la vista activa también sale aquí, antes de esperar el
   // snapshot: la rama de abajo solo lo recoge. Es la fase que más tiempo
   // añadía (la tesis son 7 llamadas) y no dependía de nada de lo anterior.
@@ -701,7 +704,6 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
   // EN CREACIÓN, porque un .catch posterior deja ventana de unhandledRejection
   // si rechazan durante los awaits intermedios. La propagación al consumidor
   // no cambia (el catch devuelve una promesa nueva que se descarta).
-  drainRejection(marketPromise);
   drainRejection(moatPromise);
   drainRejection(viewPromise);
   drainRejection(chatPromise);
@@ -758,11 +760,26 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
   }
 
   const company = snapshot.company;
+  // Cabecera con precio + variación + sparkline en TODAS las vistas: market se
+  // lanza AHORA, con la identidad del master ya en la mano (el snapshot la
+  // trae). Sin este launch diferido, /api/companies/{ticker} se pedía dos veces
+  // por render: una aquí y otra dentro de getCompanyMarketSnapshot.
+  const marketPromise = withResearchTelemetry('market-snapshot', () =>
+    getCompanyMarketSnapshot(ticker, { name: company.name, exchange: company.exchange, currency: company.currency }),
+  );
+  // El manejador se adjunta EN CREACIÓN (mismo criterio que arriba): un
+  // .catch posterior deja ventana de unhandledRejection si rechaza durante
+  // los awaits intermedios. La propagación al consumidor no cambia.
+  drainRejection(marketPromise);
   // D2a: market, watchlist y workspace de la vista vuelan juntos desde arriba.
   // Aquí ya no se encadena ninguna lectura: solo se recogen, cada una con su
   // degradación honesta.
-  const [watchlist, viewSettled] = await Promise.all([watchlistPromise, viewPromise]);
-  const isFollowed = watchlist.some((item) => item.symbol.toUpperCase() === ticker);
+  const [{ items: watchlist, degraded: watchlistDegraded }, viewSettled] = await Promise.all([watchlistPromise, viewPromise]);
+  // null = estado DESCONOCIDO (el backend de cartera falló): la cabecera no
+  // puede decir «Seguir» ni ofrecer «dejar de seguir» a ciegas.
+  const isFollowed = watchlistDegraded
+    ? null
+    : watchlist.some((item) => item.symbol.toUpperCase() === ticker);
   /**
    * Dato del workspace de esta vista. Si la lectura degradó sale el estado
    * vacío HONESTO de `EMPTY_VIEW_DATA` (N/D con el motivo en el aviso), no un
@@ -791,7 +808,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
   let content: React.ReactNode;
 
   if (activeView === 'overview') {
-    // marketPromise ya se lanzó en paralelo al snapshot más arriba.
+    // marketPromise ya se lanzó al recoger el snapshot (con sus basics).
     let market: Awaited<ReturnType<typeof getCompanyMarketSnapshot>>;
     try {
       market = await marketPromise;
