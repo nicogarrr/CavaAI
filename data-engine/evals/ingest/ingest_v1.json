@@ -17,7 +17,9 @@
   {
    "case": "neg-002-epoch-en-la-etiqueta-de-periodo",
    "gate": "period_attribution_correct",
-   "defect": "financial_ingestion_service._period no normaliza un 'date' de FMP que llegue como epoch: la etiqueta sale '1767225600:FY'."
+   "status": "closed",
+   "defect": "financial_ingestion_service._period no normalizaba un 'date' de FMP que llega como epoch: la etiqueta salia '1767139200:FY' y el hecho no se atribuia a 2025-12-31:FY.",
+   "resolution": "_norm_date normaliza ISO y epoch (segundos/millis) a fecha ISO; lo no parseable se conserva verbatim para que la etiqueta siga siendo inspeccionable por la puerta."
   },
   {
    "case": "neg-003-fila-de-otro-emisor",
@@ -36,12 +38,12 @@
   }
  ],
  "summary": {
-  "cases": 79,
-  "negative_controls": 15,
+  "cases": 80,
+  "negative_controls": 14,
   "degradation_cases": 11,
   "families": {
    "sec": 42,
-   "fmp": 19,
+   "fmp": 20,
    "esef": 18
   },
   "negative_controls_by_gate": {
@@ -51,7 +53,7 @@
    "fixture_schema_valid": 1,
    "no_lookahead": 2,
    "official_only_if_index_verified": 2,
-   "period_attribution_correct": 2,
+   "period_attribution_correct": 1,
    "source_types_declared": 1,
    "units_consistent": 1
   }
@@ -3602,9 +3604,9 @@
   {
    "id": "neg-002-epoch-en-la-etiqueta-de-periodo",
    "family": "fmp",
-   "category": "negative_control",
+   "category": "period_attribution",
    "scenario": "fmp_statements",
-   "description": "FMP con date como epoch: la etiqueta de periodo sale con el epoch dentro.",
+   "description": "FMP con 'date' como epoch (1767139200 = 2025-12-31T00:00:00Z): la etiqueta de periodo se normaliza a la fecha ISO y el hecho cae en 2025-12-31:FY. Antes la etiqueta salia con el epoch dentro.",
    "scenario_args": {
     "endpoints": {
      "income-statement": "fmp/income_statement_epoch.json"
@@ -3634,9 +3636,16 @@
     },
     "absent_metrics": []
    },
-   "expect_gate_failure": "period_attribution_correct",
    "applies_to": [
-    "period_attribution_correct"
+    "fixture_schema_valid",
+    "extracted_values_match_fixture",
+    "period_attribution_correct",
+    "no_lookahead",
+    "official_only_if_index_verified",
+    "absent_fields_reported_as_null",
+    "units_consistent",
+    "source_types_declared",
+    "duplicates_collapsed"
    ]
   },
   {
@@ -4158,6 +4167,61 @@
    "expect_gate_failure": "extracted_values_match_fixture",
    "applies_to": [
     "extracted_values_match_fixture"
+   ]
+  },
+  {
+   "id": "fmp-014-epoch-sin-anio-calendario",
+   "family": "fmp",
+   "category": "period_attribution",
+   "scenario": "fmp_statements",
+   "description": "FMP con 'date' como epoch y SIN calendarYear: la normalizacion del epoch es la unica via para que el hecho caiga en 2025-12-31:FY; sin ella la etiqueta salia con el epoch dentro y no se atribuia.",
+   "scenario_args": {
+    "endpoints": {
+     "income-statement": "fmp/income_statement_epoch_no_year.json"
+    },
+    "limit": 5
+   },
+   "expected": {
+    "facts": [
+     {
+      "metric": "revenue",
+      "period": "2025-12-31:FY",
+      "value": 5000000000,
+      "unit": "USD",
+      "fiscal_year": null,
+      "fiscal_quarter": "FY"
+     },
+     {
+      "metric": "net_income",
+      "period": "2025-12-31:FY",
+      "value": 500000000,
+      "unit": "USD",
+      "fiscal_year": null,
+      "fiscal_quarter": "FY"
+     }
+    ],
+    "absent_metrics": [],
+    "as_of": "2026-10-01",
+    "tolerance": {
+     "relative": "0",
+     "absolute": "0.000001"
+    },
+    "index": {
+     "verified": [],
+     "official": [],
+     "unverified": []
+    }
+   },
+   "applies_to": [
+    "fixture_schema_valid",
+    "extracted_values_match_fixture",
+    "period_attribution_correct",
+    "no_lookahead",
+    "official_only_if_index_verified",
+    "absent_fields_reported_as_null",
+    "units_consistent",
+    "source_types_declared",
+    "duplicates_collapsed"
    ]
   }
  ]

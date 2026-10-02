@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections import Counter
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
@@ -578,10 +579,71 @@ def _merge_esef_periods(
     return by_period, coverage
 
 
+def _norm_date(value: Any) -> str | None:
+    """Fecha ISO de un campo `date` (FMP): acepta ISO y epoch (segundos).
+
+    FMP entrega el cierre del periodo como cadena ISO, pero hay filas (y
+    snapshots) que lo entregan como epoch en segundos. Sin normalizar, la
+    etiqueta de periodo salia `1767225600:FY` y ninguna puerta la reconocia
+    como fecha (FIX5-2). Un valor no parseable devuelve None: el caller decide
+    si lo conserva tal cual para que la etiqueta siga inspeccionable.
+    """
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    seconds: int | None = None
+    if re.fullmatch(r"\d{9,12}(\.0+)?", text):
+        seconds = int(float(text))
+    elif re.fullmatch(r"\d{13}(\.0+)?", text):
+        seconds = int(float(text)) // 1000
+    if seconds is not None:
+        try:
+            return datetime.fromtimestamp(seconds, tz=UTC).date().isoformat()
+        except (OverflowError, OSError, ValueError):
+            return None
+    try:
+        return date.fromisoformat(text[:10]).isoformat()
+    except ValueError:
+        return None
+
+
+def _published_by(entry: dict[str, Any], as_of: date) -> bool:
+    """True cuando el hecho YA era publico en `as_of` (fecha de filing).
+
+    Fail closed: sin `filed` (o con uno ilegible) no se puede probar la
+    publicacion, y un hecho sin fecha de publicacion nunca entra bajo un corte.
+    """
+    filed = str(entry.get("filed") or "").strip()
+    if not filed:
+        return False
+    try:
+        return date.fromisoformat(filed[:10]) <= as_of
+    except ValueError:
+        return False
+
+
+def _publication_date(entry: dict[str, Any]) -> date | None:
+    """Fecha de publicacion declarada por la fuente (`filed`), o None."""
+    filed = str(entry.get("filed") or "").strip()
+    if not filed:
+        return None
+    try:
+        return date.fromisoformat(filed[:10])
+    except ValueError:
+        return None
+
+
 def _period(row: dict[str, Any]) -> tuple[str, int | None, str | None]:
     fiscal_year = row.get("calendarYear") or row.get("fiscalYear")
     fiscal_quarter = row.get("period")
-    date_value = row.get("date")
+    raw_date = row.get("date")
+    # Se normaliza lo normalizable (epoch -> ISO) y lo no parseable se
+    # conserva VERBATIM: una fecha imposible como `2025-99-99` debe llegar a
+    # la etiqueta para que la puerta no_lookahead la señale como defecto, no
+    # esfumarse en un `unknown` que ninguna puerta sabria acusar (FIX5-10).
+    date_value = _norm_date(raw_date) or (str(raw_date).strip() if raw_date is not None else None)
 
     year_int: int | None = None
     if fiscal_year is not None:
