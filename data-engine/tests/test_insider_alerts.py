@@ -161,6 +161,96 @@ def test_cluster_buy_requires_three_distinct_insiders():
         ).all()
         # 3 c_suite (el XML es un CEO) + 1 cluster.
         assert stats["alerts_created"] == 4
+        # Todos los importes conocidos: el total es el total.
+        assert "$150,000 total" in clusters[0].message
+        assert clusters[0].metadata_["window_value_missing"] == 0
+        assert clusters[0].metadata_["total_value_is_minimum"] is False
+        assert stats["skipped_missing_value"] == 0
+        assert stats["partial_cluster_totals"] == 0
     finally:
         _cleanup(db)
         db.close()
+
+
+def test_a_purchase_without_a_figure_never_alerts_as_zero():
+    """Un Form 4 sin cifra no es una compra de $0.
+
+    c_suite_buy no tiene gate de umbral: la alerta se emitia igual y el
+    mensaje decia "compro $0" (severidad medium). Sin importe no hay nada que
+    afirmar, asi que la transaccion no alerta y el hueco queda como cobertura.
+    """
+    db = _db()
+    try:
+        _cleanup(db)
+        _seed_big_buy(db)
+        for tx in db.scalars(select(InsiderTransaction)).all():
+            tx.value = None
+            db.add(tx)
+        db.commit()
+
+        stats = insider_alerts.evaluate(db)
+        assert stats["candidates"] == 1
+        assert stats["alerts_created"] == 0
+        assert stats["skipped_missing_value"] == 1
+        assert db.scalars(select(ResearchAlert)).all() == []
+    finally:
+        _cleanup(db)
+        db.close()
+
+
+def test_a_cluster_with_a_missing_figure_publishes_a_minimum_total():
+    """Un NULL sumado como 0 infravalora el total del cluster en silencio.
+
+    La regla se dispara por numero de insiders, no por dinero, asi que la
+    compra sin cifra no invalida el cluster: su importe no suma y el total se
+    declara como minimo conocido, con el hueco contado.
+    """
+    db = _db()
+    try:
+        _cleanup(db)
+        parsed = form4_connector.parse_form4_xml(CEO_BUY_XML)
+        tx = parsed["transactions"][0]
+        company = Company(
+            ticker="ACME", name="ACME Test", exchange="NASDAQ",
+            company_type="compounders", valuation_model="dcf",
+        )
+        db.add(company)
+        db.flush()
+        for idx, cik in enumerate(["111", "222", "333"]):
+            accession = f"0001234567-24-0004{idx:02d}"
+            clone = dict(tx)
+            clone["insider_cik"] = cik
+            clone["insider"] = f"Insider {cik}"
+            clone["shares"] = 500.0
+            # El tercero llega del XML sin cifra de importe.
+            clone["value"] = 50_000.0 if idx < 2 else None
+            parsed_clone = {"issuer_cik": "1234567", "ticker": "ACME",
+                            "issuer_name": "ACME Test", "transactions": [clone]}
+            insider_persistence.persist_filing(
+                db,
+                {**FILING, "accession_number": accession},
+                parsed_clone,
+                xml_text=None,
+            )
+
+        stats = insider_alerts.evaluate(db)
+        cluster = db.scalar(
+            select(ResearchAlert).where(ResearchAlert.alert_type == "insider_cluster_buy")
+        )
+        assert cluster is not None
+        # 2 c_suite (la compra sin cifra no alerta) + 1 cluster.
+        assert stats["alerts_created"] == 3
+        assert stats["skipped_missing_value"] == 1
+        assert stats["partial_cluster_totals"] == 1
+        # El total son los $100,000 conocidos, NO $100,000 de "$0" contados.
+        assert "$100,000" in cluster.message
+        assert "$150,000" not in cluster.message
+        assert "como minimo" in cluster.message
+        assert "1 de 3 compras sin cifra" in cluster.message
+        assert cluster.metadata_["window_transactions"] == 3
+        assert cluster.metadata_["window_value_missing"] == 1
+        assert cluster.metadata_["total_value_is_minimum"] is True
+    finally:
+        _cleanup(db)
+        db.close()
+
