@@ -67,7 +67,7 @@ el runner falla si alguno pasa.
 | Dataset | Fichero | Casos | Medidos | Controles negativos | Checks | Familia de origen |
 |---|---|---:|---:|---:|---:|---|
 | `rag_golden_v1` | `data-engine/evals/rag/rag_golden_v1.json` | 55 | 50 | **5** | 6 metricas sobre 34 casos respondidos + 16 de abstention | 17 documentos reales del repo (`rag_corpus_v1`), 19 chunks |
-| `valuation_engines_v1` | `data-engine/evals/valuation/valuation_engines_v1.json` | 144 | 127 | **17** | 999 | 8 motores: standard_dcf, bank, insurer, reit, sotp, holding_company, pre_revenue, commodity |
+| `valuation_engines_v1` | `data-engine/evals/valuation/valuation_engines_v1.json` | 144 | 127 | **17** | 989 | 8 motores: standard_dcf, bank, insurer, reit, sotp, holding_company, pre_revenue, commodity |
 | `llm_layers_v1` | `data-engine/evals/llm/llm_layers_v1.json` | 56 | 25 | **31** | 517 | 4 capas del pipeline LLM |
 | `ingest_v1` | `data-engine/evals/ingest/ingest_v1.json` | 79 | 64 | **15** | 630 | 3 familias: sec (42), esef (18), fmp (19) |
 
