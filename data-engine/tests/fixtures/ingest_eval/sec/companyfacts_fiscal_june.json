@@ -1,0 +1,66 @@
+{
+ "origin": "synthetic_fixture",
+ "cik": 1,
+ "entityName": "SYNTHETIC HOLDINGS PLC (synthetic fixture)",
+ "facts": {
+  "us-gaap": {
+   "Revenues": {
+    "units": {
+     "USD": [
+      {
+       "start": "2025-07-01",
+       "end": "2026-06-30",
+       "val": 4600000000,
+       "accn": "0000000001-25-000001",
+       "fy": 2026,
+       "fp": "FY",
+       "form": "10-K",
+       "filed": "2026-08-20"
+      },
+      {
+       "start": "2024-07-01",
+       "end": "2025-06-30",
+       "val": 4100000000,
+       "accn": "0000000001-24-000001",
+       "fy": 2025,
+       "fp": "FY",
+       "form": "10-K",
+       "filed": "2025-08-21"
+      }
+     ]
+    }
+   },
+   "NetIncomeLoss": {
+    "units": {
+     "USD": [
+      {
+       "start": "2025-07-01",
+       "end": "2026-06-30",
+       "val": 460000000,
+       "accn": "0000000001-25-000001",
+       "fy": 2026,
+       "fp": "FY",
+       "form": "10-K",
+       "filed": "2026-08-20"
+      },
+      {
+       "start": "2024-07-01",
+       "end": "2025-06-30",
+       "val": 410000000,
+       "accn": "0000000001-24-000001",
+       "fy": 2025,
+       "fp": "FY",
+       "form": "10-K",
+       "filed": "2025-08-21"
+      }
+     ]
+    }
+   },
+   "Revenues_trimestral": {
+    "units": {
+     "USD": []
+    }
+   }
+  }
+ }
+}

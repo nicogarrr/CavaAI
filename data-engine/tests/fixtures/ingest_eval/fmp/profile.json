@@ -1,0 +1,14 @@
+{
+ "origin": "synthetic_fixture",
+ "endpoint": "profile",
+ "rows": [
+  {
+   "symbol": "SYNQ",
+   "companyName": "Synthetic Holdings PLC",
+   "beta": 1.2,
+   "mktCap": 50000000000,
+   "ipoDate": "2010-04-15",
+   "price": 42.37
+  }
+ ]
+}
