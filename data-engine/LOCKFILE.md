@@ -185,8 +185,71 @@ Cuatro fallos distintos, y solo dos los atrapa el CI hoy:
 | Instalas con `pip install -r requirements.txt` | nadie: así funciona hoy en los `Dockerfile`, y por eso los rangos se quedan |
 
 `verify_lockfile.py` **no está cableado en `.github/workflows/ci.yml`** todavía
-porque `ci.yml` no es de este cambio; el diff exacto que hay que aplicar está al
-final de este documento y en el mensaje de cierre del trabajo.
+porque `ci.yml` no es de este cambio. El diff exacto está abajo.
+
+## Integración pendiente en `ci.yml`
+
+**No hay que tocar `python-version`**: los 8 jobs ya usan `"3.12"` y ahora eso
+coincide con `.python-version` y con `requires-python`. Lo que sí cambia:
+
+**1. `uv` tiene que fijarse, no flotar.** `uv.lock` dice `revision = 3`, que es lo
+que escribe uv 0.12.5. Un uv más viejo o más nuevo puede negarse a leerlo o
+re-escribirlo con otra revisión, y entonces `--frozen` deja de significar nada.
+
+```yaml
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.5"
+          enable-cache: true
+          cache-dependency-path: data-engine/uv.lock
+```
+
+**2. Job `backend`: instalar desde el lock, no desde los rangos.** Sustituir
+
+```yaml
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -r requirements.txt pytest ruff pyright
+```
+
+por
+
+```yaml
+      - name: Instalar desde el lock (reproducible)
+        run: uv sync --frozen --extra test --extra dev --no-install-project
+      - name: El lock tiene que seguir siendo fiel a los rangos declarados
+        run: uv run python scripts/verify_lockfile.py
+```
+
+y prefixar con `uv run` los que invocan herramientas, porque el intérprete de
+`actions/setup-python` ya no tiene nada instalado (lo vive `data-engine/.venv`):
+
+```yaml
+      - run: uv run python -m ruff check .
+      - run: uv run pyright
+      - run: uv run python -m pytest
+```
+
+`cache: pip` + `cache-dependency-path: data-engine/requirements.txt` de ese job
+pasan a ser innecesarios (el caché ya es el de uv).
+
+**3. Job `dep-parity`: aquí es donde va el verificador.** Hoy no instala nada
+(`verify_lockfile.py` es stdlib only, así que no necesita nada):
+
+```yaml
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.5"
+      - run: python data-engine/scripts/sync_requirements.py --check
+      - run: uv lock --check --project data-engine
+      - run: python data-engine/scripts/verify_lockfile.py
+```
+
+**4. Opcional pero recomendado**: `migrations` y `arm64-smoke` también ejecutan
+código y pueden pasar a `uv sync --frozen`. En `arm64-smoke` el lock además
+**deja de necesitar los dos pasos manuales de torch** (el paso "Install torch
+CPU-only on ARM64" y el que lo precede), porque el lock ya fija la variante CPU.
+`supply-chain` puede dejar `pip_audit -r requirements.txt` como está (auditar
+rangos sigue siendo válido) o pasar a auditar el lock.
 
 ## Números del lock actual
 
