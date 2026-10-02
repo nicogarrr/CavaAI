@@ -53,5 +53,9 @@ Coste 0 EUR, solo lectura sobre Atlas:
   Retencion local: `BACKUP_RETENTION_COUNT` (8 por defecto).
 - `scripts/mongo-restore-drill.sh`: prueba de restauracion en un `mongod`
   efimero en `127.0.0.1:27099`. Nunca restaura sobre Atlas ni produccion.
+- Sin `RCLONE_REMOTE` el backup queda en la misma VM: no protege de perder la
+  VM. En R2, `rclone copy` nunca borra; la expiracion la impone el lifecycle
+  del bucket.
+- Probar el primer backup a mano antes de programar el cron.
 - Programacion (cron semanal) pendiente: se activa solo tras verificar tier y
   destino. Ejemplo: `0 4 * * 0 cd ~/CavaAI && ./scripts/mongo-backup.sh`.

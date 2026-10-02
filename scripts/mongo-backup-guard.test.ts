@@ -27,6 +27,10 @@ describe('mongo-backup.sh', () => {
     assert.doesNotMatch(backup, /echo[^\n]*MONGODB_URI/);
     assert.match(backup, /--config <\(/);
   });
+  it('no descarta stderr de mongodump y limpia el tmp parcial', () => {
+    assert.doesNotMatch(backup, /2>\/dev\/null \| age/);
+    assert.match(backup, /trap 'rm -f "\$\{OUT\}\.tmp"' EXIT/);
+  });
   it('no deja el dump en claro', () => {
     assert.doesNotMatch(backup, />\s*"?\$\{?OUT\}?"?\s*$/m);
     assert.match(backup, /\| age /);
@@ -38,6 +42,10 @@ describe('mongo-restore-drill.sh', () => {
     assert.match(drill, /127\.0\.0\.1:27099:27017/);
     assert.doesNotMatch(drill, /MONGODB_URI/);
     assert.doesNotMatch(drill, /mongodb\+srv/);
+  });
+  it('falla si no se restauro ninguna coleccion', () => {
+    assert.match(drill, /COUNT\}" -eq 0/);
+    assert.match(drill, /exit 1/);
   });
   it('limpia el contenedor al salir', () => {
     assert.match(drill, /trap cleanup EXIT/);

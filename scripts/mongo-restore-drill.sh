@@ -21,5 +21,11 @@ for _ in $(seq 1 30); do
 done
 age -d -i "${AGE_IDENTITY_FILE}" "${FILE}" | docker exec -i "${NAME}" mongorestore --archive --gzip --nsInclude='*.*' >/dev/null
 echo "[drill] colecciones restauradas:"
-docker exec "${NAME}" mongosh --quiet --eval 'db.getMongo().getDBNames().filter(n=>!["admin","local","config"].includes(n)).forEach(n=>{const d=db.getSiblingDB(n);d.getCollectionNames().forEach(c=>print(n+"."+c+": "+d.getCollection(c).countDocuments()))})'
-echo "[drill] ok"
+LISTING=$(docker exec "${NAME}" mongosh --quiet --eval 'db.getMongo().getDBNames().filter(n=>!["admin","local","config"].includes(n)).forEach(n=>{const d=db.getSiblingDB(n);d.getCollectionNames().forEach(c=>print(n+"."+c+": "+d.getCollection(c).countDocuments()))})')
+printf '%s\n' "${LISTING}"
+COUNT=$(printf '%s\n' "${LISTING}" | grep -c ': ' || true)
+if [ "${COUNT}" -eq 0 ]; then
+  echo "[drill] FALLO: no se restauro ninguna coleccion" >&2
+  exit 1
+fi
+echo "[drill] ok: ${COUNT} colecciones restauradas"

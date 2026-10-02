@@ -27,12 +27,12 @@ KEEP="${BACKUP_RETENTION_COUNT:-8}"
 STAMP="$(date -u +%Y%m%d-%H%M%S)"
 OUT="${BACKUP_DIR}/mongo-${STAMP}.archive.gz.age"
 mkdir -p "${BACKUP_DIR}"
+trap 'rm -f "${OUT}.tmp"' EXIT
 
 echo "[mongo-backup] volcando a ${OUT} (cifrado, sin fichero en claro)…"
 # La URI va por fichero de config efimero (process substitution): no aparece
 # en `ps` ni en logs.
-mongodump --config <(printf 'uri: "%s"\n' "${MONGODB_URI}") --archive --gzip 2>/dev/null | age -r "${AGE_RECIPIENT}" -o "${OUT}.tmp"
-[ -s "${OUT}.tmp" ] || { rm -f "${OUT}.tmp"; echo "[mongo-backup] dump vacio" >&2; exit 1; }
+mongodump --config <(printf 'uri: "%s"\n' "${MONGODB_URI}") --archive --gzip | age -r "${AGE_RECIPIENT}" -o "${OUT}.tmp"
 mv "${OUT}.tmp" "${OUT}"
 sha256sum "${OUT}" > "${OUT}.sha256"
 echo "[mongo-backup] ok: $(wc -c < "${OUT}") bytes"
