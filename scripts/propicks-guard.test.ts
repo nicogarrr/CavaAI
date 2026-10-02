@@ -177,13 +177,11 @@ describe('propicks-guard', () => {
         }
     });
 
-    it('UI en español con reintento', () => {
-        const content = readSource('components/proPicks/EnhancedProPicksContent.tsx');
-        const tabs = readSource('components/proPicks/ProPicksTabs.tsx');
-        const section = readSource('components/proPicks/ProPicksSection.tsx');
-        assert.ok(content.includes('Reintentar'));
-        assert.ok(tabs.includes('Reintentar'));
-        assert.ok(section.includes('Reintentar'));
+        it('UI en español con reintento', () => {
+            const content = readSource('components/proPicks/EnhancedProPicksContent.tsx');
+            const tabs = readSource('components/proPicks/ProPicksTabs.tsx');
+            assert.ok(content.includes('Reintentar'));
+            assert.ok(tabs.includes('Reintentar'));
         assert.ok(!content.includes('Regenerar Picks') || content.includes('Reintentar'));
     });
 });

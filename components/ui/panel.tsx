@@ -68,11 +68,9 @@ function renderIcon(icon: PanelProps['icon']) {
  *
  * El plegado se resuelve con estado + clases, no con JS que mida el viewport:
  * un `<details>` puro sale cerrado en TODOS los tamaños y en escritorio
- * escondia el contenido sin pista de que se desplegaba (ver el comentario de
- * `components/research/CollapsiblePanel.tsx`, que se conserva para el flujo
- * que todavia lo usa). Con `"mobile"` el contenido lleva `md:block`, asi que
- * desde `md` siempre se ve aunque el estado sea "plegado" y el HTML del
- * servidor ya sale completo.
+ * escondia el contenido sin pista de que se desplegaba. Con `"mobile"` el
+ * contenido lleva `md:block`, asi que desde `md` siempre se ve aunque el
+ * estado sea "plegado" y el HTML del servidor ya sale completo.
  */
 export function Panel({
     title,
