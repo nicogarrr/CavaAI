@@ -66,6 +66,44 @@ Dockerfile*
 docker-compose*
 .dockerignore
 
+# ------------------------------------------------- cierre: patrones que SI
+# cruzan directorios.
+#
+# Docker casa las reglas con filepath.Match, donde `*` NO cruza `/`. Por eso las
+# reglas de arriba (que son casi todas `*` o `*.ext` a secas) solo anclan a la
+# raiz del contexto de build: dejaban entrar, sin que nada lo dijera,
+# sub/.env.production, app/__pycache__/*.pyc, app/app.db, docker.env,
+# data-engine/cavaai_test.db, test-results/, playwright-report/ y *.tsbuildinfo.
+# Con `COPY . .` (root/Dockerfile linea 20) todo eso acababa DENTRO de la
+# imagen, y en el frontend dentro de required-server-files.json con
+# output:'standalone'.
+#
+# `**/` es la extension de moby/patternmatcher: `**` casa con cero o mas
+# segmentos de directorio, asi que `**/.env` casa con `.env` en la raiz y con
+# `a/b/.env`.
+**/__pycache__
+**/*.py[cod]
+**/.venv
+**/.env
+**/.env.*
+**/*.db
+**/*.sqlite*
+**/*.duckdb
+**/*.tsbuildinfo
+
+# Credenciales del compose de produccion. docker.env.example SI se versiona
+# (arriba hay `!docker.env.example`) y este fichero es su hermano con los
+# secretos reales: `docker compose --env-file docker.env` lo crea al lado del
+# ejemplo, asi que sin esta regla un `docker build` lo mete en la imagen.
+docker.env
+
+node_modules/**
+.next/**
+test-results/**
+coverage/**
+playwright-report/**
+data-engine/htmlcov/**
+
 # Python
 __pycache__
 *.py[cod]
