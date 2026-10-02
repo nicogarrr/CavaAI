@@ -25,10 +25,24 @@ on:
 permissions:
   contents: read
 
-# Un drill por rama: uno en curso cancela al anterior, que ya no informa de nada.
+# shell por defecto: `bash` explicito (= `bash --noprofile --norc -eo pipefail
+# {0}`); sin el, los pipes (`| grep`, `| tee`) devuelven el exit code del
+# ultimo comando y un paso puede pasar con el comando real en rojo (FIX-3.2).
+defaults:
+  run:
+    shell: bash
+
+# Un drill por rama y NUNCA cancelado (FIX-3.6): este workflow publica el
+# manifiesto del backup y los informes de verificacion como evidencia forense
+# (retention 7 dias). Con cancel-in-progress: true, una rafaga de pushes
+# cancelaba los drills a mitad y la evidencia se perdia; peor: `block-on-main`
+# acababa evaluando el verde de un drill a medio hacer. Con false, GitHub
+# encola el siguiente y cada drill conserva su evidencia completa. El coste
+# (rafagas de pushes encolan drills de ~45 min) se acepta: la evidencia de un
+# restore verificado no se cancela.
 concurrency:
   group: restore-drill-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   restore-drill:
@@ -103,34 +117,42 @@ jobs:
       POSTGRES_CONTAINER: ""
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: data-engine/requirements.txt
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          version: "0.12.5"
+          enable-cache: true
+          cache-dependency-glob: "data-engine/uv.lock"
 
       - name: Install data-engine dependencies
-        # El backup usa el SDK de MinIO (ya en requirements.txt) y la API HTTP de
-        # Qdrant, asi que no hace falta `mc` ni el cliente de Postgres del runner:
-        # el dump se ejecuta dentro del contenedor postgres:17.
+        # Instalacion CONGELADA desde uv.lock (FIX-3.3/3.4): un drill que
+        # resuelve distinto en cada run no demuestra nada sobre el backup del
+        # commit. El backup usa el SDK de MinIO y la API HTTP de Qdrant, que
+        # vienen en el lock; no hace falta `mc` ni el cliente de Postgres del
+        # runner: el dump se ejecuta dentro del contenedor postgres:17.
+        # --extra test / --extra dev traen pytest y ruff para los pasos finales.
         working-directory: data-engine
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
-          python -m pip install pytest ruff
+        run: uv sync --frozen --extra test --extra dev --no-install-project
 
       - name: Resolve the Postgres service container
         # Los services de GitHub no tienen nombre estable: se localiza por
         # imagen. Asi el backup usa el cliente 17.x del propio servidor y el
         # drill no depende del cliente del runner (que seria 16 y abortaria).
+        # FIX-3.7: UNICO y verificado, nunca `head -1` a ciegas. En un runner
+        # self-hosted (o una VM reusada) puede haber otro postgres:17 en
+        # marcha, y elegirlo llevaria el `DROP DATABASE ... WITH (FORCE)` del
+        # paso siguiente a la base de otra persona.
         run: |
-          PG_ID="$(docker ps --filter ancestor=postgres:17 --format '{{.ID}}' | head -1)"
-          if [ -z "${PG_ID}" ]; then
-            echo "::error::no hay contenedor de postgres:17 en marcha (services no levantados)"
+          mapfile -t PGS < <(docker ps --filter ancestor=postgres:17 --format '{{.ID}}')
+          if [ "${#PGS[@]}" -ne 1 ]; then
+            echo "::error::se esperaba 1 contenedor postgres:17 y hay ${#PGS[@]}; no se elige a ciegas"
             exit 1
           fi
+          PG_ID="${PGS[0]}"
           echo "POSTGRES_CONTAINER=${PG_ID}" >> "${GITHUB_ENV}"
 
       - name: Wait for MinIO and Qdrant
@@ -144,12 +166,12 @@ jobs:
         # El MISMO siemembro que usa disaster_drill.py: si Sembraran distinto,
         # el manifest que uno verifica no seria el que el otro restorea.
         working-directory: data-engine
-        run: python -m scripts.backup.seed_drill_data
+        run: uv run --frozen python -m scripts.backup.seed_drill_data
 
       - name: Backup the three pillars
         working-directory: data-engine
         run: |
-          python -m scripts.backup.backup_all \
+          uv run --frozen python -m scripts.backup.backup_all \
             --out "${BACKUP_DIR}" \
             --pg-mode docker \
             --pg-container "${POSTGRES_CONTAINER}" \
@@ -176,7 +198,7 @@ jobs:
       - name: Restore Postgres to the clean destination
         working-directory: data-engine
         run: |
-          python -m scripts.restore.restore_postgres \
+          uv run --frozen python -m scripts.restore.restore_postgres \
             --manifest "${BACKUP_DIR}" \
             --mode docker --container "${POSTGRES_CONTAINER}" --user portfolio \
             --confirm-restore
@@ -184,7 +206,7 @@ jobs:
       - name: Restore MinIO
         working-directory: data-engine
         run: |
-          python -m scripts.restore.restore_minio \
+          uv run --frozen python -m scripts.restore.restore_minio \
             --manifest "${BACKUP_DIR}" \
             --endpoint 127.0.0.1:9000 \
             --access-key "${MINIO_ACCESS_KEY}" --secret-key "${MINIO_SECRET_KEY}" \
@@ -194,7 +216,7 @@ jobs:
       - name: Restore Qdrant
         working-directory: data-engine
         run: |
-          python -m scripts.restore.restore_qdrant \
+          uv run --frozen python -m scripts.restore.restore_qdrant \
             --manifest "${BACKUP_DIR}" \
             --url "${QDRANT_URL}" \
             --confirm-restore
@@ -205,7 +227,7 @@ jobs:
         # manifiesto como si el restore hubiera perdido datos.
         working-directory: data-engine
         run: |
-          python -m scripts.restore.verify_restore \
+          uv run --frozen python -m scripts.restore.verify_restore \
             --manifest "${BACKUP_DIR}" \
             --pg-mode docker --pg-container "${POSTGRES_CONTAINER}" --pg-user portfolio \
             --minio-endpoint 127.0.0.1:9000 \
@@ -217,7 +239,7 @@ jobs:
       - name: Start the app against the restored database
         working-directory: data-engine
         run: |
-          nohup python -m uvicorn main:app --host 127.0.0.1 --port 8000 --log-level warning \
+          nohup uv run --frozen python -m uvicorn main:app --host 127.0.0.1 --port 8000 --log-level warning \
             > /tmp/uvicorn.log 2>&1 &
           for i in $(seq 1 90); do
             curl -fsS http://127.0.0.1:8000/health/live >/dev/null && break || sleep 2
@@ -231,7 +253,7 @@ jobs:
       - name: Verify the restored app serves data
         working-directory: data-engine
         run: |
-          python -m scripts.restore.verify_restore \
+          uv run --frozen python -m scripts.restore.verify_restore \
             --manifest "${BACKUP_DIR}" \
             --pg-mode docker --pg-container "${POSTGRES_CONTAINER}" --pg-user portfolio \
             --minio-endpoint 127.0.0.1:9000 \
@@ -289,7 +311,7 @@ jobs:
 
       - name: Upload drill artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: restore-drill-${{ github.run_id }}
           path: /tmp/drill-artifacts
@@ -298,14 +320,14 @@ jobs:
 
       - name: Contract tests (manifest, fail-closed, runbook, pins)
         working-directory: data-engine
-        run: python -m pytest tests/test_backup_contracts.py -q
+        run: uv run --frozen python -m pytest tests/test_backup_contracts.py -q
 
       - name: Lint the backup and restore scripts
         # Los scripts viven dentro de data-engine/ para que este `ruff check .`
         # los cubra; si alguien los mueve a scripts/ del repo, esto deja de
         # revisar el codigo que produce los backups.
         working-directory: data-engine
-        run: python -m ruff check .
+        run: uv run --frozen ruff check .
 
   block-on-main:
     name: Require the drill in main
