@@ -1,5 +1,6 @@
 import { formatCompact, formatNumber, formatPercent, NA } from '@/lib/format';
 import { metricLabel } from '@/lib/research/metric-labels';
+import { frameworkLabel, frameworkTerm } from '@/lib/research/framework-terms';
 import { expectationMetricLabel, reviewStatusLabel } from '@/lib/research/expectation-labels';
 import { BarChart3, BrainCircuit, CheckCircle2, GitBranch } from 'lucide-react';
 import { GlossaryTerm } from '@/components/GlossaryTerm';
@@ -49,7 +50,7 @@ function conditionInSpanish(
     case 'competitive_position':
       return 'La cuota de mercado no debe deteriorarse materialmente';
     case 'binding_constraint':
-      return `La restricción vinculante (${bindingConstraint ?? 'desconocida'}) debe soportar el escenario base`;
+      return `La restricción vinculante (${bindingConstraint ? metricLabel(bindingConstraint) : 'desconocida'}) debe soportar el escenario base`;
     default:
       return item.condition;
   }
@@ -89,6 +90,11 @@ const MODEL_STATUS_LABELS: Record<string, string> = {
 function translate(map: Record<string, string>, value: string | null | undefined, fallback = 's/d'): string {
   if (value == null || value === '') return fallback;
   return map[value] ?? value;
+}
+
+/** Driver, KPI, entrada o restricción del modelo en español (marco por tipo de empresa primero, luego métricas). */
+export function termLabel(raw: string): string {
+  return frameworkTerm(raw) ?? metricLabel(raw);
 }
 
 function ModelStat({ label, value, positive = false }: { label: string; value: string; positive?: boolean }) {
@@ -143,14 +149,14 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
 
       {model.missing_inputs.length ? (
         <div className="mb-4 rounded-md border border-amber-900/70 bg-amber-950/20 p-3 text-sm text-amber-200">
-          Modelo no publicable: faltan {model.missing_inputs.map(metricLabel).join(', ')}.
+          Modelo no publicable: faltan {model.missing_inputs.map(termLabel).join(', ')}.
         </div>
       ) : null}
 
       <div className="mb-4 rounded-md border border-gray-800 bg-black/10 p-3 text-xs leading-5 text-gray-400">
-        <span className="font-semibold text-gray-300">Drivers:</span> {model.framework.revenue_drivers.map(metricLabel).join(' · ')}
+        <span className="font-semibold text-gray-300">Drivers:</span> {model.framework.revenue_drivers.map(termLabel).join(' · ')}
         <span className="mx-2 text-gray-700">|</span>
-        <span className="font-semibold text-gray-300">KPIs:</span> {model.framework.kpis.map(metricLabel).join(' · ')}
+        <span className="font-semibold text-gray-300">KPIs:</span> {model.framework.kpis.map(termLabel).join(' · ')}
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -237,7 +243,7 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
             <p className="mt-2 text-gray-300">
               {model.reverse_dcf.status === 'ok'
                 ? `El precio actual exige ${percentage(model.reverse_dcf.required_revenue_growth)} de crecimiento; la base asume ${percentage(model.reverse_dcf.base_revenue_growth)}.`
-                : `No disponible: ${(model.reverse_dcf.missing_inputs ?? []).map(metricLabel).join(', ') || 'faltan inputs de mercado o financieros'}.`}
+                : `No disponible: ${(model.reverse_dcf.missing_inputs ?? []).map(termLabel).join(', ') || 'faltan inputs de mercado o financieros'}.`}
             </p>
             <p className="mt-2 text-xs leading-5 text-gray-500">
               El reverse DCF invierte el modelo: parte del precio de mercado y calcula qué crecimiento está descontando ya.
@@ -257,13 +263,13 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
         <div className="rounded-md border border-gray-800 p-3 text-sm">
           <div className="text-xs font-semibold uppercase text-gray-500">Beneficio del propietario</div>
           <div className="mt-2 text-xl font-semibold text-gray-200">{compactNumber(model.owner_earnings.value)}</div>
-          <p className="mt-2 text-xs leading-5 text-gray-500">{model.owner_earnings.status === 'ok' ? translate(PROSE_ES, model.owner_earnings.formula, model.owner_earnings.formula) : `Insuficiente: ${(model.owner_earnings.missing_inputs ?? []).map(metricLabel).join(', ')}.`}</p>
+          <p className="mt-2 text-xs leading-5 text-gray-500">{model.owner_earnings.status === 'ok' ? translate(PROSE_ES, model.owner_earnings.formula, model.owner_earnings.formula) : `Insuficiente: ${(model.owner_earnings.missing_inputs ?? []).map(termLabel).join(', ')}.`}</p>
         </div>
         <div className="rounded-md border border-gray-800 p-3 text-sm">
           <div className="text-xs font-semibold uppercase text-gray-500">Motor de oportunidad de mercado</div>
-          <div className="mt-2 text-sm font-semibold text-gray-200">{model.framework.label}</div>
+          <div className="mt-2 text-sm font-semibold text-gray-200">{frameworkLabel(model.framework.label)}</div>
           <p className="mt-2 text-gray-400">TAM top-down {compactNumber(model.market_opportunity.top_down.tam.value)} · bottom-up {compactNumber(model.market_opportunity.bottom_up.value)}</p>
-          <p className="mt-2 text-gray-400">Restricción vinculante: {model.market_opportunity.constraints.binding_constraint ?? 'desconocida'}</p>
+          <p className="mt-2 text-gray-400">Restricción vinculante: {model.market_opportunity.constraints.binding_constraint ? termLabel(model.market_opportunity.constraints.binding_constraint) : 'desconocida'}</p>
           <p className="mt-2 text-xs leading-5 text-gray-500">
               {translate(VERDICT_LABELS, model.market_opportunity.verdict.label)} ·{' '}
               {model.market_opportunity.verdict.conclusion.startsWith('Base revenue uses') && model.market_opportunity.verdict.base_revenue_to_binding_capacity != null
