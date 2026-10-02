@@ -1,3 +1,4 @@
+import type { TranslationKey } from '../i18n/t';
 /**
  * Modelo puro del grafo de conocimiento (D2b).
  *
@@ -353,7 +354,7 @@ export type DetailField = {
   /** Identificador estable del campo (para `key` de React y para los tests). */
   key: string;
   /** Clave de i18n del rotulo, o `null` si el rotulo es el nombre de un atributo del backend. */
-  labelKey: string | null;
+  labelKey: TranslationKey | null;
   /** Rotulo literal, solo para los atributos que nomsbra el backend. */
   label?: string;
   value: string;
@@ -362,7 +363,7 @@ export type DetailField = {
 };
 
 /** Un campo ausente lleva su motivo: «N/D» solo, sin explicación, es una respuesta inutil. */
-function field(key: string, labelKey: string, value: string | null, absent: string): DetailField {
+function field(key: string, labelKey: TranslationKey, value: string | null, absent: string): DetailField {
   const trimmed = typeof value === 'string' ? value.trim() : '';
   return trimmed ? { key, labelKey, value: trimmed } : { key, labelKey, value: '', absent };
 }
