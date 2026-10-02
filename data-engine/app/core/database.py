@@ -1,7 +1,7 @@
 import logging
 from collections.abc import Generator
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import create_engine, event, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker, with_loader_criteria
@@ -147,6 +147,7 @@ def _assign_tenant_to_new_rows(session: Session, _flush_context, _instances) -> 
 
 def get_db(
     principal: ResearchPrincipal | None = Depends(get_research_principal),
+    request: Request = None,
 ) -> Generator[Session, None, None]:
     # Fail-closed: with research auth required there is never an anonymous
     # session. Writes without a tenant must be impossible, not just unscoped.
@@ -201,6 +202,14 @@ def get_db(
                 )
             db.info["tenant_id"] = tenant.id
             db.info["user_id"] = principal.user_id
+            # #E5: el middleware de latencia por endpoint tiene que particionar
+            # sus filas por tenant, y el id interno del tenant SOLO se resuelve
+            # aqui (la identidad firmada lleva el external_id). request.state
+            # vive en scope["state"], que el middleware ya tiene del mismo
+            # request, asi que no hace falta resolver el tenant dos veces ni
+            # leer cabeceras de autenticacion fuera de get_research_principal.
+            if request is not None:
+                request.state.tenant_id = tenant.id
         yield db
     finally:
         db.rollback()

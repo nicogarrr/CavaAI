@@ -17,6 +17,7 @@ from app.core.rate_limit import enforce_rate_limit
 from app.core.raw_body import RawBodyMiddleware
 from app.llm.factory import validate_llm_configuration
 from app.llm.model_aliases import configure_model_aliases
+from app.metrics.latency import LatencyMetricsMiddleware
 from app.seed import ensure_company_master
 
 try:  # preload optional probe modules during process startup, not in a request
@@ -97,6 +98,12 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-CavaAI-Tenant", "X-CavaAI-User", "X-CavaAI-Timestamp", "X-CavaAI-Nonce", "X-CavaAI-Method", "X-CavaAI-Path", "X-CavaAI-Body-Hash", "X-CavaAI-Signature"],
 )
+# #E5: latencia por endpoint. ASGI puro (no BaseHTTPMiddleware, que paga una
+# tarea extra por request), etiqueta por PLANTILLA de ruta y agrega por ventana
+# en un hilo daemon. Se autodesactiva con APP_ENV=test para no escribir en la BD
+# de la sesion de tests. El coste que se anade a cada request se mide y se expone
+# en `overhead_*`.
+app.add_middleware(LatencyMetricsMiddleware)
 
 private_dependencies = [Depends(get_research_principal), Depends(enforce_rate_limit)]
 
