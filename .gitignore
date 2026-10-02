@@ -90,6 +90,7 @@ data-engine/htmlcov/
 # build_esef_snapshots.py, y en produccion viajan como volumen montado.
 /data-engine/data/
 /data-esef-snapshots/
+/data-sp500-factsheet-snapshots/
 *.duckdb
 *.duckdb.wal
 .mypy_cache/
