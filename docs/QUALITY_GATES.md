@@ -30,19 +30,19 @@ Reglas que valen para todas las filas:
 
 | Gate | Que mide | Numero | Umbral | Runner | Workflow |
 |---|---|---:|---:|---|---|
-| **Cobertura total gateada** | Sentencias + ramas de `app/**` + `alembic/**`, exento `alembic` | **84.16 %** | **84** (ratchet por paquete, `max_drop_points = 0`) | `data-engine/scripts/run_coverage_gate.py` | [`.github/workflows/coverage.yml`](../.github/workflows/coverage.yml) |
-| **Cobertura con exentos** | Lo mismo mas `alembic`, que se mide y se reporta pero no gatea (se ejercita en subproceso) | **81.58 %** | **81** (`fail_under`) | el mismo | el mismo |
-| **RAG faithfulness** | Fraccion de frases de la respuesta respaldadas por el contexto recuperado (RAGAS, juez determinista) | **1.000** | **>= 0.75** | `data-engine/scripts/run_rag_evals.py` | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), job `evals` |
-| **RAG answer_relevancy** | Proporcion de terminos de contenido de la pregunta cubiertos por la mejor frase | **0.760** | **>= 0.70** | el mismo | el mismo |
-| **RAG context_precision** | Average precision de RAGAS con relevancia binaria (Dice >= 0.30) | **0.866** | **>= 0.70** | el mismo | el mismo |
-| **RAG context_recall** | Proporcion de documentos de referencia cubiertos por el contexto recuperado | **1.000** | **>= 0.70** | el mismo | el mismo |
-| **RAG abstention_accuracy** | Proporcion de los 16 casos que deben negarse en los que el RAG se abstiene | **1.000** | **= 1.00** | el mismo | el mismo |
-| **RAG source_hit_rate** | Proporcion de casos respondidos que citan una fuente esperada | **1.000** | **>= 0.90** | el mismo | el mismo |
+| **Cobertura total gateada** | Sentencias + ramas de `app/**` + `alembic/**`, exento `alembic` | **84.27 %** | **84** (ratchet por paquete, `max_drop_points = 0`) | `data-engine/scripts/run_coverage_gate.py` | [`.github/workflows/coverage.yml`](../.github/workflows/coverage.yml) |
+| **Cobertura con exentos** | Lo mismo mas `alembic`, que se mide y se reporta pero no gatea (se ejercita en subproceso) | **81.99 %** | **81** (`fail_under`) | el mismo | el mismo |
+| **RAG faithfulness** | Fraccion de frases de la respuesta respaldadas por el contexto recuperado (RAGAS, juez determinista) | ver log del job `evals` (sin verificar en CI de main a 2026-10-02) | **>= 0.75** | `data-engine/scripts/run_rag_evals.py` | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), job `evals` |
+| **RAG answer_relevancy** | Proporcion de terminos de contenido de la pregunta cubiertos por la mejor frase | ver log del job `evals` (sin verificar en CI de main a 2026-10-02) | **>= 0.70** | el mismo | el mismo |
+| **RAG context_precision** | Average precision de RAGAS con relevancia binaria (Dice >= 0.30) | ver log del job `evals` (sin verificar en CI de main a 2026-10-02) | **>= 0.70** | el mismo | el mismo |
+| **RAG context_recall** | Proporcion de documentos de referencia cubiertos por el contexto recuperado | ver log del job `evals` (sin verificar en CI de main a 2026-10-02) | **>= 0.70** | el mismo | el mismo |
+| **RAG abstention_accuracy** | Proporcion de los 16 casos que deben negarse en los que el RAG se abstiene | ver log del job `evals` (sin verificar en CI de main a 2026-10-02) | **= 1.00** | el mismo | el mismo |
+| **RAG source_hit_rate** | Proporcion de casos respondidos que citan una fuente esperada | ver log del job `evals` (sin verificar en CI de main a 2026-10-02) | **>= 0.90** | el mismo | el mismo |
 | **Ingest field_accuracy** | Campo extraido == campo del fixture (SEC/EDGAR, FMP, ESEF) | **1.0000** (107/107) | **>= 0.98** | `data-engine/scripts/run_ingest_evals.py` | `ci.yml` job `evals` + [`ingest-evals.yml`](../.github/workflows/ingest-evals.yml) |
 | **Ingest period_attribution_accuracy** | El periodo atribuido es el del hecho, no el del documento | **1.0000** (95/95) | **>= 0.95** | el mismo | el mismo |
 | **Ingest source_attribution_accuracy** | La familia de fuente declarada es la real | **1.0000** (101/101) | **>= 0.99** | el mismo | el mismo |
 | **Ingest abstention_rate** | Ausente se reporta como ausente, no como 0 | **1.0000** (189/189) | **= 1.0** | el mismo | el mismo |
-| **Valuation engines** | 13 puertas deterministas sobre 8 motores: estado publicable, banda bear/base/bull, valor contra forma cerrada, probabilidades, sensibilidad, entradas ausentes declaradas, cero de deuda neta silencioso, signo del FCF negativo, routing, trazabilidad de evidencia, base ADR, y que ninguna puerta pueda omitirse | **999 checks, 0 fallos** | cualquier fallo = exit 1 | `data-engine/scripts/run_valuation_evals.py` | `ci.yml` job `evals` |
+| **Valuation engines** | 13 puertas deterministas sobre 8 motores: estado publicable, banda bear/base/bull, valor contra forma cerrada, probabilidades, sensibilidad, entradas ausentes declaradas, cero de deuda neta silencioso, signo del FCF negativo, routing, trazabilidad de evidencia, base ADR, y que ninguna puerta pueda omitirse | **989 checks, 0 fallos** (log del job `evals`, 2026-10-02) | cualquier fallo = exit 1 | `data-engine/scripts/run_valuation_evals.py` | `ci.yml` job `evals` |
 | **LLM layers** | 12 puertas sobre 4 capas (`kpi_extraction`, `narrative`, `principles`, `debate`): schema de salida, etiquetas conocidas, confianza en rango, sin cifras alucinadas, toda afirmacion con evidencia, veredicto de debate permitido, orden de escenarios, probabilidades que suman 1, fallo de proveedor degradado y no contestado, abstention con evidencia insuficiente, capas cubiertas, controles negativos presentes | **517 checks, 0 fallos** | cualquier fallo = exit 1 | `data-engine/scripts/run_llm_evals.py` | `ci.yml` job `evals` + [`llm-evals.yml`](../.github/workflows/llm-evals.yml) |
 
 Los tres ultimos no tienen un "umbral decimal": el dataset **es** el umbral. Cada
@@ -146,8 +146,8 @@ python scripts/run_coverage_gate.py --report
 
 | Documento | Que responde |
 |---|---|
-| [`docs/COVERAGE.md`](COVERAGE.md) | Que se mide, que se excluye y por que, los dos totales (84.17 % gateado / 81.59 % con exentos), el ratchet por paquete, la exencion de `alembic` y por que `include_namespace_packages = True` no es cosmetica. |
+| [`docs/COVERAGE.md`](COVERAGE.md) | Que se mide, que se excluye y por que, los dos totales (84.27 % gateado / 81.99 % con exentos, baseline 2026-10-02), el ratchet por paquete, la exencion de `alembic` y por que `include_namespace_packages = True` no es cosmetica. |
 | [`data-engine/evals/rag/README.md`](../data-engine/evals/rag/README.md) | De donde sale el corpus del golden set, las 5 puertas del RAG, las 6 metricas y el por que de cada umbral, y que se mediria con un LLM real. |
 | `data-engine/evals/llm/README.md`, `data-engine/evals/valuation/README.md`, `data-engine/evals/ingest/README.md` | **PENDIENTE**: todavia no existen. Los tres runners imprimen su cobertura por puerta, por capa/motor y por familia de fuente, que es la parte que estos README documentarian. |
 | [`data-engine/scripts/run_coverage_gate.py`](../data-engine/scripts/run_coverage_gate.py) | El gate, con las 10 situaciones en las que falla cerrado. |
-| `data-engine/LOCKFILE.md` | **PENDIENTE (INT-E)**: el lockfile con las versiones exactas del arbol de dependencias. Hasta que exista, las herramientas de desarrollo van pineadas a mano en los workflows (`ruff==0.16.10`, `pyright==1.1.414`) y las de runtime por rango en `data-engine/requirements.txt`, cuya paridad con `pyproject.toml` vigila el job `dep-parity`. |
+| [`data-engine/LOCKFILE.md`](../data-engine/LOCKFILE.md) | El lockfile (`uv.lock`) con las versiones exactas del arbol de dependencias y como regenerarlo (#765). Ruff y pyright van ademas pineados en los workflows (`ruff==0.16.10`, `pyright==1.1.414`) y las de runtime por rango en `data-engine/requirements.txt`, cuya paridad con `pyproject.toml` vigila el job `dep-parity`. |

@@ -32,50 +32,51 @@ cualquier entorno que no lo tenga instalado. La medicion es opt-in.
 ## Cifra real (linea base, medida)
 
 Medido con `branch = True` y `include_namespace_packages = True`, sobre la suite
-completa en el commit base de este trabajo.
+completa. Cifras de `data-engine/coverage_baseline.json` en main a 2026-10-02: ese
+fichero es la fuente de verdad y estos numeros se actualizan cuando se regenera
+con `--update-baseline`.
 
 Hay **dos totales**, y conviene no confundirlos:
 
-- **81.49 %** — todo lo medido, `percent_covered` de coverage.py
-  (30403/37310 operaciones, con `alembic` incluido). Es contra este numero
+- **81.99 %** — todo lo medido, `percent_covered` de coverage.py
+  (35897/43781 operaciones, con `alembic` incluido). Es contra este numero
   contra el que comprueba `fail_under` en `data-engine/.coveragerc`, porque
   coverage.py no sabe nada de exentos.
-- **84.07 %** — lo que el ratchet gatea de verdad, con `alembic` excluido por
-  estar exento (30381/36139). El gate imprime **los dos** en cada informe, para
+- **84.27 %** — lo que el ratchet gatea de verdad, con `alembic` excluido por
+  estar exento (35875/42570). El gate imprime **los dos** en cada informe, para
   que mover un paquete a `exempt` no pueda subir el titular en silencio.
 
-Desglose de coverage.py: sentencias **83.39 %** (24179/28996), ramas **74.86 %**
-(6224/8314), 22 lineas excluidas por `exclude_lines`. El gate usa el combinado
-(sentencias + ramas) con la misma definición de `percent_covered` de coverage.py.
-Gatear solo sentencias daría 83.39 % de statements-only: más alto y menos
-honesto, porque se pagaría el coste de `branch = True` sin gatear las ramas.
+El gate usa el combinado (sentencias + ramas) con la misma definicion de
+`percent_covered` de coverage.py. Gatear solo sentencias daria una cifra mas alta y
+menos honesta, porque se pagaria el coste de `branch = True` sin gatear las ramas.
+El desglose sentencias/ramas no esta en el baseline: sale en el informe de
+`python scripts/run_coverage_gate.py --report`.
 
 | Paquete | % (sent+ramas) | Operaciones | Umbral (minimo) |
 |---|---:|---:|---:|
-| `app/services` | 86.45 % | 25432 | 86 |
-| `app/valuation` | 95.25 % | 589 | 95 |
-| `app/valuation/engines` | 87.03 % | 794 | 87 |
-| `app/workflows` | 92.55 % | 443 | 92 |
-| `app/api/routes` | 67.97 % | 4112 | 67 |
-| `app/models` | 100.00 % | 1346 | 100 |
+| `app/services` | 85.76 % | 28968 | 85 |
+| `app/valuation` | 91.49 % | 1728 | 91 |
+| `app/valuation/engines` | 89.99 % | 1749 | 89 |
+| `app/workflows` | 95.48 % | 442 | 95 |
+| `app/api/routes` | 69.25 % | 4215 | 69 |
+| `app/models` | 99.93 % | 1414 | 99 |
 | `app/schemas` | 100.00 % | 612 | 100 |
 | `app/api` | 100.00 % | 41 | 100 |
 | `app/data` | 100.00 % | 1 | 100 |
-| `app` (`seed.py`) | 100.00 % | 29 | 100 |
-| `app/core` | 87.30 % | 764 | 87 |
-| `app/llm` | 78.93 % | 707 | 78 |
-| `app/workers` | 53.90 % | 1269 | 53 |
-| `alembic` | 1.88 % | 1171 | **exento** (ver abajo) |
-| **TOTAL gateado** | **84.07 %** | **36139** | **84** |
-| **TOTAL con exentos** | **81.49 %** | **37310** | 81 (`fail_under`) |
+| `app` (`seed.py`) | 98.18 % | 55 | 98 |
+| `app/core` | 88.21 % | 780 | 88 |
+| `app/llm` | 81.26 % | 1281 | 81 |
+| `app/workers` | 53.43 % | 1284 | 53 |
+| `app/metrics` | 82.58 % | 1757 | 82 |
+| `alembic` | 1.82 % | 1211 | **exento** (ver abajo) |
+| **TOTAL gateado** | **84.27 %** | **42570** | **84** |
+| **TOTAL con exentos** | **81.99 %** | **43781** | 81 (`fail_under`) |
 
-La tabla es la linea base congelada en `data-engine/coverage_baseline.json`
-(generada el 2026-10-01). Volver a medir tras las fusiones de la fase C da,
-**84.16 % gateado** y 81.58 % con exentos, con `app/services` en 86.58 % y
-`app/api/routes` en 68.02 %: solo sube, y el ratchet aguanta porque los umbrales
-son `floor(linea_base) - 0` y no objetivos. El ruido entre dos corridas es de
-centesimas (84.16 frente a 84.17 en dos medidas consecutivas). Cuando se regenere
-el baseline con `--update-baseline` hay que subir los numeros de aqui a la vez.
+La tabla es la linea base de `data-engine/coverage_baseline.json` (2026-10-02,
+incluye `app/metrics`, registrado como paquete propio en #779). Los umbrales son
+`floor(linea_base) - 0` y no objetivos. El ruido entre dos corridas es de
+centesimas. Cuando se regenere el baseline con `--update-baseline` hay que subir los
+numeros de aqui a la vez.
 
 Tiempo de suite con cobertura: **12 min** de reloj (724 s) en Windows con 16
 agentes mas corriendo en la misma maquina; el `--collect-only` pelado son 89 s, y
@@ -94,10 +95,10 @@ Dos redes, y las dos hacen falta:
 
 1. `fail_under = 81` en `data-engine/.coveragerc` ([report]). Es la red simple:
    `coverage report` y `pytest --cov` fallan por debajo de 81 sin mirar el
-   baseline. Usa el total con exentos (81.49 %) porque es el único que coverage.py
+   baseline. Usa el total con exentos (81.99 %) porque es el único que coverage.py
    sabe calcular.
 2. Ratchet por paquete en `data-engine/scripts/run_coverage_gate.py`, leyendo
-   `data-engine/coverage_baseline.json`. Usa el total gateado (84.07 %, mínimo 84)
+   `data-engine/coverage_baseline.json`. Usa el total gateado (84.27 %, mínimo 84)
    y es la red que nombra al culpable.
 
 Consecuencia asumida de los umbrales a 100 % (`app/models`, `app/schemas`,
@@ -157,8 +158,8 @@ de esas carpetas desaparecen en silencio del denominador. Aqui arrastraba a
 vez salia un 86.37 % de solo sentencias **falso**: las 46 migraciones no
 contaban. Peor todavia: anadir codigo nuevo sin tests en una de esas carpetas no
 habria movido el numero, que es justo lo que este gate tiene que cazar. Con la
-opcion, el denominador es el codigo real: 28996 sentencias y 37310 operaciones
-(sentencias + ramas) en vez de las 27996 que se veian antes.
+opcion, el denominador es el codigo real: 43781 operaciones
+(sentencias + ramas, con `alembic`) en vez de las que se veian antes.
 
 ## `exclude_lines`
 
@@ -168,7 +169,7 @@ Solo codigo que no se puede ejecutar de forma significativa en un test unitario:
 La excepcion de imports opcionales cubre la rama de degradacion cuando una
 dependencia no esta, que no es un hueco de test. **No se excluye `app/llm/*`**:
 es logica de negocio pura (contracts, routing, factory, jev, json), sin I/O, y
-esta al 84.04 %. Excluirla habria sido excluir justo lo que conviene proteger.
+esta al 81.26 %. Excluirla habria sido excluir justo lo que conviene proteger.
 
 ## Tests que necesitan servicios
 
