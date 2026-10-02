@@ -57,8 +57,6 @@ const COMPONENTS_EXCEPTIONS: Record<string, string> = {
     "Lo importa components/proPicks/ProPicksTabs.tsx ('use client'): cliente por herencia, quitar la directiva no ahorra un byte. Se deja tal cual para no ensuciar el diff de un fichero sin ganancia real.",
   'components/proPicks/WalkForwardResults.tsx':
     "Lo importa components/proPicks/ProPicksTabs.tsx ('use client'): cliente por herencia, quitar la directiva no ahorra un byte. Se deja tal cual para no ensuciar el diff de un fichero sin ganancia real.",
-  'components/taxes/FilingSections.tsx':
-    "Lo importa components/taxes/TaxesView.tsx ('use client'): cliente por herencia, quitar la directiva no ahorra un byte. Se deja tal cual para no ensuciar el diff de un fichero sin ganancia real.",
 };
 
 /**
@@ -311,15 +309,15 @@ describe('el escaner y el guard cuentan lo mismo', () => {
   });
 
   it('el numero de directivas client del repo no crece sin explicacion', () => {
-    // 78 = 72 justificadas (A) + 6 heredadas del padre (C). Si sube, alguien
+    // 77 = 72 justificadas (A) + 5 heredadas del padre (C). Si sube, alguien
     // ha anadido un modulo cliente: que lo justifique en la revision.
     const total = audit.filter((r) => r.hasUseClient).length;
     const justified = audit.filter((r) => r.hasUseClient && r.justified).length;
     const inherited = audit.filter((r) => r.hasUseClient && !r.justified).length;
-    assert.equal(inherited, 6, 'cambian las excepciones: revisa COMPONENTS_EXCEPTIONS y su motivo');
+    assert.equal(inherited, 5, 'cambian las excepciones: revisa COMPONENTS_EXCEPTIONS y su motivo');
     assert.equal(
       total,
-      78,
+      77,
       `han aparecido directivas 'use client' sin revisar (total ${total}, justificadas ${justified}, heredadas ${inherited})`,
     );
   });
