@@ -158,3 +158,39 @@ def test_market_indices_declare_explicit_unit():
     assert units["GC=F"] == "usd"
     assert units["SI=F"] == "usd"
     assert all(entry["unit"] in {"index", "usd"} for entry in _INDEXES)
+
+
+# --------------------------------------------------------------------------
+# an index with no real previous close is not a flat session
+# --------------------------------------------------------------------------
+
+
+def _index_quote(closes: list[float]) -> dict | None:
+    import httpx
+
+    from app.api.routes.market import _fetch_index
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = {"chart": {"result": [{"indicators": {"quote": [{"close": closes}]}}]}}
+        return httpx.Response(200, json=payload, request=request)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        return _fetch_index(client, "^GSPC")
+
+
+def test_index_change_percent_is_never_a_fabricated_zero():
+    """Sin cierre previo no hay variacion medible: 0.00% afirmaba "hoy plano"
+    sobre un dato inexistente. `MarketIndex.changePercent` esta declarado
+    `number` en lib/actions/market.actions.ts, asi que la serie se retira de
+    la lista (y el hueco sale por `coverage`), no se publica un 0."""
+    happy = _index_quote([7743.41, 7800.0])
+    assert happy is not None
+    assert happy["changePercent"] == pytest.approx((7800.0 - 7743.41) / 7743.41 * 100, abs=0.005)
+    assert happy["changePercent"] != 0.0
+
+    # Cierre previo en 0 (payload degradado de Yahoo): la variacion no es
+    # medible y la serie completa no se publica.
+    assert _index_quote([0.0, 7800.0]) is None
+    # Un unico cierre tampoco: ya no hay con que comparar.
+    assert _index_quote([7800.0]) is None
+

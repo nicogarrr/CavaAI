@@ -1789,7 +1789,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** News Events */
+        /**
+         * News Events
+         * @description Eventos por pagina (scroll infinito). ``lane`` filtra en SQL:
+         *     ``empresa`` = atribuido a una empresa real; ``macro`` = carril macro GDELT.
+         */
         get: operations["news_events_api_news_get"];
         put?: never;
         post?: never;
@@ -4626,9 +4630,9 @@ export interface components {
             base: string;
             /**
              * Input Key
-             * @constant
+             * @enum {string}
              */
-            input_key: "fcf_margin";
+            input_key: "fcf_margin" | "wacc" | "terminal_growth";
             /**
              * Origin
              * @default llm
@@ -8983,6 +8987,7 @@ export interface operations {
             query: {
                 ticker: string;
                 limit?: number;
+                offset?: number;
             };
             header?: {
                 "x-cavaai-user"?: string | null;
@@ -10632,7 +10637,11 @@ export interface operations {
     };
     news_events_api_news_get: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+                offset?: number;
+                lane?: ("empresa" | "macro") | null;
+            };
             header?: {
                 "x-cavaai-user"?: string | null;
                 "x-cavaai-tenant"?: string | null;
