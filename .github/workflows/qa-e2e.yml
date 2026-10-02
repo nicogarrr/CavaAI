@@ -65,12 +65,12 @@ jobs:
             echo
             echo "#### Problemas de UI detectados"
             echo '```'
-            grep -E '^\[[a-z]+\]' run.log || echo "ninguno extraido"
+            sed 's/\x1b\[[0-9;]*m//g' run.log | grep -E '^\[[a-z]+\]' || echo "ninguno extraido"
             echo '```'
             echo
             echo "#### Pruebas"
             echo '```'
-            grep -i -E 'pass|fail|✓|✗|error' run.log | head -40 || true
+            sed 's/\x1b\[[0-9;]*m//g' run.log | grep -i -E 'pass|fail|✓|×|error' | head -40 || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
