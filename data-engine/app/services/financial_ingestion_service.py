@@ -16,6 +16,11 @@ from app.services.connectors import sec_edgar as sec_edgar_connector
 from app.services.connectors.fmp import FMPClient
 from app.services.connectors.sec import ANNUAL_REPORT_FORMS, SECClient
 from app.services.fact_chunk_service import sync_company_fact_chunks
+from app.services.fact_deletion import (
+    delete_financial_facts,
+    drop_shadowed_facts,
+    tenant_condition,
+)
 
 MetricSpec = tuple[str, str, str]
 
@@ -837,7 +842,7 @@ class FinancialIngestionService:
                     specs=specs,
                 )
 
-        db.flush()
+        drop_shadowed_facts(db, company.id, document.id, tenant_condition(db))
         facts += self._add_derived_facts(db, company, document)
         facts += self._add_profile_facts(db, company, document, profile)
         await self._add_spot_price(db, company, fmp, ticker)
@@ -1108,7 +1113,7 @@ class FinancialIngestionService:
             existing_meta["xbrl_concept_by_metric_period"] = concept_usage
             document.metadata_ = existing_meta
 
-        db.flush()
+        drop_shadowed_facts(db, company.id, document.id, tenant_condition(db))
 
         if cash_restricted_years:
             document.metadata_ = {
@@ -1261,7 +1266,8 @@ class FinancialIngestionService:
                 )
                 facts_imported += 1
 
-        db.flush()  # la sesion de ingestion usa autoflush=False: flush antes de derivar
+        # la sesion de ingestion usa autoflush=False: drop_shadowed_facts hace flush antes de derivar
+        drop_shadowed_facts(db, company.id, document.id, tenant_condition(db))
         facts_imported += self._derive_esef_metrics(db, company, document)
 
         document.metadata_ = {
@@ -1368,12 +1374,11 @@ class FinancialIngestionService:
             if tenant_id is not None
             else FinancialStatement.tenant_id.is_(None)
         )
-        db.execute(
-            delete(FinancialFact).where(
-                FinancialFact.company_id == company.id,
-                FinancialFact.source_type == "FMP",
-                fact_tenant,
-            )
+        delete_financial_facts(
+            db,
+            FinancialFact.company_id == company.id,
+            FinancialFact.source_type == "FMP",
+            fact_tenant,
         )
         db.execute(
             delete(FinancialStatement).where(
@@ -1696,12 +1701,11 @@ class FinancialIngestionService:
             if tenant_id is not None
             else FinancialFact.tenant_id.is_(None)
         )
-        db.execute(
-            delete(FinancialFact).where(
-                FinancialFact.company_id == company.id,
-                FinancialFact.source_id == document.id,
-                tenant_filter,
-            )
+        delete_financial_facts(
+            db,
+            FinancialFact.company_id == company.id,
+            FinancialFact.source_id == document.id,
+            tenant_filter,
         )
 
     def _replace_sec_data(
@@ -1751,13 +1755,12 @@ class FinancialIngestionService:
             conditions.append(
                 tuple_(FinancialFact.metric, FinancialFact.period).in_(restated_fy_keys)
             )
-        db.execute(
-            delete(FinancialFact).where(
-                FinancialFact.company_id == company.id,
-                FinancialFact.source_id == document.id,
-                tenant_filter,
-                or_(*conditions),
-            )
+        delete_financial_facts(
+            db,
+            FinancialFact.company_id == company.id,
+            FinancialFact.source_id == document.id,
+            tenant_filter,
+            or_(*conditions),
         )
         db.flush()
 
