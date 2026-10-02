@@ -284,7 +284,7 @@ def gate_bear_le_base_le_bull(case: dict) -> dict:
     bear = _number(artifact.get("bear_value"))
     base = _number(artifact.get("base_value"))
     bull = _number(artifact.get("bull_value"))
-    if None in (bear, base, bull):
+    if bear is None or base is None or bull is None:
         return _result(
             "bear_le_base_le_bull",
             False,
@@ -306,7 +306,7 @@ def gate_expected_value_within_band(case: dict) -> dict:
     base = _number(artifact.get("base_value"))
     bull = _number(artifact.get("bull_value"))
     expected_value = _number(artifact.get("expected_value"))
-    if None in (bear, base, bull, expected_value):
+    if bear is None or base is None or bull is None or expected_value is None:
         return _result(
             "expected_value_within_band",
             False,

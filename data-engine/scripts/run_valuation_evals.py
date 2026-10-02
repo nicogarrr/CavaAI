@@ -74,7 +74,10 @@ def _fact_rows(case: dict) -> list[dict]:
     rows = []
     for metric, raw in (case.get("facts") or {}).items():
         meta = dict(raw) if isinstance(raw, dict) else {"value": raw}
-        value = float(meta.get("value"))
+        raw_value = meta.get("value")
+        if raw_value is None:
+            raise ValueError(f"fact {metric!r} sin value en el caso")
+        value = float(raw_value)
         rows.append(
             {
                 "metric": metric,
