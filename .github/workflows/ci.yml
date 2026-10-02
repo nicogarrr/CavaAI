@@ -240,6 +240,17 @@ jobs:
             echo "Se ejecutan:${present:- ninguno}"
             echo "Ausentes (NO ejecutados):${missing:- ninguno}"
           } >> "$GITHUB_STEP_SUMMARY"
+          # Obligatorios: ya estan integrados en main; si se borran o renombran
+          # el CI se pone en rojo en vez de quedar en verde sin evaluar nada.
+          # Anadir aqui rag/llm/ingest/backtest segun entren en main.
+          required="run_valuation_evals run_realized_evals"
+          for r in $required; do
+            if [ ! -f "scripts/$r.py" ]; then
+              echo "::error title=Eval obligatorio ausente::scripts/$r.py no existe"
+              echo "EVAL OBLIGATORIO AUSENTE: $r" >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
+          done
           if [ -n "$missing" ]; then
             # Los ficheros los traen otras ramas (D1/D3/E1). No se pone el CI en
             # rojo por un fichero que aun no existe, pero un verde sin evals
