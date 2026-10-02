@@ -81,11 +81,10 @@ def _matches(actual, expected, tolerance: tuple[Decimal, Decimal]) -> bool:
     return abs(left - right) <= max(absolute, relative * abs(right))
 
 
-def _period_date(period) -> str | None:
-    if not isinstance(period, str) or period.startswith("<") or ":" not in period:
-        return None
-    head = period[:10]
-    return head if len(head) == 10 else None
+# Una sola implementacion de "que es una fecha de periodo", la de las puertas:
+# con dos versiones, una etiqueta como `2025-99-99:FY` pasaba la dura y la
+# suave no coincidian (FIX5-10).
+_period_date = gates._period_date
 
 
 class Counters:
@@ -256,11 +255,26 @@ def score_case(case: dict, observation: dict, counters: Counters) -> list[str]:
 
     as_of = expected.get("as_of")
     if isinstance(as_of, str) and len(as_of) >= 10:
-        leaked = [fact for fact in facts if (_period_date(fact["period"]) or "") > as_of[:10]]
+        leaked = []
+        unreadable = []
+        for fact in facts:
+            head, problem = _period_date(fact["period"])
+            if problem:
+                unreadable.append(fact)
+            elif head and head > as_of[:10]:
+                leaked.append(fact)
         if leaked:
             counters.miss("abstention_rate", family)
             problems.append(
                 f"abstention: {len(leaked)} hecho(s) de un periodo posterior a {as_of}"
+            )
+        elif unreadable:
+            # Una etiqueta sin fecha legible no se puede acotar en el tiempo:
+            # lo mismo de antes, el hecho se salia del filtro sin que nadie lo
+            # viera (FIX5-10).
+            counters.miss("abstention_rate", family)
+            problems.append(
+                f"abstention: {len(unreadable)} etiqueta(s) de periodo no parseable(s)"
             )
         else:
             counters.hit("abstention_rate", family)
