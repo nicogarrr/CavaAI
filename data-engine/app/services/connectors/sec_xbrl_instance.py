@@ -4,7 +4,7 @@ La API companyfacts excluye hechos con dimensiones: los filers por clases
 (Visa, Berkshire, ...) declaran EPS/acciones por clase y la API gratuita se
 queda sin ellos. Este parser lee la instancia XBRL del filing y recupera
 esos hechos CON su miembro dimensional, sin inventar nada: solo lo que el
-emisor declaro, con su contexto (periodo + miembro).
+emisor declaro, con su contexto (periodo + miembro + eje).
 """
 
 from __future__ import annotations
@@ -49,7 +49,14 @@ class DimensionedFact:
     start: date | None
     end: date | None
     instant: date | None
-    members: tuple[str, ...] = field(default_factory=tuple)
+    # (eje, miembro): sin el eje no se puede distinguir un miembro de CLASE
+    # (el BPA por clase del emisor) de un miembro de SEGMENTO (el BPA de un
+    # negocio) (FIX5-9).
+    members: tuple[tuple[str, str], ...] = field(default_factory=tuple)
+
+    @property
+    def member_names(self) -> tuple[str, ...]:
+        return tuple(member for _axis, member in self.members)
 
     @property
     def duration_days(self) -> int | None:
@@ -69,6 +76,27 @@ def _parse_date(raw: str | None) -> date | None:
         return date.fromisoformat(raw.strip())
     except ValueError:
         return None
+
+
+def _member_pairs(context: ET.Element) -> tuple[tuple[str, str], ...]:
+    """(eje, miembro) de cada explicitMember del contexto.
+
+    En iXBRL el eje viaja como atributo `dimension` del propio explicitMember;
+    se acepta tambien como elemento hijo por si el render lo expresa asi. Sin
+    eje el miembro queda con eje vacio y el consumidor decide (FIX5-9).
+    """
+    pairs: list[tuple[str, str]] = []
+    for node in context.iter():
+        if _local(node.tag) != "explicitMember" or not node.text:
+            continue
+        axis = (node.get("dimension") or "").strip()
+        if not axis:
+            dim = next(
+                (d for d in node.iter() if _local(d.tag) == "dimension"), None
+            )
+            axis = ((dim.text or "").strip() if dim is not None else "")
+        pairs.append((axis, _local(node.text)))
+    return tuple(pairs)
 
 
 def parse_instance_dimensioned_facts(

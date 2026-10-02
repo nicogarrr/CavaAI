@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- origin: synthetic_fixture. El unico hecho dimensionado de BPA esta por
+     SEGMENTO (StatementBusinessSegmentsAxis / DomesticMember): es el BPA de
+     un negocio, no el del emisor, y la ingesta no puede escribirlo como
+     eps_diluted del consolidado (FIX5-9). -->
+<xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:us-gaap="http://fasb.org/us-gaap/2024">
+ <xbrli:context id="cSeg">
+  <xbrli:entity><xbrli:identifier scheme="http://www.sec.gov/CIK">1</xbrli:identifier></xbrli:entity>
+  <xbrli:period><xbrli:startDate>2025-01-01</xbrli:startDate><xbrli:endDate>2025-12-31</xbrli:endDate></xbrli:period>
+  <xbrli:scenario><xbrldi:explicitMember xmlns:xbrldi="http://xbrl.org/2006/xbrldi" dimension="us-gaap:StatementBusinessSegmentsAxis">us-gaap:DomesticMember</xbrldi:explicitMember></xbrli:scenario>
+ </xbrli:context>
+ <us-gaap:EarningsPerShareDiluted contextRef="cSeg" unitRef="uUSD" decimals="2">1.25</us-gaap:EarningsPerShareDiluted>
+</xbrli:xbrl>

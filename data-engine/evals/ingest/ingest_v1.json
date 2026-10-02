@@ -46,11 +46,11 @@
   }
  ],
  "summary": {
-  "cases": 83,
+  "cases": 84,
   "negative_controls": 10,
   "degradation_cases": 11,
   "families": {
-   "sec": 45,
+   "sec": 46,
    "fmp": 20,
    "esef": 18
   },
@@ -4377,6 +4377,49 @@
      ]
     },
     "absent_metrics": [],
+    "as_of": "2026-10-01",
+    "tolerance": {
+     "relative": "0",
+     "absolute": "0.000001"
+    },
+    "index": {
+     "verified": [],
+     "official": [],
+     "unverified": []
+    }
+   },
+   "applies_to": [
+    "fixture_schema_valid",
+    "extracted_values_match_fixture",
+    "period_attribution_correct",
+    "no_lookahead",
+    "official_only_if_index_verified",
+    "absent_fields_reported_as_null",
+    "units_consistent",
+    "source_types_declared",
+    "duplicates_collapsed"
+   ]
+  },
+  {
+   "id": "sec-038-bpa-por-segmento",
+   "family": "sec",
+   "category": "segment_dimensions",
+   "scenario": "sec_instance",
+   "description": "El unico hecho dimensionado de BPA esta por SEGMENTO (StatementBusinessSegmentsAxis / DomesticMember): es el BPA de un negocio, no el del emisor, y no se escribe como eps_diluted.",
+   "scenario_args": {
+    "instance": "sec/instances/segment_member.xml",
+    "instance_name": "synth-10k_htm.xml",
+    "accession": "0000000001-25-000001",
+    "submissions": "sec/submissions_calendar_fy.json",
+    "ticker": "ZZZ"
+   },
+   "expected": {
+    "facts": [],
+    "extracts_nothing": true,
+    "absent_metrics": [
+     "eps_diluted",
+     "shares_diluted"
+    ],
     "as_of": "2026-10-01",
     "tolerance": {
      "relative": "0",
