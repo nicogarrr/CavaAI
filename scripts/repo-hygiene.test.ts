@@ -12,17 +12,19 @@
  * parallel copy of the logic.
  */
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, type ExecFileSyncOptionsWithStringEncoding } from 'node:child_process';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import test from 'node:test';
 
 const MAX_TRACKED_BYTES = 5 * 1024 * 1024;
 
-function git(args, opts = {}) {
-  return execFileSync('git', args, { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024, ...opts });
+type GitOptions = Omit<ExecFileSyncOptionsWithStringEncoding, 'encoding'>;
+
+function git(args: readonly string[], opts: GitOptions = {}): string {
+  return execFileSync('git', args, { ...opts, encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 });
 }
 
-const tracked = () => git(['ls-files', '-z']).split('\0').filter(Boolean);
+const tracked = (): string[] => git(['ls-files', '-z']).split('\0').filter(Boolean);
 
 /**
  * `git check-ignore --no-index` is the authoritative test of whether a pattern
@@ -30,7 +32,7 @@ const tracked = () => git(['ls-files', '-z']).split('\0').filter(Boolean);
  * is what we need: we are asking "if someone committed this, would it be
  * caught?", not "is this file present right now?".
  */
-function isIgnored(path) {
+function isIgnored(path: string): boolean {
   try {
     git(['check-ignore', '--no-index', '-q', path]);
     return true;
@@ -42,7 +44,7 @@ function isIgnored(path) {
 // ------------------------------------------------------------ pure helpers
 
 /** Tracked paths matching any of the forbidden residue patterns. */
-export function findForbiddenPaths(paths) {
+export function findForbiddenPaths(paths: readonly string[]): Array<{ path: string; rule: string }> {
   const RULES = [
     { id: 'cache-dir', re: /(^|\/)__pycache__(\/|$)/ },
     { id: 'cache-dir', re: /(^|\/)\.pytest_cache(\/|$)/ },
@@ -73,12 +75,15 @@ export function findForbiddenPaths(paths) {
 }
 
 /** Scratch debug scripts at the repo root. `dbg*.js` is the known offender. */
-export function findScratchScripts(paths) {
+export function findScratchScripts(paths: readonly string[]): string[] {
   return paths.filter((p) => !p.includes('/') && /^dbg\d*\.[cm]?js$/i.test(p));
 }
 
 /** Tracked blobs over the size budget, biggest first. */
-export function findOversized(entries, maxBytes = MAX_TRACKED_BYTES) {
+export function findOversized(
+  entries: ReadonlyArray<readonly [number, string]>,
+  maxBytes: number = MAX_TRACKED_BYTES,
+): Array<{ path: string; size: number }> {
   return entries
     .filter(([size]) => size > maxBytes)
     .sort((a, b) => b[0] - a[0])
@@ -145,7 +150,7 @@ test('E6/H4: storage/ (c raw) no esta versionado', () => {
 });
 
 test(`E6/H5: ningun fichero versionado supera ${MAX_TRACKED_BYTES / 1048576} MB`, () => {
-  const entries = [];
+  const entries: Array<[number, string]> = [];
   for (const p of tracked()) {
     try {
       entries.push([statSync(p).size, p]);
@@ -213,7 +218,7 @@ const KNOWN_DOCKERIGNORE_GAPS = new Set([
   'playwright-report/index.html',
 ]);
 
-function dockerignoreCovers(sample, rules) {
+function dockerignoreCovers(sample: string, rules: readonly string[]): boolean {
   return rules.some((line) => {
     const re = new RegExp(
       `^${line
@@ -291,7 +296,7 @@ test('E6/N3: el detector de residuo muerde (caso negativo)', () => {
 });
 
 test('E6/N4: el detector de tamano muerde (caso negativo)', () => {
-  const entries = [
+  const entries: Array<readonly [number, string]> = [
     [6 * 1024 * 1024, 'data-engine/data/esef_blob.bin'],
     [59 * 1024 * 1024, 'data-engine/data/big_esef.htm'],
     [1024, 'README.md'],
