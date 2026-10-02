@@ -106,10 +106,10 @@
     },
     {
       "id": "ind_2024-12-31",
-      "category": "lookahead_trap_fiscal_year_2999",
+      "category": "lookahead_trap_filing_date",
       "ticker": "IND",
       "as_of": "2024-12-31",
-      "note": "La BD contenia un hecho FY2999 y la celda no lo uso.",
+      "note": "La BD contenia 8 hecho(s) publicado(s) despues del corte y la celda no los uso.",
       "applies_to": null,
       "expect_gate_failure": null,
       "expected": {
@@ -157,15 +157,14 @@
         "upside": 0.253466,
         "engine_key": "standard_dcf",
         "model_version": "valuation-engines-v2",
-        "degraded": false,
-        "degraded_reason": null,
+        "degraded": true,
+        "degraded_reason": "1 insumo(s) sin fecha de publicacion verificable",
         "source_coverage_score": 0,
         "n_claims": 1,
         "n_claims_with_evidence": 0,
         "debate_verdict": "neutral",
         "lookahead_violations": [],
         "excluded_future_inputs": [
-          "revenue (fact 17): publicable el 2999-12-31, despues del corte 2024-12-31",
           "revenue (fact 13): publicable el 2026-03-10, despues del corte 2024-12-31",
           "revenue (fact 9): publicable el 2025-03-15, despues del corte 2024-12-31",
           "free_cash_flow (fact 14): publicable el 2026-03-10, despues del corte 2024-12-31",
@@ -175,7 +174,9 @@
           "shares_diluted (fact 16): publicable el 2026-03-10, despues del corte 2024-12-31",
           "shares_diluted (fact 12): publicable el 2025-03-15, despues del corte 2024-12-31"
         ],
-        "unverifiable_inputs": [],
+        "unverifiable_inputs": [
+          "revenue (fact 17): sin fecha utilizable (periodo='2999-12-31', precision=exact_date): no se puede probar que fuera publico en la fecha de corte"
+        ],
         "missing_inputs": [],
         "used_periods": [
           {
@@ -342,16 +343,16 @@
             "fair_value": 34.286695
           }
         ],
-        "replay_hash": "5f253d416cd0ccd4f4a918d96822bcfff4252104ffa5d709d5a245a82742baa1",
-        "replay_hash_again": "5f253d416cd0ccd4f4a918d96822bcfff4252104ffa5d709d5a245a82742baa1"
+        "replay_hash": "457d1026503afa59577d64cf579e7fba243471ba48046a98c235d7edb3bad917",
+        "replay_hash_again": "457d1026503afa59577d64cf579e7fba243471ba48046a98c235d7edb3bad917"
       }
     },
     {
       "id": "ind_2025-06-30",
-      "category": "lookahead_trap_fiscal_year_2999",
+      "category": "lookahead_trap_filing_date",
       "ticker": "IND",
       "as_of": "2025-06-30",
-      "note": "La BD contenia un hecho FY2999 y la celda no lo uso.",
+      "note": "La BD contenia 4 hecho(s) publicado(s) despues del corte y la celda no los uso.",
       "applies_to": null,
       "expect_gate_failure": null,
       "expected": {
@@ -399,21 +400,22 @@
         "upside": 0.404291,
         "engine_key": "standard_dcf",
         "model_version": "valuation-engines-v2",
-        "degraded": false,
-        "degraded_reason": null,
+        "degraded": true,
+        "degraded_reason": "1 insumo(s) sin fecha de publicacion verificable",
         "source_coverage_score": 100,
         "n_claims": 1,
         "n_claims_with_evidence": 1,
         "debate_verdict": "neutral",
         "lookahead_violations": [],
         "excluded_future_inputs": [
-          "revenue (fact 17): publicable el 2999-12-31, despues del corte 2025-06-30",
           "revenue (fact 13): publicable el 2026-03-10, despues del corte 2025-06-30",
           "free_cash_flow (fact 14): publicable el 2026-03-10, despues del corte 2025-06-30",
           "net_debt (fact 15): publicable el 2026-03-10, despues del corte 2025-06-30",
           "shares_diluted (fact 16): publicable el 2026-03-10, despues del corte 2025-06-30"
         ],
-        "unverifiable_inputs": [],
+        "unverifiable_inputs": [
+          "revenue (fact 17): sin fecha utilizable (periodo='2999-12-31', precision=exact_date): no se puede probar que fuera publico en la fecha de corte"
+        ],
         "missing_inputs": [],
         "used_periods": [
           {
@@ -608,16 +610,16 @@
             "fair_value": 34.286695
           }
         ],
-        "replay_hash": "fde205acc047856930bfe8f4a252d80003ce431360b192a06aad912ae87001ad",
-        "replay_hash_again": "fde205acc047856930bfe8f4a252d80003ce431360b192a06aad912ae87001ad"
+        "replay_hash": "546966a2c6976b09bffc9f2a295d6e01bcb50d6bf9669a15759babe8de758c37",
+        "replay_hash_again": "546966a2c6976b09bffc9f2a295d6e01bcb50d6bf9669a15759babe8de758c37"
       }
     },
     {
       "id": "ind_2026-06-30",
-      "category": "lookahead_trap_fiscal_year_2999",
+      "category": "unverifiable_provenance",
       "ticker": "IND",
       "as_of": "2026-06-30",
-      "note": "La BD contenia un hecho FY2999 y la celda no lo uso.",
+      "note": "Insumos sin fecha de publicacion verificable: celda degradada.",
       "applies_to": null,
       "expect_gate_failure": null,
       "expected": {
@@ -665,17 +667,17 @@
         "upside": 0.581723,
         "engine_key": "standard_dcf",
         "model_version": "valuation-engines-v2",
-        "degraded": false,
-        "degraded_reason": null,
+        "degraded": true,
+        "degraded_reason": "1 insumo(s) sin fecha de publicacion verificable",
         "source_coverage_score": 100,
         "n_claims": 1,
         "n_claims_with_evidence": 1,
         "debate_verdict": "neutral",
         "lookahead_violations": [],
-        "excluded_future_inputs": [
-          "revenue (fact 17): publicable el 2999-12-31, despues del corte 2026-06-30"
+        "excluded_future_inputs": [],
+        "unverifiable_inputs": [
+          "revenue (fact 17): sin fecha utilizable (periodo='2999-12-31', precision=exact_date): no se puede probar que fuera publico en la fecha de corte"
         ],
-        "unverifiable_inputs": [],
         "missing_inputs": [],
         "used_periods": [
           {
@@ -888,8 +890,8 @@
             "fair_value": 34.286695
           }
         ],
-        "replay_hash": "072142799adb70c68650d1d72974de6cb2e3b56517560e02d6b4e3bd69550c36",
-        "replay_hash_again": "072142799adb70c68650d1d72974de6cb2e3b56517560e02d6b4e3bd69550c36"
+        "replay_hash": "f356144127d35017776ef1b6a09824df6211c4b4ad79b8c108a127cc561275a4",
+        "replay_hash_again": "f356144127d35017776ef1b6a09824df6211c4b4ad79b8c108a127cc561275a4"
       }
     },
     {
@@ -1048,13 +1050,13 @@
         "engine_key": "bank",
         "model_version": "valuation-engines-v2",
         "degraded": true,
-        "degraded_reason": "look-ahead rechazado por el guard publico: valuation tangible_book_value 2999-12-31 dated 2999-12-31 is after as_of 2024-12-31; using it would introduce look-ahead bias",
+        "degraded_reason": "look-ahead rechazado por el guard publico: valuation tangible_book_value dated 2999-12-31 is after as_of 2024-12-31; using it would introduce look-ahead bias",
         "source_coverage_score": 0,
         "n_claims": 1,
         "n_claims_with_evidence": 0,
         "debate_verdict": "neutral",
         "lookahead_violations": [
-          "valuation tangible_book_value 2999-12-31 dated 2999-12-31 is after as_of 2024-12-31; using it would introduce look-ahead bias"
+          "valuation tangible_book_value dated 2999-12-31 is after as_of 2024-12-31; using it would introduce look-ahead bias"
         ],
         "excluded_future_inputs": [],
         "unverifiable_inputs": [],
@@ -1099,8 +1101,8 @@
             "fair_value": null
           }
         ],
-        "replay_hash": "31d31fffcb571f013606a2429e84a96b7d4755a647fca2314c9f7014c47a39b1",
-        "replay_hash_again": "31d31fffcb571f013606a2429e84a96b7d4755a647fca2314c9f7014c47a39b1"
+        "replay_hash": "c68e5f91e1750acab62fef2c2ba370caad931539decb4ba9d962aa41c8ce40ff",
+        "replay_hash_again": "c68e5f91e1750acab62fef2c2ba370caad931539decb4ba9d962aa41c8ce40ff"
       }
     },
     {
@@ -1158,13 +1160,13 @@
         "engine_key": "bank",
         "model_version": "valuation-engines-v2",
         "degraded": true,
-        "degraded_reason": "look-ahead rechazado por el guard publico: valuation tangible_book_value 2999-12-31 dated 2999-12-31 is after as_of 2025-06-30; using it would introduce look-ahead bias",
+        "degraded_reason": "look-ahead rechazado por el guard publico: valuation tangible_book_value dated 2999-12-31 is after as_of 2025-06-30; using it would introduce look-ahead bias",
         "source_coverage_score": 100,
         "n_claims": 1,
         "n_claims_with_evidence": 1,
         "debate_verdict": "neutral",
         "lookahead_violations": [
-          "valuation tangible_book_value 2999-12-31 dated 2999-12-31 is after as_of 2025-06-30; using it would introduce look-ahead bias"
+          "valuation tangible_book_value dated 2999-12-31 is after as_of 2025-06-30; using it would introduce look-ahead bias"
         ],
         "excluded_future_inputs": [],
         "unverifiable_inputs": [],
@@ -1209,8 +1211,8 @@
             "fair_value": null
           }
         ],
-        "replay_hash": "73226cee023a5607df64cbddb84f413c38d044601992e0b3b25ece1001cf8747",
-        "replay_hash_again": "73226cee023a5607df64cbddb84f413c38d044601992e0b3b25ece1001cf8747"
+        "replay_hash": "6a9b787e436f49535852358379ffa66f04bfb62443e3dd23b2fe16fcb03237f4",
+        "replay_hash_again": "6a9b787e436f49535852358379ffa66f04bfb62443e3dd23b2fe16fcb03237f4"
       }
     },
     {
@@ -1268,13 +1270,13 @@
         "engine_key": "bank",
         "model_version": "valuation-engines-v2",
         "degraded": true,
-        "degraded_reason": "look-ahead rechazado por el guard publico: valuation tangible_book_value 2999-12-31 dated 2999-12-31 is after as_of 2026-06-30; using it would introduce look-ahead bias",
+        "degraded_reason": "look-ahead rechazado por el guard publico: valuation tangible_book_value dated 2999-12-31 is after as_of 2026-06-30; using it would introduce look-ahead bias",
         "source_coverage_score": 100,
         "n_claims": 1,
         "n_claims_with_evidence": 1,
         "debate_verdict": "neutral",
         "lookahead_violations": [
-          "valuation tangible_book_value 2999-12-31 dated 2999-12-31 is after as_of 2026-06-30; using it would introduce look-ahead bias"
+          "valuation tangible_book_value dated 2999-12-31 is after as_of 2026-06-30; using it would introduce look-ahead bias"
         ],
         "excluded_future_inputs": [],
         "unverifiable_inputs": [],
@@ -1319,8 +1321,8 @@
             "fair_value": null
           }
         ],
-        "replay_hash": "d12482519ae883433e04cbfcd5f924b7ed6df50045d32733ad72b2fc690eab3b",
-        "replay_hash_again": "d12482519ae883433e04cbfcd5f924b7ed6df50045d32733ad72b2fc690eab3b"
+        "replay_hash": "9754816a2098fd9d9dfbdd66e4a40ae9dd1bb8a0eff0ef6641ad45da492bcbb9",
+        "replay_hash_again": "9754816a2098fd9d9dfbdd66e4a40ae9dd1bb8a0eff0ef6641ad45da492bcbb9"
       }
     },
     {
@@ -1477,13 +1479,13 @@
         "engine_key": "insurer",
         "model_version": "valuation-engines-v2",
         "degraded": true,
-        "degraded_reason": "look-ahead rechazado por el guard publico: valuation book_value 2999-12-31 dated 2999-12-31 is after as_of 2024-12-31; using it would introduce look-ahead bias",
+        "degraded_reason": "look-ahead rechazado por el guard publico: valuation book_value dated 2999-12-31 is after as_of 2024-12-31; using it would introduce look-ahead bias",
         "source_coverage_score": 0,
         "n_claims": 1,
         "n_claims_with_evidence": 0,
         "debate_verdict": "neutral",
         "lookahead_violations": [
-          "valuation book_value 2999-12-31 dated 2999-12-31 is after as_of 2024-12-31; using it would introduce look-ahead bias"
+          "valuation book_value dated 2999-12-31 is after as_of 2024-12-31; using it would introduce look-ahead bias"
         ],
         "excluded_future_inputs": [],
         "unverifiable_inputs": [],
@@ -1528,8 +1530,8 @@
             "fair_value": null
           }
         ],
-        "replay_hash": "01492cd476a4cd71f81b2cf19b0ea36cb898502596a35c5069025b6034a150ab",
-        "replay_hash_again": "01492cd476a4cd71f81b2cf19b0ea36cb898502596a35c5069025b6034a150ab"
+        "replay_hash": "01d5163a4e1656b6c3f0172fdcb1186200a0d607390c34a1daac59286184bdbb",
+        "replay_hash_again": "01d5163a4e1656b6c3f0172fdcb1186200a0d607390c34a1daac59286184bdbb"
       }
     },
     {
@@ -1586,13 +1588,13 @@
         "engine_key": "insurer",
         "model_version": "valuation-engines-v2",
         "degraded": true,
-        "degraded_reason": "look-ahead rechazado por el guard publico: valuation book_value 2999-12-31 dated 2999-12-31 is after as_of 2025-06-30; using it would introduce look-ahead bias",
+        "degraded_reason": "look-ahead rechazado por el guard publico: valuation book_value dated 2999-12-31 is after as_of 2025-06-30; using it would introduce look-ahead bias",
         "source_coverage_score": 100,
         "n_claims": 1,
         "n_claims_with_evidence": 1,
         "debate_verdict": "neutral",
         "lookahead_violations": [
-          "valuation book_value 2999-12-31 dated 2999-12-31 is after as_of 2025-06-30; using it would introduce look-ahead bias"
+          "valuation book_value dated 2999-12-31 is after as_of 2025-06-30; using it would introduce look-ahead bias"
         ],
         "excluded_future_inputs": [],
         "unverifiable_inputs": [],
@@ -1637,8 +1639,8 @@
             "fair_value": null
           }
         ],
-        "replay_hash": "0ee6d4de2f46d516e32859aac4f5bacae66a27f4d33d47c63edde01a5b06a7cd",
-        "replay_hash_again": "0ee6d4de2f46d516e32859aac4f5bacae66a27f4d33d47c63edde01a5b06a7cd"
+        "replay_hash": "b9525b10963e7139db48c92ee4245966b4b1b40385a749a52a745ce20aa6c559",
+        "replay_hash_again": "b9525b10963e7139db48c92ee4245966b4b1b40385a749a52a745ce20aa6c559"
       }
     },
     {
@@ -1695,13 +1697,13 @@
         "engine_key": "insurer",
         "model_version": "valuation-engines-v2",
         "degraded": true,
-        "degraded_reason": "look-ahead rechazado por el guard publico: valuation book_value 2999-12-31 dated 2999-12-31 is after as_of 2026-06-30; using it would introduce look-ahead bias",
+        "degraded_reason": "look-ahead rechazado por el guard publico: valuation book_value dated 2999-12-31 is after as_of 2026-06-30; using it would introduce look-ahead bias",
         "source_coverage_score": 100,
         "n_claims": 1,
         "n_claims_with_evidence": 1,
         "debate_verdict": "neutral",
         "lookahead_violations": [
-          "valuation book_value 2999-12-31 dated 2999-12-31 is after as_of 2026-06-30; using it would introduce look-ahead bias"
+          "valuation book_value dated 2999-12-31 is after as_of 2026-06-30; using it would introduce look-ahead bias"
         ],
         "excluded_future_inputs": [],
         "unverifiable_inputs": [],
@@ -1746,8 +1748,8 @@
             "fair_value": null
           }
         ],
-        "replay_hash": "daee0ea1b6692d01f8b2210dd600d2f8a4197021320caa132882d1a6f6b9a947",
-        "replay_hash_again": "daee0ea1b6692d01f8b2210dd600d2f8a4197021320caa132882d1a6f6b9a947"
+        "replay_hash": "4d810335230fc68fbb69ea5ab01116fb2116dbf96e65de0f28407213ae9443bf",
+        "replay_hash_again": "4d810335230fc68fbb69ea5ab01116fb2116dbf96e65de0f28407213ae9443bf"
       }
     },
     {
@@ -1888,13 +1890,13 @@
         "engine_key": "reit",
         "model_version": "valuation-engines-v2",
         "degraded": true,
-        "degraded_reason": "look-ahead rechazado por el guard publico: valuation net_operating_income 2999-12-31 dated 2999-12-31 is after as_of 2024-12-31; using it would introduce look-ahead bias",
+        "degraded_reason": "look-ahead rechazado por el guard publico: valuation net_operating_income dated 2999-12-31 is after as_of 2024-12-31; using it would introduce look-ahead bias",
         "source_coverage_score": 0,
         "n_claims": 1,
         "n_claims_with_evidence": 0,
         "debate_verdict": "neutral",
         "lookahead_violations": [
-          "valuation net_operating_income 2999-12-31 dated 2999-12-31 is after as_of 2024-12-31; using it would introduce look-ahead bias"
+          "valuation net_operating_income dated 2999-12-31 is after as_of 2024-12-31; using it would introduce look-ahead bias"
         ],
         "excluded_future_inputs": [],
         "unverifiable_inputs": [],
@@ -1939,8 +1941,8 @@
             "fair_value": null
           }
         ],
-        "replay_hash": "dddf585db1e6986a8e13932e610a9e62dd5189de62cabc58587e1f87802fc175",
-        "replay_hash_again": "dddf585db1e6986a8e13932e610a9e62dd5189de62cabc58587e1f87802fc175"
+        "replay_hash": "598bd2770d4e544008f42b118fefba7a9f3eca905832fc1719117ccc56c51748",
+        "replay_hash_again": "598bd2770d4e544008f42b118fefba7a9f3eca905832fc1719117ccc56c51748"
       }
     },
     {
@@ -1989,13 +1991,13 @@
         "engine_key": "reit",
         "model_version": "valuation-engines-v2",
         "degraded": true,
-        "degraded_reason": "look-ahead rechazado por el guard publico: valuation net_operating_income 2999-12-31 dated 2999-12-31 is after as_of 2025-06-30; using it would introduce look-ahead bias",
+        "degraded_reason": "look-ahead rechazado por el guard publico: valuation net_operating_income dated 2999-12-31 is after as_of 2025-06-30; using it would introduce look-ahead bias",
         "source_coverage_score": 100,
         "n_claims": 1,
         "n_claims_with_evidence": 1,
         "debate_verdict": "neutral",
         "lookahead_violations": [
-          "valuation net_operating_income 2999-12-31 dated 2999-12-31 is after as_of 2025-06-30; using it would introduce look-ahead bias"
+          "valuation net_operating_income dated 2999-12-31 is after as_of 2025-06-30; using it would introduce look-ahead bias"
         ],
         "excluded_future_inputs": [],
         "unverifiable_inputs": [],
@@ -2040,8 +2042,8 @@
             "fair_value": null
           }
         ],
-        "replay_hash": "6346468802c0b7d557cade8171f9fb115a329d982e83916407fa226d4aa65891",
-        "replay_hash_again": "6346468802c0b7d557cade8171f9fb115a329d982e83916407fa226d4aa65891"
+        "replay_hash": "77418f2ea8d822c0272ff7dfa3e2edb91c40531776fca64448f45741e94bebf5",
+        "replay_hash_again": "77418f2ea8d822c0272ff7dfa3e2edb91c40531776fca64448f45741e94bebf5"
       }
     },
     {
@@ -2090,13 +2092,13 @@
         "engine_key": "reit",
         "model_version": "valuation-engines-v2",
         "degraded": true,
-        "degraded_reason": "look-ahead rechazado por el guard publico: valuation net_operating_income 2999-12-31 dated 2999-12-31 is after as_of 2026-06-30; using it would introduce look-ahead bias",
+        "degraded_reason": "look-ahead rechazado por el guard publico: valuation net_operating_income dated 2999-12-31 is after as_of 2026-06-30; using it would introduce look-ahead bias",
         "source_coverage_score": 100,
         "n_claims": 1,
         "n_claims_with_evidence": 1,
         "debate_verdict": "neutral",
         "lookahead_violations": [
-          "valuation net_operating_income 2999-12-31 dated 2999-12-31 is after as_of 2026-06-30; using it would introduce look-ahead bias"
+          "valuation net_operating_income dated 2999-12-31 is after as_of 2026-06-30; using it would introduce look-ahead bias"
         ],
         "excluded_future_inputs": [],
         "unverifiable_inputs": [],
@@ -2141,8 +2143,8 @@
             "fair_value": null
           }
         ],
-        "replay_hash": "a95c0c1ab64d4ec2a36db3bcad521e14d0d400ad445b8eb36d27022613b77a2e",
-        "replay_hash_again": "a95c0c1ab64d4ec2a36db3bcad521e14d0d400ad445b8eb36d27022613b77a2e"
+        "replay_hash": "232896a1829f34b3004ffe3b5d2c5d90c7f4f8e01767c3d5e430386ac013b541",
+        "replay_hash_again": "232896a1829f34b3004ffe3b5d2c5d90c7f4f8e01767c3d5e430386ac013b541"
       }
     },
     {
@@ -3179,13 +3181,13 @@
         "engine_key": "holding_company",
         "model_version": "valuation-engines-v2",
         "degraded": true,
-        "degraded_reason": "look-ahead rechazado por el guard publico: valuation segment_retail 2999-12-31 dated 2999-12-31 is after as_of 2024-12-31; using it would introduce look-ahead bias",
+        "degraded_reason": "look-ahead rechazado por el guard publico: valuation segment_retail dated 2999-12-31 is after as_of 2024-12-31; using it would introduce look-ahead bias",
         "source_coverage_score": 0,
         "n_claims": 1,
         "n_claims_with_evidence": 0,
         "debate_verdict": "neutral",
         "lookahead_violations": [
-          "valuation segment_retail 2999-12-31 dated 2999-12-31 is after as_of 2024-12-31; using it would introduce look-ahead bias"
+          "valuation segment_retail dated 2999-12-31 is after as_of 2024-12-31; using it would introduce look-ahead bias"
         ],
         "excluded_future_inputs": [],
         "unverifiable_inputs": [],
@@ -3230,8 +3232,8 @@
             "fair_value": null
           }
         ],
-        "replay_hash": "8d5ab74c742ff612f069c11bdfa604f7c4b9f8e8c46e7aca1d93896d46d8fb75",
-        "replay_hash_again": "8d5ab74c742ff612f069c11bdfa604f7c4b9f8e8c46e7aca1d93896d46d8fb75"
+        "replay_hash": "c8b9c10167ca394610daba5366aec049b4e6f8b619d0fd48deac67be1c9b8d28",
+        "replay_hash_again": "c8b9c10167ca394610daba5366aec049b4e6f8b619d0fd48deac67be1c9b8d28"
       }
     },
     {
@@ -3292,13 +3294,13 @@
         "engine_key": "holding_company",
         "model_version": "valuation-engines-v2",
         "degraded": true,
-        "degraded_reason": "look-ahead rechazado por el guard publico: valuation segment_retail 2999-12-31 dated 2999-12-31 is after as_of 2025-06-30; using it would introduce look-ahead bias",
+        "degraded_reason": "look-ahead rechazado por el guard publico: valuation segment_retail dated 2999-12-31 is after as_of 2025-06-30; using it would introduce look-ahead bias",
         "source_coverage_score": 100,
         "n_claims": 1,
         "n_claims_with_evidence": 1,
         "debate_verdict": "neutral",
         "lookahead_violations": [
-          "valuation segment_retail 2999-12-31 dated 2999-12-31 is after as_of 2025-06-30; using it would introduce look-ahead bias"
+          "valuation segment_retail dated 2999-12-31 is after as_of 2025-06-30; using it would introduce look-ahead bias"
         ],
         "excluded_future_inputs": [],
         "unverifiable_inputs": [],
@@ -3343,8 +3345,8 @@
             "fair_value": null
           }
         ],
-        "replay_hash": "4591afdd2df701640d63b9774cf4f9b8141c2154bc8594557cebc696271e0f02",
-        "replay_hash_again": "4591afdd2df701640d63b9774cf4f9b8141c2154bc8594557cebc696271e0f02"
+        "replay_hash": "2a39a74858d6f74c1daab886e8dcb4c4b3de84acaf652b6dd9bbe2262ae85ac9",
+        "replay_hash_again": "2a39a74858d6f74c1daab886e8dcb4c4b3de84acaf652b6dd9bbe2262ae85ac9"
       }
     },
     {
@@ -3405,13 +3407,13 @@
         "engine_key": "holding_company",
         "model_version": "valuation-engines-v2",
         "degraded": true,
-        "degraded_reason": "look-ahead rechazado por el guard publico: valuation segment_retail 2999-12-31 dated 2999-12-31 is after as_of 2026-06-30; using it would introduce look-ahead bias",
+        "degraded_reason": "look-ahead rechazado por el guard publico: valuation segment_retail dated 2999-12-31 is after as_of 2026-06-30; using it would introduce look-ahead bias",
         "source_coverage_score": 100,
         "n_claims": 1,
         "n_claims_with_evidence": 1,
         "debate_verdict": "neutral",
         "lookahead_violations": [
-          "valuation segment_retail 2999-12-31 dated 2999-12-31 is after as_of 2026-06-30; using it would introduce look-ahead bias"
+          "valuation segment_retail dated 2999-12-31 is after as_of 2026-06-30; using it would introduce look-ahead bias"
         ],
         "excluded_future_inputs": [],
         "unverifiable_inputs": [],
@@ -3456,8 +3458,8 @@
             "fair_value": null
           }
         ],
-        "replay_hash": "dfc6ba712fa31d0dd86c784523393022a822cba82f29d133191bf387bc265acd",
-        "replay_hash_again": "dfc6ba712fa31d0dd86c784523393022a822cba82f29d133191bf387bc265acd"
+        "replay_hash": "ae1d05c14321da6e4bde47196702c643280c0f13d4b2b5a895a332d0bc28e975",
+        "replay_hash_again": "ae1d05c14321da6e4bde47196702c643280c0f13d4b2b5a895a332d0bc28e975"
       }
     },
     {
@@ -3558,10 +3560,10 @@
     },
     {
       "id": "fil_2024-12-31",
-      "category": "lookahead_trap_fiscal_year_2999",
+      "category": "lookahead_trap_filing_date",
       "ticker": "FIL",
       "as_of": "2024-12-31",
-      "note": "La BD contenia un hecho FY2999 y la celda no lo uso.",
+      "note": "La BD contenia 8 hecho(s) publicado(s) despues del corte y la celda no los uso.",
       "applies_to": null,
       "expect_gate_failure": null,
       "expected": {
@@ -3605,15 +3607,14 @@
         "upside": -0.068568,
         "engine_key": "standard_dcf",
         "model_version": "valuation-engines-v2",
-        "degraded": false,
-        "degraded_reason": null,
+        "degraded": true,
+        "degraded_reason": "1 insumo(s) sin fecha de publicacion verificable",
         "source_coverage_score": 0,
         "n_claims": 1,
         "n_claims_with_evidence": 0,
         "debate_verdict": "neutral",
         "lookahead_violations": [],
         "excluded_future_inputs": [
-          "revenue (fact 121): publicable el 2999-12-31, despues del corte 2024-12-31",
           "revenue (fact 117): publicable el 2026-04-20, despues del corte 2024-12-31",
           "revenue (fact 113): publicable el 2025-03-15, despues del corte 2024-12-31",
           "free_cash_flow (fact 118): publicable el 2026-04-20, despues del corte 2024-12-31",
@@ -3623,7 +3624,9 @@
           "shares_diluted (fact 120): publicable el 2026-04-20, despues del corte 2024-12-31",
           "shares_diluted (fact 116): publicable el 2025-03-15, despues del corte 2024-12-31"
         ],
-        "unverifiable_inputs": [],
+        "unverifiable_inputs": [
+          "revenue (fact 121): sin fecha utilizable (periodo='2999-12-31', precision=exact_date): no se puede probar que fuera publico en la fecha de corte"
+        ],
         "missing_inputs": [],
         "used_periods": [
           {
@@ -3762,16 +3765,16 @@
             "fair_value": 53.956618
           }
         ],
-        "replay_hash": "ba79874a3cfc56bfd8ce5acb871af19ad2c80fe945a4a16180b7cb2d8816c578",
-        "replay_hash_again": "ba79874a3cfc56bfd8ce5acb871af19ad2c80fe945a4a16180b7cb2d8816c578"
+        "replay_hash": "09ca5a66743bb4393492f313071aadf038886b4d4bf7a0492eda9123a9599ecf",
+        "replay_hash_again": "09ca5a66743bb4393492f313071aadf038886b4d4bf7a0492eda9123a9599ecf"
       }
     },
     {
       "id": "fil_2025-06-30",
-      "category": "lookahead_trap_fiscal_year_2999",
+      "category": "lookahead_trap_filing_date",
       "ticker": "FIL",
       "as_of": "2025-06-30",
-      "note": "La BD contenia un hecho FY2999 y la celda no lo uso.",
+      "note": "La BD contenia 4 hecho(s) publicado(s) despues del corte y la celda no los uso.",
       "applies_to": null,
       "expect_gate_failure": null,
       "expected": {
@@ -3815,21 +3818,22 @@
         "upside": 0.113615,
         "engine_key": "standard_dcf",
         "model_version": "valuation-engines-v2",
-        "degraded": false,
-        "degraded_reason": null,
+        "degraded": true,
+        "degraded_reason": "1 insumo(s) sin fecha de publicacion verificable",
         "source_coverage_score": 100,
         "n_claims": 1,
         "n_claims_with_evidence": 1,
         "debate_verdict": "neutral",
         "lookahead_violations": [],
         "excluded_future_inputs": [
-          "revenue (fact 121): publicable el 2999-12-31, despues del corte 2025-06-30",
           "revenue (fact 117): publicable el 2026-04-20, despues del corte 2025-06-30",
           "free_cash_flow (fact 118): publicable el 2026-04-20, despues del corte 2025-06-30",
           "net_debt (fact 119): publicable el 2026-04-20, despues del corte 2025-06-30",
           "shares_diluted (fact 120): publicable el 2026-04-20, despues del corte 2025-06-30"
         ],
-        "unverifiable_inputs": [],
+        "unverifiable_inputs": [
+          "revenue (fact 121): sin fecha utilizable (periodo='2999-12-31', precision=exact_date): no se puede probar que fuera publico en la fecha de corte"
+        ],
         "missing_inputs": [],
         "used_periods": [
           {
@@ -3996,16 +4000,16 @@
             "fair_value": 53.956618
           }
         ],
-        "replay_hash": "6f05019b28b920ab4bf98c87dbc36928eb1346ef23e58c0714f4c876422aa0e8",
-        "replay_hash_again": "6f05019b28b920ab4bf98c87dbc36928eb1346ef23e58c0714f4c876422aa0e8"
+        "replay_hash": "2c2853108268019b65429fe09b716d6dff762cbbf8bb3a03f3575592fc5bfc88",
+        "replay_hash_again": "2c2853108268019b65429fe09b716d6dff762cbbf8bb3a03f3575592fc5bfc88"
       }
     },
     {
       "id": "fil_2026-06-30",
-      "category": "lookahead_trap_fiscal_year_2999",
+      "category": "unverifiable_provenance",
       "ticker": "FIL",
       "as_of": "2026-06-30",
-      "note": "La BD contenia un hecho FY2999 y la celda no lo uso.",
+      "note": "Insumos sin fecha de publicacion verificable: celda degradada.",
       "applies_to": null,
       "expect_gate_failure": null,
       "expected": {
@@ -4049,17 +4053,17 @@
         "upside": 1.98697,
         "engine_key": "standard_dcf",
         "model_version": "valuation-engines-v2",
-        "degraded": false,
-        "degraded_reason": null,
+        "degraded": true,
+        "degraded_reason": "1 insumo(s) sin fecha de publicacion verificable",
         "source_coverage_score": 100,
         "n_claims": 1,
         "n_claims_with_evidence": 1,
         "debate_verdict": "neutral",
         "lookahead_violations": [],
-        "excluded_future_inputs": [
-          "revenue (fact 121): publicable el 2999-12-31, despues del corte 2026-06-30"
+        "excluded_future_inputs": [],
+        "unverifiable_inputs": [
+          "revenue (fact 121): sin fecha utilizable (periodo='2999-12-31', precision=exact_date): no se puede probar que fuera publico en la fecha de corte"
         ],
-        "unverifiable_inputs": [],
         "missing_inputs": [],
         "used_periods": [
           {
@@ -4244,8 +4248,8 @@
             "fair_value": 53.956618
           }
         ],
-        "replay_hash": "07e595d11d657a13f1c5e785b67bb9d3357a9ba75121cac5031bad8aa19ad3b6",
-        "replay_hash_again": "07e595d11d657a13f1c5e785b67bb9d3357a9ba75121cac5031bad8aa19ad3b6"
+        "replay_hash": "0cc6d196f6f5b17eb90603bde4527b8db60945eee895149ff77b8013ee67a4f5",
+        "replay_hash_again": "0cc6d196f6f5b17eb90603bde4527b8db60945eee895149ff77b8013ee67a4f5"
       }
     },
     {
