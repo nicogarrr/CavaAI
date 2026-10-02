@@ -38,6 +38,7 @@ from app.valuation.engines.base import (
     insufficient_result,
     margin_of_safety,
 )
+from app.valuation.financial_snapshot import _compatible_instant
 from app.valuation.moat_framework import empty_moat_framework
 
 
@@ -49,7 +50,7 @@ class SourcedValue:
     confidence: float
 
 
-def _latest(context: ValuationContext, *metrics: str) -> SourcedValue | None:
+def _latest(context: ValuationContext, *metrics: str, anchor: FinancialFact | None = None) -> SourcedValue | None:
     fact = context.db.scalar(
         select(FinancialFact)
         .where(
@@ -60,6 +61,8 @@ def _latest(context: ValuationContext, *metrics: str) -> SourcedValue | None:
         .limit(1)
     )
     if fact is None:
+        return None
+    if anchor is not None and not _compatible_instant(anchor, fact):
         return None
     return SourcedValue(float(fact.value), fact.id, fact.period, float(fact.confidence))
 
@@ -223,7 +226,17 @@ class BankValuationEngine(ValuationEngine):
         assert tangible_book and shares and roe and cost_equity
         growth = _latest(context, "book_value_growth", "tangible_book_growth")
         growth_value = growth.value if growth else 0.0
-        if cost_equity.value <= growth_value or shares.value <= 0:
+        if shares.value <= 0:
+            return insufficient_result(
+                ticker=context.company.ticker,
+                model_type=context.company.valuation_model,
+                engine_key=self.key,
+                current_price=context.current_price,
+                missing_inputs=["positive_shares_diluted"],
+                reason="shares_diluted must be positive: there is no per-share value.",
+                snapshot=context.snapshot,
+            )
+        if cost_equity.value <= growth_value:
             return insufficient_result(
                 ticker=context.company.ticker,
                 model_type=context.company.valuation_model,

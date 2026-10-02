@@ -181,6 +181,14 @@ def add_future_trap(session: Session, company: Company, *, metric: str = "revenu
     ambiguous: the only thing standing between it and a 2024 valuation is the
     point-in-time filter. That is what makes it a useful trap.
     """
+    doc = Document(
+        company_id=company.id,
+        title=f"{company.ticker} future trap",
+        source_type="sec",
+        published_at=ts(date(FUTURE_FY, 3, 1)),
+    )
+    session.add(doc)
+    session.flush()
     session.add(
         FinancialFact(
             company_id=company.id,
@@ -190,6 +198,7 @@ def add_future_trap(session: Session, company: Company, *, metric: str = "revenu
             period=FUTURE_PERIOD,
             fiscal_year=FUTURE_FY,
             fiscal_quarter="FY",
+            source_id=doc.id,
             source_type="sec",
             confidence=Decimal("0.99"),
         )
