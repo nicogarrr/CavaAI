@@ -12,6 +12,14 @@ Reglas por defecto (rule_version="insider-v1"):
 - cluster_buy: >=3 insiders distintos (por CIK) comprando codigo P el
   mismo ticker en una ventana de 30 dias.
 
+Una compra sin cifra (Form 4 parseado sin valor) NO genera alerta: sin
+importe no hay umbral que aplicar ni frase que interpolar, asi que la
+transaccion se salta y el hueco se declara en las stats
+(`skipped_missing_value`) en vez de aparecer como "compro $0". En un
+cluster, una compra sin cifra no suma (seria un 0 disfrazado): el total se
+publica como minimo conocido y el hueco se declara en el metadata de la
+alerta y en `partial_cluster_totals`.
+
 Solo entran transacciones codigo P adquiridas NO derivadas: grants (A),
 retenciones (F), regalos (G), ejercicios (M) y disclosures 10b5-1 quedan
 fuera por construccion. El wording nunca afirma "mercado abierto": el
@@ -90,10 +98,17 @@ def _company_id_for(db: Session, ticker: str | None) -> int | None:
 
 def _build_alerts(
     db: Session, purchases: list[InsiderTransaction]
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
     alerts: list[dict[str, Any]] = []
+    coverage = {"skipped_missing_value": 0, "partial_cluster_totals": 0}
     for tx in purchases:
-        value = float(tx.value or 0)
+        if tx.value is None:
+            # Sin cifra no hay ni umbral ni frase posible (c_suite_buy no
+            # tiene gate): emitirla escribiria "compro $0" sobre un dato que
+            # no existe. Se cuenta como hueco de cobertura, no se inventa.
+            coverage["skipped_missing_value"] += 1
+            continue
+        value = float(tx.value)
         base = {
             "company_id": _company_id_for(db, tx.issuer_ticker),
             "tx_fingerprint": tx.fingerprint,
@@ -154,7 +169,22 @@ def _build_alerts(
             insiders = {tx.insider_cik or tx.insider for tx in window}
             if len(insiders) >= CLUSTER_MIN_INSIDERS:
                 fp_source = "+".join(sorted(tx.fingerprint for tx in window))
-                total = sum(float(tx.value or 0) for tx in window)
+                # El cluster se dispara por numero de insiders, no por dinero:
+                # una compra sin cifra no lo invalida, pero su importe tampoco
+                # puede sumar como 0. El total pasa a ser minimo conocido.
+                values = [float(tx.value) for tx in window if tx.value is not None]
+                total = sum(values)
+                missing_value = len(window) - len(values)
+                if missing_value:
+                    coverage["partial_cluster_totals"] += 1
+                total_phrase = (
+                    f"${total:,.0f} total"
+                    if not missing_value
+                    else (
+                        f"${total:,.0f} como minimo: {missing_value} de "
+                        f"{len(window)} compras sin cifra en el XML"
+                    )
+                )
                 alerts.append(
                     {
                         "company_id": _company_id_for(db, ticker),
@@ -164,19 +194,22 @@ def _build_alerts(
                         "title": f"Cluster de compras insider — {ticker}",
                         "message": (
                             f"{len(insiders)} insiders distintos compraron {ticker} "
-                            f"en {CLUSTER_WINDOW_DAYS} dias (${total:,.0f} total). "
+                            f"en {CLUSTER_WINDOW_DAYS} dias ({total_phrase}). "
                             "Codigo P: mercado abierto o privado."
                         ),
                         "metadata": {
                             "rule_version": RULE_VERSION,
                             "insider_count": len(insiders),
                             "window_days": CLUSTER_WINDOW_DAYS,
+                            "window_transactions": len(window),
+                            "window_value_missing": missing_value,
+                            "total_value_is_minimum": bool(missing_value),
                             "tx_fingerprints": [tx.fingerprint for tx in window],
                         },
                     }
                 )
                 break
-    return alerts
+    return alerts, coverage
 
 
 def evaluate(
@@ -194,6 +227,9 @@ def evaluate(
         "alerts_existing": 0,
         "telegram_sent": 0,
         "errors": [],
+        # Cobertura: compras sin cifra (no alerta) y clusters con total parcial.
+        "skipped_missing_value": 0,
+        "partial_cluster_totals": 0,
     }
     try:
         purchases = _candidate_purchases(db, tenant_id)
@@ -213,7 +249,9 @@ def evaluate(
         from app.core.config import get_settings
 
         telegram_enabled = bool(getattr(get_settings(), "insider_alerts_enabled", False))
-        for alert in _build_alerts(db, purchases):
+        alerts, coverage = _build_alerts(db, purchases)
+        stats.update(coverage)
+        for alert in alerts:
             fp = _alert_fingerprint(alert["rule"], alert["tx_fingerprint"])
             if fp in existing:
                 stats["alerts_existing"] += 1

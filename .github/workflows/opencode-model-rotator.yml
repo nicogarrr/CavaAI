@@ -11,6 +11,17 @@ permissions:
   pull-requests: write
 
 concurrency:
+  # Este bloque ya era correcto y se queda como esta, con el porque escrito
+  # para que nadie lo "simplifique" a cancel-in-progress: true:
+  # 1. El grupo NO lleva `${{ github.ref }}` a proposito. El workflow corre por
+  #    cron (rama por defecto) y por workflow_dispatch, asi que el ref no
+  #    distinguen nada; incluirlo solo partiria el grupo en el caso de que
+  #    alguien lo dispare sobre otra rama.
+  # 2. cancel-in-progress SIEMPRE false. Este workflow hace `git push` a main
+  #    con un commit nuevo. Cancelarlo a mitad podria dejar el push a medias o
+  #    abrir el PR de respaldo a una rama que ya no compila, y en cualquier
+  #    caso el efecto (rotar opencode.json) es de una vez: repetirlo no aporta
+  #    nada. Con false, si dos disparos se solapan, el segundo espera.
   group: opencode-model-rotator
   cancel-in-progress: false
 

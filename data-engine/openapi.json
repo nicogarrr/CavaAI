@@ -3004,7 +3004,11 @@
             "type": "string"
           },
           "input_key": {
-            "const": "fcf_margin",
+            "enum": [
+              "fcf_margin",
+              "wacc",
+              "terminal_growth"
+            ],
             "title": "Input Key",
             "type": "string"
           },
@@ -19320,6 +19324,17 @@
             }
           },
           {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
             "in": "header",
             "name": "x-cavaai-user",
             "required": false,
@@ -26345,8 +26360,52 @@
     },
     "/api/news": {
       "get": {
+        "description": "Eventos por pagina (scroll infinito). ``lane`` filtra en SQL:\n``empresa`` = atribuido a una empresa real; ``macro`` = carril macro GDELT.",
         "operationId": "news_events_api_news_get",
         "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lane",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "empresa",
+                    "macro"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lane"
+            }
+          },
           {
             "in": "header",
             "name": "x-cavaai-user",

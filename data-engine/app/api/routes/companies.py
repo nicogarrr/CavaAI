@@ -184,7 +184,7 @@ class DriverAssumptionCreate(BaseModel):
 class InferredInputCreate(BaseModel):
     """Input INFERIDO: base explicita ("dado X, inferimos Y") + URLs https."""
 
-    input_key: Literal["fcf_margin"]
+    input_key: Literal["fcf_margin", "wacc", "terminal_growth"]
     value: Decimal
     base: str = Field(min_length=20, max_length=5000)
     source_urls: list[str] = Field(min_length=1, max_length=10)

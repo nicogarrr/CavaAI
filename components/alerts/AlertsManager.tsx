@@ -28,7 +28,7 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { showErrorToast } from '@/lib/toast';
 import { isNextRedirectError } from '@/lib/types/errors';
-import { formatDate, formatUserDateTime } from '@/lib/format';
+import { formatDate, formatNumber, formatUserDateTime } from '@/lib/format';
 import { t } from '@/lib/i18n/t';
 import { reviewResearchExpectations } from '@/lib/actions/research.actions';
 import { alertCardCopy } from '@/lib/alerts/card-copy';
@@ -192,12 +192,17 @@ function AlertsManager() {
         const type = alert.type;
         const operator = alert.condition.operator;
         const value = alert.condition.value;
+        // La regla guarda operador y umbral, no la divisa: el motor lo compara
+        // con el último cierre del valor en la divisa de su bolsa. Se pinta el
+        // número sin símbolo (y la nota de debajo lo declara) en vez de anteponer
+        // un «$» que solo es cierto para las líneas en dólares.
+        const threshold = formatNumber(value, { maximumFractionDigits: 4 });
 
         if (type === 'price_above') {
-            return `${symbol}: ${ALERT_TYPE_LABELS.price_above} $${value}`;
+            return `${symbol}: ${ALERT_TYPE_LABELS.price_above} ${threshold}`;
         }
         if (type === 'price_below') {
-            return `${symbol}: ${ALERT_TYPE_LABELS.price_below} $${value}`;
+            return `${symbol}: ${ALERT_TYPE_LABELS.price_below} ${threshold}`;
         }
         if (type === 'price_change') {
             return `${symbol}: ${ALERT_TYPE_LABELS.price_change} ${operator === '>' ? 'mayor' : 'menor'} a ${value}%`;
@@ -286,11 +291,17 @@ function AlertsManager() {
                                     </div>
                                     <div>
                                         <Label htmlFor="value" className="text-gray-300">
-                                            {formData.type === 'price_change' ? 'Porcentaje (%)' : 'Precio (USD)'}
+                                            {formData.type === 'price_change' ? 'Porcentaje (%)' : 'Precio (divisa de la cotización)'}
                                         </Label>
                                         <Input
                                             id="value"
-                                            type="number"
+                                            // type="text" (no "number"): el input numérico
+                                            // rechaza la coma decimal, así que un umbral
+                                            // es-ES ("1522,60") llegaba vacío a
+                                            // parseLocalizedNumber. inputMode="decimal"
+                                            // conserva el teclado numérico en móvil.
+                                            type="text"
+                                            inputMode="decimal"
                                             value={formData.condition.value}
                                             onChange={(e) =>
                                                 setFormData({
@@ -298,9 +309,15 @@ function AlertsManager() {
                                                     condition: { ...formData.condition, value: e.target.value }
                                                 })
                                             }
-                                            placeholder={formData.type === 'price_change' ? "5" : "100.00"}
+                                            placeholder={formData.type === 'price_change' ? "5" : "100,00"}
                                             className="bg-gray-900 border-gray-600 text-gray-100 h-11 text-base sm:h-9 sm:text-sm"
                                         />
+                                        {formData.type !== 'price_change' ? (
+                                            <p className="mt-1 text-xs text-gray-500">
+                                                La alerta guarda el umbral sin divisa: el motor lo compara con el
+                                                último cierre del valor en la divisa de su bolsa.
+                                            </p>
+                                        ) : null}
                                     </div>
                                 </>
                             )}
@@ -318,16 +335,11 @@ function AlertsManager() {
                         <Send aria-hidden="true" className="h-4 w-4" />
                         Telegram sin configurar: las alertas solo llegan en la app
                     </p>
-                    <ol className="mt-2 list-decimal space-y-1 pl-5 text-xs leading-5 text-amber-100/80">
-                        <li>Habla con @BotFather en Telegram y crea un bot para obtener el token.</li>
-                        <li>Escribe al bot y averigua tu chat id (p. ej. con @userinfobot).</li>
-                        <li>
-                            Configura en el servidor: TELEGRAM_ENABLED=true, TELEGRAM_BOT_TOKEN y
-                            TELEGRAM_CHAT_ID {!telegram.has_bot_token ? '(falta el token)' : ''}{' '}
-                            {!telegram.has_chat_id ? '(falta el chat id)' : ''}.
-                        </li>
-                        <li>Las reglas nuevas incluirán el canal Telegram automáticamente.</li>
-                    </ol>
+                    <p className="mt-2 text-xs leading-5 text-amber-100/80">
+                        El canal Telegram no está activado en este servidor. Las reglas se evalúan igual y
+                        sus avisos aparecen aquí; el administrador puede activar Telegram desde la
+                        configuración del servidor.
+                    </p>
                 </div>
             ) : null}
 
@@ -429,6 +441,9 @@ function AlertsManager() {
                             </div>
                         </div>
                     ))}
+                    <p className="text-xs text-gray-500">
+                        Los umbrales de precio van sin símbolo porque la regla no guarda la divisa.
+                    </p>
                 </div>
             )}
 

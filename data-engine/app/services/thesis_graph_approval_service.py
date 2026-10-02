@@ -10,8 +10,11 @@ classic path): this pilot operates on graph control state only and never
 publishes domain artifacts.
 
 Honesty contract:
-- artifacts remain skeleton references - the classic ThesisService path
-  stays the source of truth;
+- every graph node is a real read-side probe or a real approval interrupt;
+  no artifact is a ``pending:<node>`` stand-in. The classic ThesisService path
+  stays the sole LLM/write executor;
+- a thread that ends as ``approved`` was approved but nothing was published,
+  and it only ends as ``published`` when a published thesis version exists;
 - every start/decide is recorded as a durable WorkflowRun envelope;
 - re-delivery is safe: an idempotency-key replay returns the stored result,
   a repeated start on an already-waiting thread returns the pending state
@@ -41,6 +44,10 @@ from app.workflows.thesis_graph.checkpointer import durable_checkpointer
 
 WORKFLOW_NAME = "ThesisApprovalWorkflow"
 DECISIONS = ("approve", "request_changes")
+# Statuses terminales tras una decision. "approved" NO es "published": el
+# grafo aprueba un candidato y nunca publica; "published" solo aparece cuando
+# hay de verdad una ThesisVersion publicada de la ruta clasica.
+DECIDED_STATUSES = frozenset({"published", "approved", "changes_requested"})
 
 
 class ThesisGraphApprovalService:
@@ -167,11 +174,13 @@ class ThesisGraphApprovalService:
 
         config = {"configurable": {"thread_id": thread_id}}
         with self._checkpointer() as saver:
-            graph = build_thesis_graph(checkpointer=saver)
+            graph = build_thesis_graph(
+                checkpointer=saver, session_factory=lambda: _session_scope(db)
+            )
             snapshot = graph.get_state(config)
             if self._pending_approval(snapshot) is None:
                 status = (snapshot.values or {}).get("status")
-                if status in {"published", "changes_requested"}:
+                if status in DECIDED_STATUSES:
                     result = {
                         "thread_id": thread_id,
                         "status": status,
