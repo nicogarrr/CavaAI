@@ -72,28 +72,37 @@ jobs:
               lines.push(`| ${name} | ${mark}: ${detail} |`);
             };
 
-            // 1. Tamano del diff.
-            const total = additions + deletions;
-            if (total > failLines) {
-              record('fail', 'diff', false, `+${additions}/-${deletions} (${total} lineas) por encima de ${failLines}`);
-              errors.push(
-                `Diff de ${total} lineas (+${additions}/-${deletions}) por encima del limite de ${failLines}. ` +
-                  'Dividelo en varios PRs: uno de este tamano no se revisa de verdad.',
-              );
-            } else if (total > warnLines) {
-              record('warn', 'diff', false, `+${additions}/-${deletions} (${total} lineas) grande`);
-              warnings.push(`Diff de ${total} lineas: por encima de ${warnLines}, el revisor deberia confirmar que es revisable.`);
-            } else {
-              record('ok', 'diff', true, `+${additions}/-${deletions} (${total} lineas)`);
-            }
-
-            // 2. Ficheros prohibidos + formas de secreto en las lineas anadidas.
+            // 1. Tamano del diff. Los datos y harness de evals y los fixtures
+            // de tests (rutas EXENTAS, lista cerrada) no cuentan para el limite:
+            // son corpus/golden sets que no se revisan linea a linea y partirlos
+            // no los hace mas revisables. El resto del PR si cuenta entero.
             const files = await github.paginate(github.rest.pulls.listFiles, {
               owner: context.repo.owner,
               repo: context.repo.repo,
               pull_number: context.issue.number,
               per_page: 100,
             });
+            const exemptRe = /^(data-engine\/evals\/|data-engine\/tests\/fixtures\/)/;
+            let exemptLines = 0;
+            for (const f of files) {
+              if (exemptRe.test(f.filename)) exemptLines += f.additions + f.deletions;
+            }
+            const total = additions + deletions - exemptLines;
+            const exemptNote = exemptLines > 0 ? ` (sin contar ${exemptLines} lineas en rutas exentas: evals/ y tests/fixtures/)` : '';
+            if (total > failLines) {
+              record('fail', 'diff', false, `+${additions}/-${deletions}${exemptNote}: ${total} lineas por encima de ${failLines}`);
+              errors.push(
+                `Diff de ${total} lineas${exemptNote} por encima del limite de ${failLines}. ` +
+                  'Dividelo en varios PRs: uno de este tamano no se revisa de verdad.',
+              );
+            } else if (total > warnLines) {
+              record('warn', 'diff', false, `+${additions}/-${deletions}${exemptNote}: ${total} lineas, grande`);
+              warnings.push(`Diff de ${total} lineas${exemptNote}: por encima de ${warnLines}, el revisor deberia confirmar que es revisable.`);
+            } else {
+              record('ok', 'diff', true, `+${additions}/-${deletions}${exemptNote}: ${total} lineas`);
+            }
+
+            // 2. Ficheros prohibidos + formas de secreto en las lineas anadidas.
             if (files.length > maxFiles) {
               warnings.push(
                 `El PR toca ${files.length} ficheros y solo se han inspeccionado los ${maxFiles} primeros (limite de la API).`,
