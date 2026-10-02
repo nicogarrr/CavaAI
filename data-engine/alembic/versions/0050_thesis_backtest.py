@@ -4,7 +4,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "0050_thesis_backtest"
-down_revision = "0048_thesis_realized_return"
+down_revision = "0049_backend_metrics"
 branch_labels = None
 depends_on = None
 
