@@ -41,9 +41,9 @@ import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
-from sqlalchemy import func, select
+from sqlalchemy import Table, func, insert, select
 from sqlalchemy.orm import Session
 
 from app.metrics import config, stats
@@ -357,8 +357,14 @@ def _merge_without_tenant(
         )
     )
     if row is None:
-        session.add(
-            ApiLatencyWindow(
+        # Core insert, no ORM: la fila de trafico publico no tiene tenant a
+        # proposito y el guard before_flush (que solo ve objetos ORM) la
+        # rechaza en produccion con "Tenant context is required for
+        # tenant-owned writes". Era el "volcado de latencia fallido" que se
+        # repetia en los logs y perdia estas muestras.
+        session.execute(
+            insert(cast(Table, ApiLatencyWindow.__table__)).values(
+                tenant_id=None,
                 window_start=window_start,
                 window_size=window_size,
                 route_template=template,
