@@ -11,7 +11,7 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import create_engine, delete, event, select
+from sqlalchemy import create_engine, delete, event, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
@@ -22,6 +22,7 @@ from app.models.entities import (
     FactRevision,
     FinancialFact,
     ManagementPromise,
+    Tenant,
 )
 from app.services.fact_deletion import delete_financial_facts, drop_shadowed_facts
 
@@ -144,3 +145,25 @@ def test_provider_duplicate_of_approved_fact_is_dropped_after_reingest(db):
     assert dropped == 1
     ids = set(db.scalars(select(FinancialFact.id)))
     assert fact.id in ids and other.id in ids and dup.id not in ids
+
+
+def test_approved_fact_of_another_tenant_does_not_shadow(db):
+    company, fact, _promise = _seed(db)
+    _approved_revision(db, fact)
+    tenant = Tenant(external_id="t7", name="T7", metadata_={}, status="active")
+    db.add(tenant)
+    db.flush()
+    # el aprobado es del tenant (UPDATE Core: el ORM bloquea mutar tenant_id)
+    db.execute(update(FinancialFact).where(FinancialFact.id == fact.id).values(tenant_id=tenant.id))
+    doc = Document(company_id=company.id, title="10-K", source_type="SEC")
+    db.add(doc)
+    db.flush()
+    new = FinancialFact(company_id=company.id, metric=fact.metric, value=Decimal("9"),
+                        unit="USD", period=fact.period, fiscal_year=2025,
+                        source_type="SEC", is_reported=True, source_id=doc.id)  # tenant NULL
+    db.add(new)
+    db.commit()
+    dropped = drop_shadowed_facts(db, company.id, doc.id, FinancialFact.tenant_id.is_(None))
+    db.commit()
+    assert dropped == 0
+    assert db.scalar(select(FinancialFact.id).where(FinancialFact.id == new.id)) == new.id

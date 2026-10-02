@@ -94,6 +94,7 @@ def drop_shadowed_facts(db: Session, company_id: int, source_id: int, *condition
             kept.company_id == FinancialFact.company_id,
             kept.metric == FinancialFact.metric,
             kept.period == FinancialFact.period,
+            kept.tenant_id.is_not_distinct_from(FinancialFact.tenant_id),
             kept.id < FinancialFact.id,
             kept.id.in_(
                 select(FactRevision.financial_fact_id).where(FactRevision.status == "approved")
