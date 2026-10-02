@@ -41,6 +41,13 @@ def test_short_ticker_with_evidence_matches():
     assert _ticker_evidence("AAP", "Advance Auto Parts Inc", "Stock $aap jumps")
 
 
+def test_short_ticker_with_financial_context_matches():
+    assert _ticker_evidence("AMD", "Advanced Micro Devices Inc", "AMD stock jumps after guidance")
+    assert _ticker_evidence("IBM", "International Business Machines", "IBM beats earnings estimates")
+    assert _ticker_evidence("KO", "Coca-Cola Co", "KO dividend hike announced")
+    assert not _ticker_evidence("AAP", "Advance Auto Parts Inc", "AAP names four candidates for Bihar council polls")
+
+
 def test_long_ticker_matches_with_case_sensitivity():
     assert _ticker_evidence("AAPL", "Apple Inc", "AAPL beats expectations")
     assert not _ticker_evidence("AAPL", "Apple Inc", "the snappiest pineapple")

@@ -16,6 +16,15 @@ from app.services.thesis_graph_service import ThesisGraphService
 _NAME_NOISE = {"inc", "corp", "corporation", "co", "company", "ltd", "plc", "sa", "nv", "ag", "the", "group", "holdings", "holding", "limited", "sme", "s.a."}
 
 
+_FINANCE_CONTEXT = re.compile(
+    r"\b(stocks?|shares?|equity|earnings|dividends?|guidance|ipo|trading|trade[sd]?|halted|"
+    r"buybacks?|repurchase|upgrade[sd]?|downgrade[sd]?|price target|analysts?|revenue|"
+    r"quarterly|eps|market cap|short interest|10-[kq]|8-k|sec probe|acciones|bolsa|resultados|"
+    r"dividendo)\b",
+    flags=re.IGNORECASE,
+)
+
+
 def _ticker_evidence(ticker: str, name: str | None, text: str) -> bool:
     if not ticker or not text:
         return False
@@ -27,6 +36,9 @@ def _ticker_evidence(ticker: str, name: str | None, text: str) -> bool:
     if not re.search(rf"(?<![\w$]){tk}(?![\w])", text):
         return False
     if len(ticker) >= 4:
+        return True
+    # Contexto financiero en el mismo texto: «AMD stock jumps», «KO dividend hike».
+    if _FINANCE_CONTEXT.search(text):
         return True
     for token in re.findall(r"[A-Za-z][A-Za-z.&'-]+", name or ""):
         if token.lower().strip(".") in _NAME_NOISE or len(token) < 4:
@@ -50,7 +62,8 @@ class NewsService:
         que «A» casaba con cualquier articulo «a» y «AAP» con un partido politico
         indio. Ahora el ticker se busca respetando mayusculas y, si es corto
         (< 4 letras), solo vale con evidencia extra: cashtag ($AAP), bolsa
-        ((NYSE: AAP)) o el nombre distintivo de la empresa en el texto.
+        ((NYSE: AAP)), el nombre distintivo de la empresa o contexto financiero
+        (stock, shares, earnings, dividend...) en el texto.
         """
         for company in db.scalars(select(Company)).all():
             if _ticker_evidence(company.ticker, company.name, text):
