@@ -1005,6 +1005,31 @@ class FinancialIngestionService:
         except Exception as e:
             raise RuntimeError(f"SEC fetch failed: {e}") from e
 
+        # La entidad del payload debe ser la que se resolvio para el ticker y la
+        # que dice la ficha: `company_tickers.json` tiene entradas duplicadas
+        # para el mismo ticker (tickers reutilizados tras un delisting) y un
+        # manifest local desactualizado puede resolver el CIK de OTRO emisor.
+        # Sin este contraste, los hechos de Apple acababan en la ficha de ABCD
+        # con confidence=0.95 (FIX5-6). Fail closed: sin entidad que contrastar
+        # (payload sin `cik` declarado, que la API real nunca produce) no hay
+        # nada que falsificar y la ingesta sigue igual que antes.
+        payload_cik = str(facts_data.get("cik") or "").strip()
+        resolved_cik = str(cik).zfill(10)
+        card_cik = str(getattr(company, "cik", "") or "").strip()
+        if payload_cik:
+            payload_cik = payload_cik.zfill(10)
+            mismatches = []
+            if payload_cik != resolved_cik:
+                mismatches.append(f"CIK resuelto {resolved_cik}")
+            if card_cik and payload_cik != card_cik.zfill(10):
+                mismatches.append(f"CIK de la ficha {card_cik.zfill(10)}")
+            if mismatches:
+                raise RuntimeError(
+                    f"CIK del payload {payload_cik} != {' y '.join(mismatches)} "
+                    f"para {ticker}: entidad ambigua, no se atribuyen hechos de "
+                    "otro emisor (fail closed)"
+                )
+
         us_gaap = facts_data.get("facts", {}).get("us-gaap", {})
 
         # Evidencia de calendario a nivel de filing (submissions). Fail
