@@ -245,10 +245,11 @@ jobs:
             echo "Se ejecutan:${present:- ninguno}"
             echo "Ausentes (NO ejecutados):${missing:- ninguno}"
           } >> "$GITHUB_STEP_SUMMARY"
-          # Obligatorios: ya estan integrados en main; si se borran o renombran
-          # el CI se pone en rojo en vez de quedar en verde sin evaluar nada.
-          # Anadir aqui rag/llm/ingest/backtest segun entren en main.
-          required="run_valuation_evals run_realized_evals"
+          # Obligatorios: los 6 estan integrados en main y corren verdes en CI
+          # (rag, valuation, llm, ingest, backtest, realized). Si se borra o
+          # renombra uno, el CI se pone en rojo en vez de quedar en verde
+          # evaluando menos (antes solo valuation y realized eran obligatorios).
+          required="run_rag_evals run_valuation_evals run_llm_evals run_ingest_evals run_backtest_evals run_realized_evals"
           for r in $required; do
             if [ ! -f "scripts/$r.py" ]; then
               echo "::error title=Eval obligatorio ausente::scripts/$r.py no existe"
