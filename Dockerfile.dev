@@ -19,10 +19,23 @@ RUN npm ci
 # El código se monta como volumen en docker-compose
 # No lo copiamos aquí para permitir hot-reload
 
+# Directorios que el compose monta como volumenes anonimos (/app/node_modules
+# y /app/.next): Docker inicializa un volumen nuevo copiando el contenido Y el
+# ownership de esta ruta, asi que se preparan aqui. 0777 porque el uid real del
+# proceso no es el de la imagen: lo fija docker-compose con `user:` y
+# LOCAL_UID/LOCAL_GID del host (el bind mount .:/app pertenece a ese uid; con
+# USER de la imagen a secas, `npm run dev` recibe EACCES al escribir).
+RUN mkdir -p /app/.next /app/node_modules/.cache \
+    && chmod 0777 /app/.next /app/node_modules/.cache
+
 EXPOSE 3000
 
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
+
+# Default para `docker run` a pelo (no root). El compose lo pisa con `user:`
+# para que las escrituras sobre el bind mount coincidan con el uid del host.
+USER node
 
 # Comando de desarrollo con hot-reload
 CMD ["npm", "run", "dev"]

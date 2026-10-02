@@ -304,6 +304,12 @@ services:
       dockerfile: Dockerfile.dev
     container_name: cavaai-frontend
     restart: unless-stopped
+    # El uid sale del HOST, no de la imagen: `.:/app` es un bind mount con el
+    # ownership del host y `npm run dev` escribe .next/ sobre él. Sin esto el
+    # frontend corre como root y todo lo que toca (incluido el código) queda
+    # root-owned. Dockerfile.dev pone USER node como default para `docker run`
+    # a pelo; esta linea es la que decide en compose.
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     ports:
       - "3000:3000"
     volumes:
