@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.models import MarketObservation, MarketRegimeSnapshot
 from app.services.market_observation_service import FRED_SERIES
-from app.services.market_regime_quant import observed_hmm, top_ten_concentration
+from app.services.market_regime_quant import observed_hmm, sp500_top_ten_concentration
 
 MODEL_VERSION = "macro-context-hmm-v2"
 
@@ -61,8 +61,12 @@ def build_snapshot(db: Session, as_of: date, generated_at: datetime | None = Non
     hmm = observed_hmm(db, as_of, generated_at)
     metrics["hmm"] = {key: value for key, value in hmm.items() if key != "probabilities"}
     probabilities = hmm.get("probabilities", {})
-    # No complete point-in-time constituent/capitalization feed is configured.
-    metrics["top_ten_sp500"] = top_ten_concentration(set(), {}, as_of)
+    # Concentracion top-10 del S&P 500: lee el snapshot en disco del factsheet
+    # (S&P DJI) con su propio vintage. Si no hay snapshot, o si su `as_of` es
+    # posterior a la fecha del snapshot, responde "sin datos" con motivo: no hay
+    # ningun camino que rellene el hueco con el presente ni con un cero. Sin
+    # trafico a proveedor: el GET de /market/regime solo lee lo persistido aqui.
+    metrics["top_ten_sp500"] = sp500_top_ten_concentration(as_of)
     # La beta de cartera NO va en el snapshot global: el builder corre con
     # sesión sin tenant y portfolio_beta mezclaría posiciones de todos los
     # tenants (fuga). Marcador honesto hasta la beta tenant-scoped.

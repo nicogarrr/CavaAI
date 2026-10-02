@@ -132,7 +132,32 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     qdrant_url: str = "http://localhost:6333"
     duckdb_path: Path = Path("./storage/analytics.duckdb")
-
+    # Retrieval hibrido denso+sparse sobre Qdrant (ver app/services/rag.py y
+    # app/services/hybrid_retrieval.py). Todo aditivo y apagado por defecto:
+    # con los defaults el RAG se comporta exactamente como antes.
+    # backend denso: "fastembed" (ONNX CPU, mismo modelo/dims/vectores que
+    # sentence-transformers) o "sentence-transformers" (legacy).
+    rag_embedding_backend: str = "fastembed"
+    # Modelo denso por defecto: MISMO modelo y dims (384) que produccion.
+    # Cambiar de modelo con mismos dims conserva la coleccion pero mezcla
+    # espacios: reindexar con RAGIndex().rebuild_tenant por tenant.
+    # Cambiar de dims exige coleccion nueva (rag_collection) + rebuild.
+    rag_dense_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    rag_dense_dims: int = Field(default=384, ge=1, le=4096)
+    # Override opt-in de coleccion (None = la historica
+    # "portfolio_research_documents"). Solo para cambios de dims/modelo.
+    rag_collection: str | None = None
+    # Sparse sibling (BM25 estadistico via fastembed, ~10 MB, multilingue).
+    # Apagado por defecto: la ingesta/busqueda densa no cambia.
+    rag_hybrid_enabled: bool = False
+    rag_sparse_model: str = "Qdrant/bm25"
+    rag_sparse_vector_name: str = "bm25"
+    # Fusion RRF (lado cliente, igual semantica que el RRF de Qdrant >= 1.10;
+    # k y pesos configurables sin depender de la version del servidor:
+    # los pesos RRF de servidor exigen Qdrant >= 1.17 y prod va en 1.12.5).
+    rag_rrf_k: int = Field(default=60, ge=1, le=1000)
+    rag_dense_weight: float = Field(default=1.0, ge=0.0, le=100.0)
+    rag_sparse_weight: float = Field(default=1.0, ge=0.0, le=100.0)
     minio_endpoint: str = "localhost:9002"
     minio_access_key: str = "portfolio"
     minio_secret_key: str = "portfoliosecret"
@@ -172,6 +197,36 @@ class Settings(BaseSettings):
     # entrando via el mirror HF (sec_hf_mirror_dataset) sincronizado por
     # GitHub Actions. True solo donde la SEC sea alcanzable (dev local).
     sec_document_jobs_enabled: bool = False
+    # Pipeline de ingesta en dos carriles (MarkItDown rapido / Docling
+    # estructura / pypdf clasico; ver app/services/docling_pipeline.py).
+    # Activo por defecto SI la dependencia opcional esta instalada; ausente,
+    # degrada con warnings ("docling/markitdown no instalado"), nunca rompe.
+    # docling_async_only=True restringe el conversor ML pesado (0.3-3 s/pag
+    # en CPU) al worker Dramatiq (actor process_document_structured): en la
+    # ruta sincrona de FastAPI un PDF con estructura se sirve con el carril
+    # rapido y queda marcado para reproceso. Solo desactivar puntualmente en
+    # scripts locales, jamas en serving de produccion.
+    docling_lane_enabled: bool = True
+    docling_async_only: bool = True
+    markitdown_enabled: bool = True
+    # Ingesta SEC paralela basada en edgartools (edgartools_ingestion_service).
+    # Apagada por defecto: via nueva con dependencia de bus-factor 1 y el
+    # enchufado al scheduler/Dramatiq es un follow-up cuando BUG-1 cierre.
+    # Env: EDGARTOOLS_ENABLED.
+    edgartools_enabled: bool = False
+    # Snapshot edgartools (manifest.json con synced_at + companyfacts/ +
+    # submissions/ + filings/): mismo patron que sec_snapshot_dir. En
+    # produccion (OCI, IP baneada por la SEC con 403 permanente) es la UNICA
+    # fuente: funciona sin red una vez construido el snapshot. Env:
+    # EDGARTOOLS_SNAPSHOT_DIR.
+    edgartools_snapshot_dir: str | None = None
+    # Identidad para edgar.set_identity ("Nombre email@dominio"): la SEC exige
+    # UA declarado con contacto. Vacio = se deriva de sec_user_agent. Env:
+    # EDGARTOOLS_IDENTITY.
+    edgartools_identity: str | None = None
+    # Tope de peticiones/segundo a la SEC via edgartools (maximo SEC: 10).
+    # Env: EDGARTOOLS_REQUESTS_PER_SECOND.
+    edgartools_requests_per_second: float = Field(default=8, ge=0.1, le=10)
     # Directorio con snapshots ESEF (manifest.json issuers LEI->{ticker,...},
     # snapshots/<LEI>.json normalizados desde filings.xbrl.org). Mismo motivo
     # que SEC: los datos viajan con la app, nunca se piden en caliente.
@@ -207,6 +262,19 @@ class Settings(BaseSettings):
     langfuse_sample_rate: float = Field(default=0.1, ge=0.0, le=1.0)
     fmp_api_key: str | None = None
     fred_api_key: str | None = None
+    # Referencia de instrumentos: seed FinanceDatabase + normalizacion OpenFIGI.
+    # Sin key por defecto (25 req/min); key gratuita opcional via env.
+    # Env: OPENFIGI_API_KEY / OPENFIGI_REQUESTS_PER_MINUTE /
+    # OPENFIGI_CACHE_TTL_SECONDS / OPENFIGI_BASE_URL /
+    # FINANCEDATABASE_EQUITIES_BASE_URL / INSTRUMENT_SNAPSHOT_DIR.
+    openfigi_api_key: str | None = Field(default=None, repr=False)
+    openfigi_requests_per_minute: int = Field(default=25, ge=1, le=600)
+    openfigi_cache_ttl_seconds: int = Field(default=86400, ge=60)
+    openfigi_base_url: str = "https://api.openfigi.com/v3/mapping"
+    financedatabase_equities_base_url: str = (
+        "https://raw.githubusercontent.com/JerBouma/FinanceDatabase/main/database/equities"
+    )
+    instrument_snapshot_dir: str = "./data/instruments"
     opencode_go_api_key: str | None = Field(default=None, repr=False)
     opencode_go_base_url: str = "https://opencode.ai/zen/v1"
     # Default cheap-but-good model. Overridable WITHOUT code change via env

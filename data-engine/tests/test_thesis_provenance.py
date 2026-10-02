@@ -163,4 +163,5 @@ def test_latest_inputs_provenance_readback():
     )
     db.flush()
     items = latest_inputs_provenance(db, company.id)
-    assert {item["key"] for item in items} == {"wacc", "terminal_growth", "satellites_on_orbit"}
+    # Sin base documentada (ni URL) no se muestra INFERIDO: se omite y queda N/D.
+    assert {item["key"] for item in items} == set()
