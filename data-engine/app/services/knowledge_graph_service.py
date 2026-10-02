@@ -6,7 +6,7 @@ import re
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -389,7 +389,20 @@ class KnowledgeGraphService:
             if node_ids
             else []
         )
-        return self._payload(nodes, edges)
+        payload = self._payload(nodes, edges)
+        # El recorte del backend se DECLARA: `node_count` es lo devuelto (lo que
+        # dejo `limit`), `total_node_count` es cuantos nodos hay con los MISMOS
+        # filtros. Sin esto la pagina presenta 120 (lo paginado) como el tamano
+        # del grafo y el usuario cree que el grafo tiene 120 nodos.
+        payload["total_node_count"] = int(
+            db.scalar(
+                select(func.count())
+                .select_from(KnowledgeGraphNode)
+                .where(*statement.whereclause.clauses)
+            )
+            or 0
+        )
+        return payload
 
     def neighborhood(
         self, db: Session, node_id: int, *, depth: int = 2
