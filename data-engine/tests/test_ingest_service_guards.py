@@ -181,6 +181,59 @@ def test_refresh_from_fmp_rechaza_filas_de_otro_simbolo(db):
 
 
 # --------------------------------------------------------------------------
+# FIX5-4: _add_facts colapsa (metrica, periodo)
+# --------------------------------------------------------------------------
+
+
+class _FakeFMPDuplicado:
+    async def income_statement(self, ticker, limit=5):
+        return [
+            {"symbol": "ACME", "date": "2025-12-31", "period": "FY", "calendarYear": 2025,
+             "revenue": 5000000000, "netIncome": 500000000},
+            {"symbol": "ACME", "date": "2025-12-31", "period": "FY", "calendarYear": 2025,
+             "revenue": 5000000000, "netIncome": 500000000},
+        ]
+
+    async def balance_sheet(self, ticker, limit=5):
+        return []
+
+    async def cash_flow(self, ticker, limit=5):
+        return []
+
+    async def ratios(self, ticker, limit=5):
+        return []
+
+    async def company_profile(self, ticker):
+        return []
+
+    async def quote(self, ticker):
+        return []
+
+
+def test_add_facts_collapse_por_metrica_y_periodo(db):
+    company = _company(db, "ACME")
+    asyncio.run(FinancialIngestionService().refresh_from_fmp(db, company, client=_FakeFMPDuplicado()))
+    revenues = _facts(db, company, "revenue")
+    assert len(revenues) == 1, "el mismo (metrica, periodo) debe colapsar a una fila"
+    assert revenues[0].value == Decimal("5000000000")
+
+
+def test_add_facts_sustituye_la_derivada_vieja_de_la_clave(db):
+    company = _company(db, "ACME")
+    stale = FinancialFact(
+        company_id=company.id, metric="revenue", value=Decimal("1"),
+        unit="USD", period="2025-12-31:FY", fiscal_year=2025, fiscal_quarter="FY",
+        source_type="SEC", is_reported=False, confidence=Decimal("0.5"),
+    )
+    db.add(stale)
+    db.commit()
+    asyncio.run(FinancialIngestionService().refresh_from_fmp(db, company, client=_FakeFMPDuplicado()))
+    revenues = _facts(db, company, "revenue")
+    assert [f.value for f in revenues] == [Decimal("5000000000")]
+    assert revenues[0].is_reported is True
+
+
+# --------------------------------------------------------------------------
 # FIX5-8: shares_diluted no mezcla saldo instantaneo con promedio ponderado
 # --------------------------------------------------------------------------
 

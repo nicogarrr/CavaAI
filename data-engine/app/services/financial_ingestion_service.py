@@ -936,12 +936,23 @@ class FinancialIngestionService:
                     document=document,
                     row=row,
                     specs=specs,
+                    seen=seen_keys,
                 )
+                filled = _norm_date(row.get("fillingDate"))
+                if filled:
+                    filling_dates.append(date.fromisoformat(filled))
 
         drop_shadowed_facts(db, company.id, document.id, tenant_condition(db))
         facts += self._add_derived_facts(db, company, document)
         facts += self._add_profile_facts(db, company, document, profile)
         await self._add_spot_price(db, company, fmp, ticker)
+        if filling_dates:
+            # FIX de la publicacion: los hechos apuntan a este documento y sin
+            # fecha de publicacion el guard point-in-time nunca podia disparar
+            # su eje de publicacion.
+            document.published_at = datetime.combine(
+                max(filling_dates), datetime.min.time(), tzinfo=UTC
+            )
 
         document.metadata_ = {
             **(document.metadata_ or {}),
@@ -1904,6 +1915,35 @@ class FinancialIngestionService:
         )
         return 1
 
+    def _drop_stale_derived(
+        self, db: Session, company: Company, metric: str, period: str
+    ) -> None:
+        """Colapsa la capa de servicio en (metrica, periodo).
+
+        `FinancialFact` no tiene UNIQUE en (company_id, metric, period) (la
+        restriccion vive en `entities.py` + migraciones, fuera de este fix), asi
+        que la base no puede defenderse sola: sin este borrado, una derivada
+        vieja de OTRO proveedor (o de una corrida anterior) convive con la fila
+        nueva y el mismo periodo acaba con dos `fcf_margin` de valores
+        distintos (FIX5-4/FIX5-7). Se borra lo derivado (is_reported=False) de
+        la clave: la fila reportada que acaba de entrar la sustituye.
+        """
+        tenant_id = db.info.get("tenant_id")
+        tenant_filter = (
+            FinancialFact.tenant_id == tenant_id
+            if tenant_id is not None
+            else FinancialFact.tenant_id.is_(None)
+        )
+        db.execute(
+            delete(FinancialFact).where(
+                FinancialFact.company_id == company.id,
+                FinancialFact.metric == metric,
+                FinancialFact.period == period,
+                FinancialFact.is_reported.is_(False),
+                tenant_filter,
+            )
+        )
+
     def _add_facts(
         self,
         db: Session,
@@ -1911,6 +1951,7 @@ class FinancialIngestionService:
         document: Document,
         row: dict[str, Any],
         specs: list[MetricSpec],
+        seen: set[tuple[str, str]] | None = None,
     ) -> int:
         period, fiscal_year, fiscal_quarter = _period(row)
         count = 0
@@ -1918,6 +1959,17 @@ class FinancialIngestionService:
             value = _decimal(row.get(fmp_key))
             if value is None:
                 continue
+            # Deduplicacion explicita por (metrica, periodo): dos filas del
+            # payload que declaran la misma magnitud para el mismo periodo son
+            # UN hecho (o un duplicado sucio del proveedor), nunca dos filas
+            # (FIX5-4). Sin UNIQUE en la tabla, el colapso es responsabilidad
+            # del servicio.
+            if seen is not None:
+                key = (metric, period)
+                if key in seen:
+                    continue
+                seen.add(key)
+            self._drop_stale_derived(db, company, metric, period)
             db.add(
                 FinancialFact(
                     company_id=company.id,
