@@ -1,11 +1,13 @@
 from decimal import Decimal
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, select
 
 import main
 from app.core.database import SessionLocal, init_db
 from app.models import CalculatedMetric, Company, FinancialFact, Position
+from app.services.long_term_model_service import LongTermModelService
 
 TICKER = "TLM"
 
@@ -136,3 +138,51 @@ def test_long_term_model_returns_scenarios_and_source_trace():
     assert "maintenance_vs_growth_capex_split" in payload["limitations"]
 
     _cleanup()
+
+
+# --------------------------------------------------------------------------
+# FCF = OCF + capex is one rule; each caller wraps it in its own return shape
+# --------------------------------------------------------------------------
+
+
+def _row(metric: str, year: int, value, fact_id: int) -> FinancialFact:
+    return FinancialFact(
+        id=fact_id, company_id=1, metric=metric, value=value, unit="USD",
+        period=f"FY{year}", fiscal_year=year, fiscal_quarter="FY",
+    )
+
+
+def _cache(ocf: FinancialFact | None, capex: FinancialFact | None) -> dict:
+    return {
+        "free_cash_flow": [],
+        "operating_cash_flow": [ocf] if ocf else [],
+        "capital_expenditure": [capex] if capex else [],
+    }
+
+
+def test_derived_fcf_is_ocf_plus_signed_capex():
+    service = LongTermModelService()
+    cache = _cache(
+        _row("operating_cash_flow", 2024, Decimal("120"), 1),
+        _row("capital_expenditure", 2024, Decimal("-30"), 2),
+    )
+    assert service._derived_fcf_value(cache, 2024) == pytest.approx(90.0)
+    assert service._derived_fcf_series(cache, [2024]) == [
+        {"year": 2024, "value": pytest.approx(90.0), "fact_ids": [1, 2]}
+    ]
+
+
+def test_derived_fcf_is_not_declared_when_a_leg_is_unreadable():
+    """A leg with no readable value is not a zero.
+
+    Reporting the surviving leg alone (120) or a flat 0 published a cash flow
+    the issuer never reported, indistinguishable from a verified one.
+    """
+    service = LongTermModelService()
+    for cache in (
+        _cache(_row("operating_cash_flow", 2024, None, 1), _row("capital_expenditure", 2024, Decimal("-30"), 2)),
+        _cache(_row("operating_cash_flow", 2024, Decimal("120"), 1), _row("capital_expenditure", 2024, None, 2)),
+        _cache(_row("operating_cash_flow", 2024, Decimal("120"), 1), None),
+    ):
+        assert service._derived_fcf_value(cache, 2024) is None
+        assert service._derived_fcf_series(cache, [2024]) == []

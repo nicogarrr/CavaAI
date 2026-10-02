@@ -5,42 +5,30 @@ fallback when Yahoo fails (its key may be dead: errors surface as
 unavailable, never fabricated). Declared dividends are ingested as deduped
 DividendRecord rows with per-row source and fetched_at provenance.
 Dividend cash application to the ledger stays manual.
+
+The provider-to-record skeleton is inherited from ``ProviderIngestionService``.
 """
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.errors import redact_secrets
 from app.models import Company, DividendRecord, Position
-from app.services.company_resolver import resolve_company
-from app.services.connectors.fmp import FMPClient
-from app.services.connectors.yahoo import YahooFinanceClient
 from app.services.provenance import Coverage, SourceKind, provenance
+from app.services.split_ingestion_service import ProviderIngestionService
 
 
-class DividendIngestionService:
-    def __init__(
-        self,
-        fmp: FMPClient | None = None,
-        yahoo: YahooFinanceClient | None = None,
-    ) -> None:
-        self.fmp = fmp or FMPClient()
-        self.yahoo = yahoo or YahooFinanceClient()
-
-    @staticmethod
-    def _parse_date(value: Any) -> date | None:
-        if not value:
-            return None
-        try:
-            return date.fromisoformat(str(value)[:10])
-        except ValueError:
-            return None
+class DividendIngestionService(ProviderIngestionService):
+    _PROVENANCE_SOURCE = "Yahoo Finance chart/dividends (fallback FMP stable/dividends)"
+    _PROVENANCE_NOTE = (
+        "Declared dividends from data providers; reconcile against issuer/regulator "
+        "notices for material decisions."
+    )
 
     @staticmethod
     def _parse_amount(payload: dict) -> Decimal | None:
@@ -55,13 +43,6 @@ class DividendIngestionService:
             if amount > 0:
                 return amount
         return None
-
-    @staticmethod
-    def _epoch_to_date(value: Any) -> date | None:
-        try:
-            return datetime.fromtimestamp(int(value), UTC).date()
-        except (TypeError, ValueError, OSError, OverflowError):
-            return None
 
     async def _fetch_rows(
         self, company: Company
@@ -98,91 +79,33 @@ class DividendIngestionService:
             if isinstance(row, dict)
         ], "yahoo_finance"
 
-    async def sync_company(self, db: Session, *, ticker: str) -> dict[str, Any]:
-        """Ingest declared dividends for one company. Returns counts + provenance."""
-        company = resolve_company(db, ticker)
-        if company is None:
-            return {
-                "ticker": ticker.upper(),
-                "status": "unknown_company",
-                "inserted": 0,
-                "existing": 0,
-            }
-        try:
-            rows, source = await self._fetch_rows(company)
-        except Exception as exc:  # provider/auth/entitlement/network failure
-            return {
-                "ticker": company.ticker,
-                "status": "unavailable",
-                "error": redact_secrets(f"{type(exc).__name__}: {exc}")[:300],
-                "inserted": 0,
-                "existing": 0,
-            }
-        fetched_at = datetime.now(UTC)
-        inserted = 0
-        existing = 0
-        for row in rows:
-            ex_date = row["ex_date"]
-            amount = row["amount"]
-            if ex_date is None or amount is None:
-                continue
-            duplicate = db.scalar(
-                select(DividendRecord).where(
-                    DividendRecord.company_id == company.id,
-                    DividendRecord.ex_date == ex_date,
-                    DividendRecord.amount == amount,
-                )
-            )
-            if duplicate is not None:
-                existing += 1
-                continue
-            db.add(
-                DividendRecord(
-                    company_id=company.id,
-                    ex_date=ex_date,
-                    pay_date=row["pay_date"],
-                    amount=amount,
-                    currency=row["currency"],
-                    source=source,
-                    fetched_at=fetched_at,
-                )
-            )
-            inserted += 1
-        db.commit()
-        return {
-            "ticker": company.ticker,
-            "status": "ok",
-            "source": source,
-            "inserted": inserted,
-            "existing": existing,
-            "fetched_at": fetched_at.isoformat(),
-        }
+    @staticmethod
+    def _row_is_ingestible(row: dict[str, Any]) -> bool:
+        return row["ex_date"] is not None and row["amount"] is not None
 
-    async def sync_portfolio(self, db: Session) -> dict[str, Any]:
-        """Ingest dividends for every currently held company."""
-        company_ids = db.scalars(select(Position.company_id).distinct()).all()
-        tickers = list(
-            db.scalars(select(Company.ticker).where(Company.id.in_(company_ids))).all()
-        ) if company_ids else []
-        results = [await self.sync_company(db, ticker=ticker) for ticker in tickers]
-        ok = sum(1 for r in results if r["status"] == "ok")
-        unavailable = sum(1 for r in results if r["status"] == "unavailable")
-        return {
-            "companies": len(results),
-            "synced": ok,
-            "unavailable": unavailable,
-            "results": results,
-            "provenance": provenance(
-                "Yahoo Finance chart/dividends (fallback FMP stable/dividends)",
-                SourceKind.UNOFFICIAL,
-                coverage=(
-                    Coverage.OK
-                    if unavailable == 0
-                    else Coverage.PARTIAL if ok else Coverage.UNAVAILABLE
-                ),
-                note="Declared dividends from data providers; reconcile against issuer/regulator notices for material decisions.",
-            ),
-        }
+    @staticmethod
+    def _existing_record(db: Session, company: Company, row: dict[str, Any]) -> Any:
+        return db.scalar(
+            select(DividendRecord).where(
+                DividendRecord.company_id == company.id,
+                DividendRecord.ex_date == row["ex_date"],
+                DividendRecord.amount == row["amount"],
+            )
+        )
+
+    @staticmethod
+    def _new_record(
+        company: Company, row: dict[str, Any], source: str, fetched_at: datetime
+    ) -> Any:
+        return DividendRecord(
+            company_id=company.id,
+            ex_date=row["ex_date"],
+            pay_date=row["pay_date"],
+            amount=row["amount"],
+            currency=row["currency"],
+            source=source,
+            fetched_at=fetched_at,
+        )
 
     def portfolio_yields(self, db: Session) -> dict[str, Any]:
         """Trailing-12-month dividend yield per held position + portfolio aggregate.
