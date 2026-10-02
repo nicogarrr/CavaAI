@@ -1,4 +1,4 @@
-# pyright: reportArgumentType=false, reportOptionalOperand=false
+# pyright: reportArgumentType=false, reportOptionalOperand=false, reportOperatorIssue=false
 """PR-A/PR-B: wacc y terminal_growth INFERIDOS (base + URLs https) con
 procedencia; sin base/URL o fuera de rango siguen fail-closed."""
 
