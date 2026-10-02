@@ -79,19 +79,23 @@ def _facts_by_key(observed: list[dict]) -> dict[tuple[str, str], list[dict]]:
     return index
 
 
-def _period_date(period: Any) -> str | None:
-    """Fecha que la etiqueta de periodo declara ('<end>:FY' / '<end>:Q1' / '<end>:TTM')."""
-    if not isinstance(period, str) or period.startswith("<") or ":" not in period:
-        return None
+def _period_date(period: Any) -> tuple[str | None, str | None]:
+    """(fecha ISO, problema) que la etiqueta de periodo declara.
+
+    '<end>:FY' / '<end>:Q1' / '<end>:TTM'. Una etiqueta NO PARSEABLE no es
+    "sin fecha": es un defecto de la etiqueta (`2025-99-99:FY`,
+    `1767225600:FY`) y se devuelve como problema para que la puerta lo acuse.
+    Solo esta funcion (compartida con el runner) decide que es una fecha de
+    periodo: dos implementaciones divergentes dejaban pasar etiquetas
+    imposibles por una via y las cazaban por otra (FIX5-10).
+    """
+    if not isinstance(period, str) or ":" not in period:
+        return None, None
     head = period.split(":", 1)[0]
-    if len(head) < 10:
-        return None
-    candidate = head[:10]
     try:
-        date.fromisoformat(candidate)
+        return date.fromisoformat(head).isoformat(), None
     except ValueError:
-        return None
-    return candidate
+        return None, f"etiqueta de periodo no parseable: {period!r}"
 
 
 def _tolerance(case: dict) -> tuple[Decimal, Decimal]:
@@ -379,7 +383,12 @@ def gate_no_lookahead(case: dict) -> dict:
         return _result("no_lookahead", False, [f"expected.as_of no es fecha: {as_of!r}"])
     problems: list[str] = []
     for fact in _observed_facts(case):
-        period_date = _period_date(fact["period"])
+        period_date, problem = _period_date(fact["period"])
+        if problem:
+            # Un periodo sin fecha legible no se puede acotar: se acusa, no se
+            # salta el filtro (FIX5-10).
+            problems.append(f"{fact['metric']}@{fact['period']}: {problem}")
+            continue
         if period_date and date.fromisoformat(period_date) > cutoff:
             problems.append(
                 f"look-ahead: {fact['metric']}@{fact['period']} es posterior a {as_of}"
