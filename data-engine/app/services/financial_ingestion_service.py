@@ -630,10 +630,41 @@ def _norm_date(value: Any) -> str | None:
         return None
 
 
+def _published_by(entry: dict[str, Any], as_of: date) -> bool:
+    """True cuando el hecho YA era publico en `as_of` (fecha de filing).
+
+    Fail closed: sin `filed` (o con uno ilegible) no se puede probar la
+    publicacion, y un hecho sin fecha de publicacion nunca entra bajo un corte.
+    """
+    filed = str(entry.get("filed") or "").strip()
+    if not filed:
+        return False
+    try:
+        return date.fromisoformat(filed[:10]) <= as_of
+    except ValueError:
+        return False
+
+
+def _publication_date(entry: dict[str, Any]) -> date | None:
+    """Fecha de publicacion declarada por la fuente (`filed`), o None."""
+    filed = str(entry.get("filed") or "").strip()
+    if not filed:
+        return None
+    try:
+        return date.fromisoformat(filed[:10])
+    except ValueError:
+        return None
+
+
 def _period(row: dict[str, Any]) -> tuple[str, int | None, str | None]:
     fiscal_year = row.get("calendarYear") or row.get("fiscalYear")
     fiscal_quarter = row.get("period")
-    date_value = row.get("date")
+    raw_date = row.get("date")
+    # Se normaliza lo normalizable (epoch -> ISO) y lo no parseable se
+    # conserva VERBATIM: una fecha imposible como `2025-99-99` debe llegar a
+    # la etiqueta para que la puerta no_lookahead la señale como defecto, no
+    # esfumarse en un `unknown` que ninguna puerta sabria acusar (FIX5-10).
+    date_value = _norm_date(raw_date) or (str(raw_date).strip() if raw_date is not None else None)
 
     year_int: int | None = None
     if fiscal_year is not None:
