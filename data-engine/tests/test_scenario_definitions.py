@@ -145,8 +145,11 @@ def test_techo_margen_bull():
 
 def test_wacc_bull_nunca_baja_del_crecimiento_terminal_mas_margen():
     _, _, bull = mechanical_dcf_scenarios(0.10, 0.20, 0.03, 0.025, 0.0)
-    assert bull.assumptions["wacc"] == pytest.approx(0.035)
+    # FIX-4: el suelo ahora abunda POR DEBAJO del WACC base (0.03), no por encima.
+    # bull WACC = max(min(0.02, max(0.035, 0.025)), 0.026) = 0.026 = terminal + 0.001
+    assert bull.assumptions["wacc"] == pytest.approx(0.026)
     assert bull.assumptions["wacc"] > 0.025
+    assert bull.assumptions["wacc"] < 0.03  # bull WACC por debajo del base
 
 
 def test_crecimiento_muy_negativo_se_recorta_al_suelo():
