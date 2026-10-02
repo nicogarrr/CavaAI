@@ -3,7 +3,10 @@
 # ============================================
 # Con hot-reload para desarrollo
 
-FROM node:22-alpine
+# Base fijada por digest del MANIFEST LIST (amd64+arm64), igual que Dockerfile:
+# sin él, `node:22-alpine` es una etiqueta móvil y el mismo commit produce un
+# SBOM distinto cada día.
+FROM node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402
 
 WORKDIR /app
 
