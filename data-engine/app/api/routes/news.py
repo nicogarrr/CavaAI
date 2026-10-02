@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import desc, select
@@ -25,10 +25,10 @@ def ingest_news(payload: NewsIngestRequest, db: Session = Depends(get_db)) -> Ne
 
 @router.get("")
 def news_events(
-    limit: int = Query(100, ge=1, le=100),
-    offset: int = Query(0, ge=0),
-    lane: Literal["empresa", "macro"] | None = None,
     db: Session = Depends(get_db),
+    limit: Annotated[int, Query(ge=1, le=100)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    lane: Literal["empresa", "macro"] | None = None,
 ) -> list[dict]:
     """Eventos por pagina (scroll infinito). ``lane`` filtra en SQL:
     ``empresa`` = atribuido a una empresa real; ``macro`` = carril macro GDELT."""

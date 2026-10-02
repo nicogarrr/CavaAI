@@ -21,7 +21,7 @@ test('la primera pagina y el carril se piden al servidor, no se filtran en clien
 });
 
 test('la API acota limit/offset y filtra el carril en SQL', () => {
-  assert.match(route, /Query\(100, ge=1, le=100\)/);
-  assert.match(route, /offset: int = Query\(0, ge=0\)/);
+  assert.match(route, /Annotated\[int, Query\(ge=1, le=100\)\] = 100/);
+  assert.match(route, /offset: Annotated\[int, Query\(ge=0\)\] = 0/);
   assert.match(route, /lane: Literal\["empresa", "macro"\]/);
 });
