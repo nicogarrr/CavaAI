@@ -4,6 +4,13 @@ Requiere Qdrant en localhost:6333 (``docker compose up -d qdrant``).
 Sin Qdrant los tests se skipean; con Qdrant usan embeddings locales
 (all-MiniLM-L6-v2, primera ejecucion descarga el modelo) y BD sqlite
 en memoria, sin tocar Postgres ni MinIO.
+
+Los dos tests que necesitan Qdrant llevan ademas ``@pytest.mark.services``
+(marker registrado en pyproject.toml), que permite correr la suite rapida sin
+el servicio con ``pytest tests -m "not services"``. El ``skipif`` de abajo se
+queda, y sigue siendo lo que CI vigila: el job ``backend`` de ci.yml falla si
+este fichero aparece como skipped. Un marker se puede anular con ``-m``; un
+``skipif`` automatico no.
 """
 
 from __future__ import annotations
@@ -35,6 +42,7 @@ requires_qdrant = pytest.mark.skipif(
     not _qdrant_reachable(),
     reason="Qdrant no disponible en localhost:6333 (docker compose up -d qdrant)",
 )
+needs_service = pytest.mark.services
 
 
 def _session_with_tenant() -> tuple[Session, int, str]:
@@ -109,6 +117,7 @@ def tenant_db(monkeypatch):
 
 
 @requires_qdrant
+@needs_service
 def test_ingest_indexes_vectors_in_qdrant(tenant_db):
     from app.services.rag import RAGIndex
 
@@ -153,6 +162,7 @@ def test_ingest_indexes_vectors_in_qdrant(tenant_db):
 
 
 @requires_qdrant
+@needs_service
 def test_vector_and_unified_search_recover_ingested_chunk(tenant_db):
     from app.services.document_ingestion_service import DocumentIngestionService
     from app.services.rag import RAGIndex
