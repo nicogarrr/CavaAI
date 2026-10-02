@@ -10,8 +10,13 @@ WORKDIR /app
 # Instalar dependencias del sistema
 RUN apk add --no-cache libc6-compat
 
+# Usuario sin privilegios (Trivy DS-0002). /app/.next se crea aqui para que el
+# volumen anonimo de docker-compose herede el propietario node y no root.
+RUN mkdir -p /app/node_modules /app/.next && chown -R node:node /app
+USER node
+
 # Copiar archivos de dependencias
-COPY package.json package-lock.json* ./
+COPY --chown=node:node package.json package-lock.json* ./
 
 # Instalar dependencias
 RUN npm ci
