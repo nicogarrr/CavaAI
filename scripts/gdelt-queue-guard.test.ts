@@ -11,10 +11,11 @@ const compose = readFileSync('docker-compose.prod.yml', 'utf8');
 // ocupaba un hilo y la ingesta corta (rss, insider, ir, sec) hacia cola
 // detras; ademas el backlog se re-encolaba pisandose a si mismo.
 test('refresh_news y refresh_macro_news van en la cola gdelt y nadie mas la declara', () => {
+    // \r?\n: los patrones aguantan CRLF (checkout Windows) y LF.
     for (const actor of ['refresh_news', 'refresh_macro_news']) {
         assert.match(
             workers,
-            new RegExp(`@dramatiq\\.actor\\([^)]*queue_name=GDELT_QUEUE_NAME\\)\\n@_coalesce_on_success\\([\\s\\S]{0,260}?\\)\\ndef ${actor}\\(`),
+            new RegExp(`@dramatiq\\.actor\\([^)]*queue_name=GDELT_QUEUE_NAME\\)\\r?\\n@_coalesce_on_success\\([\\s\\S]{0,260}?\\)\\r?\\ndef ${actor}\\(`),
             `${actor} sin queue_name gdelt + coalescencia`,
         );
     }
@@ -29,14 +30,14 @@ test('la cola gdelt la consume EXACTAMENTE UN proceso dedicado (pacing por IP in
     assert.match(compose, /worker-gdelt:[\s\S]{0,900}"--processes", "1", "--threads", "2", "-Q", "gdelt"/);
     const gdeltBlock = compose.slice(compose.indexOf('worker-gdelt:'));
     assert.match(gdeltBlock, /memory: 2G/);
-    const workerCmd = compose.match(/worker:\n[\s\S]{0,200}command: \[[^\]]*\]/)?.[0] ?? '';
+    const workerCmd = compose.match(/worker:\r?\n[\s\S]{0,200}command: \[[^\]]*\]/)?.[0] ?? '';
     assert.ok(workerCmd && !workerCmd.includes('gdelt'), 'el worker general NO consume gdelt');
 });
 
 test('el worker default sube a 6 hilos para la ingesta no-GDELT (I/O puro)', () => {
     assert.match(
         compose,
-        /worker:\n[\s\S]{0,200}"--processes", "1", "--threads", "6", "-Q", "default", "prices"/,
+        /worker:\r?\n[\s\S]{0,200}"--processes", "1", "--threads", "6", "-Q", "default", "prices"/,
     );
 });
 
@@ -54,7 +55,7 @@ test('los jobs periodicos de ingesta llevan coalescencia contra re-encolados red
     ]) {
         assert.match(
             workers,
-            new RegExp(`@_coalesce_on_success\\([\\s\\S]{0,260}?\\)\\ndef ${actor}\\(`),
+            new RegExp(`@_coalesce_on_success\\([\\s\\S]{0,260}?\\)\\r?\\ndef ${actor}\\(`),
             `${actor} sin coalescencia`,
         );
     }
@@ -62,7 +63,7 @@ test('los jobs periodicos de ingesta llevan coalescencia contra re-encolados red
     for (const actor of ['evaluate_alert_rules', 'dispatch_tracked_news_alerts']) {
         assert.doesNotMatch(
             workers,
-            new RegExp(`@_coalesce_on_success\\([\\s\\S]{0,260}?\\)\\ndef ${actor}\\(`),
+            new RegExp(`@_coalesce_on_success\\([\\s\\S]{0,260}?\\)\\r?\\ndef ${actor}\\(`),
         );
     }
 });

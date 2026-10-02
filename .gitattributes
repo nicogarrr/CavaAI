@@ -1,0 +1,8 @@
+# Politica de fin de linea versionada. Sin esto, cada Windows con
+# core.autocrlf=true (el default de Git for Windows) se checa el arbol con
+# CRLF y los regex de los guards que buscan `\n` literal dejan de casa,
+# aunque en Linux/CI sigan en verde. eol=lf fija el checkout.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.sh  text eol=lf
