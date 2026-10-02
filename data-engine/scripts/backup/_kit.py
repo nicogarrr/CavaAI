@@ -72,8 +72,10 @@ POSTGRES_IMAGE = "postgres:17"
 REQUIRED_PG_CLIENT_MAJOR = 17
 QDRANT_IMAGE = "qdrant/qdrant:v1.12.5"
 REQUIRED_QDRANT_MAJOR_MINOR = "1.12"
-MINIO_IMAGE = "quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z"
-MINIO_SERVER_RELEASE = "RELEASE.2025-04-22T22-12-26Z"
+# La imagen oficial de quay.io ya no es publica: prod construye MinIO desde
+# fuente (docker/minio/Dockerfile, PR #776) y etiqueta la imagen asi.
+MINIO_IMAGE = "cavaai-minio:RELEASE.2025-10-15T17-29-55Z"
+MINIO_SERVER_RELEASE = "RELEASE.2025-10-15T17-29-55Z"
 #: Rango declarado en data-engine/pyproject.toml para el SDK de MinIO.
 MINIO_SDK_REQUIREMENT = "minio>=7.2.7,<8"
 
