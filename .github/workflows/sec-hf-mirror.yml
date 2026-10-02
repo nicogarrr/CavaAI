@@ -9,13 +9,27 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  # Sin `${{ github.ref }}` a proposito, y con cancel-in-progress SIEMPRE false.
+  # Este workflow corre cada 6 horas y su unico efecto es escribir en el dataset
+  # de HuggingFace. Un grupo por ref + cancelacion dejaria huecos: si el run de
+  # las 03:00 se cancela al llegar el de las 09:00, companyfacts se queda sin
+  # sincronizar esas 6 horas y no hay forma de saberlo. Con false, GitHub
+  # encola el siguiente y la serie nunca se pisa a si misma ni se solapa.
+  group: sec-hf-mirror
+  cancel-in-progress: false
+
 jobs:
   sync:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      # 3.11 a proposito: es el piso de data-engine/pyproject.toml
+      # (requires-python = ">=3.11") y este script no usa nada de 3.12. El resto
+      # de workflows van a 3.12 porque ejecutan ruff/pyright, que declaran
+      # py312.
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - run: pip install httpx huggingface_hub
