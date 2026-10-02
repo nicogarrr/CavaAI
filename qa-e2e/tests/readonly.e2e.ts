@@ -1,9 +1,7 @@
 import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
-// READ-ONLY pass. Account: "Instinct Audit" (fake data). Credentials from env:
-// CAVAAI_USER, CAVAAI_PASS. Forbidden: create/edit/delete anything, submit
-// forms other than login, click buy/sell/save/delete/generate-thesis.
+// Pasada de SOLO LECTURA contra produccion, solo paginas publicas (sin login).
 const RULES =
   'READ-ONLY. Never create, edit, delete or submit anything except the login form. ' +
   'Do not click buttons that save, add, remove, buy, sell, import, or generate. Only navigate and read.';

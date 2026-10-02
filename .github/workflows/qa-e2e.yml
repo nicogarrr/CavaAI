@@ -32,7 +32,7 @@ jobs:
 
       - name: Instala dependencias y Chromium
         run: |
-          npm install --no-audit --no-fund
+          npm ci --no-audit --no-fund
           npx playwright install --with-deps chromium
 
       - name: Comprueba la clave de Zen
@@ -77,10 +77,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: qa-e2e-log
-          path: |
-            qa-e2e/run.log
-            qa-e2e/test-results
+          name: qa-e2e-resultados
+          path: qa-e2e/test-results
           if-no-files-found: ignore
 
       - name: Falla si el e2e falla
