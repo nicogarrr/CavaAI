@@ -4,8 +4,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from sqlalchemy import delete, func, or_, select, update
-from sqlalchemy.orm import Session
+from sqlalchemy import delete, or_, select, update
+from sqlalchemy.orm import Session, aliased
 
 from app.models import (
     CallClaim,
@@ -56,16 +56,10 @@ def delete_financial_facts(db: Session, *conditions: Any) -> int:
 
     Veracidad: un hecho con correccion humana aprobada (FactRevision approved o
     KPIExtractionCandidate approved apuntandolo) NO se borra; el valor
-    aprobado gana al del proveedor. Devuelve cuantos hechos se conservaron por
-    eso, para que quien refresca lo cuente como skip y no como error.
+    aprobado gana al del proveedor. Es un skip, no un error. Devuelve cuantos
+    hechos se borraron. Solo emite UPDATE/DELETE (sin SELECT de ida y vuelta).
     """
     approved = _human_approved_filter()
-    kept = int(
-        db.scalar(select(func.count()).select_from(FinancialFact).where(*conditions, approved))
-        or 0
-    )
-    if kept:
-        logger.info("financial_facts: %d hecho(s) con correccion humana conservados", kept)
     deletable = (*conditions, ~approved)
     ids = select(FinancialFact.id).where(*deletable)
     opts = {"synchronize_session": False}
@@ -83,34 +77,43 @@ def delete_financial_facts(db: Session, *conditions: Any) -> int:
         delete(FactRevision).where(FactRevision.financial_fact_id.in_(ids)),
         execution_options=opts,
     )
-    db.execute(delete(FinancialFact).where(*deletable), execution_options=opts)
-    return kept
+    result = db.execute(delete(FinancialFact).where(*deletable), execution_options=opts)
+    return int(getattr(result, "rowcount", 0) or 0)
 
 
 def drop_shadowed_facts(db: Session, company_id: int, source_id: int, *conditions: Any) -> int:
     """Tras reingerir, quita los hechos nuevos del proveedor que duplican un hecho
     aprobado por un humano (misma empresa, metrica y periodo). Gana el aprobado.
+    Una sola sentencia DELETE con EXISTS: sin lecturas extra.
     """
     db.flush()
-    protected = db.execute(
-        select(FinancialFact.id, FinancialFact.metric, FinancialFact.period).where(
-            FinancialFact.company_id == company_id, *conditions, _human_approved_filter()
+    kept = aliased(FinancialFact)
+    approved_kept = (
+        select(kept.id)
+        .where(
+            kept.company_id == FinancialFact.company_id,
+            kept.metric == FinancialFact.metric,
+            kept.period == FinancialFact.period,
+            kept.id < FinancialFact.id,
+            kept.id.in_(
+                select(FactRevision.financial_fact_id).where(FactRevision.status == "approved")
+            )
+            | kept.id.in_(
+                select(KPIExtractionCandidate.canonical_fact_id).where(
+                    KPIExtractionCandidate.status == "approved",
+                    KPIExtractionCandidate.canonical_fact_id.is_not(None),
+                )
+            ),
         )
-    ).all()
-    dropped = 0
-    for fact_id, metric, period in protected:
-        shadow = (
-            FinancialFact.company_id == company_id,
-            FinancialFact.metric == metric,
-            FinancialFact.period == period,
-            FinancialFact.source_id == source_id,
-            FinancialFact.id > fact_id,
-            *conditions,
-        )
-        dropped += int(
-            db.scalar(select(func.count()).select_from(FinancialFact).where(*shadow)) or 0
-        )
-        delete_financial_facts(db, *shadow)
+        .exists()
+    )
+    dropped = delete_financial_facts(
+        db,
+        FinancialFact.company_id == company_id,
+        FinancialFact.source_id == source_id,
+        *conditions,
+        approved_kept,
+    )
     if dropped:
         logger.info(
             "financial_facts: %d hecho(s) del proveedor omitidos por duplicar un valor aprobado",

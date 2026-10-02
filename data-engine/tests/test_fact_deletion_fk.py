@@ -114,9 +114,9 @@ def _approved_revision(db, fact):
 def test_helper_keeps_fact_with_approved_revision(db):
     company, fact, promise = _seed(db)
     _approved_revision(db, fact)
-    kept = delete_financial_facts(db, FinancialFact.company_id == company.id)
+    deleted = delete_financial_facts(db, FinancialFact.company_id == company.id)
     db.commit()
-    assert kept == 1
+    assert deleted == 0
     assert db.scalar(select(FinancialFact.id).where(FinancialFact.id == fact.id)) == fact.id
     assert db.scalar(select(FactRevision.id)) is not None
     db.refresh(promise)
