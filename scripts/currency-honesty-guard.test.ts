@@ -135,14 +135,9 @@ const ALLOWED: Array<{ file: string; snippet: string; why: string }> = [
         why: "Métricas de marketing del propio producto (coste por análisis), fijadas en USD por contrato comercial, no datos de mercado.",
     },
     {
-        file: 'components/proPicks/ProPicksSection.tsx',
-        snippet: "formatPrice(pick.currentPrice, 'USD')",
-        why: "El universo de proPicks es el S&P 500 (factsheet US-only del backend), así que la cotización llega en USD.",
-    },
-    {
         file: 'components/proPicks/EnhancedProPicksContent.tsx',
         snippet: "formatPrice(pick.currentPrice, 'USD')",
-        why: "Mismo universo US-only que ProPicksSection: precio de cotización en USD.",
+        why: "Universo de proPicks US-only (S&P 500, factsheet del backend): precio de cotización en USD.",
     },
     {
         file: 'lib/actions/proPicks.actions.ts',
@@ -150,24 +145,9 @@ const ALLOWED: Array<{ file: string; snippet: string; why: string }> = [
         why: "Texto de la alerta de proPicks, mismo universo US-only: el «$» acompaña a un precio de cotización del S&P 500.",
     },
     {
-        file: 'lib/utils.ts',
-        snippet: "formatMoney(price, 'USD', { minimumFractionDigits: 2 })",
-        why: "Helper heredado sin consumidores en la UI (solo se importa `cn` de este módulo): el precio de mercado se formatea con la divisa del listado en cada componente.",
-    },
-    {
-        file: 'lib/utils.ts',
-        snippet: 'return `$$',
-        why: "formatMarketCapValue heredado y sin consumidores; su parámetro se llama marketCapUsd y el sufijo T/B/M es del propio helper.",
-    },
-    {
         file: 'components/portfolio/EditTransactionDialog.tsx',
         snippet: "transaction.currency || 'USD'",
         why: "Semilla del SELECTOR de moneda del formulario de edición (editable por el usuario entre 9 divisas), no un importe pintado.",
-    },
-    {
-        file: 'lib/actions/twelveData.actions.ts',
-        snippet: "data.currency || 'USD'",
-        why: "Normalización de la respuesta del proveedor (perfil twelveData); el valor se propaga como campo de datos, no se pinta como importe por defecto.",
     },
 ];
 

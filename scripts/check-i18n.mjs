@@ -89,8 +89,6 @@ const ENGLISH_LABELS = new Set([
 // Se ignoran del todo los ficheros donde el ingles es correcto por diseno.
 const ALLOW = [
   // Formato de datos parseados del backend, no copy de UI.
-  "lib/utils/tableFormatter.ts",
-  "lib/utils/tableExtractor.ts",
   "lib/glossary.ts",
   // Claves de objeto que viajan al data-engine, no etiquetas de interfaz.
   "lib/constants.ts",
