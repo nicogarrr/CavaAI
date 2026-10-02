@@ -39,7 +39,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install --upgrade pip
-      - run: python -m pip install pytest ruff
+      - run: python -m pip install pytest ruff pydantic pydantic-settings
       - name: Ruff sobre el judge y sus gates
         run: python -m ruff check evals scripts tests
       - name: Los gates de las 4 capas LLM (sin red, sin proveedor)
