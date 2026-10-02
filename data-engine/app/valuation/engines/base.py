@@ -96,6 +96,20 @@ def is_adr_without_ratio(company: Company) -> bool:
     return is_adr and adr_ratio(company) is None
 
 
+def adr_comparable_price(
+    company: Company, current_price: float | None
+) -> tuple[float | None, float | None]:
+    """Return ``(comparable_price, ratio)`` for ADR-aware price comparison.
+
+    ``comparable_price`` is the price per ordinary share (``current_price / ratio``)
+    when the company is an ADR with a usable ratio, otherwise ``current_price``.
+    """
+    ratio = adr_ratio(company)
+    if ratio and current_price:
+        return current_price / ratio, ratio
+    return current_price, ratio
+
+
 @dataclass
 class ValuationContext:
     db: Session
