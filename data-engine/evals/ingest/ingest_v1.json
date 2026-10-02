@@ -40,12 +40,14 @@
   {
    "case": "neg-015-ixbrl-con-scale-y-sign",
    "gate": "extracted_values_match_fixture",
-   "defect": "sec_xbrl_instance.parse_instance_dimensioned_facts lee el LITERAL del hecho: ignora scale, sign, unitRef y decimals, asi que un BPA por clase con scale=\"3\" sign=\"-\" sale 1,25 en vez de -1250."
+   "status": "closed",
+   "defect": "sec_xbrl_instance.parse_instance_dimensioned_facts leia el LITERAL del hecho: ignoraba scale, sign, unitRef y decimals, asi que un BPA por clase con scale=\"3\" sign=\"-\" salia 1.25 en vez de -1250.",
+   "resolution": "El valor se declara escalado (10**scale) y negado (sign='-'); un unitRef que la metrica no admite descarta el hecho."
   }
  ],
  "summary": {
   "cases": 83,
-  "negative_controls": 11,
+  "negative_controls": 10,
   "degradation_cases": 11,
   "families": {
    "sec": 45,
@@ -54,7 +56,7 @@
   },
   "negative_controls_by_gate": {
    "absent_fields_reported_as_null": 2,
-   "extracted_values_match_fixture": 2,
+   "extracted_values_match_fixture": 1,
    "fixture_schema_valid": 1,
    "no_lookahead": 1,
    "official_only_if_index_verified": 2,
@@ -4195,9 +4197,9 @@
   {
    "id": "neg-015-ixbrl-con-scale-y-sign",
    "family": "sec",
-   "category": "negative_control",
+   "category": "ixbrl_scaling",
    "scenario": "sec_instance",
-   "description": "El parser de instancias lee el LITERAL del hecho: con scale=\"3\" y sign=\"-\" el BPA de la clase sale 1,25 en vez de -1250.",
+   "description": "iXBRL con scale=\"3\" sign=\"-\": el BPA de la clase sale -1250 (1.25 escalado y negado), no el literal 1.25.",
    "scenario_args": {
     "instance": "sec/instances/no_unitref_scale_sign.xml",
     "instance_name": "synth-10k_htm.xml",
@@ -4228,9 +4230,16 @@
     },
     "absent_metrics": []
    },
-   "expect_gate_failure": "extracted_values_match_fixture",
    "applies_to": [
-    "extracted_values_match_fixture"
+    "fixture_schema_valid",
+    "extracted_values_match_fixture",
+    "period_attribution_correct",
+    "no_lookahead",
+    "official_only_if_index_verified",
+    "absent_fields_reported_as_null",
+    "units_consistent",
+    "source_types_declared",
+    "duplicates_collapsed"
    ]
   },
   {
