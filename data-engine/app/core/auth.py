@@ -21,7 +21,6 @@ import hashlib
 import hmac
 import time
 from dataclasses import dataclass
-from datetime import UTC, datetime
 
 from fastapi import Header, HTTPException, Request, status
 
@@ -224,14 +223,3 @@ async def get_research_principal(
         user_id=(x_cavaai_user or "").strip(),
         tenant_external_id=(x_cavaai_tenant or "").strip(),
     )
-
-
-def identity_metadata(principal: ResearchPrincipal | None) -> dict:
-    if not principal:
-        return {"authenticated": False}
-    return {
-        "authenticated": True,
-        "user_id": principal.user_id,
-        "tenant_external_id": principal.tenant_external_id,
-        "verified_at": datetime.now(UTC).isoformat(),
-    }

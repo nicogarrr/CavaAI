@@ -42,7 +42,7 @@ export default async function PlanPage() {
                         Tu objetivo a largo plazo, las aportaciones registradas y la desviación de la cartera frente a la asignación objetivo.
                     </p>
                 </div>
-                <div className="flex items-center gap-2 rounded-lg border border-gray-800 bg-[#111111] px-3 py-2 text-sm text-gray-300">
+                <div className="flex items-center gap-2 rounded-lg border border-gray-800 bg-surface-1 px-3 py-2 text-sm text-gray-300">
                     <Target className="h-4 w-4 text-teal-300" />
                     Plan
                 </div>

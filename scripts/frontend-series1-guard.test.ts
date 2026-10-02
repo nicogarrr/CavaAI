@@ -5,7 +5,7 @@ import test from 'node:test';
 const read = (p: string) => readFileSync(p, 'utf8');
 
 test('news table keeps five decision columns and a contextual disclosure', () => {
-  const src = read('app/(root)/research/news/page.tsx');
+  const src = (read('app/(root)/research/news/page.tsx') + read('components/research/NewsEventsFlow.tsx'));
   for (const column of ['Ticker', 'Fecha', 'Titular', 'Materialidad', 'Estado y detalle']) assert.match(src, new RegExp(`scope="col">${column}`));
   assert.doesNotMatch(src, /scope="col">Peso al evaluar|scope="col">Impacto|scope="col">¿Actualizar\?/);
   assert.match(src, /Ver contexto/);
@@ -32,7 +32,7 @@ test('volume belongs to most-active movers only and screener has units', () => {
 });
 
 test('decisional fields removed from columns stay reachable in row detail (auditoria SERIE 1)', () => {
-  const news = read('app/(root)/research/news/page.tsx');
+  const news = (read('app/(root)/research/news/page.tsx') + read('components/research/NewsEventsFlow.tsx'));
   // El expander "Ver contexto" conserva tier, impacto y peso con etiqueta; nunca desaparecen.
   for (const row of ['Tier de fuente', 'Impacto', 'Peso en cartera']) assert.match(news, new RegExp(`<dt className="inline font-medium">${row}: `));
   assert.match(news, /etiquetaTierFuente\(event\.source_tier\)/);

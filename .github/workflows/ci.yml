@@ -73,13 +73,14 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run test:routes
+      - run: npm run check:i18n
       - name: ProPicks guard (R1-R5 + turnover cap)
         run: node --experimental-strip-types --test scripts/propicks-guard.test.ts
       - name: Error cause classification (stale/offline/i18n)
         run: node --experimental-strip-types --test scripts/error-cause.test.ts
       - name: Transaction form validation (F1, no silent submits)
         run: node --experimental-strip-types --test scripts/transaction-validation.test.ts
-      - name: Server action guards (SSRF, secret redaction, use server exports)
+      - name: Full guard bundle (scripts/*.test.ts, auto-discovered)
         run: npm run test:guards
       - name: UI format guards (es-ES, scroll movil)
         run: node --experimental-strip-types --test scripts/ui-format-guard.test.ts
