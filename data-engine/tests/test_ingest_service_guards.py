@@ -66,6 +66,55 @@ def _facts(db, company, metric):
 
 
 # --------------------------------------------------------------------------
+# FIX5-1: refresh_from_sec recibe as_of y filtra por fecha de publicacion
+# --------------------------------------------------------------------------
+
+
+class _FakeSECConCortes:
+    async def cik_for_ticker(self, ticker):
+        return "0000000001"
+
+    async def company_facts(self, cik):
+        return {"cik": 1, "facts": {"us-gaap": {
+            "Revenues": {"units": {"USD": [
+                {"fy": 2999, "fp": "FY", "form": "10-K", "start": "2999-01-01",
+                 "end": "2999-12-31", "val": 42000000000, "filed": "3000-02-10",
+                 "accn": "0000000001-99-000001"},
+                {"fy": 2025, "fp": "FY", "form": "10-K", "start": "2025-01-01",
+                 "end": "2025-12-31", "val": 5000000000, "filed": "2026-02-10",
+                 "accn": "0000000001-25-000001"},
+            ]}}}}}
+
+    async def annual_report_anchors(self, cik):
+        return {"0000000001-99-000001": "2999-12-31", "0000000001-25-000001": "2025-12-31"}
+
+
+def test_as_of_excluye_lo_no_publicado_y_se_declara(db, monkeypatch):
+    monkeypatch.setattr(ingestion, "SECClient", _FakeSECConCortes)
+    company = _company(db)
+    result = asyncio.run(
+        FinancialIngestionService().refresh_from_sec(db=db, company=company, as_of=date(2026, 10, 1))
+    )
+    assert result["status"] == "ingested"
+    assert result["as_of"] == "2026-10-01"
+    assert result["date_filter_applied"] is True
+    periods = {f.period for f in _facts(db, company, "revenue")}
+    assert periods == {"2025-12-31:FY"}  # el FY2999 (filed 3000) no entra
+
+
+def test_sin_as_of_el_filtro_de_fecha_no_se_aplica(db, monkeypatch):
+    monkeypatch.setattr(ingestion, "SECClient", _FakeSECConCortes)
+    company = _company(db)
+    result = asyncio.run(
+        FinancialIngestionService().refresh_from_sec(db=db, company=company)
+    )
+    assert result["date_filter_applied"] is False
+    assert result["as_of"] is None
+    periods = {f.period for f in _facts(db, company, "revenue")}
+    assert periods == {"2999-12-31:FY", "2025-12-31:FY"}
+
+
+# --------------------------------------------------------------------------
 # FIX5-2: _period normaliza epochs y conserva lo no parseable
 # --------------------------------------------------------------------------
 
