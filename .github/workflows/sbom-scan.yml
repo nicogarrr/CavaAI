@@ -359,6 +359,21 @@ jobs:
           severity: CRITICAL,HIGH,MEDIUM,LOW,UNKNOWN
           exit-code: "0"
 
+      - name: Liberar disco y memoria antes del motor 2
+        # En el run 37017581687 el runner recibio "shutdown signal" dos veces
+        # seguidas, siempre en grype sobre el SBOM de backend-prod (imagen de
+        # 3,4 GB reconstruida en este mismo job). El motor 1 ya termino: la
+        # imagen, la cache de capas y los toolchains del runner no se usan mas.
+        # Solo borra del runner efimero; no toca informes ni el SBOM.
+        if: ${{ always() }}
+        run: |
+          df -h / | tail -1
+          docker image rm -f "cavaai/${{ matrix.name }}:${{ github.sha }}" || true
+          docker system prune -af --volumes || true
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc || true
+          df -h / | tail -1
+          free -m | sed -n 2p
+
       - name: "Motor 2: anchore/scan-action (trivy sobre el SBOM)"
         id: anchore_scan
         uses: anchore/scan-action@v7.4.2
