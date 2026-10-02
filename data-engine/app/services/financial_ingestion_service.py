@@ -96,7 +96,13 @@ SEC_METRIC_MAP: list[tuple[str, list[str], str]] = [
     ("interest_expense",   ["InterestExpenseNonOperating", "InterestExpense"],                                      "USD"),
     ("net_income",        ["NetIncomeLoss", "ProfitLoss"],                                                          "USD"),
     ("eps_diluted",       ["EarningsPerShareDiluted"],                                                              "USD/share"),
-    ("shares_diluted",    ["WeightedAverageNumberOfDilutedSharesOutstanding", "CommonStockSharesOutstanding"],      "shares"),
+    # PROMEDIO ponderado de acciones (un denominador de duracion). El saldo
+    # puntual CommonStockSharesOutstanding es otra magnitud (un instantaneo) y
+    # vive en su propia metrica: mezclarlos hacia que el saldo ganara el
+    # colapso de aliases por `filed` mas reciente y se publicara como divisor
+    # del DCF (fix FIX5-8).
+    ("shares_diluted",    ["WeightedAverageNumberOfDilutedSharesOutstanding"],                                      "shares"),
+    ("shares_outstanding", ["CommonStockSharesOutstanding"],                                                         "shares"),
     # Fallback aprobado por Nico (25/9, WWW): el tag combinado incluye caja
     # restringida -> deuda neta fresca pero algo optimista. Va el ULTIMO: por
     # periodo gana el `filed` mas reciente, y los periodos donde se uso quedan
@@ -1059,6 +1065,12 @@ class FinancialIngestionService:
                     periods={"Q1", "Q2", "Q3", "Q4"},
                     min_span=70,
                     max_span=110,
+                    as_of=as_of,
+                    # FIX5-8: shares_diluted es un promedio ponderado (flujo).
+                    # Sin ancla trimestral, un saldo instantaneo de portada
+                    # entraba como '<fecha>:Qn' y el mismo trimestre acababa
+                    # con dos filas shares_diluted.
+                    require_start=metric == "shares_diluted",
                 ),
                 metric,
             )
