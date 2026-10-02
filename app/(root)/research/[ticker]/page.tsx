@@ -182,6 +182,10 @@ const STATUS_LABELS: Record<string, string> = {
   rejected: 'rechazada',
   stale: 'desactualizada',
   proposed: 'propuesta',
+  unknown: 'desconocido',
+  low: 'baja',
+  medium: 'media',
+  high: 'alta',
   supported: 'respaldada',
   refuted: 'refutada',
   open: 'abierta',
@@ -474,7 +478,7 @@ function ValuationView({ valuation, currency, ticker }: { valuation: ResearchVal
         </div>
         <p className="text-xs leading-5 text-gray-500">
           Valoración persistida ({valuation.model_type}{engine ? ` · motor ${engine}` : ''}{method ? ` · ${method}` : ''} · estado {valuation.status ?? 'desconocido'}).
-          El «Value/share» del Modelo a largo plazo es otro cálculo (otra versión/fecha/motor).
+          El «valor por acción» del Modelo a largo plazo es otro cálculo (otra versión/fecha/motor).
           Fuente de datos: {inputSource ?? NA}{periods ? ` · periodos ${periods}` : ` · periodos ${NA}`}.
         </p>
       </div>
@@ -490,7 +494,7 @@ function ValuationView({ valuation, currency, ticker }: { valuation: ResearchVal
       </div>
       <p className="text-xs leading-5 text-gray-500">
         Valoración persistida ({valuation.model_type}{engine ? ` · motor ${engine}` : ''}{method ? ` · ${method}` : ''} · estado {valuation.status ?? 'desconocido'}).
-        No es comparable 1:1 con el «Value/share» del Modelo a largo plazo: ese es un cálculo interno
+        No es comparable 1:1 con el «valor por acción» del Modelo a largo plazo: ese es un cálculo interno
         del escenario (otra versión/fecha/motor). Antes de fiarte, comprueba versión y fecha en ambas vistas.
         Fuente de datos: {inputSource ?? NA}{periods ? ` · periodos ${periods}` : ` · periodos ${NA}`}.
       </p>
@@ -531,7 +535,7 @@ function MarketOpportunityView({ model, ticker }: { model: ResearchLongTermModel
                 <span className="text-gray-200">{formula.label}</span>
                 <span className="text-teal-300">{formula.value === null ? label(formula.status) : metricValue(formula.value, 'USD')}</span>
               </div>
-              {formula.missing_inputs?.length ? <p className="mt-2 text-xs text-amber-300">Faltan entradas: {formula.missing_inputs.join(', ')}</p> : null}
+              {formula.missing_inputs?.length ? <p className="mt-2 text-xs text-amber-300">Faltan entradas: {formula.missing_inputs.map(metricLabel).join(', ')}</p> : null}
             </div>
           ))}
         </div>

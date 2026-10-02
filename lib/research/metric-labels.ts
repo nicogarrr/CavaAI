@@ -58,11 +58,31 @@ export const METRIC_LABELS: Record<string, string> = {
     wacc: 'WACC',
     cfroi: 'CFROI',
     cfroi_approx: 'CFROI aproximado',
+    // Drivers, KPIs y entradas del modelo a largo plazo (long_term_model_service)
+    traceable_wacc: 'WACC con fuente trazable',
+    price: 'precio',
+    volume: 'volumen',
+    mix: 'mezcla de producto',
+    organic_growth: 'crecimiento orgánico',
+    FCF_margin: 'margen FCF',
+    ROIC: 'ROIC',
+    share_count: 'número de acciones',
+    working_capital: 'capital circulante',
+    terminal_growth: 'crecimiento terminal',
+    addressable_subscribers: 'suscriptores direccionables',
+    capacity_per_satellite: 'capacidad por satélite',
+    monthly_arpu: 'ARPU mensual',
+    normalized_fcf_or_fcf_margin: 'FCF normalizado o margen FCF',
+    penetration: 'penetración',
+    price_per_gb: 'precio por GB',
+    revenue_share: 'cuota de ingresos',
+    satellites: 'satélites',
+    utilization: 'utilización',
 };
 
 /** Etiqueta en español de una métrica; humaniza la clave si es desconocida. */
 export function metricLabel(metric: string): string {
-    const known = METRIC_LABELS[metric];
+    const known = METRIC_LABELS[metric] ?? METRIC_LABELS[metric.toLowerCase()];
     if (known) return known;
     return metric.replaceAll('_', ' ');
 }
