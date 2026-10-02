@@ -71,9 +71,11 @@ def test_jev_absent_never_calls_old_ungated_client(monkeypatch):
 def test_llm_quota_is_tenant_scoped_and_reports_limit(monkeypatch):
     from types import SimpleNamespace
 
+    from app.services import asts_llm_quota as quota_store
     from app.services import second_order_quota as quota
 
-    monkeypatch.setattr(quota, "_LOCAL", {})
+    # El contador de respaldo local es del modulo que aloja la cuenta compartida.
+    monkeypatch.setattr(quota_store, "_LOCAL", {})
     config = SimpleNamespace(is_production=False, second_order_llm_calls_per_minute=2,
                              second_order_llm_calls_per_day=3)
     assert quota.reserve_llm_call("tenant-one", config)["allowed"] is True

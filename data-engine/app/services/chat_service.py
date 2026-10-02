@@ -43,10 +43,6 @@ def _decimal_to_float(value: Decimal | int | float | None) -> float | None:
     return float(value)
 
 
-def _source_tier(source_type: str | None) -> str:
-    return source_tier_key(source_type)
-
-
 def _short(text: str, limit: int = 420) -> str:
     compact = " ".join(text.split())
     if len(compact) <= limit:
@@ -306,7 +302,7 @@ class ChatService:
                         value=_decimal_to_float(fact.value),
                         unit=fact.unit,
                         source_type=fact.source_type,
-                        source_tier=_source_tier(fact.source_type),
+                        source_tier=source_tier_key(fact.source_type),
                         confidence=_decimal_to_float(fact.confidence),
                     )
                 )
@@ -343,7 +339,7 @@ class ChatService:
                         document.title,
                         document_id=document.id,
                         source_type=document.source_type,
-                        source_tier=_source_tier(document.source_type),
+                        source_tier=source_tier_key(document.source_type),
                         text=_short(chunk.text, 240),
                     )
                 )
@@ -360,7 +356,7 @@ class ChatService:
                         chunk_index=chunk.get("chunk_index"),
                         entity_id=chunk.get("entity_id"),
                         source_type=chunk.get("source_type"),
-                        source_tier=_source_tier(chunk.get("source_type")),
+                        source_tier=source_tier_key(chunk.get("source_type")),
                         score=chunk.get("score"),
                         text=_short(chunk.get("text", ""), 240),
                     )
@@ -412,7 +408,7 @@ class ChatService:
             facts_text = (
                 "\n".join(
                     f"- {fact.metric}: {_decimal_to_float(fact.value)} {fact.unit} "
-                    f"({fact.period}, {_source_tier(fact.source_type)}) "
+                    f"({fact.period}, {source_tier_key(fact.source_type)}) "
                     f"[financial_fact:{fact.id}]"
                     for fact in facts[:5]
                 )
