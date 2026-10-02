@@ -67,11 +67,39 @@ REQUIRED_TOOL_KEYS = ("pg_dump", "pg_restore", "minio", "qdrant")
 # Derivados de las imagenes de docker-compose.yml / docker-compose.prod.yml y
 # fijados aqui para que un `pg_dump` de una version cliente incompatible no se
 # descubra en el momento del restore (que es cuando ya no hay margen).
+#
+# CON DIGEST, y no solo el tag: los compose fijan `postgres:17@sha256:...` y
+# `docker ps --filter ancestor=` compara la REFERENCIA COMPLETA. Con aqui
+# `postgres:17` y el contenedor corriendo con su digest, el filtro no casa,
+# `discover_postgres_container` no encuentra nada y el backup se queda sin el
+# primer pilar (fail-closed, pero por el motivo equivocado: no es que falte
+# Postgres, es que no lo supo buscar). `tests/test_backup_contracts.py::
+# test_pins_de_imagen_coinciden_con_docker_compose` es lo que mantiene estas
+# constantes casando con los compose; si tocas un digest, actualiza las dos
+# cosas en el mismo commit.
+#
+# El TAG se declara aparte (`POSTGRES_TAG`) porque del digest no se puede leer
+# la version cliente que necesita el restore.
 
-POSTGRES_IMAGE = "postgres:17"
+POSTGRES_TAG = "postgres:17"
+POSTGRES_IMAGE = f"{POSTGRES_TAG}@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f"
 REQUIRED_PG_CLIENT_MAJOR = 17
-QDRANT_IMAGE = "qdrant/qdrant:v1.12.5"
+QDRANT_IMAGE = "qdrant/qdrant:v1.12.5@sha256:05fecce7dce45d1254e0468bc037e8210e187fd56fa847688b012293d5f08aae"
 REQUIRED_QDRANT_MAJOR_MINOR = "1.12"
+# TODO(digest, minio): este pin sigue SOLO por tag. Los otros tres ya van con
+# digest; este se dejo a medias porque `quay.io` devuelve 401 Unauthorized a
+# este entorno (no hay credenciales ni red al registry), asi que el digest del
+# manifest list no se pudo resolver. NO es que no exista: es que no se pudo
+# LER. Para cerrarlo, desde una red con acceso a quay.io:
+#
+#     docker buildx imagetools inspect quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+#
+# y copiar el `Digest:` del MANIFEST LIST (el de arriba del todo, no el de una
+# plataforma concreta) aqui y en las dos imagenes de los compose
+# (`docker-compose.yml` y `docker-compose.prod.yml`, servicio `minio`). El
+# release ya esta declarado aparte en `MINIO_SERVER_RELEASE`, que es lo que se
+# compara por version, asi que tocar el digest no obliga a tocar el release.
+# Hasta entonces, MinIO es el UNICO pilar cuyo pin se puede mover por debajo.
 MINIO_IMAGE = "quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z"
 MINIO_SERVER_RELEASE = "RELEASE.2025-04-22T22-12-26Z"
 #: Rango declarado en data-engine/pyproject.toml para el SDK de MinIO.

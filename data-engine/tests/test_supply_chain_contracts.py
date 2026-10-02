@@ -277,7 +277,17 @@ def test_triggers_concurrency_y_timeouts():
     assert triggers["push"]["branches"] == ["main"]
     assert "pull_request" in triggers
     assert "workflow_dispatch" in triggers
-    assert workflow["concurrency"]["cancel-in-progress"] is True
+    # FIX-3.6: cancel-in-progress es FALSE, no True. Este workflow publica 4
+    # SBOM (CycloneDX + SPDX) y 4 informes de escaneo como evidencia forense con
+    # retention de 90 dias. Cancelar un run a medias deja el commit sin
+    # evidencia y, peor, cancela la subida de los SBOM que ya se estaban
+    # generando: el artefacto queda a medias y el commit parece escaneado sin
+    # estarlo. Cancelar sale mas barato que no tener evidencia.
+    concurrency = workflow["concurrency"]
+    assert concurrency["cancel-in-progress"] is False
+    # Y el grupo incluye el ref: si no, dos runs de ramas distintas se matarian
+    # entre si aunque no se cancelen.
+    assert "github.ref" in str(concurrency["group"])
     for job in ("build", "sbom", "scan"):
         timeout = _job(job)["timeout-minutes"]
         assert 20 <= timeout <= 60, f"{job}: {timeout} min no es realista para 4 imagenes"
