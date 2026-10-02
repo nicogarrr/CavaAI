@@ -47,10 +47,10 @@ test.describe('rutas autenticadas (solo lectura)', () => {
       await route.abort();
     });
     await app.open('/sign-in');
-    await browser.getByPlaceholder('email@ejemplo.com').fill(EMAIL);
-    await browser.getByPlaceholder('Introduce tu contraseña').fill(PASSWORD);
-    await browser.getByRole('button', { name: /iniciar sesi|entrar|acceder/i }).click();
-    await browser.waitForURL((url) => !url.pathname.startsWith('/sign-in'), { timeout: 30_000 });
+    await browser.locator('input[name="email"]').fill(EMAIL);
+    await browser.locator('input[name="password"]').fill(PASSWORD);
+    await browser.locator('button[type="submit"]').click();
+    await browser.waitForURL(/^(?!.*\/sign-in).*$/, { timeout: 30_000 });
   });
 
   // Prueba controlada del bloqueo: POST/PUT/DELETE a una ruta que no existe. Si el
