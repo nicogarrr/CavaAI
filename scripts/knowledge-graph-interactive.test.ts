@@ -61,7 +61,7 @@ const CLIENT_JUSTIFICATIONS = [
     'IntersectionObserver',
 ];
 
-const CLIENT_RE = /^\s*(?:\/\/[^\n]*\n|\/\*[\s\S]*?\*\/|\s)*['"]use client['"]/;
+const CLIENT_RE = /^(?:\/\/[^\n]*\n|\/\*[\s\S]*?\*\/|\s)*['"]use client['"]/;
 
 /**
  * Regla 1 y 2: el grafo tiene que ser manipulable y legible sin ratón.
