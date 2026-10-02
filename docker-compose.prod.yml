@@ -11,7 +11,8 @@
 services:
   # TLS + reverse proxy hacia el backend (un subdominio DuckDNS gratis).
   caddy:
-    image: caddy:2-alpine
+    # Digest del manifest list: docker buildx imagetools inspect caddy:2-alpine.
+    image: caddy:2-alpine@sha256:6aeddd44c3078b0f9a35206472a11420648a79c184603ef95957d0a20044cb2b
     container_name: cavaai-caddy
     restart: unless-stopped
     ports:
@@ -34,7 +35,8 @@ services:
         condition: service_healthy
 
   postgres:
-    image: postgres:17
+    # Digest del manifest list: docker buildx imagetools inspect postgres:17.
+    image: postgres:17@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f
     container_name: cavaai-postgres
     restart: unless-stopped
     # Sin puerto publico: solo red interna de compose.
@@ -61,7 +63,8 @@ services:
           memory: 2G
 
   redis:
-    image: redis:7-alpine
+    # Digest del manifest list: docker buildx imagetools inspect redis:7-alpine.
+    image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
     container_name: cavaai-redis
     restart: unless-stopped
     # Cola Dramatiq + cache; AOF para no perder jobs en reinicio.
@@ -75,7 +78,8 @@ services:
       retries: 5
 
   qdrant:
-    image: qdrant/qdrant:v1.12.5
+    # Digest del manifest list: docker buildx imagetools inspect qdrant/qdrant:v1.12.5.
+    image: qdrant/qdrant:v1.12.5@sha256:05fecce7dce45d1254e0468bc037e8210e187fd56fa847688b012293d5f08aae
     container_name: cavaai-qdrant
     restart: unless-stopped
     # Solo loopback: operaciones (snapshots) y diagnostico, sin exponer a internet.
@@ -98,6 +102,9 @@ services:
           memory: 2G
 
   minio:
+    # TODO(digest): quay.io exige token (401 a HEAD anónimo) y desde este entorno
+    # no se pudo resolver el manifest list. Tag de release ya inmutable; cuando
+    # haya acceso: docker buildx imagetools inspect quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
     image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
     container_name: cavaai-minio
     restart: unless-stopped
