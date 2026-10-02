@@ -1159,7 +1159,7 @@ class ThesisRealizedReturnService:
         rows = list(
             db.scalars(select(ThesisRealizedReturn).order_by(ThesisRealizedReturn.id)).all()
         )
-        counts = dict.fromkeys(OUTCOMES, 0)
+        counts: dict[str, int] = dict.fromkeys(OUTCOMES, 0)
         for row in rows:
             counts[row.outcome] = counts.get(row.outcome, 0) + 1
         right = counts["thesis_right"]
