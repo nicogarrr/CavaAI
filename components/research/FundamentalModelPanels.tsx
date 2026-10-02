@@ -26,6 +26,18 @@ function percentage(value: number | null | undefined) {
   return value == null || !Number.isFinite(value) ? NA : formatPercent(value);
 }
 
+/** El WACC solo se muestra con base documentada (CalculatedMetric u
+ *  InferredInput). El valor `model_policy` es un supuesto de vista previa sin
+ *  fuente: se muestra N/D, nunca una cifra sin base (regla OFICIAL/INFERIDO). */
+function waccHasSource(wacc: { source_type: string } | null | undefined) {
+  return wacc != null && wacc.source_type !== 'model_policy';
+}
+
+function waccDisplay(wacc: { value: number | null; source_type: string } | null | undefined) {
+  if (!waccHasSource(wacc)) return NA;
+  return percentage(wacc?.value);
+}
+
 /** Frases «what must be true» en español (F24). El backend las genera en
  *  inglés, pero cada condición trae id + valor estructurados: se redacta la
  *  prosa en la UI. Id desconocido: se muestra la frase original, nunca se
@@ -33,6 +45,7 @@ function percentage(value: number | null | undefined) {
 function conditionInSpanish(
   item: { id: string; condition: string; value?: number | null; comparison?: number | null },
   bindingConstraint: string | null | undefined,
+  waccHasSource = true,
 ): string {
   const pct = (v: number | null | undefined) =>
     v == null || !Number.isFinite(v) ? 's/d' : formatPercent(v);
@@ -42,7 +55,7 @@ function conditionInSpanish(
     case 'fcf_margin':
       return `El margen FCF normalizado debe mantenerse al menos en un ${pct(item.value)}`;
     case 'roic_above_wacc':
-      return `El ROIC (${pct(item.value)}) debe mantenerse por encima del WACC (${pct(item.comparison)}) para crear valor`;
+      return `El ROIC (${pct(item.value)}) debe mantenerse por encima del WACC (${waccHasSource ? pct(item.comparison) : 'N/D, sin fuente'}) para crear valor`;
     case 'price_expectations':
       return `El precio actual descuenta un crecimiento de ingresos de en torno al ${pct(item.value)}`;
     case 'share_count':
@@ -227,7 +240,7 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
             <div className="mt-2 grid gap-2 text-sm">
               <div className="flex justify-between gap-3"><span className="text-gray-400">CAGR de ingresos</span><span className="text-gray-200">{percentage(growthAssumption?.value)}</span></div>
               <div className="flex justify-between gap-3"><span className="text-gray-400">Margen FCF normalizado</span><span className="text-gray-200">{percentage(marginAssumption?.value)}</span></div>
-              <div className="flex justify-between gap-3"><span className="text-gray-400"><GlossaryTerm k="roic" icon={false}>ROIC</GlossaryTerm> / <GlossaryTerm k="wacc" icon={false}>WACC</GlossaryTerm></span><span className="text-gray-200">{percentage(terminal?.roic)} / {percentage(model.assumptions.wacc?.value)}</span></div>
+              <div className="flex justify-between gap-3"><span className="text-gray-400"><GlossaryTerm k="roic" icon={false}>ROIC</GlossaryTerm> / <GlossaryTerm k="wacc" icon={false}>WACC</GlossaryTerm></span><span className="text-gray-200">{percentage(terminal?.roic)} / {waccDisplay(model.assumptions.wacc)}</span></div>
             </div>
             <p className="mt-3 text-xs leading-5 text-gray-500">
               El WACC es la tasa con la que se descuentan los flujos futuros: lo que piden conjuntamente accionistas y prestamistas. El ROIC es lo que la empresa gana con su capital invertido; solo crea valor cuando supera el WACC.
@@ -286,7 +299,7 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
             {model.what_must_be_true.slice(0, 6).map((item) => (
               <li key={item.id} className="flex gap-2 text-gray-300">
                 <CheckCircle2 aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-teal-300" />
-                <span>{conditionInSpanish(item, model.market_opportunity?.constraints?.binding_constraint)}</span>
+                <span>{conditionInSpanish(item, model.market_opportunity?.constraints?.binding_constraint, waccHasSource(model.assumptions.wacc))}</span>
               </li>
             ))}
           </ul>
