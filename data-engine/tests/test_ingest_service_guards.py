@@ -180,3 +180,64 @@ def test_refresh_from_fmp_rechaza_filas_de_otro_simbolo(db):
     assert all(f.period == "2025-12-31:FY" for f in revenues)
 
 
+# --------------------------------------------------------------------------
+# FIX5-8: shares_diluted no mezcla saldo instantaneo con promedio ponderado
+# --------------------------------------------------------------------------
+
+
+class _FakeSECShares:
+    async def cik_for_ticker(self, ticker):
+        return "0000000001"
+
+    async def company_facts(self, cik):
+        return {"cik": 1, "facts": {"us-gaap": {
+            "WeightedAverageNumberOfDilutedSharesOutstanding": {"units": {"shares": [
+                {"fy": 2025, "fp": "FY", "form": "10-K", "start": "2025-01-01",
+                 "end": "2025-12-31", "val": 1176000000, "filed": "2026-02-10",
+                 "accn": "0000000001-25-000001"},
+            ]}},
+            "CommonStockSharesOutstanding": {"units": {"shares": [
+                {"fy": 2025, "fp": "FY", "form": "10-K", "end": "2025-12-31",
+                 "val": 1250000000, "filed": "2026-03-01", "accn": "0000000001-25-000001"},
+            ]}},
+        }}}
+
+    async def annual_report_anchors(self, cik):
+        return {"0000000001-25-000001": "2025-12-31"}
+
+
+class _FakeSECSharesTrimestral(_FakeSECShares):
+    async def company_facts(self, cik):
+        return {"cik": 1, "facts": {"us-gaap": {
+            "WeightedAverageNumberOfDilutedSharesOutstanding": {"units": {"shares": [
+                {"fy": 2025, "fp": "Q2", "form": "10-Q", "start": "2025-04-01",
+                 "end": "2025-06-30", "val": 1170000000, "filed": "2025-08-01",
+                 "accn": "0000000001-25-000010"},
+            ]}},
+            "CommonStockSharesOutstanding": {"units": {"shares": [
+                {"fy": 2025, "fp": "Q3", "form": "10-Q", "end": "2025-08-15",
+                 "val": 1260000000, "filed": "2025-08-15", "accn": "0000000001-25-000010"},
+            ]}},
+        }}}
+
+
+def test_shares_diluted_es_el_promedio_y_el_saldo_es_otra_metrica(db, monkeypatch):
+    monkeypatch.setattr(ingestion, "SECClient", _FakeSECShares)
+    company = _company(db)
+    asyncio.run(FinancialIngestionService().refresh_from_sec(db=db, company=company))
+    diluted = _facts(db, company, "shares_diluted")
+    assert [f.value for f in diluted] == [Decimal("1176000000")]
+    outstanding = _facts(db, company, "shares_outstanding")
+    assert [f.value for f in outstanding] == [Decimal("1250000000")]
+
+
+def test_el_conteo_de_portada_no_entra_como_shares_diluted_trimestral(db, monkeypatch):
+    monkeypatch.setattr(ingestion, "SECClient", _FakeSECSharesTrimestral)
+    company = _company(db)
+    asyncio.run(FinancialIngestionService().refresh_from_sec(db=db, company=company))
+    diluted = _facts(db, company, "shares_diluted")
+    assert [f.period for f in diluted] == ["2025-06-30:Q2"]
+    outstanding = _facts(db, company, "shares_outstanding")
+    assert [f.period for f in outstanding] == ["2025-08-15:Q3"]
+
+
