@@ -145,16 +145,6 @@ const ALLOWED: Array<{ file: string; snippet: string; why: string }> = [
         why: "Texto de la alerta de proPicks, mismo universo US-only: el «$» acompaña a un precio de cotización del S&P 500.",
     },
     {
-        file: 'lib/utils.ts',
-        snippet: "formatMoney(price, 'USD', { minimumFractionDigits: 2 })",
-        why: "Helper heredado sin consumidores en la UI (solo se importa `cn` de este módulo): el precio de mercado se formatea con la divisa del listado en cada componente.",
-    },
-    {
-        file: 'lib/utils.ts',
-        snippet: 'return `$$',
-        why: "formatMarketCapValue heredado y sin consumidores; su parámetro se llama marketCapUsd y el sufijo T/B/M es del propio helper.",
-    },
-    {
         file: 'components/portfolio/EditTransactionDialog.tsx',
         snippet: "transaction.currency || 'USD'",
         why: "Semilla del SELECTOR de moneda del formulario de edición (editable por el usuario entre 9 divisas), no un importe pintado.",
