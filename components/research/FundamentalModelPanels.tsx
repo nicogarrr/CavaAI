@@ -26,6 +26,14 @@ function percentage(value: number | null | undefined) {
   return value == null || !Number.isFinite(value) ? NA : formatPercent(value);
 }
 
+/** El WACC solo se muestra con base documentada (CalculatedMetric u
+ *  InferredInput). El valor `model_policy` es un supuesto de vista previa sin
+ *  fuente: se muestra N/D, nunca una cifra sin base (regla OFICIAL/INFERIDO). */
+function waccDisplay(wacc: { value: number | null; source_type: string } | null | undefined) {
+  if (!wacc || wacc.source_type === 'model_policy') return NA;
+  return percentage(wacc.value);
+}
+
 /** Frases «what must be true» en español (F24). El backend las genera en
  *  inglés, pero cada condición trae id + valor estructurados: se redacta la
  *  prosa en la UI. Id desconocido: se muestra la frase original, nunca se
@@ -227,7 +235,7 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
             <div className="mt-2 grid gap-2 text-sm">
               <div className="flex justify-between gap-3"><span className="text-gray-400">CAGR de ingresos</span><span className="text-gray-200">{percentage(growthAssumption?.value)}</span></div>
               <div className="flex justify-between gap-3"><span className="text-gray-400">Margen FCF normalizado</span><span className="text-gray-200">{percentage(marginAssumption?.value)}</span></div>
-              <div className="flex justify-between gap-3"><span className="text-gray-400"><GlossaryTerm k="roic" icon={false}>ROIC</GlossaryTerm> / <GlossaryTerm k="wacc" icon={false}>WACC</GlossaryTerm></span><span className="text-gray-200">{percentage(terminal?.roic)} / {percentage(model.assumptions.wacc?.value)}</span></div>
+              <div className="flex justify-between gap-3"><span className="text-gray-400"><GlossaryTerm k="roic" icon={false}>ROIC</GlossaryTerm> / <GlossaryTerm k="wacc" icon={false}>WACC</GlossaryTerm></span><span className="text-gray-200">{percentage(terminal?.roic)} / {waccDisplay(model.assumptions.wacc)}</span></div>
             </div>
             <p className="mt-3 text-xs leading-5 text-gray-500">
               El WACC es la tasa con la que se descuentan los flujos futuros: lo que piden conjuntamente accionistas y prestamistas. El ROIC es lo que la empresa gana con su capital invertido; solo crea valor cuando supera el WACC.
