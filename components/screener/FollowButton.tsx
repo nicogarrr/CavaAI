@@ -12,6 +12,11 @@ import { showErrorToast } from '@/lib/toast';
  *
  * - `isFollowed` siembra el estado inicial desde el servidor (watchlist del
  *   usuario); sin él, el botón asume "no seguido" hasta la primera interacción.
+ * - `isFollowed={null}` es el estado DESCONOCIDO: el backend de cartera falló y
+ *   nadie sabe si sigues el ticker. No se pinta «Seguir» (sería una afirmación
+ *   inventada) ni se ofrece «dejar de seguir» (la acción peor a ciegas): se
+ *   declara el hueco y la única acción disponible es seguir, que si ya estabas
+ *   la resuelve el backend con «Ya sigues este ticker» y el estado se sincroniza.
  * - El toggle persiste en el backend (POST/DELETE /api/watchlist) y refresca
  *   la caché de /watchlist.
  * - Duplicados ("Ya sigues este ticker") y caídas del motor (toast con
@@ -26,9 +31,11 @@ export default function FollowButton({
 }: {
   symbol: string;
   company?: string;
-  isFollowed?: boolean;
+  /** true/false = estado conocido; null = estado desconocido (sin comprobar). */
+  isFollowed?: boolean | null;
 }) {
-  const [followed, setFollowed] = useState(isFollowed);
+  const [followed, setFollowed] = useState(isFollowed ?? false);
+  const [stateKnown, setStateKnown] = useState(isFollowed !== null);
   const [busy, setBusy] = useState(false);
 
   const onClick = async () => {
@@ -43,6 +50,7 @@ export default function FollowButton({
 
       if (res.success) {
         setFollowed(action === 'add');
+        setStateKnown(true);
         toast.success(
           action === 'add'
             ? `${symbol} añadido a la watchlist`
@@ -50,7 +58,10 @@ export default function FollowButton({
         );
       } else {
         // Duplicado: el ticker ya estaba seguido; sincronizamos el estado visible.
-        if (res.code === 'duplicate') setFollowed(true);
+        if (res.code === 'duplicate') {
+          setFollowed(true);
+          setStateKnown(true);
+        }
         showErrorToast(
           res.message ??
             (action === 'add'
@@ -68,7 +79,7 @@ export default function FollowButton({
     }
   };
 
-  return (
+  const button = (
     <Button
       variant="ghost"
       size="sm"
@@ -88,4 +99,21 @@ export default function FollowButton({
       {busy ? 'Guardando…' : followed ? 'Dejar de seguir' : 'Seguir'}
     </Button>
   );
+
+  // Estado desconocido: se DECLARA en vez de fingir «Seguir». La única acción
+  // habilitada es seguir (si ya estabas, el backend contesta «Ya sigues este
+  // ticker» y el estado queda sincronizado); «dejar de seguir» a ciegas sería
+  // la acción peor.
+  if (!stateKnown) {
+    return (
+      <span className="inline-flex min-h-[44px] flex-wrap items-center gap-2">
+        <span aria-live="polite" className="text-xs text-amber-400">
+          Seguimiento sin comprobar
+        </span>
+        {button}
+      </span>
+    );
+  }
+
+  return button;
 }
