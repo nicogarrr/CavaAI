@@ -81,6 +81,7 @@ class ExceptionEntry:
     identifier: str
     scope: str
     targets: tuple[str, ...]
+    paths: tuple[str, ...]
     reason: str
     ticket: str
     expires: date
@@ -90,7 +91,10 @@ class ExceptionEntry:
             return False
         if self.identifier.strip().upper() != finding.identifier.strip().upper():
             return False
-        return not self.targets or image in self.targets
+        if self.targets and image not in self.targets:
+            return False
+        # `paths` acota la excepcion a ficheros concretos (p. ej. un Dockerfile).
+        return not self.paths or finding.target in self.paths
 
 
 @dataclass
@@ -274,12 +278,19 @@ def load_policy(path: Path, today: date) -> tuple[list[ExceptionEntry], list[str
                 identifier=str(item["id"]).strip(),
                 scope=scope,
                 targets=tuple(str(target).strip() for target in targets),
+                paths=tuple(str(path).strip() for path in _as_list(item.get("paths"))),
                 reason=str(item["reason"]).strip(),
                 ticket=str(item["ticket"]).strip(),
                 expires=expires,
             )
         )
     return entries, errors
+
+
+def _as_list(value: object) -> list:
+    if not value:
+        return []
+    return [value] if isinstance(value, str) else list(value)  # type: ignore[call-overload]
 
 
 def _verdict(gate: Gate, report: Report, exceptions: list[ExceptionEntry]) -> None:

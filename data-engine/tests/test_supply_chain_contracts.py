@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 from datetime import date, timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -134,7 +135,7 @@ def _reports(tmp_path: Path, **payloads: dict) -> list:
     return loaded
 
 
-def _gate(reports: list, *, build_result: str = "success", exceptions: list | None = None) -> object:
+def _gate(reports: list, *, build_result: str = "success", exceptions: list | None = None) -> Any:
     return evaluate(
         image="backend-prod",
         image_ref="cavaai/backend-prod:test",
@@ -655,3 +656,23 @@ def test_el_auditor_de_contexto_no_da_falsas_alarmas(tmp_path):
     (tmp_path / ".env").write_text("SECRET=1\n", encoding="utf-8")
     (tmp_path / ".env.production.local").write_text("SECRET=1\n", encoding="utf-8")
     assert leaked(tmp_path, DEFAULT_FORBIDDEN_DIRS, DEFAULT_FORBIDDEN_GLOBS) == []
+
+def test_una_excepcion_con_paths_solo_cubre_ese_fichero(tmp_path):
+    entry = {
+        "id": "DS-0002",
+        "scope": "misconfig",
+        "paths": ["docker/minio/Dockerfile"],
+        "reason": "volumen existente",
+        "ticket": "T-1",
+        "expires": "2099-12-31",
+    }
+    entries, errors = load_policy(_write_policy(tmp_path / "p.yaml", [entry]), date(2026, 10, 2))
+    assert not errors
+
+    def _payload(target: str) -> dict:
+        return {"Results": [{"Target": target, "Misconfigurations": [_misconfig("HIGH")]}]}
+
+    cubierto = _gate(_reports(tmp_path, misconfig=_payload("docker/minio/Dockerfile")), exceptions=entries)
+    assert cubierto.passed
+    otro = _gate(_reports(tmp_path, misconfig=_payload("Dockerfile.dev")), exceptions=entries)
+    assert not otro.passed

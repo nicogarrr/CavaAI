@@ -33,20 +33,24 @@
 #     ticket: "SEC-123"                # ticket de seguimiento, obligatorio
 #     expires: "2026-12-31"            # dia en que deja de aplican (inclusive)
 #
+#     paths: [docker/minio/Dockerfile] # opcional: acota a ficheros concretos
+#
 # ---------------------------------------------------------------------------
-# Estado actual: cero excepciones.
+# Estado actual: UNA excepcion, fechada y acotada a un fichero.
 #
-# Es deliberado. En la auditoria de E3 (2026-10-02) el escaneo real con
-# trivy 0.69.1 sobre los 4 Dockerfiles + los 2 .dockerignore devolvio dos
-# misconfigurations HIGH sin parche posible (se arreglan en el Dockerfile, no se
-# silencian) y ningun secret:
-#
-#   HIGH DS-0002 Dockerfile.dev            "Image user should not be 'root'"
-#   HIGH DS-0029 data-engine/Dockerfile   "apt-get missing --no-install-recommends"
-#
-# Anadirlas aqui dejaria el build en verde con el Dockerfile sin corregir, que es
-# el auto-ocultamiento que las puertas de este workflow prohiben. Los diffs
-# exactos para arreglarlas estan en el informe de E3.
+# DS-0002 (root) en docker/minio/Dockerfile: la imagen sigue como root para no
+# romper el propietario del volumen minio_data ya existente en produccion. Pasar a
+# un usuario sin privilegios exige un chown del volumen y probarlo sobre una COPIA
+# (el salto de version 2025-04-22 -> 2025-10-15 tambien esta sin probar). Se retira
+# con la migracion a Garage (ticket GARAGE-MIGRATION) o a mas tardar el 2026-10-16.
+# DS-0002 en Dockerfile.dev y .devcontainer/Dockerfile y DS-0029 en
+# data-engine/Dockerfile se arreglan en el Dockerfile, no se silencian.
 # ---------------------------------------------------------------------------
 version: 1
-exceptions: []
+exceptions:
+  - id: DS-0002
+    scope: misconfig
+    paths: [docker/minio/Dockerfile]
+    reason: "minio corre como root para conservar el propietario del volumen minio_data existente; el cambio exige chown probado sobre una copia."
+    ticket: "GARAGE-MIGRATION"
+    expires: "2026-10-16"
