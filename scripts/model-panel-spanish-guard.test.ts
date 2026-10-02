@@ -13,10 +13,10 @@ const page = readFileSync('app/(root)/research/[ticker]/page.tsx', 'utf8');
 const labels = readFileSync('lib/research/metric-labels.ts', 'utf8');
 
 test('drivers, KPIs y entradas faltantes pasan por metricLabel', () => {
-    assert.match(panel, /revenue_drivers\.map\(metricLabel\)/);
-    assert.match(panel, /kpis\.map\(metricLabel\)/);
-    assert.match(panel, /missing_inputs\.map\(metricLabel\)/);
-    assert.match(page, /formula\.missing_inputs\.map\(metricLabel\)/);
+    assert.match(panel, /revenue_drivers\.map\(termLabel\)/);
+    assert.match(panel, /kpis\.map\(termLabel\)/);
+    assert.match(panel, /missing_inputs\.map\(termLabel\)/);
+    assert.match(page, /formula\.missing_inputs\.map\(termLabel\)/);
 });
 
 test('no queda «Value/share» en la UI y unknown/low/high tienen etiqueta en espanol', () => {
