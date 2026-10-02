@@ -105,18 +105,37 @@ export function findUnbudgetedReads(source: string): string[] {
  * (3) `Promise.all` naked sobre lecturas degradables. Un `all` convierte un 503
  * de un widget lateral en una pagina en blanco; para eso esta `allSettled`.
  * Se excluye el `Promise.all` de `params`/`searchParams` (no son red).
+ *
+ * El `.catch` que degrada tiene que estar DENTRO de los argumentos del
+ * `Promise.all` (aplicado a las llamadas del lote). Mirar una ventana de
+ * caracteres alrededor dejaba que un `.catch` ajeno (otra promesa, un helper
+ * posterior) absolviera al lote: `void algo.catch(...)` tras el `all` bastaba
+ * para esconder un waterfall.
  */
+function callArgsAt(source: string, open: number): string {
+  let depth = 1;
+  for (let i = open; i < source.length && i < open + 400; i += 1) {
+    const ch = source[i];
+    if (ch === '(') depth += 1;
+    else if (ch === ')') {
+      depth -= 1;
+      if (depth === 0) return source.slice(open, i);
+    }
+  }
+  return source.slice(open, Math.min(source.length, open + 400));
+}
+
 export function findNakedPromiseAll(source: string): string[] {
   const findings: string[] = [];
-  const pattern = /Promise\.all\(/g;
+  const head = /Promise\.all\s*\(/g;
   let match: RegExpExecArray | null;
-  while ((match = pattern.exec(source)) !== null) {
-    const block = source.slice(match.index, match.index + 500);
-    const touchesReaders = RESEARCH_READERS.test(block) && /\b(getResearch\w+|getMoatQualityScore|getCompanyMarketSnapshot|getAstOrbitOverview)\s*\(/.test(block);
-    // El unico `Promise.all` tolerable es el de las promesas ya degradadas por
-    // `.catch`, o el de params/searchParams (no red).
-    const alreadyDegraded = /\.catch\(/.test(block);
-    if (touchesReaders && !alreadyDegraded) {
+  while ((match = head.exec(source)) !== null) {
+    const args = callArgsAt(source, match.index + match[0].length);
+    if (!RESEARCH_READERS.test(args)) continue;
+    if (!/\b(getResearch\w+|getMoatQualityScore|getCompanyMarketSnapshot|getAstOrbitOverview)\s*\(/.test(args)) continue;
+    const readers = args.match(/get(?:Research\w+|MoatQualityScore|CompanyMarketSnapshot|AstOrbitOverview)\s*\(/g) ?? [];
+    const catches = args.match(/\.catch\s*\(/g) ?? [];
+    if (readers.length > catches.length) {
       findings.push(`Promise.all naked sobre lecturas degradables en offset ${match.index}`);
     }
   }
@@ -199,6 +218,23 @@ async function ficha(ticker: string) {
   return { a, b };
 }`;
     assert.deepEqual(findNakedPromiseAll(degradado), []);
+  });
+
+  it('un .catch AJENO tras el Promise.all no absuelve al lote (caso negativo)', () => {
+    // El bug que tumbaba este detector: bastaba un `.catch` de cualquier otra
+    // promesa dentro de la ventana de caracteres para declarar el lote
+    // "ya degradado". El .catch tiene que estar sobre las llamadas del lote.
+    const catchAgeno = `
+export async function ficha(ticker: string) {
+  const [facts, metrics] = await Promise.all([
+    getResearchFinancialsWorkspace(ticker),
+    getResearchLongTermModel(ticker),
+  ]);
+  void algo.catch(() => null); // .catch NO relacionado
+  return { facts, metrics };
+}`;
+    const found = findNakedPromiseAll(catchAgeno);
+    assert.equal(found.length, 1, `el .catch ajeno no debe esconder el Promise.all naked: ${JSON.stringify(found)}`);
   });
 });
 
