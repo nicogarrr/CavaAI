@@ -72,6 +72,8 @@ export interface InsiderFilingsResult {
     status: string;
     reason?: string;
     count: number;
+    /** Total persistido del ticker; `count` son los de esta página. */
+    total?: number;
     filings: InsiderFilingEntry[];
 }
 
@@ -88,4 +90,22 @@ export async function getInsiderFilings(
         () => researchRequest<InsiderFilingsResult>(`/api/insider/filings?${params.toString()}`, { fast: true }),
         30,
     );
+}
+
+/** Página siguiente de filings persistidos (botón «Cargar más»); sin caché. */
+export async function loadMoreInsiderFilings(
+    ticker: string,
+    offset: number,
+    limit = 20,
+): Promise<InsiderFilingsResult> {
+    await requireAuthenticatedUser();
+    const clean = ticker.trim().toUpperCase();
+    const safeOffset = Math.max(0, Math.floor(Number(offset) || 0));
+    const safeLimit = Math.min(50, Math.max(1, Math.floor(Number(limit) || 20)));
+    const params = new URLSearchParams({
+        ticker: clean,
+        limit: String(safeLimit),
+        offset: String(safeOffset),
+    });
+    return researchRequest<InsiderFilingsResult>(`/api/insider/filings?${params.toString()}`, { fast: true });
 }

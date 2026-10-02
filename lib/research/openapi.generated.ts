@@ -8987,6 +8987,7 @@ export interface operations {
             query: {
                 ticker: string;
                 limit?: number;
+                offset?: number;
             };
             header?: {
                 "x-cavaai-user"?: string | null;
