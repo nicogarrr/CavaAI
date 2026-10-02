@@ -18,7 +18,7 @@ const panel = readFileSync('components/research/CompanyMarketPanel.tsx', 'utf8')
 const page = readFileSync('app/(root)/research/[ticker]/page.tsx', 'utf8');
 const workspace = readFileSync('lib/actions/market-workspace.actions.ts', 'utf8');
 const finnhub = readFileSync('lib/actions/finnhub.actions.ts', 'utf8');
-const quoteRoute = existsSync('app/api/quote/route.ts') ? readFileSync('app/api/quote/route.ts', 'utf8') : '';
+const quoteRoute = existsSync('app/api/quote/route.ts') ? readFileSync('app/api/quote/route.ts', 'utf8') : '';  // /api/quote se borro: era codigo muerto con cuatro '|| 0' que inventaban variaciones
 const footer = readFileSync('app/(public)/layout.tsx', 'utf8');
 const candles = readFileSync('lib/market/candles.ts', 'utf8');
 
