@@ -29,9 +29,13 @@ function percentage(value: number | null | undefined) {
 /** El WACC solo se muestra con base documentada (CalculatedMetric u
  *  InferredInput). El valor `model_policy` es un supuesto de vista previa sin
  *  fuente: se muestra N/D, nunca una cifra sin base (regla OFICIAL/INFERIDO). */
+function waccHasSource(wacc: { source_type: string } | null | undefined) {
+  return wacc != null && wacc.source_type !== 'model_policy';
+}
+
 function waccDisplay(wacc: { value: number | null; source_type: string } | null | undefined) {
-  if (!wacc || wacc.source_type === 'model_policy') return NA;
-  return percentage(wacc.value);
+  if (!waccHasSource(wacc)) return NA;
+  return percentage(wacc?.value);
 }
 
 /** Frases «what must be true» en español (F24). El backend las genera en
@@ -41,6 +45,7 @@ function waccDisplay(wacc: { value: number | null; source_type: string } | null 
 function conditionInSpanish(
   item: { id: string; condition: string; value?: number | null; comparison?: number | null },
   bindingConstraint: string | null | undefined,
+  waccHasSource = true,
 ): string {
   const pct = (v: number | null | undefined) =>
     v == null || !Number.isFinite(v) ? 's/d' : formatPercent(v);
@@ -50,7 +55,7 @@ function conditionInSpanish(
     case 'fcf_margin':
       return `El margen FCF normalizado debe mantenerse al menos en un ${pct(item.value)}`;
     case 'roic_above_wacc':
-      return `El ROIC (${pct(item.value)}) debe mantenerse por encima del WACC (${pct(item.comparison)}) para crear valor`;
+      return `El ROIC (${pct(item.value)}) debe mantenerse por encima del WACC (${waccHasSource ? pct(item.comparison) : 'N/D, sin fuente'}) para crear valor`;
     case 'price_expectations':
       return `El precio actual descuenta un crecimiento de ingresos de en torno al ${pct(item.value)}`;
     case 'share_count':
@@ -294,7 +299,7 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
             {model.what_must_be_true.slice(0, 6).map((item) => (
               <li key={item.id} className="flex gap-2 text-gray-300">
                 <CheckCircle2 aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-teal-300" />
-                <span>{conditionInSpanish(item, model.market_opportunity?.constraints?.binding_constraint)}</span>
+                <span>{conditionInSpanish(item, model.market_opportunity?.constraints?.binding_constraint, waccHasSource(model.assumptions.wacc))}</span>
               </li>
             ))}
           </ul>
