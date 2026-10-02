@@ -414,6 +414,7 @@ export default function KnowledgeGraphCanvas({ graph }: Props) {
      * -------------------------------------------------------------- */
 
     const helpId = 'knowledge-graph-keyboard-help';
+    const descriptionId = 'knowledge-graph-canvas-description';
     const showLabels = scene.nodes.length <= 45;
     const truncatedNodes = scene.hiddenNodeCount > 0;
     const truncatedEdges = scene.hiddenEdgeCount > 0;
@@ -482,7 +483,7 @@ export default function KnowledgeGraphCanvas({ graph }: Props) {
 
                 {/* Lienzo */}
                 <div
-                    aria-describedby={helpId}
+                    aria-describedby={`${helpId} ${descriptionId}`}
                     aria-label={t('knowledgeGraph.canvas.label')}
                     aria-roledescription={t('knowledgeGraph.canvas.roleDescription')}
                     className="relative h-[clamp(360px,58dvh,620px)] w-full touch-none overflow-hidden rounded-xl border border-gray-800 bg-surface-0 select-none"
@@ -497,7 +498,11 @@ export default function KnowledgeGraphCanvas({ graph }: Props) {
                     role="application"
                     tabIndex={0}
                 >
-                    {size.width > 0 && size.height > 0 ? (
+                    {scene.nodes.length === 0 ? (
+                        <p className="flex h-full items-center justify-center p-6 text-center text-sm text-gray-500" role="status">
+                            {t('knowledgeGraph.canvas.noNodesInScene')}
+                        </p>
+                    ) : size.width > 0 && size.height > 0 ? (
                         <svg aria-hidden="true" className="block" focusable="false" height={size.height} viewBox={`0 0 ${size.width} ${size.height}`} width={size.width}>
                             <g data-testid="kg-layer" ref={layerRef}>
                                 <g stroke={EDGE_COLOR} strokeOpacity="0.65">
@@ -570,6 +575,17 @@ export default function KnowledgeGraphCanvas({ graph }: Props) {
                             </p>
                         </div>
                     ) : null}
+                    {/* Anuncio accesible del hover: el tooltip es visual y no se
+                        entera un lector de pantalla. */}
+                    <p aria-live="polite" className="sr-only" role="status">
+                        {hoveredNode
+                            ? t('knowledgeGraph.canvas.hoverNode', {
+                                  label: hoveredNode.label,
+                                  type: hoveredNode.type,
+                                  degree: hoveredNode.degree,
+                              })
+                            : ''}
+                    </p>
                 </div>
 
                 <p className="text-xs text-gray-500" data-testid="kg-counts">
@@ -585,6 +601,9 @@ export default function KnowledgeGraphCanvas({ graph }: Props) {
                     {isolated && selectedId !== null
                         ? t('knowledgeGraph.canvas.isolatedOn', { count: keep ? keep.size - 1 : scene.nodes.length - 1 })
                         : t('knowledgeGraph.canvas.isolatedOff')}
+                </p>
+                <p className="text-xs text-gray-500" id={descriptionId}>
+                    {t('knowledgeGraph.canvas.description')}
                 </p>
                 <p className="text-xs text-gray-500" id={helpId}>
                     {t('knowledgeGraph.canvas.keyboardHelp')}
@@ -697,7 +716,14 @@ export default function KnowledgeGraphCanvas({ graph }: Props) {
                 <h2 className="font-semibold text-gray-100" id="knowledge-graph-detail-title">
                     {t('knowledgeGraph.detail.title')}
                 </h2>
-                {!selectedNode ? (
+                {/* Anuncio accesible de la selección: el panel cambia visualmente
+                    y un lector de pantalla no se entera por sí solo. */}
+                <p aria-live="polite" className="sr-only" role="status">
+                    {selectedNode ? t('knowledgeGraph.canvas.selectedNode', { label: selectedNode.label }) : ''}
+                </p>
+                {!selectedNode && focusParam ? (
+                    <p className="mt-2 text-sm text-gray-500">{t('knowledgeGraph.detail.unknownNode', { id: focusParam })}</p>
+                ) : !selectedNode ? (
                     <p className="mt-2 text-sm text-gray-500">{t('knowledgeGraph.detail.empty')}</p>
                 ) : (
                     <div className="mt-3 space-y-4">
@@ -741,7 +767,10 @@ export default function KnowledgeGraphCanvas({ graph }: Props) {
                                                     {t('knowledgeGraph.detail.confidence')}
                                                     {row.confidence === null ? t('knowledgeGraph.detail.absent') : ` ${Math.round(row.confidence * 100)}%`}
                                                 </span>
-                                                <span>{row.provenance}</span>
+                                                <span>
+                                                    {t('knowledgeGraph.detail.provenance')}
+                                                    {row.provenance ? ` ${row.provenance}` : ` ${t('knowledgeGraph.detail.absent')}`}
+                                                </span>
                                             </div>
                                         </li>
                                     ))}
