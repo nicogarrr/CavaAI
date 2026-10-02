@@ -1,9 +1,18 @@
-'use client';
-
 import { Card } from '@/components/ui/card';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { formatNumber } from '@/lib/format';
 import { etiquetaSector } from '@/lib/labels';
+
+/**
+ * Server Component: todas las props son datos planos (numeros y un string) y
+ * el render no usa estado, refs ni handlers, asi que 'use client' era una
+ * barrera gratuita que convertia este arbol estatico en JS descargable.
+ *
+ * OJO: a dia de hoy ningun modulo importa este fichero (esta huerfano desde
+ * #371), asi que la conversion no cambia los bytes que descarga el navegador.
+ * Se limpia igualmente para que, si vuelve a connectarselo, lo haga como
+ * Server Component desde el principio.
+ */
 
 interface SectorComparisonChartProps {
     categoryScores: {
