@@ -13,6 +13,13 @@
 #     no bloquean (se arreglan en el PR de dependencia, no en el de imagen)
 #   - escaner que no se ejecuta, informe que falta o build roto -> rojo
 #
+# FUERA DEL ALCANCE del escaneo de CVEs (a proposito, no es una exception):
+#   - Los modelos de pesos (componentes CycloneDX `machine-learning-model`, hoy el
+#     safetensors de /opt/hf en backend-prod) NO se pasan a grype: no son paquetes
+#     con CVEs que casar, y con ese componente grype 0.118.0 se cuelga (reproducido).
+#     Siguen en el SBOM publicado; el motor 2 lo anota en el resumen del job.
+#     El motor 1 (trivy sobre la imagen) sigue viendo la imagen completa.
+#
 # Reglas que data-engine/scripts/security/gate_image_scan.py verifica en CADA run
 # y que hacen fallar el job si no se cumplen:
 #   1. Cada entrada necesita los cinco campos: id, scope, reason, ticket, expires.

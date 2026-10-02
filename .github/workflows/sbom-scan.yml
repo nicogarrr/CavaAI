@@ -280,11 +280,19 @@ jobs:
         run: |
           python3 - <<'PY'
           import json
+          import os
           src = "sbom/${{ matrix.name }}.cdx.json"
           dst = "sbom/${{ matrix.name }}.grype.cdx.json"
           bom = json.load(open(src, encoding="utf-8"))
           kept = [c for c in bom.get("components", []) if c.get("type") != "machine-learning-model"]
-          print(f"componentes: {len(bom.get('components', []))}, quitados para grype: {len(bom.get('components', [])) - len(kept)}")
+          quitados = len(bom.get("components", [])) - len(kept)
+          print(f"componentes: {len(bom.get('components', []))}, quitados para grype: {quitados}")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              summary.write(
+                  f"Motor 2 ${{ matrix.name }}: {quitados} componente(s) machine-learning-model "
+                  "fuera del escaneo de CVEs (modelos de pesos, no paquetes; "
+                  "siguen en el SBOM publicado).\n"
+              )
           bom["components"] = kept
           json.dump(bom, open(dst, "w", encoding="utf-8"))
           PY
