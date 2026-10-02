@@ -80,11 +80,11 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add opencode.json
           git commit -m "chore(opencode): rotar modelo a $MODEL - $REASON [skip ci]"
-          # Nunca --force. `git pull --no-rebase --autostash` integra lo que
-          # se haya mergeado en main (merge, no rebase: no se reescribe
-          # historia ajena) antes de empujar; si algo no cuadra, el push
-          # falla limpio y se cae al PR de respaldo (FIX-3.12).
-          git pull --no-rebase --autostash origin main
+          # Nunca --force. `git pull --rebase --autostash` coloca el commit de
+          # rotacion encima de lo que se haya mergeado en main: el push sigue
+          # siendo lineal (sin commit de merge en main). Si el rebase o el push
+          # no cuadran, se cae al PR de respaldo.
+          git pull --rebase --autostash origin main || { git rebase --abort 2>/dev/null || true; }
           if git push origin HEAD:main; then
             echo "Rotacion aplicada: push directo a main."
           else

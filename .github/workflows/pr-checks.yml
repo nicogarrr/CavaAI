@@ -137,7 +137,7 @@ jobs:
               record('ok', 'ficheros', true, 'ningun .env, clave ni keystore');
             }
 
-            // Solo se miran lineas AÃ‘ADIDidas (las que empiezan por +): un
+            // Solo se miran lineas AÑADIDAS (las que empiezan por +): un
             // placeholder preexistente en un test no es un hallazgo nuevo.
             const secretShapes = [
               [/-----BEGIN [A-Z ]*PRIVATE KEY-----/, 'clave privada PEM'],

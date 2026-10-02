@@ -45,7 +45,7 @@ jobs:
       # dependencia directa; huggingface-hub, transitiva), fijados y con hash.
       # Antes `pip install httpx huggingface_hub` sin pin: la sync de las 6h
       # podia correr con un huggingface_hub distinto cada vez.
-      - run: uv sync --frozen --extra test --extra dev --no-install-project
+      - run: uv sync --frozen --no-install-project
         working-directory: data-engine
       - name: Sync SEC -> HuggingFace dataset
         env:
