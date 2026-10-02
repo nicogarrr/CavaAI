@@ -1,14 +1,42 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
-from app.llm.base import LLMProvider
-from app.llm.contracts import LLMRequest, LLMResponse, Message, MessageRole, Usage
-from app.llm.errors import ProviderDisabledError, ProviderResponseError
+from app.llm.base import (
+    ADAPTER_CAPABILITIES,
+    TOOL_CALLING,
+    LLMProvider,
+    redact_secrets,
+)
+from app.llm.contracts import (
+    LLMRequest,
+    LLMResponse,
+    Message,
+    MessageRole,
+    ToolCall,
+    Usage,
+)
+from app.llm.errors import (
+    ProviderDisabledError,
+    ProviderRequestError,
+    ProviderResponseError,
+)
 from app.llm.routing import TaskModelRouter
+
+if TYPE_CHECKING:  # pragma: no cover - solo para el type checker
+    from app.llm.response_cache import LLMResponseCache
+
+#: `finish_reason` que significa "respuesta completa y utilizable". Cualquier
+#: otra cosa (truncado, filtro de contenido, error) marca la respuesta como
+#: degradada y la cache de respuestas se niega a guardarla.
+CLEAN_FINISH_REASONS = frozenset({"stop", "tool_calls", "function_call", "end_turn"})
+
+#: Cuantos caracteres de un aviso del proveedor se conservan (ya redactados).
+_WARNING_PREVIEW_CHARS = 120
 
 
 def _integer(value: Any) -> int:
@@ -27,8 +55,86 @@ def _join_text_blocks(content: Any) -> str:
     return ""
 
 
+def _warning_text(value: Any, label: str) -> list[str]:
+    """Normaliza `warning`/`warnings` del proveedor a texto plano y acotado."""
+    if isinstance(value, str) and value.strip():
+        return [f"{label}:{value.strip()}"]
+    if isinstance(value, list):
+        out: list[str] = []
+        for item in value[:5]:
+            if isinstance(item, str) and item.strip():
+                out.append(f"{label}:{item.strip()}")
+            elif isinstance(item, Mapping):
+                message = item.get("message") or item.get("code") or item.get("type")
+                if isinstance(message, str) and message.strip():
+                    out.append(f"{label}:{message.strip()}")
+        return out
+    if isinstance(value, Mapping):
+        message = value.get("message") or value.get("code")
+        if isinstance(message, str) and message.strip():
+            return [f"{label}:{message.strip()}"]
+    return []
+
+
+def parse_tool_calls(raw: Any) -> tuple[ToolCall, ...]:
+    """Parseo tolerante de `choices[0].message.tool_calls`.
+
+    Tolerante en la FORMA (que se parece al contrato OpenAI pero no tiene que
+    ser identica): acepta `arguments` ya deserializado, cadena vacia (tool sin
+    argumentos), `id` ausente y la variante sin envoltorio `function`. Estricto
+    en lo que no se puede inventar: si `arguments` es una cadena que no es JSON
+    valido, o el sobre no permite ni identificar la tool, lanza
+    `ProviderResponseError`. Descartar en silencio un tool call ilegible
+    haria que el caller creyera que el modelo respondio con texto.
+    """
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        raise ProviderResponseError("provider returned invalid tool calls")
+    calls: list[ToolCall] = []
+    for index, item in enumerate(raw):
+        if not isinstance(item, Mapping):
+            raise ProviderResponseError("provider returned a malformed tool call")
+        function = item.get("function")
+        source: Mapping[str, Any] = function if isinstance(function, Mapping) else item
+        name = source.get("name")
+        if not isinstance(name, str) or not name.strip():
+            raise ProviderResponseError("provider returned a tool call without a name")
+        raw_arguments = source.get("arguments")
+        if isinstance(raw_arguments, Mapping):
+            arguments: dict[str, Any] = dict(raw_arguments)
+        elif raw_arguments is None or (isinstance(raw_arguments, str) and not raw_arguments.strip()):
+            arguments = {}
+        elif isinstance(raw_arguments, str):
+            try:
+                decoded = json.loads(raw_arguments)
+            except (json.JSONDecodeError, TypeError) as exc:
+                raise ProviderResponseError(
+                    f"provider returned invalid JSON in the arguments of tool {name!r}"
+                ) from exc
+            if not isinstance(decoded, Mapping):
+                raise ProviderResponseError(
+                    f"provider returned non-object arguments for tool {name!r}"
+                )
+            arguments = dict(decoded)
+        else:
+            raise ProviderResponseError(
+                f"provider returned unsupported arguments for tool {name!r}"
+            )
+        identifier = item.get("id")
+        calls.append(
+            ToolCall(
+                id=identifier if isinstance(identifier, str) and identifier else f"call_{index}",
+                name=name,
+                arguments=arguments,
+            )
+        )
+    return tuple(calls)
+
+
 class DisabledProvider(LLMProvider):
     name = "disabled"
+    supported_capabilities = frozenset()
 
     def __init__(self, reason: str = "no_provider_configured") -> None:
         self.reason = reason
@@ -47,6 +153,9 @@ class DisabledProvider(LLMProvider):
 
 
 class OpenAICompatibleProvider(LLMProvider):
+    #: Ver ADAPTER_CAPABILITIES: lo que este adaptador REALMENTE hace.
+    supported_capabilities = ADAPTER_CAPABILITIES
+
     def __init__(
         self,
         *,
@@ -59,6 +168,7 @@ class OpenAICompatibleProvider(LLMProvider):
         fallback_model: str | None = None,
         reasoning_effort: str | None = None,
         reasoning_effort_models: frozenset[str] | set[str] | None = None,
+        response_cache: LLMResponseCache | None = None,
         client: httpx.AsyncClient | None = None,
         timeout_seconds: float = 30.0,
         max_retries: int = 2,
@@ -75,6 +185,11 @@ class OpenAICompatibleProvider(LLMProvider):
         self._base_url = base_url.rstrip("/")
         self._max_output_tokens = max_output_tokens
         self._extra_headers = dict(extra_headers or {})
+        # Cache de respuestas (Redis). None = sin cache. NUNCA es una via para
+        # saltar la red y el presupuesto a la vez: si Redis cae, la cache
+        # degrada a "no hay entrada" y se llama al proveedor normalmente
+        # (fail-open). Ver app/llm/response_cache.py.
+        self._response_cache = response_cache
         # Cadena de fallback: si el modelo resuelto falla en la capa LLM, se
         # reintenta una vez con este modelo (p.ej. el primario deja de
         # existir en el catalogo del proveedor). None = sin fallback.
@@ -101,8 +216,53 @@ class OpenAICompatibleProvider(LLMProvider):
 
     async def complete(self, request: LLMRequest) -> LLMResponse:
         model = self.model_router.resolve(request)
+        # El sobre se construye ANTES de tocar la red: es lo que se envia al
+        # proveedor y, por tanto, exactamente lo que determina la respuesta.
+        # La cache hashea ESE MISMO sobre, de modo que cualquier campo que
+        # cambie la respuesta (mensajes, temperatura, max_tokens,
+        # response_format, reasoning_effort, tools, tool_choice) cambia la clave
+        # por construccion. Una clave por prompt seria un bug de correctitud.
+        payload = self._build_payload(request, model)
+        cache = self._response_cache
+        cache_key: str | None = None
+        if cache is not None and request.cache is not False:
+            tenant_id = cache.resolve_tenant_id(request)
+            if tenant_id is None and cache.require_tenant:
+                # Fail closed: sin tenant no se puede garantizar aislamiento
+                # entre tenants. Perder la cache es recuperable; servirle a un
+                # tenant la respuesta pagada por otro no lo es. Misma politica
+                # que BudgetController.current_usage sin contexto de tenant.
+                cache.record_skip("no_tenant_scope")
+            else:
+                cache_key = cache.build_key(
+                    tenant_id=tenant_id,
+                    provider=self.name,
+                    model=model,
+                    task=request.task,
+                    payload=payload,
+                )
+                cached = await cache.get(cache_key, model=model, task=request.task)
+                if cached is not None:
+                    return cached
+
+        response, used_fallback = await self._complete_with_fallback(request, model)
+
+        if cache is not None and cache_key is not None:
+            await cache.store(
+                cache_key,
+                response,
+                used_fallback=used_fallback,
+                model=model,
+                task=request.task,
+            )
+        return response
+
+    async def _complete_with_fallback(
+        self, request: LLMRequest, model: str
+    ) -> tuple[LLMResponse, bool]:
+        """Resuelve el modelo y devuelve la respuesta con si hubo fallback."""
         try:
-            return await self._complete_traced(request, model)
+            return await self._complete_traced(request, model), False
         except Exception as primary_exc:
             fallback = self._fallback_model
             if not fallback or fallback == model:
@@ -111,7 +271,7 @@ class OpenAICompatibleProvider(LLMProvider):
             # oportunidad con el modelo de respaldo (con sus propios
             # reintentos). La traza del respaldo registra de que modelo y
             # de que clase de error se viene.
-            return await self._complete_traced(
+            response = await self._complete_traced(
                 request,
                 fallback,
                 extra_metadata={
@@ -119,6 +279,68 @@ class OpenAICompatibleProvider(LLMProvider):
                     "primary_error": type(primary_exc).__name__,
                 },
             )
+            # Una respuesta obtenida por el camino degradado NO se cachea:
+            # congelaria en cache un resultado que solo se dio poracceptable.
+            return response, True
+
+    def _build_payload(self, request: LLMRequest, model: str) -> dict[str, Any]:
+        """Sobre OpenAI-compatible. Unico lugar que decide que se envia."""
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": [
+                {"role": message.role.value, "content": message.content}
+                for message in request.messages
+            ],
+        }
+        if self._reasoning_effort and (
+            self._reasoning_effort_models is None
+            or model in self._reasoning_effort_models
+        ):
+            payload["reasoning_effort"] = self._reasoning_effort
+        if request.temperature is not None:
+            payload["temperature"] = request.temperature
+        if request.max_tokens is not None:
+            payload["max_tokens"] = min(
+                request.max_tokens,
+                self._max_output_tokens,
+            )
+        if request.response_format is not None:
+            response_format = request.response_format
+            if response_format.type == "json_schema":
+                payload["response_format"] = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": response_format.name,
+                        "strict": response_format.strict,
+                        "schema": dict(response_format.schema or {}),
+                    },
+                }
+            else:
+                payload["response_format"] = {"type": "json_object"}
+        if request.tools:
+            # Las tools solo viajan si la capacidad esta IMPLEMENTADA por este
+            # adaptador. Declararlas sin enviarlas era exactamente el defecto
+            # que hacia falsa la configuracion.
+            if TOOL_CALLING not in self.supported_capabilities:
+                raise ProviderRequestError(
+                    f"{self.name} adapter does not implement tool calling"
+                )
+            payload["tools"] = [tool.to_openai() for tool in request.tools]
+            payload["tool_choice"] = self._tool_choice_payload(request)
+        return payload
+
+    def _tool_choice_payload(self, request: LLMRequest) -> Any:
+        choice = request.tool_choice
+        if choice is None:
+            return "auto"
+        if isinstance(choice, str):
+            return choice
+        function = choice.get("function")
+        source: Mapping[str, Any] = function if isinstance(function, Mapping) else choice
+        return {
+            "type": "function",
+            "function": {"name": source.get("name")},
+        }
 
     async def _complete_traced(
         self,
@@ -171,38 +393,7 @@ class OpenAICompatibleProvider(LLMProvider):
         return response
 
     async def _complete(self, request: LLMRequest, model: str) -> LLMResponse:
-        payload: dict[str, Any] = {
-            "model": model,
-            "messages": [
-                {"role": message.role.value, "content": message.content}
-                for message in request.messages
-            ],
-        }
-        if self._reasoning_effort and (
-            self._reasoning_effort_models is None
-            or model in self._reasoning_effort_models
-        ):
-            payload["reasoning_effort"] = self._reasoning_effort
-        if request.temperature is not None:
-            payload["temperature"] = request.temperature
-        if request.max_tokens is not None:
-            payload["max_tokens"] = min(
-                request.max_tokens,
-                self._max_output_tokens,
-            )
-        if request.response_format is not None:
-            response_format = request.response_format
-            if response_format.type == "json_schema":
-                payload["response_format"] = {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": response_format.name,
-                        "strict": response_format.strict,
-                        "schema": dict(response_format.schema or {}),
-                    },
-                }
-            else:
-                payload["response_format"] = {"type": "json_object"}
+        payload = self._build_payload(request, model)
 
         response = await self._post_json(
             f"{self._base_url}/chat/completions",
@@ -215,10 +406,12 @@ class OpenAICompatibleProvider(LLMProvider):
         body = self._response_json(response)
         try:
             choice = body["choices"][0]
-            content = _join_text_blocks(choice["message"]["content"])
+            assistant = choice["message"]
+            content = _join_text_blocks(assistant["content"])
         except (KeyError, IndexError, TypeError):
             raise ProviderResponseError(f"{self.name} returned no assistant message") from None
-        if not content:
+        tool_calls = parse_tool_calls(assistant.get("tool_calls"))
+        if not content and not tool_calls:
             raise ProviderResponseError(f"{self.name} returned an empty assistant message")
 
         usage_body = body.get("usage")
@@ -240,13 +433,40 @@ class OpenAICompatibleProvider(LLMProvider):
             total_tokens=_integer(usage_body.get("total_tokens")) or input_tokens + output_tokens,
             cache_read_tokens=_integer(prompt_details.get("cached_tokens")),
         )
+        finish_reason = choice.get("finish_reason") if isinstance(choice, dict) else None
+        warnings = self._collect_warnings(body)
+        degraded = bool(warnings) or (
+            finish_reason is not None and finish_reason not in CLEAN_FINISH_REASONS
+        )
         return LLMResponse(
             message=Message(MessageRole.ASSISTANT, content),
             usage=usage,
             model=body.get("model") if isinstance(body.get("model"), str) else model,
             provider=self.name,
-            finish_reason=choice.get("finish_reason") if isinstance(choice, dict) else None,
+            finish_reason=finish_reason if isinstance(finish_reason, str) else None,
             request_id=body.get("id") if isinstance(body.get("id"), str) else None,
+            tool_calls=tool_calls,
+            degraded=degraded,
+            warnings=warnings,
+        )
+
+    def _collect_warnings(self, body: Mapping[str, Any]) -> tuple[str, ...]:
+        """Avisos del proveedor, redactados con las mismas reglas que los logs.
+
+        Un aviso nunca debe poder introducir una credencial en la salida que
+        los flujos narrativos guardan en Postgres, asi que pasa por
+        `redact_secrets` con la key y las cabeceras conocidas.
+        """
+        raw: list[str] = []
+        for key in ("warning", "warnings"):
+            if key in body:
+                raw.extend(_warning_text(body.get(key), key))
+        if not raw:
+            return ()
+        known = [str(self._api_key or "")]
+        known.extend(str(value) for value in self._extra_headers.values())
+        return tuple(
+            redact_secrets(text, known)[:_WARNING_PREVIEW_CHARS] for text in raw[:5]
         )
 
     def __repr__(self) -> str:

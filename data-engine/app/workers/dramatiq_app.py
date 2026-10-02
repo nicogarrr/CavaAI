@@ -1713,6 +1713,61 @@ def process_document(
         )
 
 
+@dramatiq.actor(max_retries=3, min_backoff=30_000)
+def process_document_structured(
+    ticker: str,
+    title: str,
+    url: str,
+    source_type: str,
+    published_at: str | None = None,
+    tenant_id: int | None = None,
+    user_id: str | None = None,
+) -> dict[str, Any]:
+    """Carril pesado de ingesta (worker-only): igual que process_document pero
+    con el conversor Docling habilitado para PDFs con estructura (tablas/XBRL/
+    escaneado, 0.3-3 s/pagina en CPU). NUNCA encolar desde la ruta sincrona de
+    FastAPI para servir una respuesta: ahi se usa el carril rapido (o se
+    encola este actor para reproceso diferido). Sin docling instalado degrada
+    al carril rapido/clasico con warnings, nunca falla opaco.
+    """
+    actor_name = "process_document_structured"
+    try:
+        from app.services.docling_pipeline import docling_heavy_context
+        from app.services.feed_ingestion_service import FeedIngestionService
+
+        published = (
+            datetime.fromisoformat(published_at.replace("Z", "+00:00"))
+            if published_at
+            else None
+        )
+        db = _session(tenant_id, user_id)
+        try:
+            with docling_heavy_context():
+                result = _run(
+                    FeedIngestionService().ingest_document_url(
+                        db,
+                        ticker=ticker,
+                        title=title,
+                        url=url,
+                        source_type=source_type,
+                        published_at=published,
+                    )
+                )
+            return {"status": result.get("status", "ok"), "actor": actor_name, "result": result}
+        finally:
+            db.close()
+    except Exception as exc:
+        return _handle_actor_error(
+            actor_name,
+            exc,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            ticker=ticker,
+            url=url,
+            source_type=source_type,
+        )
+
+
 @dramatiq.actor(max_retries=1)
 def consolidate_memory(
     tenant_id: int | None = None,

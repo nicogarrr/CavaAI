@@ -55,6 +55,93 @@ def top_ten_concentration(constituents: set[str], market_caps: dict[str, tuple[f
             "leaders": leaders, "constituents": len(constituents), "date": as_of.isoformat()}
 
 
+# El factsheet del S&P 500 se publica a mes cerrado (AS OF <fin de mes>) y llega
+# pocos dias despues. 45 dias es el techo: pasada esa ventana el peso publicado
+# ya no describe la concentracion de la fecha pedida y se declara no disponible
+# en vez de dejar que un dato viejo parezca fresco.
+SP500_FACTSHEET_MAX_AGE_DAYS = 45
+
+SP500_TOP_TEN_METHOD = (
+    "peso de los 10 mayores constituyentes publicado por el proveedor del indice "
+    "(capitalizacion flotante del S&P 500), tal cual: no es un calculo propio con "
+    "precios ni capitalizaciones propios, y no se reinterpreta"
+)
+
+
+def sp500_top_ten_concentration(as_of: date) -> dict:
+    """Concentracion top-10 del S&P 500 desde el snapshot en disco, con vintage.
+
+    El snapshot trae su propio ``as_of``: responde para fechas >= ``as_of`` y
+    para fechas anteriores devuelve "sin datos" con el motivo, porque un peso
+    publicado despues no describe un indice pasado. La ausencia nunca es 0 ni
+    una lista vacia: siempre lleva ``reason`` y, cuando existe, las fechas y la
+    URL que explican por que no se puede affirmar.
+    """
+    from app.services.connectors.sp500_factsheet import read_factsheet, top_ten_weight_pct
+
+    source = read_factsheet(as_of)
+    if not source.get("available"):
+        payload = {
+            "status": "sin datos",
+            "available": False,
+            "index": source.get("index", "S&P 500"),
+            "reason": source["reason"],
+            "detail": source.get("detail"),
+            "snapshot_dir": source.get("snapshot_dir"),
+        }
+        for key in (
+            "requested_date",
+            "snapshot_as_of",
+            "snapshot_source",
+            "snapshot_source_url",
+            "snapshot_source_tier",
+            "snapshot_synced_at",
+        ):
+            if source.get(key) is not None:
+                payload[key] = source[key]
+        return payload
+    snapshot = source["payload"]
+    metrics = snapshot.get("metrics") or {}
+    weight = top_ten_weight_pct(snapshot)
+    # Procedencia comun a las tres salidas: aunque no haya numero, el consumidor
+    # sabe que snapshot se ha mirado, de que dia es y de donde sale.
+    base = {
+        "index": source["index"],
+        "requested_date": source["requested_date"],
+        "date": source["snapshot_as_of"],
+        "snapshot_as_of": source["snapshot_as_of"],
+        "constituents": metrics.get("constituents"),
+        "source": snapshot.get("source"),
+        "source_url": snapshot.get("source_url"),
+        "source_tier": snapshot.get("source_tier"),
+        "synced_at": snapshot["synced_at"].isoformat(),
+        "method": SP500_TOP_TEN_METHOD,
+    }
+    if weight is None:
+        # La fuente declara composicion pero no pesos: no se inventa ningun peso.
+        return {**base, "status": "sin datos", "available": False,
+                "reason": "index_weights_not_published_by_source",
+                "detail": f"el snapshot {source['snapshot_as_of']} no publica pesos por constituyente"}
+    age = (as_of - snapshot["as_of"]).days
+    if age > SP500_FACTSHEET_MAX_AGE_DAYS:
+        return {**base, "status": "sin datos", "available": False,
+                "reason": "snapshot_too_stale_for_requested_date", "age_days": age,
+                "max_age_days": SP500_FACTSHEET_MAX_AGE_DAYS,
+                "detail": f"snapshot de {age} dias para una fecha pedida de hoy: no describe esa fecha"}
+    largest = metrics.get("weight_largest_pct")
+    return {
+        **base,
+        "status": "disponible",
+        "available": True,
+        "fraction": round(weight / 100.0, 6),
+        "fraction_unit": "proporcion de la capitalizacion flotante del indice",
+        "weight_top_ten_pct": weight,
+        "weight_largest_pct": largest if isinstance(largest, int | float) and not isinstance(largest, bool) else None,
+        "age_days": age,
+    }
+
+
+
 def filtered_hmm(points: list[tuple[date, float, float]], *, min_training: int = 126) -> dict:
     """Train on observations before t and filter through t, never smooth from future t+1."""
     if len(points) < min_training + 1 or points != sorted(points, key=lambda row: row[0]) or len({row[0] for row in points}) != len(points):

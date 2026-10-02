@@ -81,9 +81,16 @@ import FollowButton from '@/components/screener/FollowButton';
 import ThesisGenerateButton from '@/components/research/ThesisGenerateButton';
 import { formatCompact, formatDate, formatMarketDate, formatUserDateTime, formatMoney, formatPercent, NA } from '@/lib/format';
 import { glossary, moatGlossaryKey } from '@/lib/glossary';
+import {
+  RESEARCH_RENDER_BUDGET_MS,
+  pick,
+  settleResearchBatch,
+} from '@/lib/research/parallel-fetch';
+import { withResearchTelemetry } from '@/lib/research/fetch-telemetry';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+export const maxDuration = 60;
 
 /**
  * El snapshot alimenta la página y el título. Sin esta memoización, el
@@ -175,6 +182,10 @@ const STATUS_LABELS: Record<string, string> = {
   rejected: 'rechazada',
   stale: 'desactualizada',
   proposed: 'propuesta',
+  unknown: 'desconocido',
+  low: 'baja',
+  medium: 'media',
+  high: 'alta',
   supported: 'respaldada',
   refuted: 'refutada',
   open: 'abierta',
@@ -467,7 +478,7 @@ function ValuationView({ valuation, currency, ticker }: { valuation: ResearchVal
         </div>
         <p className="text-xs leading-5 text-gray-500">
           Valoración persistida ({valuation.model_type}{engine ? ` · motor ${engine}` : ''}{method ? ` · ${method}` : ''} · estado {valuation.status ?? 'desconocido'}).
-          El «Value/share» del Modelo a largo plazo es otro cálculo (otra versión/fecha/motor).
+          El «valor por acción» del Modelo a largo plazo es otro cálculo (otra versión/fecha/motor).
           Fuente de datos: {inputSource ?? NA}{periods ? ` · periodos ${periods}` : ` · periodos ${NA}`}.
         </p>
       </div>
@@ -483,7 +494,7 @@ function ValuationView({ valuation, currency, ticker }: { valuation: ResearchVal
       </div>
       <p className="text-xs leading-5 text-gray-500">
         Valoración persistida ({valuation.model_type}{engine ? ` · motor ${engine}` : ''}{method ? ` · ${method}` : ''} · estado {valuation.status ?? 'desconocido'}).
-        No es comparable 1:1 con el «Value/share» del Modelo a largo plazo: ese es un cálculo interno
+        No es comparable 1:1 con el «valor por acción» del Modelo a largo plazo: ese es un cálculo interno
         del escenario (otra versión/fecha/motor). Antes de fiarte, comprueba versión y fecha en ambas vistas.
         Fuente de datos: {inputSource ?? NA}{periods ? ` · periodos ${periods}` : ` · periodos ${NA}`}.
       </p>
@@ -524,7 +535,7 @@ function MarketOpportunityView({ model, ticker }: { model: ResearchLongTermModel
                 <span className="text-gray-200">{formula.label}</span>
                 <span className="text-teal-300">{formula.value === null ? label(formula.status) : metricValue(formula.value, 'USD')}</span>
               </div>
-              {formula.missing_inputs?.length ? <p className="mt-2 text-xs text-amber-300">Faltan entradas: {formula.missing_inputs.join(', ')}</p> : null}
+              {formula.missing_inputs?.length ? <p className="mt-2 text-xs text-amber-300">Faltan entradas: {formula.missing_inputs.map(metricLabel).join(', ')}</p> : null}
             </div>
           ))}
         </div>
@@ -546,27 +557,158 @@ function isEsefIssuer(ticker: string): boolean {
   return ESEF_MARKET_SUFFIXES.has(ticker.slice(idx + 1).toUpperCase());
 }
 
+/**
+ * Lo que devuelve cada workspace. Derivado de las acciones con `typeof`: si el
+ * contrato del backend cambia, el tipo de aquí cambia con él y el `tsc` lo
+ * detecta en vez de dejarlo pasar por un `any`.
+ */
+type ViewWorkspaces = {
+  overview: null;
+  thesis: Awaited<ReturnType<typeof getResearchThesisWorkspace>>;
+  changes: Awaited<ReturnType<typeof getResearchChangesWorkspace>>;
+  financials: Awaited<ReturnType<typeof getResearchFinancialsWorkspace>>;
+  model: Awaited<ReturnType<typeof getResearchLongTermModel>>;
+  'market-opportunity': Awaited<ReturnType<typeof getResearchLongTermModel>>;
+  moat: Awaited<ReturnType<typeof getResearchMoatWorkspace>>;
+  satellites: Awaited<ReturnType<typeof getAstOrbitOverview>> | null;
+  peers: Awaited<ReturnType<typeof getResearchPeersWorkspace>>;
+  valuation: Awaited<ReturnType<typeof getResearchValuationWorkspace>>;
+  documents: Awaited<ReturnType<typeof getResearchDocumentsWorkspace>>;
+  sources: Awaited<ReturnType<typeof getResearchSourceAuditsWorkspace>>;
+  chat: Awaited<ReturnType<typeof askResearchCompanyChat>>;
+};
+
+/**
+ * Estado vacío HONESTO de cada workspace: lo que se pinta cuando la lectura
+ * degrada. Es N/D con el motivo, nunca un valor inventado, y coincide con los
+ * `fallback` que las acciones ya pasaban a `getJson`.
+ *
+ * La clave es `keyof ViewWorkspaces`, no `View`: cuatro de los 17 módulos
+ * (`terminal`, `supuestos`, `lecciones`, `directiva`) son subrutas propias y
+ * nunca llegan como `?view=`, así que no tienen workspace que lanzar.
+ */
+const EMPTY_VIEW_DATA: { [K in keyof ViewWorkspaces]: ViewWorkspaces[K] } = {
+  overview: null,
+  thesis: {
+    thesis: null,
+    history: [],
+    claims: [],
+    sections: [],
+    graph: null,
+    redTeam: null,
+    historyDetail: { count: 0, history: [] },
+    partial: true,
+    errors: [],
+  },
+  changes: { changes: [], reviews: [], alerts: [], decisions: [], expectations: [] },
+  financials: { facts: [], calculatedMetrics: [] },
+  model: null,
+  'market-opportunity': null,
+  moat: null,
+  satellites: null,
+  peers: { comparison: null, analysis: null },
+  valuation: null,
+  documents: [],
+  sources: [],
+  chat: null,
+};
+
+/**
+ * UNA lectura: el workspace de la vista activa, o `undefined` si la vista no
+ * tiene workspace propio.
+ *
+ * Antes esta lectura vivía DENTRO de la rama `else if` de la vista, es decir
+ * después de haber esperado el snapshot, el market y el watchlist: tres fases
+ * de red encadenadas por descuido. Lanzarla aquí la convierte en la primera.
+ *
+ * Solo se lanza UNA por render porque la cadena `if/else if` de abajo ejecuta
+ * una sola rama: esto no es un fan-out de 13 workspaces, es la eliminación de
+ * una fase.
+ */
+function launchViewData(
+  activeView: View,
+  ticker: string,
+): { key: keyof ViewWorkspaces; promise: Promise<unknown> } | undefined {
+  switch (activeView) {
+    case 'thesis':
+      return { key: 'thesis', promise: withResearchTelemetry('thesis-workspace', () => getResearchThesisWorkspace(ticker)) };
+    case 'changes':
+      return { key: 'changes', promise: withResearchTelemetry('changes-workspace', () => getResearchChangesWorkspace(ticker)) };
+    case 'financials':
+      return { key: 'financials', promise: withResearchTelemetry('financials-workspace', () => getResearchFinancialsWorkspace(ticker)) };
+    case 'model':
+      return { key: 'model', promise: withResearchTelemetry('long-term-model', () => getResearchLongTermModel(ticker)) };
+    case 'market-opportunity':
+      return { key: 'market-opportunity', promise: withResearchTelemetry('long-term-model', () => getResearchLongTermModel(ticker)) };
+    case 'moat':
+      return { key: 'moat', promise: withResearchTelemetry('moat-workspace', () => getResearchMoatWorkspace(ticker)) };
+    case 'satellites':
+      // Solo ASTS tiene orbitales: pedirlo para cualquier otro ticker sería una
+      // llamada segura de quedar sin usar.
+      return ticker === 'ASTS'
+        ? { key: 'satellites', promise: withResearchTelemetry('ast-orbits', () => getAstOrbitOverview()) }
+        : undefined;
+    case 'peers':
+      return { key: 'peers', promise: withResearchTelemetry('peers-workspace', () => getResearchPeersWorkspace(ticker)) };
+    case 'valuation':
+      return { key: 'valuation', promise: withResearchTelemetry('valuation-workspace', () => getResearchValuationWorkspace(ticker)) };
+    case 'documents':
+      return { key: 'documents', promise: withResearchTelemetry('documents-workspace', () => getResearchDocumentsWorkspace(ticker, false)) };
+    case 'sources':
+      return { key: 'sources', promise: withResearchTelemetry('source-audits', () => getResearchSourceAuditsWorkspace(ticker)) };
+    default:
+      // 'overview' no tiene workspace (el snapshot lo trae) y 'chat' depende de
+      // `?chat=`, que no es parte de la clave de vista: se lanza aparte.
+      return undefined;
+  }
+}
+
 export default async function ResearchCompanyPage({ params, searchParams }: PageProps) {
   const [{ ticker: rawTicker }, query] = await Promise.all([params, searchParams]);
   const ticker = rawTicker.trim().toUpperCase();
   const activeView = asView(query.view);
+  //
+  // D2a: la ficha era una cadena de `await` secuenciales. Estas lecturas NO
+  // tienen dependencia de datos entre si: el snapshot no necesita el watchlist,
+  // el workspace se pide por `ticker` (ya conocido) y el market no depende del
+  // research. Se lanzan juntas y el coste pasa de SUMA a MAXIMO.
+  //
   // Snapshot (backend) y market (Finnhub: profile+quote+candles) son
   // independientes: se lanzan juntos y el coste pasa de suma a máximo.
   // market solo se consume en 'overview'; en el resto de vistas la promesa
   // ni se crea.
-  const snapshotPromise = readSnapshot(ticker);
+  const snapshotPromise = withResearchTelemetry('company-snapshot', () => readSnapshot(ticker));
   // La cabecera muestra precio + variación + sparkline en TODAS las vistas,
   // así que market se lanza siempre; solo 'overview' lo consume en estricto
   // (BackendOffline), el resto degrada a cabecera sin cotización.
-  const marketPromise = getCompanyMarketSnapshot(ticker);
+  const marketPromise = withResearchTelemetry('market-snapshot', () => getCompanyMarketSnapshot(ticker));
   // MOAT V2: solo lectura del score persistido; su fallo degrada a omitir el panel.
-  const moatPromise = activeView === 'overview' ? getMoatQualityScore(ticker) : undefined;
-  // En master-miss estas dos promesas no se consumen: el manejador se adjunta
+  const moatPromise = activeView === 'overview' ? withResearchTelemetry('moat-score', () => getMoatQualityScore(ticker)) : undefined;
+  // "Estado seguido" real del usuario. Antes esperaba al snapshot para pedirlo,
+  // y no hay NINGÚN motivo: el watchlist es del tenant, no depende del ticker.
+  const watchlistPromise = withResearchTelemetry('watchlist', () => getWatchlist()).catch(() => null);
+  // El workspace de la vista activa también sale aquí, antes de esperar el
+  // snapshot: la rama de abajo solo lo recoge. Es la fase que más tiempo
+  // añadía (la tesis son 7 llamadas) y no dependía de nada de lo anterior.
+  const viewTask = launchViewData(activeView, ticker);
+  const viewPromise = viewTask
+    ? settleResearchBatch([viewTask], RESEARCH_RENDER_BUDGET_MS)
+    : Promise.resolve([]);
+  // El chat es un POST al motor y puede tardar más que una lectura: también sale
+  // en la primera fase. Su rama solo recoge el resultado y conserva el matiz que
+  // importa: un backend caído sigue siendo BackendOffline (no un chat vacío),
+  // porque el usuario puede reintentar.
+  const chatPromise = activeView === 'chat' && query.chat
+    ? withResearchTelemetry('company-chat', () => askResearchCompanyChat(ticker, query.chat as string))
+    : undefined;
+  // En master-miss estas promesas no se consumen: el manejador se adjunta
   // EN CREACIÓN, porque un .catch posterior deja ventana de unhandledRejection
   // si rechazan durante los awaits intermedios. La propagación al consumidor
   // no cambia (el catch devuelve una promesa nueva que se descarta).
   drainRejection(marketPromise);
   drainRejection(moatPromise);
+  drainRejection(viewPromise);
+  drainRejection(chatPromise);
   let snapshot: Awaited<typeof snapshotPromise>;
   try {
     snapshot = await snapshotPromise;
@@ -620,6 +762,32 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
   }
 
   const company = snapshot.company;
+  // D2a: market, watchlist y workspace de la vista vuelan juntos desde arriba.
+  // Aquí ya no se encadena ninguna lectura: solo se recogen, cada una con su
+  // degradación honesta.
+  const [watchlist, viewSettled] = await Promise.all([watchlistPromise, viewPromise]);
+  const watchlistUnknown = watchlist === null;
+  const isFollowed = watchlist?.some((item) => item.symbol.toUpperCase() === ticker) ?? false;
+  /**
+   * Dato del workspace de esta vista. Si la lectura degradó sale el estado
+   * vacío HONESTO de `EMPTY_VIEW_DATA` (N/D con el motivo en el aviso), no un
+   * error y no un valor inventado.
+   */
+  const viewData = async <K extends keyof ViewWorkspaces>(key: K): Promise<ViewWorkspaces[K]> => {
+    // Un fallo o un timeout de la lectura de la vista activa NO se pinta como
+    // "empresa sin datos": es indistinguible de un vacío real y esconde un
+    // backend caído. Se relanza el error original (como antes del paralelismo)
+    // para que lo recoja el error boundary de la ruta con su "Reintentar".
+    // El estado vacío queda para lo que el backend devuelve como vacío (404).
+    const failed = viewSettled.find((entry) => entry.key === key && !entry.ok);
+    if (failed && !failed.ok) {
+      console.warn(`[research] ${ticker} · ${activeView} falla: ${failed.key}=${failed.reason}`);
+      throw failed.error instanceof Error
+        ? failed.error
+        : new Error(`No se pudo cargar la vista ${activeView} de ${ticker}: ${failed.reason}. Reintenta.`);
+    }
+    return pick(viewSettled, key, EMPTY_VIEW_DATA[key]) as ViewWorkspaces[K];
+  };
   // Cabecera con cotización: si el proveedor de mercado falla fuera de
   // 'overview' la ficha sigue siendo útil; se omite el bloque, nunca se
   // fabrica un precio.
@@ -629,9 +797,6 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
   } catch {
     headerMarket = null;
   }
-  // Estado "seguido" real del usuario para el botón seguir/dejar de seguir.
-  const watchlist = await getWatchlist();
-  const isFollowed = watchlist.some((item) => item.symbol.toUpperCase() === ticker);
   let content: React.ReactNode;
 
   if (activeView === 'overview') {
@@ -823,7 +988,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
       </div>
     );
   } else if (activeView === 'thesis') {
-    const data = await getResearchThesisWorkspace(ticker);
+    const data = await viewData('thesis');
     content = (
       <div className="space-y-6">
         <div className="flex flex-wrap items-center gap-3">
@@ -883,6 +1048,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
             <ThesisMemo
               thesis={data.thesis}
               ticker={ticker}
+              currency={company.currency}
               debateBody={
                 data.sections.find((section) => section.section_key === 'thesis_debate')?.body ?? null
               }
@@ -938,7 +1104,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
       </div>
     );
   } else if (activeView === 'changes') {
-    const data = await getResearchChangesWorkspace(ticker);
+    const data = await viewData('changes');
     content = (
       <div className="space-y-6">
         <Panel title="Qué ha cambiado">
@@ -964,7 +1130,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
       </div>
     );
   } else if (activeView === 'financials') {
-    const data = await getResearchFinancialsWorkspace(ticker);
+    const data = await viewData('financials');
     content = (
       <div className="space-y-6">
         <div className="flex flex-wrap gap-3">
@@ -991,7 +1157,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
       </div>
     );
   } else if (activeView === 'model') {
-    const model = await getResearchLongTermModel(ticker);
+    const model = await viewData('model');
     content = (
       <div className="space-y-5">
         <MutationForm action={refreshCompanyResearchModel.bind(null, ticker)} successMessage="Modelo a largo plazo generado"><Button type="submit"><RefreshCcw className="mr-2 h-4 w-4" />Generar modelo</Button></MutationForm>
@@ -999,9 +1165,9 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
       </div>
     );
   } else if (activeView === 'market-opportunity') {
-    content = <MarketOpportunityView model={await getResearchLongTermModel(ticker)} ticker={ticker} />;
+    content = <MarketOpportunityView model={await viewData('market-opportunity')} ticker={ticker} />;
   } else if (activeView === 'moat') {
-    const moat = await getResearchMoatWorkspace(ticker);
+    const moat = await viewData('moat');
     content = (
       <div className="space-y-5">
         <MutationForm action={refreshCompanyResearchModel.bind(null, ticker)} successMessage="Evaluación del foso refrescada"><Button type="submit" variant="outline"><ShieldCheck className="mr-2 h-4 w-4" />Reevaluar evidencia</Button></MutationForm>
@@ -1026,11 +1192,12 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
       </div>
     );
   } else if (activeView === 'satellites') {
-    let orbits: Awaited<ReturnType<typeof getAstOrbitOverview>> | null = null;
-    if (ticker === 'ASTS') { try { orbits = await getAstOrbitOverview(); } catch { /* Degradación explícita en el panel. */ } }
+    // El panel ya degrada solo cuando no hay datos; aquí la lectura llega del
+    // lote en paralelo (null si degradó, igual que antes).
+    const orbits = ticker === 'ASTS' ? await viewData('satellites') : null;
     content = ticker === 'ASTS' ? <AstOrbitPanel data={orbits} /> : <EmptyState title="Esta vista orbital solo está disponible para ASTS." />;
   } else if (activeView === 'peers') {
-    const peers = await getResearchPeersWorkspace(ticker);
+    const peers = await viewData('peers');
     content = (
       <div className="space-y-6">
         <Panel title="Conjunto de comparables"><p className="text-sm text-gray-300">{peers.comparison?.basis ? (PEERS_BASIS_LABELS[peers.comparison.basis] ?? peers.comparison.basis) : 'Sin conjunto de comparables'} · {peers.comparison?.peer_count ?? 0} comparables</p><div className="mt-4 flex flex-wrap gap-2">{peers.comparison?.companies.map((peer) => <Badge variant={peer.is_target ? 'default' : 'outline'} key={peer.ticker}>{peer.ticker}</Badge>)}</div></Panel>
@@ -1039,9 +1206,9 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
       </div>
     );
   } else if (activeView === 'valuation') {
-    content = <ValuationView valuation={await getResearchValuationWorkspace(ticker)} currency={company.currency} ticker={ticker} />;
+    content = <ValuationView valuation={await viewData('valuation')} currency={company.currency} ticker={ticker} />;
   } else if (activeView === 'documents') {
-    const documents = await getResearchDocumentsWorkspace(ticker, false);
+    const documents = await viewData('documents');
     content = (
       <div className="space-y-6">
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
@@ -1064,7 +1231,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
       </div>
     );
   } else if (activeView === 'sources') {
-    const audits = await getResearchSourceAuditsWorkspace(ticker);
+    const audits = await viewData('sources');
     content = (
       <Panel title="Auditorías de fuentes">
         {audits.length ? (
@@ -1080,9 +1247,9 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
   } else {
     let response: Awaited<ReturnType<typeof askResearchCompanyChat>> | null = null;
     let chatFailed = false;
-    if (query.chat) {
+    if (chatPromise) {
       try {
-        response = await askResearchCompanyChat(ticker, query.chat);
+        response = await chatPromise;
       } catch (error) {
         if (isBackendUnavailableError(error)) {
           return <BackendOffline feature={`Chat de ${ticker}`} retryHref={`/research/${ticker}?view=chat`} />;
@@ -1141,7 +1308,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
             <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500"><span className="inline-flex items-center gap-1"><Database className="h-4 w-4" />captura de solo lectura</span><span className="inline-flex items-center gap-1"><Target className="h-4 w-4" />{holdingBadge}</span><Link className="inline-flex items-center gap-1 text-teal-300 transition hover:text-teal-200" href={`/research/assistant?mode=guide&ticker=${encodeURIComponent(ticker)}`}><BookOpen className="h-4 w-4" />Guía de investigación</Link><Link className="inline-flex items-center gap-1 text-gray-400 transition hover:text-teal-300" href={`/research/${encodeURIComponent(ticker)}?view=changes`}><History className="h-4 w-4" />Qué ha cambiado{recentChangeCount ? <span aria-hidden="true" className="rounded-full bg-gray-800 px-1.5 text-xs font-semibold text-gray-300">{recentChangeCount}</span> : null}</Link></div>
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
               <div className="w-full sm:w-auto sm:min-w-0 sm:flex-1"><QuickAlertButton ticker={ticker} currency={company.currency} /></div>
-              <FollowButton symbol={ticker} company={company.name} isFollowed={isFollowed} />
+              <FollowButton symbol={ticker} company={company.name} isFollowed={isFollowed} stateUnknown={watchlistUnknown} />
             </div>
           </div>
         </header>

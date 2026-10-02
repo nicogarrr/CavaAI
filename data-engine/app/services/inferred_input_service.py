@@ -17,9 +17,16 @@ from sqlalchemy.orm import Session
 from app.models import Company, InferredInput
 
 # clave -> (min exclusivo, max inclusivo) del valor aceptado.
-ALLOWED_KEYS: dict[str, tuple[float, float]] = {"fcf_margin": (-1.0, 0.60)}
+ALLOWED_KEYS: dict[str, tuple[float, float]] = {
+    "fcf_margin": (-1.0, 0.60),
+    # WACC y g terminal: solo cuando no hay CalculatedMetric/dato oficial.
+    "wacc": (0.04, 0.30),
+    "terminal_growth": (0.0, 0.05),
+}
 MIN_BASE_CHARS = 20
 MAX_URLS = 10
+# run_dcf exige WACC > g; el par inferido debe dejar al menos este margen.
+MIN_WACC_TERMINAL_SPREAD = 0.02
 
 
 class InferredInputError(ValueError):
@@ -101,6 +108,7 @@ class InferredInputService:
         if problems:
             raise InferredInputError("; ".join(problems))
         row = InferredInput(
+            tenant_id=db.info.get("tenant_id"),  # autoria informativa, no filtro
             company_id=company.id,
             input_key=input_key,
             value=value,
@@ -137,3 +145,25 @@ def payload(row: InferredInput) -> dict:
         "origin": row.origin,
         "created_at": row.created_at.isoformat() if row.created_at else None,
     }
+
+
+def pick_rate_pair(
+    *,
+    wacc: float,
+    wacc_inferred: bool,
+    terminal: float,
+    terminal_inferred: bool,
+    default_wacc_value: float,
+    default_terminal_value: float,
+) -> tuple[float, float, list[str]]:
+    """Par (wacc, g) con spread minimo. Si un INFERIDO rompe el spread se
+    ignora (primero g, luego wacc) y se devuelve la lista de inferidos
+    descartados para dejar constancia en trace/limitaciones."""
+    dropped: list[str] = []
+    if wacc - terminal < MIN_WACC_TERMINAL_SPREAD - 1e-9 and terminal_inferred:
+        terminal = default_terminal_value
+        dropped.append("terminal_growth")
+    if wacc - terminal < MIN_WACC_TERMINAL_SPREAD - 1e-9 and wacc_inferred:
+        wacc = default_wacc_value
+        dropped.append("wacc")
+    return wacc, terminal, dropped
