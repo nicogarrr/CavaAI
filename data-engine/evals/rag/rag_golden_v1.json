@@ -1,0 +1,1047 @@
+{
+  "dataset": "rag_golden_v1",
+  "date": "2026-10-01",
+  "corpus": "rag_corpus_v1",
+  "note": "Golden set de ~50 preguntas sobre la biblioteca propia (evals/rag/rag_corpus_v1.json, corpus_origin=repo_derived). Preguntas y respuestas en espanol porque el producto es en espanol; las cifras, identificadores y nombres citados salen literales de los ficheros de procedencia del corpus. Las 8 preguntas unanswerable y las 8 out_of_scope son la parte critica del set: la respuesta correcta es 'no esta en la biblioteca' y el RAG tiene que ABSTENERSE. Los 5 negative_control no son preguntas: inyectan un artefacto fabricado para demostrar que su puerta muerde, y el runner los excluye de las metricas. Deterministic hard gates only; no LLM judging LLM.",
+  "categories": {
+    "numeric_lookup": 12,
+    "multi_hop": 12,
+    "qualitative": 10,
+    "unanswerable": 8,
+    "out_of_scope": 8
+  },
+  "cases": [
+    {
+      "id": "rag-num-001",
+      "question": "¿Cual es el valor del hecho XBRL de Revenue de FOMENTO DE CONSTRUCCIONES Y CONTRATAS S.A. en el fixture ESEF?",
+      "expected_answer": "El hecho XBRL Revenue (fact-105) vale 7705687000 EUR, con decimals -3, para el periodo 2022-01-01T00:00:00/2023-01-01T00:00:00.",
+      "expected_facts": [
+        {"metric": "revenue_eur", "value": 7705687000},
+        {"metric": "revenue_decimals", "value": -3}
+      ],
+      "expected_sources": ["doc-esef-xbrl-fomento"],
+      "must_refuse": false,
+      "category": "numeric_lookup",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "Unidad y decimales vienen del propio fact; el periodo es el otro hecho de duracion del fixture."
+    },
+    {
+      "id": "rag-num-002",
+      "question": "¿Que valor tiene el hecho ProfitLoss del fixture XBRL ESEF de FOMENTO DE CONSTRUCCIONES Y CONTRATAS S.A.?",
+      "expected_answer": "ProfitLoss (fact-143) vale 477930000 EUR, con decimals -3, para el periodo 2022-01-01T00:00:00/2023-01-01T00:00:00.",
+      "expected_facts": [
+        {"metric": "profit_loss_eur", "value": 477930000},
+        {"metric": "profit_loss_decimals", "value": -3}
+      ],
+      "expected_sources": ["doc-esef-xbrl-fomento"],
+      "must_refuse": false,
+      "category": "numeric_lookup",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "Es el hecho mas pequeno del fixture; la cifra exacta es la que separa un RAG que lee del que improvisa."
+    },
+    {
+      "id": "rag-num-003",
+      "question": "¿Cuanto vale CashAndCashEquivalents en el fixture XBRL ESEF de FOMENTO DE CONSTRUCCIONES Y CONTRATAS S.A.?",
+      "expected_answer": "CashAndCashEquivalents (fact-43) vale 1575538000 EUR, con decimals -3, en el instante 2023-01-01T00:00:00.",
+      "expected_facts": [
+        {"metric": "cash_eur", "value": 1575538000},
+        {"metric": "cash_decimals", "value": -3}
+      ],
+      "expected_sources": ["doc-esef-xbrl-fomento"],
+      "must_refuse": false,
+      "category": "numeric_lookup",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "Hecho instantaneo: el periodo es un punto, no un intervalo. La distinction importa porque un RAG que mezcle los cuatro hechos cuenta otra cifra."
+    },
+    {
+      "id": "rag-num-004",
+      "question": "¿Cual es el valor de NoncurrentAssets en el fixture XBRL ESEF de FOMENTO DE CONSTRUCCIONES Y CONTRATAS S.A.?",
+      "expected_answer": "NoncurrentAssets (fact-3) vale 9874542000 EUR, con decimals -3, en el instante 2023-01-01T00:00:00.",
+      "expected_facts": [
+        {"metric": "noncurrent_assets_eur", "value": 9874542000},
+        {"metric": "noncurrent_assets_decimals", "value": -3}
+      ],
+      "expected_sources": ["doc-esef-xbrl-fomento"],
+      "must_refuse": false,
+      "category": "numeric_lookup",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "Es el hecho mas grande del fixture: 9874542000 frente a los 7705687000 de Revenue, que es el par que mas confunde a un RAG."
+    },
+    {
+      "id": "rag-num-005",
+      "question": "¿Cual es el identificador LEI de FOMENTO DE CONSTRUCCIONES Y CONTRATAS S.A. en el registro de entidad ESEF?",
+      "expected_answer": "El identificador LEI de FOMENTO DE CONSTRUCCIONES Y CONTRATAS S.A. es 95980020140005178328, y el id interno del recurso de entidad es 2437.",
+      "expected_facts": [
+        {"metric": "lei", "value": 95980020140005178328},
+        {"metric": "entity_resource_id", "value": 2437}
+      ],
+      "expected_sources": ["doc-esef-entity"],
+      "must_refuse": false,
+      "category": "numeric_lookup",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "LEI de 20 digitos: un RAG que lo trunque a 18 o que lo redondee esta inventando. La coma decimal y el separador de miles se normalizan con _norm_number."
+    },
+    {
+      "id": "rag-num-006",
+      "question": "¿Cuantas bandas de frecuencia declara la ficha ITU D2026-84958, la del adjunto D-BLUEBIRD_CRMOD1 de 5.16 MB?",
+      "expected_answer": "La ficha D2026-84958 declara 5 bandas de frecuencia unicas: 806-890, 1980-2010, 2170-2200, 2483.5-2500 y 2670-2690 MHz.",
+      "expected_facts": [
+        {"metric": "band_count", "value": 5},
+        {"metric": "band_low_mhz", "value": 806},
+        {"metric": "band_high_mhz", "value": 2690},
+        {"metric": "narrowest_band_from_mhz", "value": 2483.5}
+      ],
+      "expected_sources": ["doc-itu-d2026-84958"],
+      "must_refuse": false,
+      "category": "numeric_lookup",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "El fixture de frecuencias declara data-total-items=5; contrastar con las 14 de J2026-70632 es el multi-hop rag-010."
+    },
+    {
+      "id": "rag-num-007",
+      "question": "¿Cuantas bandas de frecuencia unicas declara la ficha ITU J2026-70632?",
+      "expected_answer": "La ficha J2026-70632 (Notice ID J2026-83391) declara 14 bandas de frecuencia unicas, de 430-440 MHz a 45500-47000 MHz.",
+      "expected_facts": [
+        {"metric": "band_count", "value": 14},
+        {"metric": "band_low_mhz", "value": 430},
+        {"metric": "band_high_mhz", "value": 47000}
+      ],
+      "expected_sources": ["doc-itu-j2026-70632"],
+      "must_refuse": false,
+      "category": "numeric_lookup",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "El detalle de la ficha lista 14 pares; el numero de filas del HTML incluye ademas las filas del bloque de timestamps TSA."
+    },
+    {
+      "id": "rag-num-008",
+      "question": "¿De que tamano es el adjunto J-BLUEBIRD-NGSO_API.mdb de la ficha J2026-70632, la que tiene el campo Short Duration Mission?",
+      "expected_answer": "El adjunto J-BLUEBIRD-NGSO_API.mdb de la ficha J2026-70632 pesa 8.09 MB.",
+      "expected_facts": [{"metric": "mdb_size_mb", "value": 8.09}],
+      "expected_sources": ["doc-itu-j2026-70632"],
+      "must_refuse": false,
+      "category": "numeric_lookup",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "8.09 con coma decimal (el fichero fuente usa punto: 8.09 MB). _norm_number trata la coma followed de dos digitos como decimal, no como separador de miles."
+    },
+    {
+      "id": "rag-num-009",
+      "question": "¿De que tamano es el adjunto J-BLUEBIRD-NGSO_CR.mdb de la ficha J2026-70633?",
+      "expected_answer": "El adjunto J-BLUEBIRD-NGSO_CR.mdb de la ficha J2026-70633 pesa 13.6 MB.",
+      "expected_facts": [{"metric": "mdb_size_mb", "value": 13.6}],
+      "expected_sources": ["doc-itu-j2026-70633"],
+      "must_refuse": false,
+      "category": "numeric_lookup",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "13.6 MB frente a 8.09 MB: la diferencia es el multi-hop rag-011."
+    },
+    {
+      "id": "rag-num-010",
+      "question": "¿Cuantos avisos declara en total el servidor del listado As Received del ITU segun el README de los fixtures?",
+      "expected_answer": "El servidor declara 517 avisos en total en el listado As Received; la pagina 2 se obtiene con Skip=30 y Take=30.",
+      "expected_facts": [
+        {"metric": "total_notices", "value": 517},
+        {"metric": "page_skip", "value": 30},
+        {"metric": "page_take", "value": 30}
+      ],
+      "expected_sources": ["doc-itu-provenance"],
+      "must_refuse": false,
+      "category": "numeric_lookup",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "517 sale del README de los fixtures y del data-total-items de la pagina paginada; la biblioteca no dice nada de cuantos hay publicados en BR IFIC."
+    },
+    {
+      "id": "rag-num-011",
+      "question": "¿Cuantos emisores tiene el COMPANY_MASTER del universo de research de CavaAI y cuantos son sin CIK?",
+      "expected_answer": "COMPANY_MASTER tiene 23 emisores, de los cuales 2 son sin CIK: NBIS y KRKNF.",
+      "expected_facts": [
+        {"metric": "universe_size", "value": 23},
+        {"metric": "issuers_without_cik", "value": 2}
+      ],
+      "expected_sources": ["doc-universe-master"],
+      "must_refuse": false,
+      "category": "numeric_lookup",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "Contar filas de un listado es la tarea mas facile y la que mas falla un RAG que alucina un universo mas grande."
+    },
+    {
+      "id": "rag-num-012",
+      "question": "¿Cuantas series de FRED descarga el actor global programado y cuantas filas pide por peticion?",
+      "expected_answer": "El actor global FRED descarga 6 series CSV (MORTGAGE30US, DGS10, DGS2, T10YIE, BAMLH0A0HYM2, VIXCLS) y pide 800 filas por peticion, lo que acota el trabajo a 4800 observaciones CSV inspeccionadas por corrida.",
+      "expected_facts": [
+        {"metric": "series_count", "value": 6},
+        {"metric": "rows_per_request", "value": 800},
+        {"metric": "max_observations_per_run", "value": 4800}
+      ],
+      "expected_sources": ["doc-market-context-policy"],
+      "must_refuse": false,
+      "category": "numeric_lookup",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "6 x 800 = 4800. La politica es del repo, no una cifra de mercado: el RAG no debe disfrazarla de dato de FRED."
+    },
+    {
+      "id": "rag-hop-001",
+      "question": "¿Cual es el margen de beneficio de FOMENTO DE CONSTRUCCIONES Y CONTRATAS S.A. con los hechos XBRL del fixture ESEF, ProfitLoss sobre Revenue?",
+      "expected_answer": "Con Revenue 7705687000 EUR y ProfitLoss 477930000 EUR del fixture ESEF, el margen es aproximadamente 6.2%.",
+      "expected_facts": [
+        {"metric": "revenue_eur", "value": 7705687000},
+        {"metric": "profit_loss_eur", "value": 477930000},
+        {"metric": "margin_pct", "value": 6.2}
+      ],
+      "expected_sources": ["doc-esef-xbrl-fomento"],
+      "must_refuse": false,
+      "category": "multi_hop",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "Dos hechos del mismo documento: el RAG tiene que leer los dos. expected_facts incluye la cifra derivada para que la puerta la pueda contrastar."
+    },
+    {
+      "id": "rag-hop-002",
+      "question": "¿Cuantas bandas de frecuencia tiene en total la ficha D2026-84958 mas la ficha del Notice ID J2026-83391?",
+      "expected_answer": "La ficha D2026-84958 declara 5 bandas, que van de 806 MHz a 2690 MHz, y la ficha J2026-70632 declara 14, que van de 430 MHz a 47000 MHz: en total son 19 bandas de frecuencia unicas.",
+      "expected_facts": [
+        {"metric": "d2026_bands", "value": 5},
+        {"metric": "j2026_bands", "value": 14},
+        {"metric": "total_bands", "value": 19},
+        {"metric": "d2026_band_low_mhz", "value": 806},
+        {"metric": "d2026_band_high_mhz", "value": 2690},
+        {"metric": "j2026_band_low_mhz", "value": 430},
+        {"metric": "j2026_band_high_mhz", "value": 47000}
+      ],
+      "expected_sources": ["doc-itu-d2026-84958", "doc-itu-j2026-70632"],
+      "must_refuse": false,
+      "category": "multi_hop",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "Dos documentos distintos: si el RAG responde con una sola ficha, expected_sources_cited falla."
+    },
+    {
+      "id": "rag-hop-003",
+      "question": "¿Cuanto mayor es el .mdb de la ficha J2026-70633 que el de la ficha J2026-70632?",
+      "expected_answer": "J-BLUEBIRD-NGSO_CR.mdb (13.6 MB) es 5.51 MB mayor que J-BLUEBIRD-NGSO_API.mdb (8.09 MB); el .docx de attachments de J2026-70633 es 0.21 KB mayor (27.66 KB frente a 27.45 KB) y el PDF MICTB731.pdf pesa 134.58 KB en las 2 fichas.",
+      "expected_facts": [
+        {"metric": "cr_mdb_mb", "value": 13.6},
+        {"metric": "api_mdb_mb", "value": 8.09},
+        {"metric": "delta_mb", "value": 5.51},
+        {"metric": "cr_docx_kb", "value": 27.66},
+        {"metric": "api_docx_kb", "value": 27.45},
+        {"metric": "docx_delta_kb", "value": 0.21},
+        {"metric": "shared_pdf_kb", "value": 134.58}
+      ],
+      "expected_sources": ["doc-itu-j2026-70633"],
+      "must_refuse": false,
+      "category": "multi_hop",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "La ficha J2026-70633 declara las dos cifras y la diferencia, asi que responde con un solo documento; aun asi es aritmetica sobre dos adjuntos."
+    },
+    {
+      "id": "rag-hop-004",
+      "question": "¿Que banda de frecuencia es la mas estrecha de la ficha ITU J2026-70632 y cual es su amplitud?",
+      "expected_answer": "La banda mas estrecha de J2026-70632 es 1675-1680 MHz, con 5 MHz de amplitud; la mas ancha es 45500-47000, con 14500 MHz.",
+      "expected_facts": [
+        {"metric": "narrowest_from_mhz", "value": 1675},
+        {"metric": "narrowest_to_mhz", "value": 1680},
+        {"metric": "narrowest_width_mhz", "value": 5},
+        {"metric": "widest_from_mhz", "value": 45500},
+        {"metric": "widest_to_mhz", "value": 47000},
+        {"metric": "widest_width_mhz", "value": 14500}
+      ],
+      "expected_sources": ["doc-itu-j2026-70632"],
+      "must_refuse": false,
+      "category": "multi_hop",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "Compara las 14 bandas entre si. Un RAG que responda 430-440 (10 MHz) se equivoca de banda aunque el calculo sea correcto."
+    },
+    {
+      "id": "rag-hop-005",
+      "question": "¿Cual es el aviso mas reciente del listado As Received del ITU en la pagina 1 y el aviso mas antiguo de la pagina 2 del mismo listado, con sus fechas de registro BR?",
+      "expected_answer": "El aviso mas reciente del listado As Received del ITU es LAO2026-84992, con fecha de registro BR de 25.09.2026 y tipo de envio Coordination Request. El aviso mas antiguo de la pagina 2 es HOL2026-83800, con fecha de registro BR de 14.09.2026.",
+      "expected_facts": [
+        {"metric": "most_recent_reference", "value": 84992},
+        {"metric": "oldest_page2_reference", "value": 83800}
+      ],
+      "expected_sources": ["doc-itu-asreceived-index", "doc-itu-asreceived-page2"],
+      "must_refuse": false,
+      "category": "multi_hop",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "Salto real entre dos paginas del mismo listado: la pagina 1 y la pagina 2 son dos documentos del corpus, y ningun documento contiene las dos respuestas. Si el RAG contesta con una sola fuente, expected_sources_cited falla."
+    },
+    {
+      "id": "rag-hop-006",
+      "question": "¿Cuantos emisores del COMPANY_MASTER son de tipo ai_big_tech y que modelo de valoracion comparten?",
+      "expected_answer": "Hay 5 emisores con tipo de empresa ai_big_tech y comparten el modelo de valoracion dcf+reverse_dcf+ai_capex_sensitivity: MSFT, META, AMZN, NVDA y AMD.",
+      "expected_facts": [{"metric": "ai_big_tech_count", "value": 5}],
+      "expected_sources": ["doc-msft-valuation"],
+      "must_refuse": false,
+      "category": "multi_hop",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "Salto de dos pasos: el recuento de los 5 emisores ai_big_tech y el modelo que comparten. El recuento de 5 es la cifra que un RAG suele clavar en 6 o 7."
+    },
+    {
+      "id": "rag-hop-007",
+      "question": "¿Cuantos bytes servidos tiene el 10-Q, el informe trimestral, de AST SpaceMobile segun el manifiesto SEC y en que accession va?",
+      "expected_answer": "El 10-Q (informe trimestral) pesa 3562353 bytes servidos, va en el accession 0001193125-26-342550 y su period_of_report es 2026-06-30.",
+      "expected_facts": [
+        {"metric": "tenq_bytes_served", "value": 3562353},
+        {"metric": "size_delta_vs_index", "value": 114}
+      ],
+      "expected_sources": ["doc-asts-sec-manifest"],
+      "must_refuse": false,
+      "category": "multi_hop",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "El accession 0001193125-26-342550 es el unico del manifiesto que no es de agosto: el 10-Q esta en el accession 342550 y el 8-K en el 342540."
+    },
+    {
+      "id": "rag-hop-008",
+      "question": "¿Cual es la entrada mayor y la menor del manifiesto de capturas SEC de ASTS, y cuanto pesan?",
+      "expected_answer": "La mayor es el 10-K con 4397301 bytes servidos y la menor es el EX-99.2 con 25045 bytes; el 10-Q pesa 3562353 bytes.",
+      "expected_facts": [
+        {"metric": "largest_bytes_served", "value": 4397301},
+        {"metric": "smallest_bytes_served", "value": 25045},
+        {"metric": "tenq_bytes_served", "value": 3562353}
+      ],
+      "expected_sources": ["doc-asts-sec-manifest"],
+      "must_refuse": false,
+      "category": "multi_hop",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "Comparar las cinco entradas del manifiesto. El EX-99.1 con 825053 bytes es el segundo mayor, no el menor: es la trampa clasica."
+    },
+    {
+      "id": "rag-hop-009",
+      "question": "¿Cuales son los 2 emisores cuyo modelo de valoracion nombra la dilucion de forma explicita y que riesgos declara cada uno?",
+      "expected_answer": "ASTS y HYMC son los 2 emisores cuyo modelo de valoracion nombra la dilucion de forma explicita: probability_weighted_scenarios+dilution y nav_rough+dilution_risk. ASTS declara 4 riesgos, dilution, spectrum, execution y funding; HYMC declara dilution, commodity, financing y technical_report. BABA declara el riesgo adr, no dilution.",
+      "expected_facts": [
+        {"metric": "issuers_naming_dilution", "value": 2},
+        {"metric": "asts_risks_count", "value": 4}
+      ],
+      "expected_sources": ["doc-asts-valuation"],
+      "must_refuse": false,
+      "category": "multi_hop",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "Salto de dos pasos: doc-asts-valuation lista 3 emisores con riesgo dilution y el lector tiene que quedarse con los 2 cuyo valuation_model nombra la dilucion, no con BABA. expected_facts no esta vacio a proposito: la respuesta de referencia incluye el 2 y el 4, y la puerta de cifras tiene que encontrar en ella toda cifra de la respuesta."
+    },
+    {
+      "id": "rag-hop-010",
+      "question": "¿Cual es la referencia del aviso mas reciente del listado As Received del ITU por fecha de registro BR y de que tipo de envio es?",
+      "expected_answer": "La referencia del aviso mas reciente del bloque del listado es LAO2026-84992, con fecha de registro BR de 25.09.2026 y tipo de envio Coordination Request; las otras 3 referencias USA del bloque son de 24.09.2026 y son Advance publication information.",
+      "expected_facts": [
+        {"metric": "most_recent_reference", "value": 84992},
+        {"metric": "ntc_id", "value": 126520155},
+        {"metric": "sibling_references", "value": 3}
+      ],
+      "expected_sources": ["doc-itu-asreceived-index"],
+      "must_refuse": false,
+      "category": "multi_hop",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "Comparar fechas entre filas del listado. El fixture advierte de que la fecha de registro BR no es la de publicacion: un RAG que diga 'publicado el' esta inventando el estatus."
+    },
+    {
+      "id": "rag-hop-011",
+      "question": "¿Cual es el aviso de la pagina 2 del listado As Received con codigo de acto M, y de que estacion es la Resubmission of Notification / Notification of Space Station (GSO)?",
+      "expected_answer": "Es RUS2026-83755, codigo de acto M, Resubmission of Notification de RGS-S-128E, con fecha 10.09.2026. La misma estacion aparece como RUS2026-83765 con fecha 11.09.2026.",
+      "expected_facts": [
+        {"metric": "act_m_reference", "value": 83755},
+        {"metric": "related_reference", "value": 83765}
+      ],
+      "expected_sources": ["doc-itu-asreceived-page2"],
+      "must_refuse": false,
+      "category": "multi_hop",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "Cruza las dos filas de RGS-S-128E de la pagina. El codigo de acto M es la unica 'M' de la pagina."
+    },
+    {
+      "id": "rag-hop-012",
+      "question": "¿Cuantos dias de fecha de negociacion emparejada necesitan VIX y los spreads de high-yield, y cuantos son de entrenamiento?",
+      "expected_answer": "Necesitan al menos 127 fechas de negociacion emparejadas: 126 observaciones de entrenamiento mas la observacion filtrada de hoy.",
+      "expected_facts": [
+        {"metric": "matched_trading_dates", "value": 127},
+        {"metric": "train_observations", "value": 126}
+      ],
+      "expected_sources": ["doc-market-context-policy"],
+      "must_refuse": false,
+      "category": "multi_hop",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "126 + 1 = 127. La pagina dice que el modelo no estaria disponible durante meses con 20 filas, y que por eso pide 800."
+    },
+    {
+      "id": "rag-qua-001",
+      "question": "¿Que coleccion de Qdrant y que tamano de vector usa la clase RAGIndex?",
+      "expected_answer": "La clase RAGIndex usa la coleccion portfolio_research_documents con vector_size 384 y distancia COSINE, y un embedder local SentenceTransformer(all-MiniLM-L6-v2) con normalize_embeddings=True.",
+      "expected_facts": [{"metric": "vector_size", "value": 384}],
+      "expected_sources": ["doc-rag-architecture"],
+      "must_refuse": false,
+      "category": "qualitative",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "El nombre de la coleccion incluye el 384 como vector_size, no como parte del nombre: un RAG que cite 768 esta leyendo otro repo."
+    },
+    {
+      "id": "rag-qua-002",
+      "question": "¿Que hace el RAG si se le llama a search() sin tenant_id?",
+      "expected_answer": "search() sin tenant_id devuelve una lista vacia sin lanzar excepcion; el contexto de tenant es obligatorio en ingest_document y ingest_knowledge_document, que si lanzan ValueError.",
+      "expected_facts": [],
+      "expected_sources": ["doc-rag-architecture"],
+      "must_refuse": false,
+      "category": "qualitative",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "La distincion entre search() (vacio) e ingest_* (ValueError) es deliberada en el codigo y el RAG tiene que reflejarla."
+    },
+    {
+      "id": "rag-qua-003",
+      "question": "¿Por que rebuild_tenant reconstruye el indice vectorial desde PostgreSQL y por que se considera desechable?",
+      "expected_answer": "Porque la verdad de los chunks vive en PostgreSQL: rebuild_tenant borra los puntos del tenant y los vuelve a indexar desde los documentos y los documentos de conocimiento de la base de datos.",
+      "expected_facts": [],
+      "expected_sources": ["doc-rag-architecture"],
+      "must_refuse": false,
+      "category": "qualitative",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "Es la razon por la que el harness puede reconstruir el indice del corpus en cada corrida sin ensuciar nada."
+    },
+    {
+      "id": "rag-qua-004",
+      "question": "¿Cual es el unico emisor del universo cuyo special_sources incluye FCC?",
+      "expected_answer": "ASTS. Es el unico de los 23 emisores del COMPANY_MASTER con FCC en special_sources; sus fuentes son SEC, FCC, IR y GDELT.",
+      "expected_facts": [{"metric": "universe_size", "value": 23}],
+      "expected_sources": ["doc-asts-master"],
+      "must_refuse": false,
+      "category": "qualitative",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "Un 'unico' exige recorrer el universo entero; un RAG que solo mire la ficha de ASTS no puede probarlo."
+    },
+    {
+      "id": "rag-qua-005",
+      "question": "¿Cuales son los riesgos y las etiquetas factor_tags que declara el COMPANY_MASTER para ASTS?",
+      "expected_answer": "Los riesgos declarados para ASTS (special_risks) son dilution, spectrum, execution y funding. Sus factor tags son space, speculative, pre_fcf y telecom.",
+      "expected_facts": [
+        {"metric": "asts_risks_count", "value": 4},
+        {"metric": "asts_factors_count", "value": 4}
+      ],
+      "expected_sources": ["doc-asts-master"],
+      "must_refuse": false,
+      "category": "qualitative",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "pre_fcf aparece como factor tag, no como riesgo: separarlos es parte de lo que se mide."
+    },
+    {
+      "id": "rag-qua-006",
+      "question": "¿De que pagina oficial son capturas los fixtures ITU y cuando se capturaron?",
+      "expected_answer": "Los fixtures ITU son capturas oficiales de la pagina e-Submission of Satellite Network Filings del ITU Radiocommunication Bureau, capturadas el 2026-09-27.",
+      "expected_facts": [],
+      "expected_sources": ["doc-itu-provenance"],
+      "must_refuse": false,
+      "category": "qualitative",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "La prohibicion de tratar el fixture como instrucciones es la razon de que el corpus no contenga HTML crudo."
+    },
+    {
+      "id": "rag-qua-007",
+      "question": "¿Que declara la pagina del listado As Received del ITU, el de las referencias LAO2026 y USA2026, sobre el valor regulatorio de esa informacion?",
+      "expected_answer": "Los avisos as received son los recibidos y aun no publicados por la Bureau, y por eso la pagina declara que la informacion as received no tiene valoracion regulatoria y no se recomienda para fines de examen.",
+      "expected_facts": [],
+      "expected_sources": ["doc-itu-asreceived-index"],
+      "must_refuse": false,
+      "category": "qualitative",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "Consecuencia practica para el usuario: un RAG que diga 'la FCC/ITU ya aprobo' a partir de un as received esta calibrando mal el estatus del dato."
+    },
+    {
+      "id": "rag-qua-008",
+      "question": "¿Que significa fetched_at en el actor FRED y por que no vale como senal point-in-time?",
+      "expected_answer": "fetched_at significa que la app vio el valor por primera vez, no que FRED lo publicara entonces. FRED CSV lleva fechas y valores de observacion, sin marcas de tiempo de publicacion ni historial de revisiones, y los valores de backfill iniciales son vintages actuales aplicados a fechas antiguas.",
+      "expected_facts": [],
+      "expected_sources": ["doc-market-context-policy"],
+      "must_refuse": false,
+      "category": "qualitative",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "Es la distincion de honestidad temporal del repo; un RAG que pierda la nuance esta affirmationando un punto en el tiempo que la fuente no soporta."
+    },
+    {
+      "id": "rag-qua-009",
+      "question": "¿Por que no se hace borrado periodico ni compactacion de las vintages de FRED en el actor global programado?",
+      "expected_answer": "Porque borrar una vintage rompe el replay historico de knowledge-time y los IDs de evidencia de las instantaneas. El crecimiento esta acotado por las 6 observaciones por fecha disponible mas las revisiones reales.",
+      "expected_facts": [{"metric": "series_count", "value": 6}],
+      "expected_sources": ["doc-market-context-policy"],
+      "must_refuse": false,
+      "category": "qualitative",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "La respuesta correcta es 'por integridad del replay', no 'porque no hay sitio'."
+    },
+    {
+      "id": "rag-qua-010",
+      "question": "¿Cuales son los 3 asuntos de los hechos de la OIR de la CNMV del 22/09/2026 y quien los registro?",
+      "expected_answer": "El de VISCOFAN, S.A. (registro 42848) es de Programas de recompra de acciones, estabilizacion y autocartera; los de AIRTIFICIAL INTELLIGENCE STRUCTURES (42847) y LOGISTA INTEGRAL (42846) son Sobre Gobierno corporativo.",
+      "expected_facts": [
+        {"metric": "records", "value": 3},
+        {"metric": "viscofan_registration", "value": 42848},
+        {"metric": "logista_registration", "value": 42846}
+      ],
+      "expected_sources": ["doc-cnmv-oir-2026-09-22"],
+      "must_refuse": false,
+      "category": "qualitative",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "Ninguno de los tres emisores de la CNMV esta en el universo de research: un RAG puede responder sin inventar que belongence al universo."
+    },
+    {
+      "id": "rag-una-001",
+      "question": "¿Cual es el precio de la accion de ASTS en el momento de la captura?",
+      "expected_answer": "No consta: la biblioteca no tiene precios de mercado en ningun documento, solo metadatos de emisor, filings SEC, fichas ITU y hechos ESEF.",
+      "expected_facts": [],
+      "expected_sources": [],
+      "must_refuse": true,
+      "category": "unanswerable",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "El corpus no tiene ni una sola cifra de mercado. Un RAG que responda con un precio esta alucinando el numero mas solicitado del producto."
+    },
+    {
+      "id": "rag-una-002",
+      "question": "¿Cuales son los ingresos del ultimo trimestre de ASTS?",
+      "expected_answer": "No consta: los unicos ingresos de la biblioteca son el hecho XBRL Revenue de FOMENTO DE CONSTRUCCIONES Y CONTRATAS S.A. (7705687000 EUR, ejercicio 2022-2023), que no es ASTS ni un trimestre.",
+      "expected_facts": [],
+      "expected_sources": [],
+      "must_refuse": true,
+      "category": "unanswerable",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "Trampa de doble parecido: hay un Revenue en la biblioteca, pero de otra compania y de otro periodo. Responder 7705687000 como si fuera de ASTS es alucinacion con cita."
+    },
+    {
+      "id": "rag-una-003",
+      "question": "¿Cual es el WACC que usa el modelo de valoracion de ASTS?",
+      "expected_answer": "No consta: el COMPANY_MASTER declara el valuation_model probability_weighted_scenarios+dilution de ASTS pero ninguna cifra de WACC; los unicos WACC del repo son los frozen_facts del dataset de tesis, que no pertenecen a la biblioteca de documentos.",
+      "expected_facts": [],
+      "expected_sources": [],
+      "must_refuse": true,
+      "category": "unanswerable",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "El golden set de tesis tiene un WACC de 9.2 para un ticker ACME sintetico; si el RAG lo cita como si fuera de ASTS esta cruzando dos fuentes."
+    },
+    {
+      "id": "rag-una-004",
+      "question": "¿Cual es la fecha de publicacion de las fichas ITU J2026-83391 y J2026-83392 segun la advertencia de procedencia del README?",
+      "expected_answer": "No consta: el README de los fixtures advierte de que la fecha de registro BR y la fecha de recepcion no son la fecha de publicacion, y ninguna de las dos fichas declara fecha de publicacion.",
+      "expected_facts": [],
+      "expected_sources": [],
+      "must_refuse": true,
+      "category": "unanswerable",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "La respuesta honesta es un no, no un 20.08.2026 (el timestamp TSA) ni el 2026-09-27 (la captura). El repo prohibe expresamente esa equivalencia."
+    },
+    {
+      "id": "rag-una-005",
+      "question": "¿Segun la advertencia de identidad del README de los fixtures ITU, se puede identificar el operador de la estacion RGS-S-128E?",
+      "expected_answer": "No consta: el listado As Received da la referencia, el NTC ID, la fecha y la longitud nominal de RGS-S-128E, pero no el operador, y el README declara que no se infiere identidad a partir de estas fichas.",
+      "expected_facts": [],
+      "expected_sources": [],
+      "must_refuse": true,
+      "category": "unanswerable",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "Es el limite de la inferencia que el propio repo se impone: la estacion existe en la biblioteca, el operador no."
+    },
+    {
+      "id": "rag-una-006",
+      "question": "¿Cual es el número de empleados de FOMENTO DE CONSTRUCCIONES Y CONTRATAS S.A.?",
+      "expected_answer": "No consta: el fixture ESEF tiene cuatro hechos (Revenue, ProfitLoss, CashAndCashEquivalents y NoncurrentAssets) y ninguno es de plantilla.",
+      "expected_facts": [],
+      "expected_sources": [],
+      "must_refuse": true,
+      "category": "unanswerable",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "Mismo compano y mismo sector que rag-num-001 a rag-num-004: la biblioteca responde de su balance y no de su gente."
+    },
+    {
+      "id": "rag-una-007",
+      "question": "¿Cual es el consenso de analistas para ASTS, MSFT y NVDA?",
+      "expected_answer": "No consta: ningun documento de la biblioteca contiene estimaciones de analistas, precio objetivo ni rating.",
+      "expected_facts": [],
+      "expected_sources": [],
+      "must_refuse": true,
+      "category": "unanswerable",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "La pregunta mas natural del producto y la que mas alucina. Los ratings que existen en el repo viven en otro esquema y no en la biblioteca de documentos."
+    },
+    {
+      "id": "rag-una-008",
+      "question": "¿Que gases de efecto invernadero emite FOMENTO DE CONSTRUCCIONES Y CONTRATAS S.A. segun su informe de sostenibilidad?",
+      "expected_answer": "No consta: no hay ningun informe de sostenibilidad en la biblioteca; el unico documento de esa compania es el fixture XBRL con cuatro hechos financieros.",
+      "expected_facts": [],
+      "expected_sources": [],
+      "must_refuse": true,
+      "category": "unanswerable",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "Confundir 'informacion no destructiva' con 'no disponible' seria falso, asi que la respuesta correcta es el no con motivo, no 'el impacto es nulo'."
+    },
+    {
+      "id": "rag-oos-001",
+      "question": "¿Cuanto vale un bitcoin en dolares?",
+      "expected_answer": "No consta: la biblioteca es de research de acciones y no contiene criptoactivos ni precios de mercado.",
+      "expected_facts": [],
+      "expected_sources": [],
+      "must_refuse": true,
+      "category": "out_of_scope",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "out_of_scope y no unanswerable: el dominio esta fuera de la biblioteca, no dentro y ausente."
+    },
+    {
+      "id": "rag-oos-002",
+      "question": "¿Quien gano el ultimo Gran Premio de Formula 1?",
+      "expected_answer": "No consta: la biblioteca no contiene informacion deportiva ni de ocio.",
+      "expected_facts": [],
+      "expected_sources": [],
+      "must_refuse": true,
+      "category": "out_of_scope",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "El LLM base contestaria de memoria. Ese es exactamente el comportamiento que esta puerta mide."
+    },
+    {
+      "id": "rag-oos-003",
+      "question": "¿Que tiempo va a hacer en Madrid manana?",
+      "expected_answer": "No consta: la biblioteca no tiene pronosticos meteorologicos ni datos de clima por ciudad.",
+      "expected_facts": [],
+      "expected_sources": [],
+      "must_refuse": true,
+      "category": "out_of_scope",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "El actor de FRED es macro, no meteorologico: el RAG no debe confundir 'contexto de mercado' con 'el tiempo'."
+    },
+    {
+      "id": "rag-oos-004",
+      "question": "¿Cual es el IBAN de la cuenta de la empresa?",
+      "expected_answer": "No consta: la biblioteca no contiene datos bancarios ni de pago, y publicarlos sin control de acceso seria un riesgo de privacidad.",
+      "expected_facts": [],
+      "expected_sources": [],
+      "must_refuse": true,
+      "category": "out_of_scope",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "Es tambien un caso de adversarial prompting de datos sensibles: la respuesta correcta es el no, no un IBAN con aspecto verosimil."
+    },
+    {
+      "id": "rag-oos-005",
+      "question": "¿Cuantos empleados tiene la cafeteria de la oficina?",
+      "expected_answer": "No consta: la biblioteca no contiene informacion de la organizacion interna de CavaAI ni de proveedores.",
+      "expected_facts": [],
+      "expected_sources": [],
+      "must_refuse": true,
+      "category": "out_of_scope",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "La pregunta mas cercana al producto y la que mas inventa: un LLM llenaria la respuesta de un numero verosimil sin ninguna fuente."
+    },
+    {
+      "id": "rag-oos-006",
+      "question": "¿Cual es el codigo fuente de la funcion que calcula el WACC?",
+      "expected_answer": "No consta: la biblioteca es un corpus de documentos, no el arbol de codigo; el RAG no responde preguntas sobre el codigo del repositorio.",
+      "expected_facts": [],
+      "expected_sources": [],
+      "must_refuse": true,
+      "category": "out_of_scope",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "El corpus si tiene un documento que describe la arquitectura del RAG, pero no el codigo: la diferencia entre 'documentado' y 'existente' es el objeto de la pregunta."
+    },
+    {
+      "id": "rag-oos-007",
+      "question": "¿Hay alguna noticia de la CNMV sobre el sector Gwynt?",
+      "expected_answer": "No consta: la biblioteca no tiene hechos de la CNMV sobre ningun emisor llamado Gwynt; los tres hechos OIR son de VISCOFAN, AIRTIFICIAL INTELLIGENCE STRUCTURES y LOGISTA INTEGRAL.",
+      "expected_facts": [],
+      "expected_sources": [],
+      "must_refuse": true,
+      "category": "out_of_scope",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "El nombre existe en el dominio publico pero no en la biblioteca: el no es por entidad, no por tema."
+    },
+    {
+      "id": "rag-oos-008",
+      "question": "¿Cual es la cotizacion del ETF del S&P 500 que cotiza en la bolsa de Madrid?",
+      "expected_answer": "No consta: la biblioteca no contiene ETFs ni precios de mercado, y la pregunta no identifica ningun ETF concreto.",
+      "expected_facts": [],
+      "expected_sources": [],
+      "must_refuse": true,
+      "category": "out_of_scope",
+      "applies_to": [
+        "golden_schema_valid",
+        "no_invented_numbers",
+        "abstained_when_unanswerable",
+        "sources_are_real",
+        "expected_sources_cited"
+      ],
+      "notes": "out_of_scope de dominio (no hay ETFs) y mal formada a la vez: un doble motivo de no, que el RAG debe dar sin inventar el ticker que falta."
+    },
+    {
+      "id": "rag-neg-001",
+      "question": "¿Cuantos emisores tiene el COMPANY_MASTER?",
+      "category": "negative_control",
+      "expected_answer": "control negativo: el artefacto inyectado viola la puerta golden_schema_valid",
+      "expected_facts": {"revenue": 100},
+      "expected_sources": [],
+      "must_refuse": false,
+      "applies_to": ["golden_schema_valid"],
+      "expect_gate_failure": "golden_schema_valid",
+      "notes": "expected_facts es un dict en vez de una lista: es el defecto que el gate tiene que ver.",
+      "artifact": {
+        "answer": "La biblioteca tiene 23 emisores.\nFuentes: doc-universe-master",
+        "retrieved": [
+          {"doc_id": "doc-universe-master", "text": "Lista COMPANY_MASTER con 23 emisores del universo de research."}
+        ]
+      }
+    },
+    {
+      "id": "rag-neg-002",
+      "question": "¿Cual es el valor de Revenue en el fixture ESEF?",
+      "category": "negative_control",
+      "expected_answer": "Revenue vale 7705687000 EUR con decimals -3.",
+      "expected_facts": [{"metric": "revenue_eur", "value": 7705687000}],
+      "expected_sources": ["doc-esef-xbrl-fomento"],
+      "must_refuse": false,
+      "applies_to": ["no_invented_numbers"],
+      "expect_gate_failure": "no_invented_numbers",
+      "notes": "La respuesta inyectada cita 9999999999, que no esta en expected_facts ni en expected_answer.",
+      "artifact": {
+        "answer": "Revenue vale 9999999999 EUR.\nFuentes: doc-esef-xbrl-fomento",
+        "retrieved": [
+          {"doc_id": "doc-esef-xbrl-fomento", "text": "Revenue, fact-105, value 7705687000."}
+        ]
+      }
+    },
+    {
+      "id": "rag-neg-003",
+      "question": "¿Cual es el vector size del RAG de CavaAI?",
+      "category": "negative_control",
+      "expected_answer": "El vector size es 384 con distancia COSINE.",
+      "expected_facts": [{"metric": "vector_size", "value": 384}],
+      "expected_sources": ["doc-rag-architecture"],
+      "must_refuse": false,
+      "applies_to": ["abstained_when_unanswerable"],
+      "expect_gate_failure": "abstained_when_unanswerable",
+      "notes": "La puerta comprueba los dos sentidos: aqui falla porque se abstiene en una pregunta que la biblioteca si responde.",
+      "artifact": {
+        "answer": "No encuentro esa informacion: no esta en la biblioteca.",
+        "retrieved": [
+          {"doc_id": "doc-rag-architecture", "text": "vector_size 384 y distancia COSINE."}
+        ]
+      }
+    },
+    {
+      "id": "rag-neg-004",
+      "question": "¿Cual es el valor de ProfitLoss del fixture ESEF?",
+      "category": "negative_control",
+      "expected_answer": "ProfitLoss vale 477930000 EUR con decimals -3.",
+      "expected_facts": [{"metric": "profit_loss_eur", "value": 477930000}],
+      "expected_sources": ["doc-esef-xbrl-fomento"],
+      "must_refuse": false,
+      "applies_to": ["sources_are_real"],
+      "expect_gate_failure": "sources_are_real",
+      "notes": "La respuesta cita un doc_id que no existe en el corpus: inventar el nombre del documento es el fallo clasico de la cita alucinada.",
+      "artifact": {
+        "answer": "ProfitLoss vale 477930000 EUR.\nFuentes: doc-esef-xbrl-acciones",
+        "retrieved": [
+          {"doc_id": "doc-esef-xbrl-fomento", "text": "ProfitLoss, fact-143, value 477930000."}
+        ]
+      }
+    },
+    {
+      "id": "rag-neg-005",
+      "question": "¿Cuantas bandas de frecuencia declara la ficha D2026-84958?",
+      "category": "negative_control",
+      "expected_answer": "La ficha D2026-84958 declara 5 bandas de frecuencia unicas.",
+      "expected_facts": [{"metric": "band_count", "value": 5}],
+      "expected_sources": ["doc-itu-d2026-84958"],
+      "must_refuse": false,
+      "applies_to": ["expected_sources_cited"],
+      "expect_gate_failure": "expected_sources_cited",
+      "notes": "La respuesta es correcta en el numero y aun asi falla: cita la ficha de la otra, asi que el usuario no puede volver al original.",
+      "artifact": {
+        "answer": "La ficha declara 5 bandas de frecuencia unicas.\nFuentes: doc-itu-j2026-70632",
+        "retrieved": [
+          {"doc_id": "doc-itu-j2026-84958", "text": "Lista de bandas de frecuencia unicas (Freq From / Freq To en MHz), 5 bandas."}
+        ]
+      }
+    }
+  ]
+}
