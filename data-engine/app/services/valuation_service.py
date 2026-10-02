@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import re
-from collections.abc import Mapping
-from datetime import date, datetime
+from collections.abc import Mapping, MutableMapping
+from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import desc, select
@@ -15,8 +14,9 @@ from app.models import Company, MarketPrice, Position, ValuationModel, Valuation
 from app.valuation.engines import resolve, resolve_engine_key
 from app.valuation.engines.base import MODEL_VERSION, apply_publication_blockers
 from app.valuation.point_in_time import (
-    assert_fiscal_year_no_lookahead,
-    assert_no_lookahead,
+    PRECISION_UNKNOWN,
+    assert_period_no_lookahead,
+    resolve_as_of,
 )
 
 
@@ -45,43 +45,30 @@ def _free_data_trace(db: Session, company: Company) -> dict | None:
         return None
 
 
-def _as_date(value: object) -> date | None:
-    if isinstance(value, datetime):
-        return value.date()
-    if isinstance(value, date):
-        return value
-    if isinstance(value, str):
-        try:
-            return date.fromisoformat(value)
-        except ValueError:
-            return None
-    return None
+def _assert_no_lookahead_guard(valuation: dict, *, as_of: date | None = None) -> None:
+    """Falla cerrado ante periodos futuros y deja rastro del cutoff aplicado.
 
+    Cada periodo se contrasta con la PRECISION que el propio periodo declare: un
+    ``"2025-09-30:FY"`` de la ingesta SEC/ESEF se compara contra su fecha de
+    cierre, no contra su ano. Comparar solo el ano admitia cierres meses en el
+    futuro siempre que coincidieran con el ano del cutoff (con as_of 2025-03-31,
+    un "2025-09-30:FY" pasaba porque 2025 > 2025 es falso).
 
-def _require_as_of(value: object) -> date:
-    parsed = _as_date(value)
-    if parsed is None:
-        raise ValueError(f"Valuation as_of must be an ISO date, got {value!r}")
-    return parsed
-
-
-def _assert_no_lookahead_guard(
-    valuation: dict, *, as_of: date | None = None
-) -> None:
-    """Fail closed when valuation trace metadata contains future periods.
-
-    ``as_of`` defaults to a date carried by the valuation/trace, then to today.
-    Unknown period formats are ignored; recognised exact dates and fiscal years
-    are delegated to the public point-in-time guard contract.
+    Lo que no se puede interpretar ("FY", "unknown") no dispara error, pero se
+    registra como opaco en ``trace["point_in_time"]``: la cobertura del guard
+    tiene que poder auditarse, que es como una comprobacion ciega se hizo pasar
+    por cobertura. Ese bloque incluye de donde salio el cutoff, porque un as_of
+    deducido (hoy) en vez de pedido tiene que ser distinguible al leer una
+    valoracion persistida.
     """
-    trace = valuation.get("trace") or {}
-    if not isinstance(trace, Mapping):
+    trace = valuation.get("trace")
+    if not isinstance(trace, MutableMapping):
+        # Sin `or {}`: un trace vacio es un Mapping valido y hay que auditarlo
+        # sobre el dict de verdad, no sobre una copia que se pierde al salir.
         return
 
-    requested_as_of = as_of if as_of is not None else valuation.get("as_of")
-    if requested_as_of is None:
-        requested_as_of = trace.get("as_of")
-    cutoff = _require_as_of(requested_as_of) if requested_as_of is not None else date.today()
+    resolution = resolve_as_of(as_of=as_of, valuation=valuation, trace=trace)
+    cutoff = resolution.cutoff
 
     periods: dict[str, object] = {}
     raw_periods = trace.get("periods")
@@ -94,25 +81,24 @@ def _assert_no_lookahead_guard(
             if snapshot.get(key) is not None:
                 periods.setdefault(f"snapshot.{key}", snapshot[key])
 
+    by_precision: dict[str, int] = {}
+    opaque_periods: list[str] = []
     for label, raw_period in periods.items():
-        exact_date = _as_date(raw_period)
-        if exact_date is not None:
-            assert_no_lookahead(
-                as_of=cutoff,
-                data_date=exact_date,
-                label=f"valuation {label}",
-            )
-            continue
-        if not isinstance(raw_period, str):
-            continue
-        match = re.search(r"(?<!\d)(?:FY\s*)?(\d{4})(?!\d)", raw_period, re.IGNORECASE)
-        if match is None:
-            continue
-        assert_fiscal_year_no_lookahead(
-            as_of=cutoff,
-            fiscal_year=int(match.group(1)),
-            label=f"valuation {label} {raw_period}",
+        bounds = assert_period_no_lookahead(
+            as_of=cutoff, period=raw_period, label=f"valuation {label}"
         )
+        by_precision[bounds.precision] = by_precision.get(bounds.precision, 0) + 1
+        if bounds.precision == PRECISION_UNKNOWN:
+            opaque_periods.append(f"valuation {label} {raw_period}")
+
+    trace["point_in_time"] = {
+        "as_of": cutoff.isoformat(),
+        "as_of_source": resolution.source,
+        "as_of_inferred": resolution.inferred,
+        "periods_checked": len(periods),
+        "by_precision": by_precision,
+        "opaque_periods": opaque_periods,
+    }
 
 
 def _position_price(db: Session, company_id: int) -> float | None:
@@ -192,6 +178,9 @@ class ValuationService:
         free_data = _free_data_trace(db, company)
         if free_data is not None:
             result["trace"]["free_data"] = free_data
+        # El guard se ejecuta aqui, antes de que el resultado llegue a thesis,
+        # red team, snapshot o persistencia, y graba en el trace con que cutoff
+        # se evaluo y con que precision se comprobo cada periodo.
         _assert_no_lookahead_guard(result, as_of=as_of)
 
         if current_price is None:

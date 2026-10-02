@@ -240,6 +240,10 @@ def ensure_company_stub(db: Session, ticker: str) -> Company:
         factor_tags=[],
     )
     db.add(company)
+    from app.seed import apply_master_taxonomy_to_stubs
+
+    db.flush()
+    apply_master_taxonomy_to_stubs(db)
     try:
         CompanyEnrichmentService().enrich(db, company)
     except Exception:  # noqa: BLE001 - el ensure nunca debe fallar por esto

@@ -59,10 +59,9 @@ test("PDF upload -> chunk -> claim/evidence -> chat/memory", async ({ request })
       },
     }),
   );
-  expect(ingestion).toMatchObject({
-    status: "ingested",
-    parser: "pypdf",
-  });
+  expect(ingestion).toMatchObject({ status: "ingested" });
+  // Con markitdown instalado (requirements.txt) el carril rapido gana a pypdf.
+  expect(["markitdown", "pypdf"]).toContain(ingestion.parser);
   expect(ingestion.chunks).toBeGreaterThan(0);
 
   const documents = await jsonResponse<DocumentRecord[]>(
