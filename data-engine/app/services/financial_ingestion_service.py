@@ -845,6 +845,9 @@ class FinancialIngestionService:
 
         statements = 0
         facts = 0
+        rows_rechazadas_por_symbol = 0
+        filling_dates: list[date] = []
+        seen_keys: set[tuple[str, str]] = set()
         for statement_type, rows, specs in [
             ("income", income, INCOME_METRICS),
             ("balance_sheet", balance, BALANCE_METRICS),
@@ -852,6 +855,14 @@ class FinancialIngestionService:
             ("ratios", ratios, RATIO_METRICS),
         ]:
             for row in rows:
+                # Cada fila declara su emisor: una fila de OTRA sociedad en el
+                # payload (el endpoint no siempre filtra) no puede atribuirse a
+                # este ticker - contaminaria la serie y el crecimiento derivado
+                # (FIX5-3). Una fila sin `symbol` no puede contradecirse y se
+                # acepta como hasta ahora.
+                if str(row.get("symbol") or ticker).upper() != ticker:
+                    rows_rechazadas_por_symbol += 1
+                    continue
                 statements += self._add_statement(
                     db=db,
                     company=company,
@@ -890,11 +901,20 @@ class FinancialIngestionService:
             "source_document_id": document.id,
             "facts_imported": facts,
             "statements_imported": statements,
+            "rows_rechazadas_por_symbol": rows_rechazadas_por_symbol,
             "latest_periods": self.latest_periods(db, company),
             "valuation_input_ready": self.valuation_input_ready(db, company),
         }
 
-    async def refresh_from_sec(self, db: Session, company: Company) -> dict[str, Any]:
+    async def refresh_from_sec(
+        self,
+        db: Session,
+        company: Company,
+        as_of: date | None = None,
+    ) -> dict[str, Any]:
+        """Ingesta de fundamentales SEC. ``as_of`` es un corte de INFORMACION:
+        solo entra lo ya publicado (``filed``) en esa fecha. Con ``as_of=None``
+        no se filtra por fecha y el resultado lo declara (FIX5-1)."""
         from app.services.connectors.sec_edgar import drain_mirror_serves
 
         drain_mirror_serves()  # marca el inicio de ESTA corrida

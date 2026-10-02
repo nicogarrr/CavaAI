@@ -90,3 +90,44 @@ def test_period_conserva_fechas_imposibles_verbatim():
     assert fiscal_year == 2025
 
 
+# --------------------------------------------------------------------------
+# FIX5-3: refresh_from_fmp contrasta el symbol de cada fila
+# --------------------------------------------------------------------------
+
+
+class _FakeFMPConSymbol:
+    async def income_statement(self, ticker, limit=5):
+        return [
+            {"symbol": "OTRA", "date": "2025-12-31", "period": "FY", "calendarYear": 2025,
+             "revenue": 999000000000, "netIncome": 99000000000},
+            {"symbol": "ACME", "date": "2025-12-31", "period": "FY", "calendarYear": 2025,
+             "revenue": 5000000000, "netIncome": 500000000},
+        ]
+
+    async def balance_sheet(self, ticker, limit=5):
+        return []
+
+    async def cash_flow(self, ticker, limit=5):
+        return []
+
+    async def ratios(self, ticker, limit=5):
+        return []
+
+    async def company_profile(self, ticker):
+        return []
+
+    async def quote(self, ticker):
+        return []
+
+
+def test_refresh_from_fmp_rechaza_filas_de_otro_simbolo(db):
+    company = _company(db, "ACME")
+    result = asyncio.run(
+        FinancialIngestionService().refresh_from_fmp(db, company, client=_FakeFMPConSymbol())
+    )
+    assert result["rows_rechazadas_por_symbol"] == 1
+    revenues = _facts(db, company, "revenue")
+    assert [f.value for f in revenues] == [Decimal("5000000000")]
+    assert all(f.period == "2025-12-31:FY" for f in revenues)
+
+
