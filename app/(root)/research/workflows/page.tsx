@@ -34,7 +34,7 @@ export default async function ResearchWorkflowsPage() {
             Flujos de investigación orquestados por el backend Python. Ejecuta GenerateThesisWorkflow directamente o invoca al resto vía POST.
           </p>
         </div>
-        <div className="rounded-lg border border-gray-800 bg-[#111111] px-4 py-3 text-sm text-gray-300">
+        <div className="rounded-lg border border-gray-800 bg-surface-1 px-4 py-3 text-sm text-gray-300">
           {formatNumber(workflows.length, { maximumFractionDigits: 0 })} flujos
         </div>
       </header>
@@ -56,7 +56,7 @@ export default async function ResearchWorkflowsPage() {
           };
 
           return (
-            <div key={workflow.name} className="min-w-0 rounded-lg border border-gray-800 bg-[#111111] p-5">
+            <div key={workflow.name} className="min-w-0 rounded-lg border border-gray-800 bg-surface-1 p-5">
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <Layers aria-hidden="true" className="h-5 w-5 text-teal-300" />
                 <span className="min-w-0 break-all font-semibold text-gray-100">{workflow.name}</span>
@@ -114,7 +114,7 @@ export default async function ResearchWorkflowsPage() {
           );
         })}
         {!workflows.length ? (
-          <div className="col-span-2 rounded-lg border border-gray-800 bg-[#111111] p-5 text-sm text-gray-500">
+          <div className="col-span-2 rounded-lg border border-gray-800 bg-surface-1 p-5 text-sm text-gray-500">
             Sin flujos registrados. Verifica que el backend Python esté corriendo.
           </div>
         ) : null}

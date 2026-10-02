@@ -65,12 +65,12 @@ export default async function ResearchSettingsPage() {
             Estado de los conectores externos, presupuesto LLM y runtime del backend.
           </p>
         </div>
-        <div className="rounded-lg border border-gray-800 bg-[#111111] px-4 py-3 text-sm text-gray-300">
+        <div className="rounded-lg border border-gray-800 bg-surface-1 px-4 py-3 text-sm text-gray-300">
           {settings.app_env}
         </div>
       </header>
 
-      <section className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+      <section className="rounded-lg border border-gray-800 bg-surface-1 p-5">
         <div className="mb-4 flex items-center gap-2">
           <Database aria-hidden="true" className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">Conectores</h2>
@@ -113,7 +113,7 @@ export default async function ResearchSettingsPage() {
       </section>
 
       <section className="grid gap-6 md:grid-cols-2">
-        <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+        <div className="rounded-lg border border-gray-800 bg-surface-1 p-5">
           <div className="mb-4 flex items-center gap-2">
             <DollarSign aria-hidden="true" className="h-5 w-5 text-teal-300" />
             <h2 className="text-lg font-semibold text-gray-100">Presupuesto</h2>
@@ -134,7 +134,7 @@ export default async function ResearchSettingsPage() {
           </div>
         </div>
 
-        <div className="rounded-lg border border-gray-800 bg-[#111111] p-5">
+        <div className="rounded-lg border border-gray-800 bg-surface-1 p-5">
           <div className="mb-4 flex items-center gap-2">
             <Cpu aria-hidden="true" className="h-5 w-5 text-teal-300" />
             <h2 className="text-lg font-semibold text-gray-100">Entorno de ejecución</h2>
