@@ -203,14 +203,7 @@ const DOCKERIGNORE_SAMPLES = [
  * the sample then shows up as uncovered.
  */
 const KNOWN_DOCKERIGNORE_GAPS = new Set([
-  'data-engine/cavaai_test_1_a.db',
-  '.next/BUILD_ID',
-  'node_modules/x',
-  'test-results/.last-run.json',
   'tsconfig.tsbuildinfo',
-  'coverage/lcov.info',
-  'data-engine/htmlcov/index.html',
-  'playwright-report/index.html',
 ]);
 
 function dockerignoreCovers(sample: string, rules: string[]): boolean {

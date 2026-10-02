@@ -8,7 +8,8 @@ name: Coverage
 # coincide con el de `backend`, asi que mezclarlos haria la linea base fragil.
 #
 # El gate es fail-closed y fail-closed tambien en la explicacion: si falla, el
-# mensaje dice que paquete bajo y cuantos puntos. Ver data-engine/COVERAGE.md.
+# mensaje dice que paquete bajo y cuantos puntos. Ver docs/COVERAGE.md, y
+# data-engine/COVERAGE.md como enlace a ese documento.
 
 on:
   push:
@@ -72,16 +73,23 @@ jobs:
 
       - run: python -m pip install --upgrade pip
 
-      # Mismo instalador que ci.yml, mas pytest-cov. pytest-cov va aqui y no en
-      # requirements.txt a proposito: requirements.txt y
-      # pyproject[project].dependencies estan atados por el job `dep-parity`
-      # (sync_requirements.py --check exige paridad exacta y BIDIRECCIONAL) y
-      # pytest-cov es herramienta de desarrollo, no dependencia de runtime.
-      # INTEGRACION PENDIENTE: anadir pytest-cov a
-      # [project.optional-dependencies].test en data-engine/pyproject.toml para
-      # que `pip install -e .[test]` traiga el gate; hasta entonces la linea de
-      # install de este workflow y la de CONTRIBUTING son la unica via.
-      - run: python -m pip install -r requirements.txt pytest ruff pyright pytest-cov
+      # Mismo instalador y MISMAS versiones de herramientas que el job `backend`
+      # de ci.yml, mas pytest-cov. Sin pin, "ruff hoy" es una cifra distinta cada
+      # semana y una regresion de lint aparece sin que nadie haya tocado codigo.
+      # Las tres versiones de test salen de [project.optional-dependencies] test de
+      # data-engine/pyproject.toml; ruff y pyright van pineadas aqui a proposito
+      # (son herramientas, no dependencias de runtime, y asi el gate mide lo
+      # mismo en todos los jobs).
+      # pytest-cov NO va en requirements.txt: el job dep-parity exige paridad
+      # exacta y BIDIRECCIONAL entre pyproject [project].dependencies y
+      # requirements.txt, y pytest-cov vive en [project.optional-dependencies].
+      - run: >-
+          python -m pip install
+          -r requirements.txt
+          "pytest>=8.0.0"
+          "pytest-cov>=5.0"
+          "ruff==0.16.10"
+          "pyright==1.1.414"
 
       - name: Coverage gate (pytest --cov + ratchet por paquete)
         run: python scripts/run_coverage_gate.py
