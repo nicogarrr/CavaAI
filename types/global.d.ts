@@ -63,12 +63,6 @@ declare global {
         initialStocks?: StockWithWatchlistStatus[];
     };
 
-    type WelcomeEmailData = {
-        email: string;
-        name: string;
-        intro: string;
-    };
-
     type User = {
         id: string;
         name: string;
@@ -104,47 +98,6 @@ declare global {
         }>;
     };
 
-    type QuoteData = {
-        c?: number;
-        dp?: number;
-    };
-
-    type ProfileData = {
-        name?: string;
-        marketCapitalization?: number;
-    };
-
-    type FinancialsData = {
-        metric?: { [key: string]: number };
-    };
-
-    type SelectedStock = {
-        symbol: string;
-        company: string;
-        currentPrice?: number;
-    };
-
-    type WatchlistTableProps = {
-        watchlist: StockWithData[];
-    };
-
-    type StockWithData = {
-        userId: string;
-        symbol: string;
-        company: string;
-        addedAt: Date;
-        currentPrice?: number;
-        changePercent?: number;
-        priceFormatted?: string;
-        changeFormatted?: string;
-        marketCap?: string;
-        peRatio?: string;
-    };
-
-    type AlertsListProps = {
-        alertData: Alert[] | undefined;
-    };
-
     type MarketNewsArticle = {
         id: number;
         headline: string;
@@ -155,26 +108,6 @@ declare global {
         category: string;
         related: string;
         image?: string;
-    };
-
-    type WatchlistNewsProps = {
-        news?: MarketNewsArticle[];
-    };
-
-    type AlertData = {
-        symbol: string;
-        company: string;
-        alertName: string;
-        alertType: 'upper' | 'lower';
-        threshold: string;
-    };
-
-    type AlertModalProps = {
-        alertId?: string;
-        alertData?: AlertData;
-        action?: string;
-        open: boolean;
-        setOpen: (open: boolean) => void;
     };
 
     type RawNewsArticle = {
@@ -199,54 +132,6 @@ declare global {
         threshold: number;
         changePercent?: number;
     };
-
-    type PortfolioPosition = {
-        symbol: string;
-        company: string;
-        shares: number;
-        avgPurchasePrice: number;
-        purchaseDate: Date;
-    };
-
-    type Portfolio = {
-        _id: string;
-        userId: string;
-        name: string;
-        description?: string;
-        positions: PortfolioPosition[];
-        createdAt: Date;
-        updatedAt: Date;
-    };
-
-    type PortfolioPositionWithData = PortfolioPosition & {
-        currentPrice: number;
-        invested: number;
-        currentValue: number;
-        profitLoss: number;
-        profitLossPercent: number;
-    };
-
-type PortfolioPerformance = {
-    portfolio: {
-        id: string;
-        name: string;
-        description?: string;
-    };
-    positions: PortfolioPositionWithData[];
-    summary: {
-        totalInvested: number;
-        totalCurrentValue: number;
-        totalProfitLoss: number;
-        totalProfitLossPercent: number;
-        positionCount: number;
-    };
-    status: {
-        hasApiKey: boolean;
-        isOnline: boolean;
-        mockDataCount: number;
-        totalPositions: number;
-    };
-};
 }
 
 export {};

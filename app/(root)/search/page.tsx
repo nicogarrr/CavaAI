@@ -83,7 +83,7 @@ export default async function UniversalSearchPage({ searchParams }: PageProps) {
         <Button asChild className="h-11 w-full sm:w-auto" variant="outline"><Link href="/knowledge"><BookOpen aria-hidden="true" className="h-4 w-4" />{t('knowledge.library')}</Link></Button>
       </header>
 
-      <form className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-4 sm:p-5" method="get">
+      <form className="min-w-0 rounded-xl border border-gray-800 bg-surface-1 p-4 sm:p-5" method="get">
         <div className="flex flex-col gap-3 sm:flex-row">
           <Input autoFocus className="h-11 w-full text-base" defaultValue={query.q} name="q" placeholder="Busca en todo el research..." required />
           <Button className="h-11 w-full shrink-0 sm:w-auto" type="submit"><SearchIcon aria-hidden="true" className="h-4 w-4" />Buscar</Button>
@@ -105,7 +105,7 @@ export default async function UniversalSearchPage({ searchParams }: PageProps) {
 
       {response ? (
         <section className="grid min-w-0 grid-cols-1 gap-4">
-          <div className="flex min-w-0 flex-col gap-3 rounded-xl border border-gray-800 bg-[#101010] p-4 md:flex-row md:items-center">
+          <div className="flex min-w-0 flex-col gap-3 rounded-xl border border-gray-800 bg-surface-1 p-4 md:flex-row md:items-center">
             <div><div className="text-sm font-semibold text-gray-100">{formatNumber(response.total, { maximumFractionDigits: 0 })} resultados para “{response.query}”</div><div className="mt-1 text-xs text-gray-500">Ordenado con fusión léxica/vectorial, jerarquía de fuentes y señales de estado canónico.</div></div>
             {/* F322: los pares crudos de `retrieval` son diagnóstico interno
                 del motor (fusiones, umbrales): visibles bajo demanda, no como
@@ -119,7 +119,7 @@ export default async function UniversalSearchPage({ searchParams }: PageProps) {
           </div>
 
           {response.results.map((result, index) => (
-            <article className="min-w-0 rounded-xl border border-gray-800 bg-[#101010] p-4 break-words sm:p-5" key={`${result.entity_type}-${result.entity_id}`}>
+            <article className="min-w-0 rounded-xl border border-gray-800 bg-surface-1 p-4 break-words sm:p-5" key={`${result.entity_type}-${result.entity_id}`}>
               <div className="flex flex-col gap-3 md:flex-row md:items-start">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-teal-950 text-sm font-semibold text-teal-300">{index + 1}</div>
                 <div className="min-w-0 flex-1">

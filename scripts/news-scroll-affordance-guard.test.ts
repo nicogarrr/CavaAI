@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const page = readFileSync('app/(root)/research/news/page.tsx', 'utf8');
+const page = (readFileSync('app/(root)/research/news/page.tsx', 'utf8') + readFileSync('components/research/NewsEventsFlow.tsx', 'utf8'));
 const css = readFileSync('app/globals.css', 'utf8');
 
 test('la región de la tabla de noticias lleva la affordance de scroll', () => {

@@ -22,9 +22,77 @@ class Message:
             role = self.role if isinstance(self.role, MessageRole) else MessageRole(self.role)
         except ValueError as exc:
             raise ValueError(f"Unsupported message role: {self.role!r}") from exc
-        if not isinstance(self.content, str) or not self.content.strip():
+        if not isinstance(self.content, str):
+            raise ValueError("Message content must be a string")
+        # Un turno assistant puede NO traer texto: cuando el modelo responde
+        # solo con `tool_calls`, el contrato OpenAI deja `content` a null y el
+        # contenido vive en `LLMResponse.tool_calls`. Rechazar el texto vacio
+        # ahi convertia un tool call legitimo en un error de proveedor falso.
+        # Los roles de entrada (system/user) siguen exigiendo texto: un prompt
+        # con un mensaje vacio no aporta nada al modelo.
+        if role is not MessageRole.ASSISTANT and not self.content.strip():
             raise ValueError("Message content must be a non-empty string")
         object.__setattr__(self, "role", role)
+
+
+@dataclass(frozen=True, slots=True)
+class ToolDefinition:
+    """Una funcion que el modelo puede pedir.
+
+    Solo describe el contrato (nombre, descripcion y JSON Schema de
+    parametros): el adaptador la traduce al sobre OpenAI. CavaAI no registra
+    ninguna tool con efectos laterales; este dataclass es el mecanismo
+    generico para que un caller registre una lectura acotada cuando lo necesite.
+    """
+
+    name: str
+    description: str = ""
+    parameters: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.name, str) or not self.name.strip():
+            raise ValueError("Tool name must be a non-empty string")
+        if not isinstance(self.description, str):
+            raise ValueError("Tool description must be a string")
+        if not isinstance(self.parameters, Mapping):
+            raise TypeError("Tool parameters must be a mapping (JSON Schema object)")
+        object.__setattr__(self, "name", self.name.strip())
+
+    def to_openai(self) -> dict[str, Any]:
+        """Envelope OpenAI `tools: [{"type": "function", "function": {...}}]`."""
+        parameters: Mapping[str, Any] = self.parameters or {"type": "object", "properties": {}}
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "description": self.description,
+                "parameters": dict(parameters),
+            },
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ToolCall:
+    """Un tool call ya validado por el adaptador.
+
+    ``arguments`` SIEMPRE es un mapping, nunca el string crudo del proveedor:
+    la garantia de que el JSON de argumentos parsea se aplica en la
+    construccion, no como promesa del docs. Un tool call que no se puede
+    interpretar es un error de contrato del proveedor, no algo que se pueda
+    descartar en silencio (el caller creeria que el modelo respondio con texto).
+    """
+
+    id: str
+    name: str
+    arguments: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.name, str) or not self.name.strip():
+            raise ValueError("ToolCall.name must be a non-empty string")
+        if not isinstance(self.arguments, Mapping):
+            raise TypeError("ToolCall.arguments must be a JSON object, not raw text")
+        object.__setattr__(self, "name", self.name.strip())
+        object.__setattr__(self, "id", str(self.id or f"call_{self.name.strip()}"))
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,6 +123,10 @@ class ResponseFormat:
         return cls(type="json_schema", schema=schema, name=name, strict=strict)
 
 
+#: Valores de `tool_choice` de primer nivel que acepta el contrato OpenAI.
+TOOL_CHOICE_VALUES = frozenset({"auto", "none", "required"})
+
+
 @dataclass(frozen=True, slots=True)
 class LLMRequest:
     messages: Sequence[Message]
@@ -66,6 +138,13 @@ class LLMRequest:
     materiality_score: int = 0
     portfolio_weight: float = 0.0
     metadata: Mapping[str, str] = field(default_factory=dict)
+    #: Tools que el modelo puede pedir. Vacio = sin tool calling.
+    tools: Sequence[ToolDefinition] = ()
+    #: `auto` | `none` | `required` o `{"type": "function", "function": {...}}`.
+    tool_choice: str | Mapping[str, Any] | None = None
+    #: `False` marca la respuesta como NO cacheable (dato efimero).
+    #: `None` =politica por defecto de la cache de respuestas.
+    cache: bool | None = None
 
     def __post_init__(self) -> None:
         messages = tuple(self.messages)
@@ -81,7 +160,36 @@ class LLMRequest:
             raise ValueError("materiality_score must be between 0 and 10")
         if not 0 <= self.portfolio_weight <= 1:
             raise ValueError("portfolio_weight must be between 0 and 1")
+        tools = tuple(self.tools)
+        if any(not isinstance(tool, ToolDefinition) for tool in tools):
+            raise TypeError("All tools must be ToolDefinition instances")
+        names = {tool.name for tool in tools}
+        if len(names) != len(tools):
+            raise ValueError("Tool names must be unique within a request")
+        self._validate_tool_choice(tools, names)
         object.__setattr__(self, "messages", messages)
+        object.__setattr__(self, "tools", tools)
+
+    def _validate_tool_choice(
+        self, tools: tuple[ToolDefinition, ...], names: set[str]
+    ) -> None:
+        choice = self.tool_choice
+        if choice is None:
+            return
+        if not tools:
+            raise ValueError("tool_choice requires at least one tool")
+        if isinstance(choice, str):
+            if choice not in TOOL_CHOICE_VALUES:
+                raise ValueError(
+                    "tool_choice must be 'auto', 'none', 'required' or a named function"
+                )
+            return
+        if not isinstance(choice, Mapping):
+            raise TypeError("tool_choice must be a string or a mapping")
+        function = choice.get("function") if isinstance(choice.get("function"), Mapping) else choice
+        named = function.get("name") if isinstance(function, Mapping) else None
+        if not isinstance(named, str) or named not in names:
+            raise ValueError("tool_choice names a function that is not in tools")
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,10 +219,35 @@ class LLMResponse:
     provider: str
     finish_reason: str | None = None
     request_id: str | None = None
+    #: Tool calls pedidos por el modelo, ya validados. Vacio = respuesta de texto.
+    tool_calls: tuple[ToolCall, ...] = ()
+    #: Respuesta marcada como degradada por el proveedor (warning, truncado,
+    #: filtro de contenido). Una respuesta degradada NUNCA se cachea: servirla
+    #: despues congelaria el defecto. Ver app/llm/response_cache.py.
+    degraded: bool = False
+    #: Avisos del proveedor, redactados. Cualquier aviso marca `degraded`.
+    warnings: tuple[str, ...] = ()
+    #: True si la respuesta se sirvio desde la cache de respuestas (no hubo
+    #: llamada al proveedor y por tanto no se gasto presupuesto).
+    from_cache: bool = False
+    #: Clave de cache que produjo la respuesta (hash sha256, sin secretos).
+    cache_key: str | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "tool_calls", tuple(self.tool_calls))
+        object.__setattr__(self, "warnings", tuple(str(w) for w in self.warnings))
+        if any(not isinstance(call, ToolCall) for call in self.tool_calls):
+            raise TypeError("All tool_calls must be ToolCall instances")
+        if self.warnings and not self.degraded:
+            object.__setattr__(self, "degraded", True)
 
     @property
     def text(self) -> str:
         return self.message.content
+
+    @property
+    def has_tool_calls(self) -> bool:
+        return bool(self.tool_calls)
 
 
 LLMMessage = Message
