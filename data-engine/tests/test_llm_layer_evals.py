@@ -151,3 +151,69 @@ def test_gate_fires_on_a_provider_failure_presented_as_a_normal_answer():
     result = GATES["provider_failure_is_degraded_not_answered"](case)
     assert result["passed"] is False
     assert any("origen" in detail for detail in result["details"])
+
+# ---------------------------------------------------------------- hermeticidad
+#
+# El workflow llm-evals instalaba a proposito solo stdlib + lo minimo: si el
+# judge importaba app.llm o una libreria de red, el CI se rompia solo. Ahora el
+# workflow instala el lock completo (uv sync --frozen) y esa red de seguridad
+# ya no existe: este test es quien la sustituye. El runner se ejecuta con un
+# bloqueador de imports para el paquete de la app y para las librerias de red /
+# LLM / modelos de datos del proyecto; si el judge o las puertas tocan alguna,
+# el subprocess falla con ImportError.
+
+_BLOCKED_TOP_LEVEL = (
+    "app",
+    "pydantic",
+    "pydantic_settings",
+    "httpx",
+    "requests",
+    "aiohttp",
+    "openai",
+    "anthropic",
+    "qdrant_client",
+    "sqlalchemy",
+    "fastapi",
+)
+
+_BLOCKER_PREAMBLE = f"""
+import importlib.abc, runpy, sys
+BLOCKED = {_BLOCKED_TOP_LEVEL!r}
+
+class _Block(importlib.abc.MetaPathFinder):
+    def find_spec(self, name, path=None, target=None):
+        if name.split(".")[0] in BLOCKED:
+            raise ImportError("hermeticidad: el judge no puede importar " + name)
+        return None
+
+sys.meta_path.insert(0, _Block())
+"""
+
+
+def _run_with_blocked_imports(extra: str) -> subprocess.CompletedProcess[str]:
+    code = _BLOCKER_PREAMBLE + extra
+    return subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        cwd=str(ROOT),
+    )
+
+
+def test_el_bloqueador_de_imports_muerde():
+    """Control positivo: sin esto, el test de abajo pasaria aunque no bloqueara nada."""
+    for name in ("app", "app.llm", "pydantic", "httpx"):
+        result = _run_with_blocked_imports(f"import {name}\n")
+        assert result.returncode != 0, name
+        assert "hermeticidad" in result.stderr, result.stderr
+
+
+def test_el_judge_y_las_puertas_corren_sin_app_ni_librerias_de_red():
+    script = ROOT / "scripts" / "run_llm_evals.py"
+    result = _run_with_blocked_imports(
+        f"sys.argv = [{str(script)!r}]\n"
+        f"runpy.run_path({str(script)!r}, run_name='__main__')\n"
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "hermeticidad" not in result.stderr, result.stderr
