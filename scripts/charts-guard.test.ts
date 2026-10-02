@@ -8,7 +8,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 // @ts-expect-error TS5097: la extensión explícita la exige node --experimental-strip-types.
 import { summarizeCandles, toCandleRows, toCandlestickData, toVolumeData } from '../lib/market/candles.ts';
@@ -18,7 +18,7 @@ const panel = readFileSync('components/research/CompanyMarketPanel.tsx', 'utf8')
 const page = readFileSync('app/(root)/research/[ticker]/page.tsx', 'utf8');
 const workspace = readFileSync('lib/actions/market-workspace.actions.ts', 'utf8');
 const finnhub = readFileSync('lib/actions/finnhub.actions.ts', 'utf8');
-const quoteRoute = readFileSync('app/api/quote/route.ts', 'utf8');
+const quoteRoute = existsSync('app/api/quote/route.ts') ? readFileSync('app/api/quote/route.ts', 'utf8') : '';
 const footer = readFileSync('app/(public)/layout.tsx', 'utf8');
 const candles = readFileSync('lib/market/candles.ts', 'utf8');
 
