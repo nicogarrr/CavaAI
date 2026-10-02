@@ -274,6 +274,23 @@ class LongTermModelService:
         revenue_history = self._annual_by_year(fact_cache["revenue"])
         years = sorted(revenue_history)
         latest_year = years[-1] if years else None
+        # Empresa sin ingresos reportados (pre-revenue, p.ej. biotecnologicas):
+        # no hay ancla de ano por ingresos y el DCF no aplica. Antes todo lo
+        # que se buscaba "para ese ano" (acciones diluidas, ano fiscal) salia
+        # como faltante aunque el dato existiera. El ancla pasa a ser el ultimo
+        # ano anual con cualquier hecho, y el unico motivo es la falta de ingresos.
+        annual_years_any = sorted(
+            {
+                int(fact.fiscal_year)
+                for facts in fact_cache.values()
+                for fact in facts
+                if fact.fiscal_year is not None and _is_annual(fact)
+            }
+        )
+        pre_revenue = not years and bool(annual_years_any)
+        anchor_year = latest_year if latest_year is not None else (
+            annual_years_any[-1] if pre_revenue else None
+        )
         history = self._history_rows(fact_cache, years)
 
         current_price, market_as_of, market_price_source = _current_price_with_date(db, company.id)
@@ -307,7 +324,10 @@ class LongTermModelService:
                 assumption_overrides=driver_assumptions,
             )
             if latest_year is not None
-            else {"status": "missing_formula_inputs", "missing_inputs": ["fiscal_year"]}
+            else {
+                "status": "missing_formula_inputs",
+                "missing_inputs": [] if pre_revenue else ["fiscal_year"],
+            }
         )
         missing_formula_inputs = list(driver_preview.get("missing_inputs") or [])
         missing_mandatory_drivers = list(
@@ -318,10 +338,16 @@ class LongTermModelService:
             for name, value in (
                 ("revenue_history_two_periods", assumptions["revenue_growth"].value),
                 ("normalized_fcf_margin", assumptions["fcf_margin"].value),
-                ("shares_diluted", self._value_for_year(fact_cache["shares_diluted"], latest_year)),
+                ("shares_diluted", self._value_for_year(fact_cache["shares_diluted"], anchor_year)),
             )
             if value is None
         ]
+        if pre_revenue:
+            # Un unico motivo honesto: sin ingresos no hay crecimiento ni margen
+            # FCF sobre ingresos. Las acciones solo se listan si de verdad faltan.
+            missing_core = ["no_revenue_reported"] + [
+                name for name in missing_core if name == "shares_diluted"
+            ]
 
         scenarios: dict[str, Any] = {}
         scenario_specs: list[tuple[str, dict[str, Any]]] = []
