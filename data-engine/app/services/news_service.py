@@ -13,6 +13,28 @@ from app.services.review_alert_service import ReviewAlertService
 from app.services.source_hierarchy_service import classify_source
 from app.services.thesis_graph_service import ThesisGraphService
 
+_NAME_NOISE = {"inc", "corp", "corporation", "co", "company", "ltd", "plc", "sa", "nv", "ag", "the", "group", "holdings", "holding", "limited", "sme", "s.a."}
+
+
+def _ticker_evidence(ticker: str, name: str | None, text: str) -> bool:
+    if not ticker or not text:
+        return False
+    tk = re.escape(ticker)
+    if re.search(rf"\${tk}\b", text, flags=re.IGNORECASE):
+        return True
+    if re.search(rf"\b(?:NYSE|NASDAQ|AMEX|BME|LSE|EPA|ETR)\s*:\s*{tk}\b", text, flags=re.IGNORECASE):
+        return True
+    if not re.search(rf"(?<![\w$]){tk}(?![\w])", text):
+        return False
+    if len(ticker) >= 4:
+        return True
+    for token in re.findall(r"[A-Za-z][A-Za-z.&'-]+", name or ""):
+        if token.lower().strip(".") in _NAME_NOISE or len(token) < 4:
+            continue
+        if re.search(rf"\b{re.escape(token)}\b", text, flags=re.IGNORECASE):
+            return True
+    return False
+
 
 class NewsService:
     def __init__(self) -> None:
@@ -22,10 +44,16 @@ class NewsService:
         self.reviews = ReviewAlertService()
 
     def detect_ticker(self, db: Session, text: str) -> Company | None:
-        tickers = {company.ticker: company for company in db.scalars(select(Company)).all()}
-        upper_text = text.upper()
-        for ticker, company in tickers.items():
-            if re.search(rf"\b{re.escape(ticker)}\b", upper_text):
+        """Vincula un texto a una empresa solo con evidencia suficiente.
+
+        Antes se buscaba el ticker como palabra en el texto en MAYUSCULAS, asi
+        que «A» casaba con cualquier articulo «a» y «AAP» con un partido politico
+        indio. Ahora el ticker se busca respetando mayusculas y, si es corto
+        (< 4 letras), solo vale con evidencia extra: cashtag ($AAP), bolsa
+        ((NYSE: AAP)) o el nombre distintivo de la empresa en el texto.
+        """
+        for company in db.scalars(select(Company)).all():
+            if _ticker_evidence(company.ticker, company.name, text):
                 return company
         return None
 
