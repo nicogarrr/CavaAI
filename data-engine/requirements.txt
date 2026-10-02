@@ -59,7 +59,7 @@ agent-framework-core==1.10.0
 agent-framework-openai==1.10.0
 agent-framework-orchestrations==1.0.0
 sqlalchemy>=2.0.32,<2.1
-alembic>=1.13.2,<1.16
+alembic>=1.13.2,<1.21
 psycopg[binary]>=3.2.1,<4
 minio>=7.2.7,<8
 dramatiq[redis]>=1.17.0,<2
