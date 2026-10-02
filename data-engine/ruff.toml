@@ -11,8 +11,8 @@ extend-exclude = [
 # Antes: ["E9", "F63", "F7", "F82"], que es el minimo por defecto de ruff:
 # errores de sintaxis/IO, tres reglas de comparacion y nombres indefinidos.
 # No incluia F401 (import sin usar), F841 (variable sin usar), B, UP ni S, de
-# modo que `ruff check .` era verde por construccion y no podia detecting que
-# se acumulasen imports muertos o影子 shadowing en 200 ficheros de tests y en
+# modo que `ruff check .` era verde por construccion y no podia detectar que
+# se acumulasen imports muertos o shadowing en 200 ficheros de tests y en
 # todo app/.
 select = [
   "E9",    # errores de sintaxis e IO
@@ -40,7 +40,7 @@ ignore = [
   # enumeran aqui para que la deuda sea visible y no para silenciarla: son
   # 74 hallazgos en 20 ficheros, en su mayoria cierres con captura tardia de
   # variables de bucle (B023) que merecen leerse uno a uno.
-  # TODO: resolver y quitar de esta lista.
+  # PENDIENTE: resolver y quitar de esta lista.
   "B023",   # function-uses-loop-variable: cierre tardio, requiere revision manual
   "B905",   # zip sin strict=: revisar de uno en uno (cambia semantica)
   "B007",   # variable de control de bucle sin usar: solo estetico

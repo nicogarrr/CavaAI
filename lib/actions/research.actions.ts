@@ -1135,7 +1135,7 @@ export async function importResearchDocumentUrl(formData: FormData) {
   revalidatePath(`/research/${ticker}`);
 }
 
-type ResearchNewsEvent = {
+export type ResearchNewsEvent = {
   id: number;
   ticker: string | null;
   date: string;
@@ -1182,8 +1182,26 @@ type ResearchThesisVersion = {
   created_at: string;
 };
 
-export async function getResearchNews(): Promise<ResearchNewsEvent[]> {
-  return getJson<ResearchNewsEvent[]>('/api/news', []);
+export async function getResearchNews(
+  lane: 'empresa' | 'macro' | null = null,
+  offset = 0,
+  limit = 30,
+): Promise<ResearchNewsEvent[]> {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  if (lane) params.set('lane', lane);
+  return getJson<ResearchNewsEvent[]>(`/api/news?${params.toString()}`, []);
+}
+
+/** Página siguiente del flujo (scroll infinito); el cliente la llama al llegar al final. */
+export async function loadMoreResearchNews(
+  lane: 'empresa' | 'macro' | null,
+  offset: number,
+  limit: number,
+): Promise<ResearchNewsEvent[]> {
+  const safeLane = lane === 'macro' || lane === 'empresa' ? lane : null;
+  const safeOffset = Math.max(0, Math.floor(Number(offset) || 0));
+  const safeLimit = Math.min(100, Math.max(1, Math.floor(Number(limit) || 30)));
+  return getResearchNews(safeLane, safeOffset, safeLimit);
 }
 
 export async function analyzeManualNews(

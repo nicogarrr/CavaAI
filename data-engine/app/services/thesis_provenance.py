@@ -43,6 +43,7 @@ _ASSUMPTION_LABELS = {
     "financial_facts": LABEL_DERIVADO,
     "calculated_metric": LABEL_DERIVADO,
     "model_policy": LABEL_SUPUESTO,
+    "inferred_input": LABEL_SUPUESTO,
     "assumption_override": LABEL_SUPUESTO,
     "user_provided": LABEL_SUPUESTO,
     "llm_estimate": LABEL_ESTIMACION_LLM,
@@ -66,8 +67,10 @@ def _item(
     confidence: Any,
     source_type: str | None = None,
     period: str | None = None,
+    source_urls: list[str] | None = None,
 ) -> dict[str, Any]:
     return {
+        "source_urls": list(source_urls or []),
         "source_type": source_type,
         "period": period,
         "key": key,
@@ -104,6 +107,7 @@ def build_inputs_provenance(long_term_model: dict[str, Any]) -> list[dict[str, A
                 list(assumption.get("source_fact_ids") or []),
                 assumption.get("confidence"),
                 assumption.get("source_type"),
+                source_urls=list(assumption.get("source_urls") or []),
             )
         )
     for driver in long_term_model.get("driver_model") or []:
@@ -213,9 +217,12 @@ def classify_origin(
             enriched["origen"] = ORIGEN_INFERIDO
             enriched["fuentes"] = []
             enriched["base_inferencia"] = base
-            enriched["urls_inferencia"] = [
-                c["url"] for c in cited if c.get("url")
-            ]
+            declared = [
+                u for u in (item.get("source_urls") or []) if isinstance(u, str)
+            ] if item.get("source_type") == "inferred_input" else []
+            enriched["urls_inferencia"] = list(
+                dict.fromkeys([c["url"] for c in cited if c.get("url")] + declared)
+            )
             # Base o URLs ausentes: se dice, no se rellena.
             enriched["base_documentada"] = bool(base) and bool(
                 enriched["urls_inferencia"]

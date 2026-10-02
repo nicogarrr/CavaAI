@@ -19,7 +19,6 @@ import {
   LineChart,
   Newspaper,
   Receipt,
-  Settings,
   Share2,
   Sparkles,
   Star,
@@ -123,7 +122,6 @@ export const NAV_SECTIONS: NavSection[] = [
         children: [
           { href: '/research/news', label: 'Noticias', icon: Newspaper },
           { href: '/research/sources', label: 'Fuentes', icon: Library },
-          { href: '/research/settings', label: 'Ajustes', icon: Settings },
         ],
       },
       {

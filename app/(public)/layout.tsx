@@ -105,6 +105,13 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
                             Herramienta educativa de análisis: CavaAI no da asesoramiento de inversión y
                             las decisiones son tuyas.
                         </p>
+                        <p className="mt-1 text-xs">
+                            Gráficos interactivos por{' '}
+                            <a className="public-footer-link" href="https://www.tradingview.com/" rel="noreferrer" target="_blank">
+                                TradingView
+                            </a>
+                            .
+                        </p>
                     </div>
                     <nav aria-label="Enlaces legales" className="flex flex-col items-start gap-2 sm:items-end">
                         {legalLinks.map((link) => (

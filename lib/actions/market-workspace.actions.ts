@@ -30,7 +30,17 @@ export type CompanyMarketSnapshot = {
         // cierre NUNCA se pinta como cotización actual.
         priceKind: 'live' | 'close' | null;
     };
-    history: Array<{ date: string; close: number; volume: number | null }>;
+    // OHLC opcional: Finnhub lo sirve en la misma respuesta de velas, pero un
+    // punto sin OHLC completo sigue valiendo para precio/sparkline; el chart
+    // de velas filtra (toCandleRows) y muestra su propio estado vacio.
+    history: Array<{
+        date: string;
+        open?: number | null;
+        high?: number | null;
+        low?: number | null;
+        close: number;
+        volume: number | null;
+    }>;
     status: 'available' | 'partial' | 'unavailable';
 };
 
@@ -91,6 +101,11 @@ export async function getCompanyMarketSnapshot(ticker: string): Promise<CompanyM
     const history = candles.s === 'ok'
         ? candles.t.map((timestamp, index) => ({
             date: new Date(timestamp * 1000).toISOString().slice(0, 10),
+            // El endpoint ya trae o/h/l en la misma respuesta; antes se
+            // descartaban y el chart de velas no tenia con que pintar.
+            open: candles.o?.[index] ?? null,
+            high: candles.h?.[index] ?? null,
+            low: candles.l?.[index] ?? null,
             close: candles.c[index],
             volume: candles.v[index] ?? null,
         })).filter((point) => Number.isFinite(point.close))

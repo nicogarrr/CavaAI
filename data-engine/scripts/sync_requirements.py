@@ -29,7 +29,8 @@ REQUIREMENTS = ROOT / "requirements.txt"
 
 # Pin CPU-only verificado (wheels linux amd64/aarch64 + win64 en el indice
 # de PyTorch). Al subirlo, actualizar tambien Dockerfile y Dockerfile.prod.
-TORCH_CPU_PIN = "torch==2.9.1+cpu"
+# 2.14.1: combo verificado con docling 2.132 + fastembed 0.8.1 (Fase B).
+TORCH_CPU_PIN = "torch==2.14.1+cpu"
 
 _REQ_RE = re.compile(
     r"^\s*([A-Za-z0-9_.\-]+(?:\[[A-Za-z0-9_.\-, ]+\])?)"

@@ -11,7 +11,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 // @ts-expect-error TS5097: la extensión explícita la exige node --experimental-strip-types.
-import { analyzedCountCopy, degradedCopy } from '../lib/insider-status-copy.ts';
+import { analyzedCountCopy, degradedCopy, durableReadCopy } from '../lib/insider-status-copy.ts';
 
 const view = readFileSync('components/insider/InsiderSignalsView.tsx', 'utf8');
 const count = (v: unknown) => String(v);
@@ -67,4 +67,34 @@ test('unavailable afirma solo lo probado: sin CIK en EDGAR (backend: insider_ser
     // La reason estable del backend («not a US SEC filer») ya la dice la
     // cabecera; solo una reason distinta se muestra como detalle.
     assert.match(view, /initialResult\.reason !== 'not a US SEC filer'/);
+});
+
+/* ------------------------------------------------------------------ *
+ * Lectura DURABLE (GET /api/insider/filings). No va a EDGAR: consulta *
+ * la tabla de filings persistidos por el monitor. Antes el panel    *
+ * pintaba «Monitor cada 15 min · 0 filings persistidos» +           *
+ * «lectura durable no disponible (OperationalError)»: un cero de    *
+ * «no se pudo leer» disfrazado de recuento y una razón cruda a pelo.*
+ * ------------------------------------------------------------------ */
+
+test('lectura durable: el 0 de un status no-ok es «desconocido», no un recuento', () => {
+    const copy = durableReadCopy({ reason: 'OperationalError' });
+    assert.match(copy.header, /número es\s+desconocido y no cero/);
+    assert.match(copy.header, /es un fallo de esa lectura, no una ausencia de Form 4/);
+    assert.match(copy.header, /Las señales de\s+arriba se leen de SEC EDGAR directamente y no dependen de ese histórico/);
+    assert.equal(copy.detail, 'OperationalError');
+    assert.equal(durableReadCopy({}).detail, null);
+});
+
+test('el panel usa durableReadCopy y no muestra el count si el status no es ok', () => {
+    assert.ok(!/lectura durable no disponible/.test(view), 'el copy crudo de status/reason queda vetado');
+    assert.match(view, /durableReadCopy\(initialFilings\)/);
+    assert.match(view, /initialFilings && initialFilings\.status === 'ok' \?/);
+    // Con status no-ok el número NO se pinta como recuento.
+    assert.match(view, /número de filings persistidos desconocido/);
+    assert.ok(
+        !/countText\(initialFilings\?\.count \?\? 0\)/.test(view),
+        'el count de una lectura fallida no puede salir como número',
+    );
+    assert.match(view, /Detalle técnico: \{durable\.detail\}/);
 });

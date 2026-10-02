@@ -127,7 +127,7 @@ export default async function OwnershipPage({ searchParams }: PageProps) {
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-2 rounded-lg border border-gray-800 bg-[#111111] px-3 py-2 text-sm text-gray-300">
+                    <div className="flex items-center gap-2 rounded-lg border border-gray-800 bg-surface-1 px-3 py-2 text-sm text-gray-300">
                         <Building2 aria-hidden="true" className="h-4 w-4 text-teal-300" />
                         SEC 13F
                     </div>
@@ -153,7 +153,7 @@ export default async function OwnershipPage({ searchParams }: PageProps) {
                 <section className="flex flex-wrap gap-2">
                     {managers.map((manager) => (
                         <a
-                            className={`rounded-lg border px-3 py-2 text-sm ${manager.cik === activeCik ? 'border-teal-700 bg-teal-950/30 text-teal-200' : 'border-gray-800 bg-[#101010] text-gray-300 hover:border-gray-700'}`}
+                            className={`rounded-lg border px-3 py-2 text-sm ${manager.cik === activeCik ? 'border-teal-700 bg-teal-950/30 text-teal-200' : 'border-gray-800 bg-surface-1 text-gray-300 hover:border-gray-700'}`}
                             href={`/ownership?cik=${manager.cik}`}
                             key={manager.cik}
                         >
@@ -166,7 +166,7 @@ export default async function OwnershipPage({ searchParams }: PageProps) {
 
             {activeCik && holdings ? (
                 holdings.status === 'ok' ? (
-                    <section className="rounded-xl border border-gray-800 bg-[#101010] p-5">
+                    <section className="rounded-xl border border-gray-800 bg-surface-1 p-5">
                         <div className="flex flex-col gap-2 md:flex-row md:items-center">
                             <h2 className="font-semibold text-gray-100">
                                 {holdings.manager} - informe {reportLabel(holdings.report_date)}
@@ -228,7 +228,7 @@ export default async function OwnershipPage({ searchParams }: PageProps) {
                         ) : null}
                     </section>
                 ) : (
-                    <section className="rounded-xl border border-gray-800 bg-[#101010] p-5 text-sm text-gray-400">
+                    <section className="rounded-xl border border-gray-800 bg-surface-1 p-5 text-sm text-gray-400">
                         <h2 className="font-semibold text-gray-100">Sin datos 13F todavia</h2>
                         <p className="mt-2">
                             Este gestor aún no se ha sincronizado. Pulsa &quot;Sincronizar 13F&quot; para
@@ -239,7 +239,7 @@ export default async function OwnershipPage({ searchParams }: PageProps) {
             ) : null}
             {activeCik && changes ? (
                 changes.status === 'ok' ? (
-                    <section className="rounded-xl border border-gray-800 bg-[#101010] p-5">
+                    <section className="rounded-xl border border-gray-800 bg-surface-1 p-5">
                         <div className="flex flex-col gap-2 md:flex-row md:items-center">
                             <h2 className="font-semibold text-gray-100">
                                 Cambios trimestre a trimestre ({reportLabel(changes.previous_report)} → {reportLabel(changes.latest_report)})
@@ -285,7 +285,7 @@ export default async function OwnershipPage({ searchParams }: PageProps) {
                         ) : null}
                     </section>
                 ) : (
-                    <section className="rounded-xl border border-gray-800 bg-[#101010] p-5 text-sm text-gray-400">
+                    <section className="rounded-xl border border-gray-800 bg-surface-1 p-5 text-sm text-gray-400">
                         <h2 className="font-semibold text-gray-100">Cambios QoQ no disponibles todavia</h2>
                         <p className="mt-2">
                             {changes.status === 'insufficient_history'

@@ -8,7 +8,7 @@ export const metadata: Metadata = {
     default: "CavaAI - Research OS de inversión fundamental",
     template: "%s | CavaAI"
   },
-  description: "CavaAI convierte evidencia, modelos company-specific y memoria histórica en tesis fundamentales trazables.",
+  description: "CavaAI convierte evidencia, modelos específicos de cada empresa y memoria histórica en tesis fundamentales trazables.",
   keywords: ["fundamental analysis", "investment thesis", "financial modeling", "research OS", "análisis fundamental"],
   authors: [{ name: "CavaAI Team" }],
   creator: "CavaAI",
