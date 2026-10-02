@@ -61,7 +61,10 @@ ignore = [
 [lint.per-file-ignores]
 # Los tests redefinen fixtures y helpers a proposito.
 "tests/*.py" = ["F811", "B011", "SIM117", "C901", "B017", "B905", "B023", "F841"]
-# modules/ es codigo heredado (yfinance/funds/garp) que se mantiene aparte.
+# modules/ son dos modulos legacy (portfolio_analytics, return_engine) que solo
+# ejercen tests/test_portfolio_analytics.py y tests/test_return_engine.py. Nada
+# de app/ los importa. E6 borro los otros 8 ficheros de modules/ tras demostrar
+# que eran inalcanzables; estos dos se quedan porque los tests los importan.
 "modules/*.py" = ["F841", "F401", "B008", "E501", "UP035"]
 
 [lint.isort]
