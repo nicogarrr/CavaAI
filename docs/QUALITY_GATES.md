@@ -151,3 +151,23 @@ python scripts/run_coverage_gate.py --report
 | `data-engine/evals/llm/README.md`, `data-engine/evals/valuation/README.md`, `data-engine/evals/ingest/README.md` | **PENDIENTE**: todavia no existen. Los tres runners imprimen su cobertura por puerta, por capa/motor y por familia de fuente, que es la parte que estos README documentarian. |
 | [`data-engine/scripts/run_coverage_gate.py`](../data-engine/scripts/run_coverage_gate.py) | El gate, con las 10 situaciones en las que falla cerrado. |
 | [`data-engine/LOCKFILE.md`](../data-engine/LOCKFILE.md) | El lockfile (`uv.lock`) con las versiones exactas del arbol de dependencias y como regenerarlo (#765). Ruff y pyright van ademas pineados en los workflows (`ruff==0.16.10`, `pyright==1.1.414`) y las de runtime por rango en `data-engine/requirements.txt`, cuya paridad con `pyproject.toml` vigila el job `dep-parity`. |
+
+## Evidencia literal de las cifras RAG
+
+Las seis cifras RAG de la tabla salen del job Evals del run 37031348481, que es
+el run del head de la PR #787 (no de main), fecha 2026-10-02. Salida literal del
+log (corpus de 17 documentos; 34 casos que exigen respuesta y 16 que deben
+negarse, es decir 50 medidos mas controles negativos aparte):
+
+```
+METRICAS GATEABLES (RAGAS con juez determinista; sin LLM, sin red)
+  faithfulness         1.000  >= 0.75  OK   (34 casos, sin cambio)
+  answer_relevancy     0.760  >= 0.70  OK   (34 casos, sin cambio)
+  context_precision    0.866  >= 0.70  OK   (34 casos, sin cambio)
+  context_recall       1.000  >= 0.70  OK   (34 casos, sin cambio)
+  abstention_accuracy  1.000  >= 1.00  OK   (16 casos, sin cambio)
+  source_hit_rate      1.000  >= 0.90  OK   (34 casos, sin cambio)
+```
+
+Para comprobarlas: abrir ese job en GitHub Actions con la sesion del repo, o
+volver a ejecutar `data-engine/scripts/run_rag_evals.py` en local.
