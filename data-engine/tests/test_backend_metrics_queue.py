@@ -373,19 +373,40 @@ def test_sin_middleware_los_contadores_no_inventan_ceros():
 def test_instalar_el_middleware_es_idempotente():
     from app.workers.dramatiq_app import broker
 
+    def _contar() -> int:
+        return [type(item).__name__ for item in broker.middleware].count("QueueMetricsMiddleware")
+
+    def _desinstalar() -> None:
+        broker.middleware[:] = [
+            item for item in broker.middleware if type(item).__name__ != "QueueMetricsMiddleware"
+        ]
+
+    # El worker REAL ya trae el middleware: `app/workers/dramatiq_app.py` llama a
+    # `install_queue_middleware()` al importarse, asi que el broker global llega
+    # aqui con uno puesto. Es el estado de produccion y se comprueba primero: la
+    # garantia que importa en el worker es que la llamada de arranque no
+    # DUPLIQUE contadores.
+    assert _contar() == 1, f"el import del worker tiene que dejar el middleware puesto: {broker.middleware}"
+    assert queue_stats.install_queue_middleware(broker) is False
+    assert _contar() == 1, "una segunda llamada no puede anadir un segundo middleware"
+
+    # Y la idempotencia de verdad, sobre un broker limpio: primera True, segunda
+    # False, una sola instancia al final.
+    _desinstalar()
     queue_stats.build_queue_metrics_middleware()
     try:
         first = queue_stats.install_queue_middleware(broker)
         second = queue_stats.install_queue_middleware(broker)
         assert first is True
         assert second is False
-        names = [type(item).__name__ for item in broker.middleware]
-        assert names.count("QueueMetricsMiddleware") == 1
+        assert _contar() == 1
     finally:
-        broker.middleware[:] = [
-            item for item in broker.middleware
-            if type(item).__name__ != "QueueMetricsMiddleware"
-        ]
+        # Se devuelve el broker al estado en que se le ha encontrado: otro test
+        # que mire el middleware global (o el worker, si esto corre en el mismo
+        # proceso) no debe heredar un broker desmontado.
+        _desinstalar()
+        assert queue_stats.install_queue_middleware(broker) is True
+        assert _contar() == 1
 
 
 # --- persistencia -----------------------------------------------------------

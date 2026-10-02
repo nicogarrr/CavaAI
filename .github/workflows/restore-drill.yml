@@ -52,8 +52,17 @@ jobs:
     # restore y arranque de uvicorn. Si se pasa, algo esta colgado, no lento.
     timeout-minutes: 45
     services:
+      # CON DIGEST, y con el MISMO digest que docker-compose.yml / .prod.yml: un
+      # drill que levanta otra imagen no demuestra nada sobre el backup de la
+      # imagen real, que es justo lo que se quiere demostrar. Los digests estan
+      # declarados en data-engine/scripts/backup/_kit.py (POSTGRES_IMAGE,
+      # QDRANT_IMAGE, MINIO_IMAGE) y
+      # tests/test_backup_contracts.py::test_workflow_usa_las_imagenes_fijadas
+      # mantiene las dos cosas casadas. MinIO va solo por tag porque su digest
+      # no se pudo resolver desde el entorno donde se fijaron los demas (quay.io
+      # devuelve 401); ver el TODO(digest, minio) de _kit.py.
       postgres:
-        image: postgres:17
+        image: postgres:17@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f
         env:
           POSTGRES_USER: portfolio
           POSTGRES_PASSWORD: portfolio
@@ -78,7 +87,7 @@ jobs:
           --health-timeout 5s
           --health-retries 24
       qdrant:
-        image: qdrant/qdrant:v1.12.5
+        image: qdrant/qdrant:v1.12.5@sha256:05fecce7dce45d1254e0468bc037e8210e187fd56fa847688b012293d5f08aae
         ports:
           - 6333:6333
         options: >-
@@ -143,10 +152,17 @@ jobs:
         # self-hosted (o una VM reusada) puede haber otro postgres:17 en
         # marcha, y elegirlo llevaria el `DROP DATABASE ... WITH (FORCE)` del
         # paso siguiente a la base de otra persona.
+        #
+        # El filtro lleva la REFERENCIA COMPLETA con digest (la misma que
+        # declara el service): `ancestor=postgres:17` no casa con un contenedor
+        # que corre `postgres:17@sha256:...`, y el filtro seuiria devolviendo 0
+        # o, peor, otro postgres:17 de otra parte. Si esto deja de encontrar
+        # el contenedor, el error es el pin, no la ausencia de Postgres.
         run: |
-          mapfile -t PGS < <(docker ps --filter ancestor=postgres:17 --format '{{.ID}}')
+          mapfile -t PGS < <(docker ps --filter 'ancestor=postgres:17@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f' --format '{{.ID}}')
           if [ "${#PGS[@]}" -ne 1 ]; then
-            echo "::error::se esperaba 1 contenedor postgres:17 y hay ${#PGS[@]}; no se elige a ciegas"
+            echo "::error::se esperaba 1 contenedor postgres:17@sha256:d74eea... y hay ${#PGS[@]}; no se elige a ciegas"
+            docker ps --format '{{.ID}} {{.Image}}' >&2
             exit 1
           fi
           PG_ID="${PGS[0]}"
