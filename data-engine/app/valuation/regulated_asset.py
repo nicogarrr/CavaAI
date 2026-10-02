@@ -317,7 +317,7 @@ def reconcile_regulated_asset_model(
         cost_of_equity=cost_of_equity,
         growth=growth,
     )
-    dividend_next = book_equity * allowed_roe * equity_scale * payout_ratio * (1 + growth)
+    dividend_next = book_equity * allowed_roe * payout_ratio * (1 + growth)
     dividend_value = dividend_next / (cost_of_equity - growth)
     residual = excess["equity_value"] - dividend_value
     reconciling_payout = (
@@ -446,12 +446,13 @@ def frozen_base_warning(
             "reason": "No capex / depreciation fact: the base-growth assumption is unverifiable.",
         }
     capex_abs = abs(capex) if capex is not None else None
-    depreciation = (
+    depreciation_raw = (
         depreciation_amortization
         if depreciation_amortization is not None
         else (rate_base * depreciation_rate if depreciation_rate is not None else None)
     )
-    if capex_abs is None or depreciation is None:
+    depreciation_abs = abs(depreciation_raw) if depreciation_raw is not None else None
+    if capex_abs is None or depreciation_abs is None:
         return {
             "status": "partial",
             "warning": False,
@@ -460,14 +461,23 @@ def frozen_base_warning(
                 "in the base cannot be measured, so no growth warning is claimed."
             ),
         }
-    net_investment = capex_abs - depreciation
+    net_investment = capex_abs - depreciation_abs
     implied_growth = net_investment / rate_base
-    warning = capex_abs > depreciation and implied_growth > growth
+    warning = capex_abs > depreciation_abs and implied_growth > growth
+    sign_normalisation = {
+        "applied": (capex is not None and capex != capex_abs)
+        or (depreciation_raw is not None and depreciation_raw != depreciation_abs),
+        "capex_raw": capex,
+        "capex_used": capex_abs,
+        "depreciation_raw": depreciation_raw,
+        "depreciation_used": depreciation_abs,
+    }
     return {
         "status": "ok",
         "warning": warning,
         "capex": capex_abs,
-        "depreciation": depreciation,
+        "depreciation": depreciation_abs,
+        "sign_normalisation": sign_normalisation,
         "net_investment_in_base": net_investment,
         "implied_base_growth": implied_growth,
         "modelled_base_growth": growth,
@@ -515,7 +525,8 @@ def run_regulated_asset(inputs: RegulatedAssetInputs) -> RegulatedAssetResult:
     book_base = inputs.book_rate_base if inputs.book_rate_base is not None else inputs.rate_base
     book_equity_start = book_base * equity_scale
     book_equity_regulated = inputs.rate_base * equity_scale
-    enterprise_requirement = inputs.rate_base / inputs.equity_ratio
+    capital_requirement = inputs.rate_base / inputs.equity_ratio
+    convergence_credit = book_equity_regulated - book_equity_start
 
     years = inputs.transition_years
     schedule: list[dict] = []
@@ -552,7 +563,7 @@ def run_regulated_asset(inputs: RegulatedAssetInputs) -> RegulatedAssetResult:
     ) * book_equity_regulated
     terminal_excess_pv = converged_profit_per_period / (inputs.cost_of_equity - growth)
     pv_terminal = terminal_excess_pv / ((1 + inputs.cost_of_equity) ** years)
-    equity_value = book_equity_start + pv_explicit_profit + pv_terminal
+    equity_value = book_equity_start + convergence_credit + pv_explicit_profit + pv_terminal
     value_per_share = equity_value / inputs.shares_diluted
 
     converged_earnings = inputs.rate_base * inputs.allowed_roe * equity_scale
@@ -599,7 +610,7 @@ def run_regulated_asset(inputs: RegulatedAssetInputs) -> RegulatedAssetResult:
     return RegulatedAssetResult(
         equity_value=equity_value,
         value_per_share=value_per_share,
-        enterprise_value=enterprise_requirement,
+        enterprise_value=capital_requirement,
         book_equity=book_equity_start,
         allowed_earnings=converged_earnings,
         excess_return_pv=pv_explicit_profit + pv_terminal,
@@ -630,18 +641,25 @@ def run_regulated_asset(inputs: RegulatedAssetInputs) -> RegulatedAssetResult:
             "equity_value": equity_value,
             "value_per_share": value_per_share,
             "value_composition": {
-                "book_equity": book_equity_start,
+                "book_equity_start": book_equity_start,
+                "convergence_credit": convergence_credit,
                 "pv_transition_economic_profit": pv_explicit_profit,
                 "pv_perpetuity_economic_profit": pv_terminal,
-                "sum": book_equity_start + pv_explicit_profit + pv_terminal,
+                "sum": book_equity_start + convergence_credit + pv_explicit_profit + pv_terminal,
                 "formula": (
-                    "V = B0 + Σ_t (roe_t - ke) * B_{t-1} / (1+ke)^t + "
+                    "V = B0 + (B_reg - B0) + Σ_t (roe_t - ke) * B_{t-1} / (1+ke)^t + "
                     "(allowed_roe - ke) * B_reg / (ke - g) / (1+ke)^T"
                 ),
             },
-            "enterprise_value": enterprise_requirement,
-            "enterprise_value_formula": "EV = rate_base / equity_ratio",
-            "equity_value_identity": "Equity = EV * equity_ratio = rate_base * convention_scale",
+            "enterprise_value": capital_requirement,
+            "enterprise_requirement": capital_requirement,
+            "enterprise_requirement_formula": "capital_requirement = rate_base / equity_ratio",
+            "equity_value_identity": (
+                "Equity = book_equity_regulated + PV(excess return); "
+                "enterprise_requirement = rate_base / equity_ratio is the capital "
+                "requirement of the base, NOT the enterprise value implied by equity_value"
+            ),
+            "convergence_credit": convergence_credit,
             "book_equity": book_equity_start,
             "book_equity_start": book_equity_start,
             "book_equity_regulated": book_equity_regulated,
