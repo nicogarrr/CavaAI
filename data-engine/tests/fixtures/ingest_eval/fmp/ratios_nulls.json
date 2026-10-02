@@ -1,0 +1,28 @@
+{
+ "origin": "synthetic_fixture",
+ "endpoint": "ratios",
+ "rows": [
+  {
+   "symbol": "SYNQ",
+   "date": "2025-12-31",
+   "period": "FY",
+   "calendarYear": 2025,
+   "grossProfitMargin": 0.4,
+   "operatingProfitMargin": 0.14,
+   "netProfitMargin": 0.1,
+   "debtEquityRatio": null,
+   "effectiveTaxRate": ""
+  },
+  {
+   "symbol": "SYNQ",
+   "date": "2024-12-31",
+   "period": "FY",
+   "calendarYear": 2024,
+   "grossProfitMargin": "",
+   "operatingProfitMargin": 0.14,
+   "netProfitMargin": 0.1,
+   "debtEquityRatio": 0.48,
+   "effectiveTaxRate": 0.19
+  }
+ ]
+}

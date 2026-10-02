@@ -1,0 +1,23 @@
+{
+ "origin": "synthetic_fixture",
+ "id": "filing_date_mismatch",
+ "company": {
+  "ticker": "SYNQ",
+  "cik": "0001780312"
+ },
+ "accession": "0001193125-26-000001",
+ "index_html": "<div id=\"secNum\"><strong>SEC Accession <acronym title=\"Number\">No.</acronym></strong> 0001193125-26-000001 </div>\n<div class=\"formContent\"><div class=\"formGrouping\"><div class=\"infoHead\">Filing Date</div> <div class=\"info\">2026-02-10</div>\n<div class=\"infoHead\">Documents</div> <div class=\"info\">1</div></div><div class=\"formGrouping\"><div class=\"infoHead\">Period of Report</div> <div class=\"info\">2025-12-31</div></div></div>\n<span class=\"companyName\">Synthetic Holdings PLC (Filer) CIK: <a href=\"/cgi-bin/browse-edgar?CIK=0001780312&amp;action=getcompany\">0001780312</a></span>\n<table class=\"tableFile\"><tr><th>Seq</th></tr><tr><td scope=\"row\">1</td><td scope=\"row\">10-K</td><td scope=\"row\"><a href=\"/Archives/edgar/data/1780312/000119312526000001/synth-10k.htm\">synth-10k.htm</a></td><td scope=\"row\">10-K</td><td scope=\"row\">506</td></tr></table>\n",
+ "index_sha256": "b4e5bad991a82a8992bd56c24a4c3e610172918362be67583d112da3c59ea7d0",
+ "document": "<html><body><p>Synthetic annual report for the ingest precision eval.</p><p>Revenue was 5,000,000 thousand US dollars for the fiscal year.</p><p>Net income was 500,000 thousand US dollars.</p>xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</body></html>",
+ "document_filename": "synth-10k.htm",
+ "document_form": "10-K",
+ "document_url": "https://www.sec.gov/Archives/edgar/data/1780312/000119312526000001/synth-10k.htm",
+ "document_sha256": "a4f08965919771325a46190692ab8cfd848ba2fc83c039b2bc5fc21a9876f487",
+ "submissions_capture": "{\n \"cik\": \"0001780312\",\n \"tickers\": [\n  \"SYNQ\"\n ],\n \"filings\": {\n  \"recent\": {\n   \"accessionNumber\": [\n    \"0001193125-26-000001\"\n   ],\n   \"filingDate\": [\n    \"2026-02-12\"\n   ],\n   \"primaryDocument\": [\n    \"synth-10k.htm\"\n   ],\n   \"form\": [\n    \"10-K\"\n   ]\n  }\n }\n}\n",
+ "capture": {
+  "http_status": 200,
+  "second_fetch_identical": true,
+  "host": "www.sec.gov",
+  "fetched_at_utc": "2026-10-01T08:50:00+00:00"
+ }
+}

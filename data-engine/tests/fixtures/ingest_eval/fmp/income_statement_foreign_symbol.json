@@ -1,0 +1,29 @@
+{
+ "origin": "synthetic_fixture",
+ "endpoint": "income-statement",
+ "rows": [
+  {
+   "symbol": "SYNQ",
+   "date": "2025-12-31",
+   "period": "FY",
+   "calendarYear": 2025,
+   "revenue": 5000000000,
+   "netIncome": 500000000
+  },
+  {
+   "symbol": "OTRA",
+   "date": "2025-12-31",
+   "period": "FY",
+   "calendarYear": 2025,
+   "revenue": 999000000000,
+   "netIncome": 99000000000
+  },
+  {
+   "symbol": "OTRA",
+   "date": "2025-09-30",
+   "period": "TTM",
+   "calendarYear": 2025,
+   "revenue": 888000000000
+  }
+ ]
+}

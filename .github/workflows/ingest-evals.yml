@@ -1,0 +1,43 @@
+name: Ingest precision evals
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ingest-evals-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ingest-precision:
+    name: Ingest precision (C4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: data-engine
+    env:
+      APP_ENV: test
+      DATABASE_URL: sqlite:///./cavaai_ingest_evals.db
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: data-engine/requirements.txt
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -r requirements.txt "pytest>=8.0.0,<9"
+      # 79 casos contra la ingesta real (SEC/EDGAR, FMP, ESEF) con corpus
+      # sintetico declarado y guardian de sockets. Las cuatro metricas con
+      # umbral (field accuracy, period attribution, source attribution y
+      # abstention) mas la cobertura por puerta y por familia de fuente.
+      - name: Runner de precision de ingesta
+        run: python scripts/run_ingest_evals.py
+      - name: Contratos de puerta y guardian de red
+        run: python -m pytest tests/test_ingest_eval_contracts.py tests/test_ingest_eval_fixtures.py -q
