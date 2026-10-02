@@ -154,13 +154,14 @@ class StandardDCFEngine(ValuationEngine):
         growth = max(min(raw_growth, 0.45), -0.15)
         margin, margin_clamped = clamp_fcf_margin(margin, ceiling=0.50)
 
-        wacc_traceable = traceable_wacc(context.db, company)
+        wacc_traceable, wacc_period = traceable_wacc(context.db, company)
         if wacc_traceable is not None:
             wacc = wacc_traceable
             wacc_source = "calculated_metric"
         else:
             wacc = default_wacc(company)
             wacc_source = "tag_default"
+            wacc_period = None
         terminal = default_terminal_growth(company)
 
         net_debt = snapshot.value("net_debt")
@@ -352,6 +353,7 @@ class StandardDCFEngine(ValuationEngine):
                 "fcf_margin_clamped_from": raw_margin if margin_clamped else None,
                 "wacc_source": wacc_source,
                 "wacc": wacc,
+                "wacc_period": wacc_period,
                 "net_debt": net_debt,
                 "adr_ratio": ratio,
                 "comparable_price": comparable_price,

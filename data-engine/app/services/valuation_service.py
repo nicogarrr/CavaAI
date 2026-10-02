@@ -115,16 +115,19 @@ def _assert_no_lookahead_guard(
         )
 
 
-def _position_price(db: Session, company_id: int) -> float | None:
+def _position_price(db: Session, company_id: int, as_of: date | None = None) -> float | None:
     """Return a real market price or None. Never invent a placeholder price."""
     position = db.scalar(select(Position).where(Position.company_id == company_id).limit(1))
     if position and position.market_price and float(position.market_price) > 0:
         return float(position.market_price)
-    market_price = db.scalar(
+    query = (
         select(MarketPrice)
         .where(MarketPrice.company_id == company_id)
-        .order_by(desc(MarketPrice.date))
-        .limit(1)
+    )
+    if as_of is not None:
+        query = query.where(MarketPrice.date <= as_of)
+    market_price = db.scalar(
+        query.order_by(desc(MarketPrice.date)).limit(1)
     )
     if market_price and market_price.close and float(market_price.close) > 0:
         return float(market_price.close)
@@ -157,7 +160,7 @@ class ValuationService:
     def value_company(
         self, db: Session, company: Company, *, as_of: date | None = None
     ) -> dict:
-        current_price = _position_price(db, company.id)
+        current_price = _position_price(db, company.id, as_of=as_of)
         engine = resolve(company)
         context = engine.build_context(db, company, current_price)
         # Blocker enforcement lives here as well as in the engines: this is the
