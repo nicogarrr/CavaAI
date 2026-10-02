@@ -11,6 +11,18 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  # Por ref, como en ci.yml: sin el, el run de `schedule` (rama por defecto) y
+  # el de un push a main se cancelarian entre si.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # PR -> true: el analisis del commit viejo no sirve de nada.
+  # main y schedule -> false: este workflow NO es un linter. El paso
+  # `codeql-action/analyze` SUBE SARIF al code scanning de GitHub, y cancelar a
+  # mitad deja el panel de seguridad a medio actualizar para ese commit, que es
+  # justo el estado en el que no se puede confiar. Un escaner que se cancela da
+  # una falsa impresion de "sin alertas".
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   analyze:
     name: Analyze
@@ -21,6 +33,10 @@ jobs:
       contents: read
       security-events: write
     strategy:
+      # false a proposito: los dos analisis (js y python) se reportan aunque uno
+      # falle. Con true, un fallo de python mataria el de javascript y el panel
+      # de seguridad mostraria "javascript: sin alertas" cuando en realidad no se
+      # llego a mirar. El coste (un runner mas) es menor que un panel mentiroso.
       fail-fast: false
       matrix:
         language: [javascript-typescript, python]
