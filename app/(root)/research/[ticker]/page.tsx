@@ -682,7 +682,12 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
   const moatPromise = activeView === 'overview' ? withResearchTelemetry('moat-score', () => getMoatQualityScore(ticker)) : undefined;
   // "Estado seguido" real del usuario. Antes esperaba al snapshot para pedirlo,
   // y no hay NINGÚN motivo: el watchlist es del tenant, no depende del ticker.
-  const watchlistPromise = withResearchTelemetry('watchlist', () => getWatchlist()).catch(() => []);
+  // Su fallo NO equivale a «no sigues esta empresa»: degrada con una señal
+  // explícita para que la cabecera diga «estado desconocido» en vez de
+  // pintar «Seguir» sobre una lista vacía inventada.
+  const watchlistPromise = withResearchTelemetry('watchlist', () => getWatchlist())
+    .then((items) => ({ items, degraded: false as const }))
+    .catch(() => ({ items: [] as Awaited<ReturnType<typeof getWatchlist>>, degraded: true as const }));
   // El workspace de la vista activa también sale aquí, antes de esperar el
   // snapshot: la rama de abajo solo lo recoge. Es la fase que más tiempo
   // añadía (la tesis son 7 llamadas) y no dependía de nada de lo anterior.
@@ -761,8 +766,12 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
   // D2a: market, watchlist y workspace de la vista vuelan juntos desde arriba.
   // Aquí ya no se encadena ninguna lectura: solo se recogen, cada una con su
   // degradación honesta.
-  const [watchlist, viewSettled] = await Promise.all([watchlistPromise, viewPromise]);
-  const isFollowed = watchlist.some((item) => item.symbol.toUpperCase() === ticker);
+  const [{ items: watchlist, degraded: watchlistDegraded }, viewSettled] = await Promise.all([watchlistPromise, viewPromise]);
+  // null = estado DESCONOCIDO (el backend de cartera falló): la cabecera no
+  // puede decir «Seguir» ni ofrecer «dejar de seguir» a ciegas.
+  const isFollowed = watchlistDegraded
+    ? null
+    : watchlist.some((item) => item.symbol.toUpperCase() === ticker);
   /**
    * Dato del workspace de esta vista. Si la lectura degradó sale el estado
    * vacío HONESTO de `EMPTY_VIEW_DATA` (N/D con el motivo en el aviso), no un
