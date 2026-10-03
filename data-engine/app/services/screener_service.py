@@ -300,6 +300,11 @@ class ScreenerService:
         for _criterion_item, left, right in parsed_criteria:
             used_names.update(left.names | right.names)
         results = []
+        # Names of the screen that at least ONE company has data for. A name
+        # nobody has (typo, metric never ingested) used to look like "every
+        # company is missing it" with no hint that the metric itself is the
+        # problem.
+        names_with_data: set[str] = set()
         companies = list(db.scalars(select(Company).order_by(Company.ticker)).all())
         # Batch-fetch observations once: two queries per table instead of two
         # queries per company (2N -> 2 on every screener run).
@@ -328,6 +333,7 @@ class ScreenerService:
             )
             self._custom_metrics(observations, definitions)
             values = {key: item.value for key, item in observations.items()}
+            names_with_data.update(name for name in used_names if name in observations)
             criterion_results: list[dict[str, Any]] = []
             # Criteria and ranking are tracked separately ON PURPOSE. A ranking
             # formula is a tiebreaker: it orders the result set, it never decides
@@ -440,6 +446,9 @@ class ScreenerService:
             "ranking_direction": ranking_direction,
             "company_count": len(results),
             "match_count": sum(1 for row in results if row["matched"]),
+            # Metrics the screen uses that NO company has data for. Empty when
+            # the universe is empty (nothing to conclude).
+            "metrics_without_data": sorted(used_names - names_with_data) if results else [],
             "results": results,
         }
 
