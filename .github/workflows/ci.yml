@@ -539,7 +539,14 @@ jobs:
           cache: pip
           cache-dependency-path: data-engine/requirements.txt
       - run: npm ci
-      - name: Audit npm dependencies
+      # Gate: solo dependencias que se envian (--omit=dev). Las advisories de la
+      # cadena de desarrollo (eslint/typescript-eslint) no llegan a produccion;
+      # se siguen mostrando en el paso informativo de abajo sin bloquear el PR.
+      - name: Audit npm dependencies (produccion)
+        run: npm audit --omit=dev --audit-level=high
+      - name: Audit npm dependencies (incluye desarrollo, informativo)
+        if: ${{ always() }}
+        continue-on-error: true
         run: npm audit --audit-level=high
       # `if: always()` en los dos pasos de pip: un `npm audit` en rojo no debe
       # dejar el lado Python sin auditar. Los dos hallazgos se ven juntos.
