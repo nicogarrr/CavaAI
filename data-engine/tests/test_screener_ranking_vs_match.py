@@ -191,3 +191,28 @@ def test_losing_the_ranking_metric_never_deactivates_an_existing_match(db: Sessi
     )
     # Sin cambio de pertenencia -> no hay "nueva" coincidencia ni alerta duplicada.
     assert norank.id not in response["new_match_company_ids"]
+
+
+def test_metric_nobody_has_is_reported_not_silently_zero_matches(db: Session):
+    company = _company("AAA")
+    db.add(company)
+    db.flush()
+    _metric(db, company, "roic", "0.2")
+    db.commit()
+
+    response = ScreenerService().run(
+        db,
+        criteria=[
+            {"left": "roic", "operator": ">", "right": "0.1"},
+            {"left": "roicc_typo", "operator": ">", "right": "0.1"},
+        ],
+    )
+
+    assert response["metrics_without_data"] == ["roicc_typo"]
+    assert response["match_count"] == 0
+
+    ok = ScreenerService().run(
+        db, criteria=[{"left": "roic", "operator": ">", "right": "0.1"}]
+    )
+    assert ok["metrics_without_data"] == []
+    assert ok["match_count"] == 1
