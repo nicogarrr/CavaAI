@@ -284,7 +284,7 @@ jobs:
       # fallando con motivo explicito; nunca se sustituye por un stub.
       - name: Cache del modelo de embeddings (RAG evals)
         if: ${{ steps.discover.outputs.present != '' }}
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cache/huggingface
