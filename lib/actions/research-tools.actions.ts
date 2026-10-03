@@ -144,6 +144,7 @@ export type ScreenResult = {
   ranking_direction: string;
   company_count: number;
   match_count: number;
+  metrics_without_data?: string[];
   new_match_company_ids?: number[];
   results: Array<{
     company_id: number;
