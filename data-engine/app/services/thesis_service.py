@@ -636,6 +636,15 @@ class ThesisService:
                 "Hipotesis en formacion: faltan datos de mercado o de valoracion "
                 "para formular una hipotesis comprobable."
             )
+        if base <= 0:
+            # Con un escenario base negativo o nulo el margen (base/precio - 1)
+            # no es interpretable: -249% sobre una base de -84.70 se leia como
+            # un dato real. Se dice tal cual, sin porcentaje.
+            return (
+                f"A {price:.2f}, el escenario base de {company.name} es {base:.2f} "
+                f"(no positivo): el modelo no sostiene un valor por accion y el "
+                f"margen de seguridad no es interpretable."
+            )
         reverse = valuation.get("reverse_dcf") or {}
         required_growth = reverse.get("required_revenue_growth")
         growth_txt = (
