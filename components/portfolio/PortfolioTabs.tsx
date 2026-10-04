@@ -8,6 +8,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import dynamic from 'next/dynamic';
 import PortfolioSummary from '@/components/portfolio/PortfolioSummary';
+import { hasCostBasis } from '@/lib/portfolio-insight';
 import PortfolioHoldings from '@/components/portfolio/PortfolioHoldings';
 import PortfolioTransactions from '@/components/portfolio/PortfolioTransactions';
 import PortfolioAllocation from '@/components/portfolio/PortfolioAllocation';
@@ -227,6 +228,10 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
                                 {summary.holdings.length === 0 ? (
                                     <p className="text-sm text-gray-500">
                                         Sin posiciones todavía: el rendimiento aparecerá cuando registres la primera.
+                                    </p>
+                                ) : !hasCostBasis(summary) ? (
+                                    <p className="text-sm text-gray-500">
+                                        Rendimiento N/D: falta la base de coste de tus posiciones.
                                     </p>
                                 ) : (
                                 <p className={`text-sm flex items-center gap-1 ${summary.totalGain >= 0 ? 'text-green-400' : 'text-red-400'}`}>
