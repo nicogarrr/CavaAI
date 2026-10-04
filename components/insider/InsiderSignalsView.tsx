@@ -15,6 +15,7 @@ import { formatRecordValue, type DataRecord } from '@/components/data/RecordView
 import type { InsiderFilingsResult, InsiderSignalsResult } from '@/lib/actions/insider.actions';
 import { getInsiderSignals, loadMoreInsiderFilings } from '@/lib/actions/insider.actions';
 import type { InsiderFilingEntry } from '@/lib/actions/insider.actions';
+import type { InsiderShortcuts } from '@/lib/insider/shortcuts';
 import { analyzedCountCopy, degradedCopy, persistedSourceCopy, durableReadCopy } from '@/lib/insider-status-copy';
 import { toast } from 'sonner';
 
@@ -23,6 +24,8 @@ interface InsiderSignalsViewProps {
     initialResult: InsiderSignalsResult | null;
     /** Filings Form 4/4-A persistidos (GET /api/insider/filings). */
     initialFilings?: InsiderFilingsResult | null;
+    /** Tickers de cartera y watchlist como atajos (solo lectura). */
+    shortcuts?: InsiderShortcuts;
 }
 
 function signalTone(signal: unknown): 'default' | 'outline' {
@@ -89,7 +92,7 @@ function signalKey(signal: DataRecord): string {
     return `${type}|${subject}|${date}|${form}|${execution}|${formatRecordValue(signal.detail)}`;
 }
 
-export default function InsiderSignalsView({ initialTicker, initialResult, initialFilings }: InsiderSignalsViewProps) {
+export default function InsiderSignalsView({ initialTicker, initialResult, initialFilings, shortcuts }: InsiderSignalsViewProps) {
     const router = useRouter();
     const [ticker, setTicker] = useState(initialTicker);
     const [notifying, setNotifying] = useState(false);
@@ -233,9 +236,28 @@ export default function InsiderSignalsView({ initialTicker, initialResult, initi
             ) : null}
 
             {!initialTicker ? (
-                <p className="rounded-lg border border-dashed border-gray-800 p-6 text-sm text-gray-500">
-                    Introduce un ticker para ver sus señales insider.
-                </p>
+                <div className="rounded-lg border border-dashed border-gray-800 p-6 text-sm text-gray-500">
+                    <p>Introduce un ticker para ver sus señales insider.</p>
+                    {[
+                        ['De tu cartera', shortcuts?.portfolio ?? []],
+                        ['De tu watchlist', shortcuts?.watchlist ?? []],
+                    ].map(([label, symbols]) =>
+                        (symbols as string[]).length ? (
+                            <div className="mt-3 flex flex-wrap items-center gap-2" key={label as string}>
+                                <span className="text-xs text-gray-500">{label as string}:</span>
+                                {(symbols as string[]).map((symbol) => (
+                                    <Link
+                                        className="rounded-md border border-gray-700 px-2 py-1 text-xs font-semibold text-teal-300 hover:border-teal-700"
+                                        href={`/insider?ticker=${encodeURIComponent(symbol)}`}
+                                        key={symbol}
+                                    >
+                                        {symbol}
+                                    </Link>
+                                ))}
+                            </div>
+                        ) : null,
+                    )}
+                </div>
             ) : !initialResult ? (
                 <p className="rounded-lg border border-red-900/50 bg-red-950/20 p-6 text-sm text-red-200">
                     No se pudieron cargar las señales de {initialTicker}. Reintenta más tarde.
