@@ -32,6 +32,7 @@ import { formatDate, formatNumber, formatUserDateTime } from '@/lib/format';
 import { t } from '@/lib/i18n/t';
 import { reviewResearchExpectations } from '@/lib/actions/research.actions';
 import { alertCardCopy } from '@/lib/alerts/card-copy';
+import { etiquetaCanal, etiquetaEstadoEntrega } from '@/lib/alerts/delivery-labels';
 
 const ALERT_TYPE_LABELS: Record<AlertType, string> = {
     price_above: t('alerts.types.priceAbove'),
@@ -395,10 +396,10 @@ function AlertsManager() {
                                             ? `Disparada por última vez: ${formatUserDateTime(alert.lastTriggered)}`
                                             : t('common.states.neverTriggered')}
                                     </p>
-                                    <p className="inline-flex items-center gap-1 text-xs text-gray-500" title={`Canales: ${alert.channels.join(', ') || 'in_app'} · disparos: ${alert.triggerCount}`}>
+                                    <p className="inline-flex items-center gap-1 text-xs text-gray-500" title={`Canales: ${(alert.channels.map(etiquetaCanal).join(', ') || etiquetaCanal('in_app'))} · disparos: ${alert.triggerCount}`}>
                                         <Send aria-hidden="true" className="h-3.5 w-3.5" />
                                         {alert.lastEvaluatedAt
-                                            ? `Motor: evaluada ${formatUserDateTime(alert.lastEvaluatedAt)} · ${alert.triggerCount} disparos · ${alert.channels.join(', ') || 'in_app'}`
+                                            ? `Motor: evaluada ${formatUserDateTime(alert.lastEvaluatedAt)} · ${alert.triggerCount} disparos · ${(alert.channels.map(etiquetaCanal).join(', ') || etiquetaCanal('in_app'))}`
                                             : 'Motor: pendiente de primera evaluación (cada 5 min)'}
                                         {alert.lastResultStatus === 'skipped_stale_observation' ? ' · dato desactualizado' : null}
                                     </p>
@@ -442,7 +443,7 @@ function AlertsManager() {
                         </div>
                     ))}
                     <p className="text-xs text-gray-500">
-                        Los umbrales de precio van sin símbolo porque la regla no guarda la divisa.
+                        Cada umbral de precio se compara con el último cierre del valor, en la divisa de su bolsa; la regla no guarda la divisa, por eso se muestra sin símbolo.
                     </p>
                 </div>
             )}
@@ -503,6 +504,8 @@ function AlertsManager() {
                                             // Sin registro de entrega no hay estado «pendiente»:
                                             // mostrar pendiente sería inventar un envío en curso.
                                             const status = delivery?.status ?? 'sin registro';
+                                            const statusText = etiquetaEstadoEntrega(status);
+                                            const channelText = etiquetaCanal(channel);
                                             const tone =
                                                 status === 'delivered'
                                                     ? 'border-teal-800 text-teal-300'
@@ -512,10 +515,10 @@ function AlertsManager() {
                                             return (
                                                 <span
                                                     key={channel}
-                                                    title={delivery?.error ?? `canal ${channel}: ${status}`}
+                                                    title={delivery?.error ?? `canal ${channelText}: ${statusText}`}
                                                     className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs ${tone}`}
                                                 >
-                                                    {channel}: {status}
+                                                    {channelText}: {statusText}
                                                 </span>
                                             );
                                         })
