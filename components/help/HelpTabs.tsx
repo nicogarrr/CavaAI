@@ -81,7 +81,7 @@ const faqs = [
   },
   {
     question: "¿Los datos de mercado son en tiempo real?",
-    answer: "No. Los datos de mercado llegan con retraso en la mayoría de mercados: sirven para análisis, no para operar en intradía. Cada precio muestra la fecha de su cierre."
+    answer: "No. Los datos de mercado llegan con retraso en la mayoría de mercados: sirven para análisis, no para operar en intradía. En watchlist y research, cada precio indica la fecha de su cierre."
   }
 ];
 
@@ -162,7 +162,7 @@ export default function HelpTabs() {
             <div className="bg-gray-800 rounded-lg shadow-sm p-6 border hover:shadow-md transition-shadow">
               <h3 className="text-lg font-semibold text-purple-500 mb-2">Datos con fuente</h3>
               <p className="text-gray-200 text-sm">
-                Cada cifra indica su fuente y su fecha. Si no hay dato verificable, la app muestra N/D en vez de inventarlo.
+                Las cifras de research indican su fuente y su fecha. Si no hay dato verificable, la app muestra N/D en vez de inventarlo.
               </p>
             </div>
           </div>
