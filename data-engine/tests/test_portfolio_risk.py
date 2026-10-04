@@ -78,7 +78,7 @@ def test_alerta_caja_negativa():
         [], [{"currency": "EUR", "balance": -5.0}, {"currency": "USD", "balance": 10.0}]
     )
     assert result["cash"] == {"EUR": -5.0, "USD": 10.0}
-    alertas = [a for a in result["alerts"] if "EUR cash is negative" in a["message"]]
+    alertas = [a for a in result["alerts"] if "El saldo de caja en EUR es negativo" in a["message"]]
     assert len(alertas) == 1
     assert alertas[0]["severity"] == "high"
     assert alertas[0]["ticker"] is None
@@ -137,3 +137,17 @@ def test_cartera_totalmente_negativa_no_rompe():
     result = calculate_portfolio_risk([_pos("AAA", -100.0)], [{"currency": "USD", "balance": 50.0}])
     assert result["total_value"] == -50.0
     assert result["positions"][0]["weight"] == pytest.approx(2.0)
+
+
+def test_mensajes_de_alerta_en_espanol():
+    positions = [
+        _pos("AAA", 60.0, "Tech", ["pre_fcf"]),
+        _pos("BBB", 30.0),
+    ]
+    result = calculate_portfolio_risk(positions, [{"currency": "USD", "balance": -5.0}])
+
+    mensajes = [a["message"] for a in result["alerts"]]
+    assert "AAA supera el 20 % de peso en la cartera" in mensajes
+    assert "AAA es pre-FCF y supera el 10 % de peso en la cartera" in mensajes
+    assert "El saldo de caja en USD es negativo" in mensajes
+    assert not any(" exceeds " in m or " is negative" in m for m in mensajes)
