@@ -101,7 +101,7 @@ def test_templates_are_correct_by_construction():
         "106.85 USD (margen de seguridad del -68%)."
     )
     assert FRAGMENTS["expectativas_mercado"] == (
-        "Con los supuestos de este DCF inverso, el precio actual exigiria "
+        "Con los supuestos de este DCF inverso, el precio actual exigiría "
         "un crecimiento de ingresos del 35.0% anual."
     )
     assert FRAGMENTS["titular_0"] == (
@@ -176,6 +176,8 @@ def test_partial_requires_caveat_fragment(db, monkeypatch):
     valuation = dict(VALUATION, status="partial", missing_inputs=["beta"])
     frags = narrative._fragment_templates(_company(), valuation, NEWS)
     assert "caveat_parcial" in frags
+    assert "sección 13" in frags["caveat_parcial"]
+    assert "valoración es parcial" in frags["caveat_parcial"]
     # Sin el fragmento obligatorio de parcialidad: capa 1.
     result = narrative.maybe_narrative(
         db, _company(), valuation, HYPOTHESIS, NEWS, "base",
