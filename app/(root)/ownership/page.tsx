@@ -137,7 +137,7 @@ export default async function OwnershipPage({ searchParams }: PageProps) {
 
             {limitations.length ? (
                 <section className="rounded-xl border border-amber-900/60 bg-amber-950/20 p-4">
-                    <h2 className="text-sm font-semibold text-amber-200">Limites de este dato</h2>
+                    <h2 className="text-sm font-semibold text-amber-200">Límites de este dato</h2>
                     <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-400">
                         {limitations.map((item) => <li key={item}>{LIMITATION_LABELS[item] ?? item}</li>)}
                     </ul>
@@ -229,7 +229,7 @@ export default async function OwnershipPage({ searchParams }: PageProps) {
                     </section>
                 ) : (
                     <section className="rounded-xl border border-gray-800 bg-surface-1 p-5 text-sm text-gray-400">
-                        <h2 className="font-semibold text-gray-100">Sin datos 13F todavia</h2>
+                        <h2 className="font-semibold text-gray-100">Sin datos 13F todavía</h2>
                         <p className="mt-2">
                             Este gestor aún no se ha sincronizado. Pulsa &quot;Sincronizar 13F&quot; para
                             descargar su último informe desde SEC EDGAR (gratuito, fuente oficial).
@@ -281,15 +281,15 @@ export default async function OwnershipPage({ searchParams }: PageProps) {
                             </table>
                         </div>
                         {changes.changes.every((c) => c.change === 'unchanged') ? (
-                            <p className="mt-3 text-sm text-gray-400">Sin movimientos entre los dos ultimos informes.</p>
+                            <p className="mt-3 text-sm text-gray-400">Sin movimientos entre los dos últimos informes.</p>
                         ) : null}
                     </section>
                 ) : (
                     <section className="rounded-xl border border-gray-800 bg-surface-1 p-5 text-sm text-gray-400">
-                        <h2 className="font-semibold text-gray-100">Cambios QoQ no disponibles todavia</h2>
+                        <h2 className="font-semibold text-gray-100">Cambios QoQ no disponibles todavía</h2>
                         <p className="mt-2">
                             {changes.status === 'insufficient_history'
-                                ? 'Hacen falta dos informes 13F almacenados para comparar; estara disponible tras el proximo trimestre.'
+                                ? 'Hacen falta dos informes 13F almacenados para comparar; estará disponible tras el próximo trimestre.'
                                 : 'Sincroniza este gestor para poder comparar informes.'}
                         </p>
                     </section>

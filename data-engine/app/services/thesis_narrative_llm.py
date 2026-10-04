@@ -106,7 +106,13 @@ def _fragment_templates(
     price = valuation.get("current_price")
     base = valuation.get("base_value")
     mos = valuation.get("margin_of_safety")
-    if status != "insufficient_data" and price is not None and base is not None and mos is not None:
+    if status != "insufficient_data" and price is not None and base is not None and base <= 0:
+        # Base no positiva: sin porcentaje de margen de seguridad (no interpretable).
+        fragments["valoracion_posicion"] = (
+            f"{company.name} cotiza a {price:.2f} {currency}, pero el escenario base del "
+            f"modelo es {base:.2f} {currency} (no positivo): el margen de seguridad no es interpretable."
+        )
+    elif status != "insufficient_data" and price is not None and base is not None and mos is not None:
         # MoS = base/price - 1 (valuation/engines/base.py): se nombra
         # explicitamente. Describirlo como distancia precio/base usaria el
         # denominador equivocado.
@@ -119,13 +125,13 @@ def _fragment_templates(
         # Es el crecimiento IMPLICITO del modelo con sus supuestos, no una
         # expectativa observada del mercado: la atribucion va al DCF inverso.
         fragments["expectativas_mercado"] = (
-            "Con los supuestos de este DCF inverso, el precio actual exigiria "
+            "Con los supuestos de este DCF inverso, el precio actual exigiría "
             f"un crecimiento de ingresos del {growth * 100:.1f}% anual."
         )
     if status == "partial":
         fragments["caveat_parcial"] = (
-            f"La valoracion es parcial-indicativa: faltan {missing or 'algunos inputs'} "
-            "(ver seccion 13 del memo)."
+            f"La valoración es parcial-indicativa: faltan {missing or 'algunos inputs'} "
+            "(ver sección 13 del memo)."
         )
 
     headline_count = 0
@@ -414,7 +420,7 @@ def _section_templates(
     # propia, opcional (no obligatoria en la seleccion).
     if hypothesis:
         sections["hipotesis"] = {
-            "titulo": "Hipotesis de trabajo",
+            "titulo": "Hipótesis de trabajo",
             "parrafos": [hypothesis],
         }
 
@@ -431,7 +437,10 @@ def _section_templates(
     if "expectativas_mercado" in fragments:
         parrafos.append(fragments["expectativas_mercado"])
     mos = valuation.get("margin_of_safety")
-    if mos is not None and "valoracion_posicion" in fragments:
+    base_value = valuation.get("base_value")
+    if mos is not None and "valoracion_posicion" in fragments and not (
+        base_value is not None and base_value <= 0
+    ):
         # Hechos vs interpretacion: el patron es fijo, el numero es un slot.
         parrafos.append(
             f"Un margen de seguridad del {mos:.0%} (escenario base/precio - 1: "

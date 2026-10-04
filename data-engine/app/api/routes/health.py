@@ -85,11 +85,21 @@ def _scheduler_status() -> dict:
     """
     settings = get_settings()
     if not settings.workers_enabled:
+        # En produccion el scheduler corre en su propio servicio (cavaai-scheduler)
+        # y esta API arranca con WORKERS_ENABLED=false: "enabled: false / running:
+        # false" se leia como "no hay scheduler". Esta instancia no lo ejecuta y
+        # no puede observarlo desde aqui: se declara tal cual (running: None =
+        # desconocido, no "parado").
         return {
             "enabled": False,
-            "running": False,
+            "running": None,
             "jobs": 0,
             "last_run_at": None,
+            "external": True,
+            "note": (
+                "El scheduler corre en un servicio aparte; esta API no lo "
+                "observa, no se puede afirmar que este parado ni activo."
+            ),
         }
     try:
         return {

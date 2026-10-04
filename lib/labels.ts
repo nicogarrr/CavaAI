@@ -23,6 +23,7 @@ export const SECTORES: Record<string, string> = {
   Materials: 'Materiales',
   'Communication Services': 'Servicios de comunicación',
   Media: 'Medios',
+  Unknown: 'Sin clasificar',
 };
 
 /** Etiqueta ES de un sector; si el backend manda uno desconocido, se muestra tal cual. */
@@ -163,4 +164,85 @@ export function sectorIndustryLine(sector: unknown, industry: unknown): string {
         .map(etiquetaSector);
     const unique = parts.filter((part, index) => parts.indexOf(part) === index);
     return unique.length ? unique.join(' · ') : 'Sector sin dato';
+}
+
+/** Etiqueta ES de la severidad de una alerta de riesgo (high/medium/low).
+ *  Valor desconocido: se muestra tal cual, nunca inventado. */
+const SEVERIDADES: Record<string, string> = {
+  critical: 'Crítica',
+  high: 'Alta',
+  medium: 'Media',
+  low: 'Baja',
+  info: 'Informativa',
+};
+
+export function etiquetaSeveridad(value: string): string {
+  return SEVERIDADES[value.toLowerCase()] ?? value;
+}
+
+/** Etiquetas ES de los factores/temas de cartera (factor_tags del backend).
+ *  Etiqueta desconocida: se humaniza el snake_case (sin inventar significado). */
+const FACTORES: Record<string, string> = {
+  ads: 'Publicidad',
+  ai: 'IA',
+  ai_biology: 'IA aplicada a biología',
+  auto: 'Automoción',
+  biotech: 'Biotecnología',
+  china: 'China',
+  cloud: 'Nube',
+  commodities: 'Materias primas',
+  cyclical: 'Cíclico',
+  defense: 'Defensa',
+  drones: 'Drones',
+  ecommerce: 'Comercio electrónico',
+  energy: 'Energía',
+  fcf: 'Genera flujo de caja libre',
+  financials: 'Financiero',
+  glp1: 'GLP-1',
+  government: 'Gobierno',
+  growth: 'Crecimiento',
+  healthcare: 'Salud',
+  infra: 'Infraestructura',
+  media: 'Medios',
+  mining: 'Minería',
+  mobility: 'Movilidad',
+  optionality: 'Opcionalidad',
+  platform: 'Plataforma / marketplace',
+  pre_fcf: 'Pre flujo de caja libre',
+  quality: 'Calidad',
+  rates: 'Tipos de interés',
+  regulatory: 'Regulatorio',
+  robotics: 'Robótica',
+  semiconductors: 'Semiconductores',
+  small_cap: 'Small cap',
+  software: 'Software',
+  sotp: 'Suma de partes',
+  space: 'Espacio',
+  speculative: 'Especulativo',
+  subscriber: 'Suscripción (ingresos recurrentes)',
+  telecom: 'Telecomunicaciones',
+  uranium: 'Uranio',
+};
+
+export function etiquetaFactor(value: string): string {
+  const known = FACTORES[value.toLowerCase()];
+  if (known) return known;
+  const adr = /^adr:(\d+)$/i.exec(value);
+  if (adr) return `ADR (ratio ${adr[1]})`;
+  const plain = value.replace(/_/g, ' ');
+  return plain.charAt(0).toUpperCase() + plain.slice(1);
+}
+
+/** Pendientes que explican «requiere revisión»: el estado sale de revisiones
+ * o alertas abiertas, no de la nota de completitud (que puede ser 100/100).
+ * Sin pendientes no se inventa texto. */
+export function openReviewsLabel(
+    counts: { open_reviews?: number | null; open_alerts?: number | null } | null | undefined,
+): string | null {
+    const reviews = Number(counts?.open_reviews ?? 0);
+    const alerts = Number(counts?.open_alerts ?? 0);
+    const parts: string[] = [];
+    if (reviews > 0) parts.push(`${reviews} ${reviews === 1 ? 'revisión abierta' : 'revisiones abiertas'}`);
+    if (alerts > 0) parts.push(`${alerts} ${alerts === 1 ? 'alerta abierta' : 'alertas abiertas'}`);
+    return parts.length ? parts.join(' · ') : null;
 }

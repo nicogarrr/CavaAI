@@ -101,7 +101,7 @@ def test_templates_are_correct_by_construction():
         "106.85 USD (margen de seguridad del -68%)."
     )
     assert FRAGMENTS["expectativas_mercado"] == (
-        "Con los supuestos de este DCF inverso, el precio actual exigiria "
+        "Con los supuestos de este DCF inverso, el precio actual exigiría "
         "un crecimiento de ingresos del 35.0% anual."
     )
     assert FRAGMENTS["titular_0"] == (
@@ -176,6 +176,8 @@ def test_partial_requires_caveat_fragment(db, monkeypatch):
     valuation = dict(VALUATION, status="partial", missing_inputs=["beta"])
     frags = narrative._fragment_templates(_company(), valuation, NEWS)
     assert "caveat_parcial" in frags
+    assert "sección 13" in frags["caveat_parcial"]
+    assert "valoración es parcial" in frags["caveat_parcial"]
     # Sin el fragmento obligatorio de parcialidad: capa 1.
     result = narrative.maybe_narrative(
         db, _company(), valuation, HYPOTHESIS, NEWS, "base",
@@ -348,7 +350,7 @@ def test_section_templates_titles_and_slots():
     # Los parrafos salen de los mismos slots verificados de la capa resumen.
     assert sections["lo_que_sabemos"]["parrafos"][0] == FRAGMENTS["valoracion_posicion"]
     # La hipotesis (interpretacion) no convive con los hechos: seccion propia.
-    assert all("Hipotesis" not in p for p in sections["lo_que_sabemos"]["parrafos"])
+    assert all("Hipótesis" not in p for p in sections["lo_que_sabemos"]["parrafos"])
     assert sections["hipotesis"]["parrafos"] == [HYPOTHESIS]
     # El caveat de titulares cierra siempre la seccion de noticias.
     assert sections["lo_que_cambio"]["parrafos"][-1] == FRAGMENTS["caveat_titulares"]
@@ -480,3 +482,12 @@ def test_shared_budget_cap_within_one_generate(db, monkeypatch):
         db, _company(), VALUATION, HYPOTHESIS, NEWS, provider=provider2)
     assert result is None
     assert provider2.calls == 0
+
+
+def test_negative_base_fragment_has_no_margin_percentage():
+    valuation = {**VALUATION, "current_price": 58.45, "base_value": -84.7, "margin_of_safety": -2.49}
+    fragments = narrative._fragment_templates(_company(), valuation, NEWS)
+    text = fragments["valoracion_posicion"]
+    assert "-249%" not in text
+    assert "no es interpretable" in text
+    assert "-84.70" in text
