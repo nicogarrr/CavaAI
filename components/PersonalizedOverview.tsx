@@ -414,8 +414,8 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                 </div>
                                 <div className="text-right">
                                     <p className="text-sm text-gray-400">Ganancia/Pérdida Total</p>
-                                    <p className={`text-xl font-bold mt-1 ${portfolioSummary.totalGainPercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                        {formatPercent(portfolioSummary.totalGainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
+                                    <p className={`text-xl font-bold mt-1 ${insight.kind !== 'movement' ? 'text-gray-500' : portfolioSummary.totalGainPercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                        {insight.kind !== 'movement' ? 'N/D' : formatPercent(portfolioSummary.totalGainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
                                     </p>
                                 </div>
                             </div>
