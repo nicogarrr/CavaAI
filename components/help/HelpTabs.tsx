@@ -64,24 +64,24 @@ const modules = [
 
 const faqs = [
   {
-    question: "¿CavaAI es realmente gratuito?",
-    answer: "Sí, las funcionalidades principales son gratuitas. Creemos que las herramientas financieras deben ser accesibles para todos."
+    question: "¿Cuánto cuesta usar CavaAI?",
+    answer: "La app no tiene planes de pago ni cobra por usarla. Funciona con proveedores de datos de capa gratuita (Finnhub, Yahoo Finance, SEC EDGAR), lo que limita la cobertura y la frescura de algunos datos."
   },
   {
-    question: "Soy estudiante, ¿puedo usar esto para mis proyectos?",
-    answer: "¡Por supuesto! Úsalo para proyectos escolares, aprendizaje o construir tu portafolio. La plataforma está diseñada para ser intuitiva y educativa."
+    question: "¿Esto es asesoramiento financiero?",
+    answer: "No. CavaAI es una herramienta de análisis: los modelos y las tesis dependen de supuestos visibles y pueden fallar. Las decisiones de inversión son tuyas."
   },
   {
     question: "¿Cómo sigo una compañía?",
     answer: "Abre su ficha en Research y pulsa «Seguir», junto al nombre. Los símbolos que sigues se recogen en tu watchlist."
   },
   {
-    question: "¿Qué hago si encuentro un bug o tengo una sugerencia?",
-    answer: "¡Por favor cuéntanos! Envía un email a soporte y revisaremos tu comentario. Cada reporte es una oportunidad para mejorar la plataforma."
+    question: "¿Qué hago si encuentro un error o tengo una sugerencia?",
+    answer: "Escribe a la dirección de la pestaña Contacto, con la página y lo que esperabas ver. No se garantiza un plazo de respuesta."
   },
   {
     question: "¿Los datos de mercado son en tiempo real?",
-    answer: "Proporcionamos datos con un ligero retraso para la mayoría de mercados. Para análisis y educación, esto es más que suficiente."
+    answer: "No. Los datos de mercado llegan con retraso en la mayoría de mercados: sirven para análisis, no para operar en intradía. En watchlist y research, cada precio indica la fecha de su cierre."
   }
 ];
 
@@ -148,21 +148,21 @@ export default function HelpTabs() {
             <div className="bg-gray-800 rounded-lg shadow-sm p-6 border hover:shadow-md transition-shadow">
               <h3 className="text-lg font-semibold text-blue-500 mb-2">Aprende</h3>
               <p className="text-gray-200 text-sm">
-                Nuestras guías están escritas sin jerga técnica. No asumimos conocimiento previo.
+                La pestaña Documentación explica qué hace cada módulo hoy y cómo usarlo, con enlace a la metodología y las fuentes.
               </p>
             </div>
 
             <div className="bg-gray-800 rounded-lg shadow-sm p-6 border hover:shadow-md transition-shadow">
               <h3 className="text-lg font-semibold text-green-500 mb-2">Soporte</h3>
               <p className="text-gray-200 text-sm">
-                Personas reales ayudando a personas reales. Estudiantes, profesionales y mentores.
+                El soporte es por email y lo atiende quien mantiene el proyecto. No hay un plazo de respuesta garantizado.
               </p>
             </div>
 
             <div className="bg-gray-800 rounded-lg shadow-sm p-6 border hover:shadow-md transition-shadow">
-              <h3 className="text-lg font-semibold text-purple-500 mb-2">Diseño Intuitivo</h3>
+              <h3 className="text-lg font-semibold text-purple-500 mb-2">Datos con fuente</h3>
               <p className="text-gray-200 text-sm">
-                Cada función está diseñada con accesibilidad y facilidad de uso en mente.
+                Las cifras de research indican su fuente y su fecha. Si no hay dato verificable, la app muestra N/D en vez de inventarlo.
               </p>
             </div>
           </div>
@@ -256,7 +256,7 @@ export default function HelpTabs() {
           <section className="bg-gradient-to-r from-blue-900/50 to-purple-900/50 rounded-lg p-8 text-center">
             <h2 className="text-2xl font-bold text-gray-100 mb-4">Contacto</h2>
             <p className="text-gray-300 mb-6">
-              ¿Tienes preguntas o sugerencias? Estamos aquí para ayudarte.
+              ¿Tienes preguntas o sugerencias? Escríbenos por email.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <a
