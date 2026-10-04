@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 // @ts-expect-error TS5097: la extensión explícita la exige node --experimental-strip-types.
-import { newsDisplayTitle } from '../lib/news-display.ts';
+import { newsDisplayTitle, untokenizeHeadline } from '../lib/news-display.ts';
 
 const page = (readFileSync('app/(root)/research/news/page.tsx', 'utf8') + readFileSync('components/research/NewsEventsFlow.tsx', 'utf8'));
 
@@ -34,4 +34,13 @@ test('límite de palabra: prefijo de ticker, no subcadena', () => {
 
 test('la tabla de /research/news usa el helper con el flag del payload', () => {
     assert.match(page, /newsDisplayTitle\(event\.title, event\.ticker, event\.headline_from_source\)/);
+});
+
+test('F19: titulares tokenizados por la fuente se pintan con la puntuación pegada', () => {
+    assert.equal(untokenizeHeadline('AST SpaceMobile , Inc . ( ASTS ) sube un 5 %'), 'AST SpaceMobile, Inc. (ASTS) sube un 5 %');
+    assert.equal(newsDisplayTitle('AST SpaceMobile , Inc . ( ASTS )', 'ASTS', true), 'AST SpaceMobile, Inc. (ASTS)');
+    // un titular normal no cambia
+    assert.equal(untokenizeHeadline('Apple presenta resultados (récord) en EE. UU.'), 'Apple presenta resultados (récord) en EE. UU.');
+    // no toca decimales ni miles
+    assert.equal(untokenizeHeadline('El PIB crece 1,5 % y 2.5 puntos'), 'El PIB crece 1,5 % y 2.5 puntos');
 });
