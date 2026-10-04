@@ -18,6 +18,28 @@ export function newsDisplayTitle(
     ticker: string | null | undefined,
     headlineFromSource: boolean | null | undefined,
 ): string {
+    return stripTickerPrefix(untokenizeHeadline(title), ticker, headlineFromSource);
+}
+
+/**
+ * Algunos titulares llegan de la fuente (GDELT) tokenizados con espacios
+ * alrededor de la puntuación: «AST SpaceMobile , Inc . ( ASTS )». Solo al
+ * PINTAR se recoloca la puntuación («AST SpaceMobile, Inc. (ASTS)»); el texto
+ * guardado sigue siendo el verbatim de la fuente (procedencia).
+ */
+export function untokenizeHeadline(title: string): string {
+    return title
+        .replace(/\s+([,.;:!?])(?=\s|$)/g, '$1')
+        .replace(/\(\s+/g, '(')
+        .replace(/\s+\)/g, ')')
+        .replace(/[ \t]{2,}/g, ' ');
+}
+
+function stripTickerPrefix(
+    title: string,
+    ticker: string | null | undefined,
+    headlineFromSource: boolean | null | undefined,
+): string {
     if (headlineFromSource !== false || !ticker) return title;
     const normalizedTicker = ticker.trim().toUpperCase();
     if (!normalizedTicker) return title;
