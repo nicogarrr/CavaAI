@@ -39,7 +39,7 @@ def test_hypothesis_honest_when_inputs_missing():
     service = ThesisService()
     text = service._hypothesis(_company(), {"current_price": None})
     assert "faltan datos" in text
-    assert "Hipotesis en formacion" in text
+    assert "Hipótesis en formación" in text
 
 
 def test_hypothesis_below_base_with_reverse_dcf():
@@ -133,7 +133,7 @@ def test_invalidation_criteria_honest_fallback():
     service = ThesisService()
     criteria = service._invalidation_criteria(_company(), {})
     assert criteria == [
-        "Tesis en formacion: sin criterios automaticos hasta completar la valoracion."
+        "Tesis en formación: sin criterios automáticos hasta completar la valoración."
     ]
 
 
@@ -187,7 +187,7 @@ def test_card_summary_partial_es_indicativo():
     service = ThesisService()
     valuation = {"status": "partial", "missing_inputs": ["beta"], "trace": {"engine": "dcf_v2"}}
     text = service._card_summary(_company(), valuation, "hipotesis")
-    assert text.startswith("hipotesis Valoracion parcial-indicativa")
+    assert text.startswith("hipotesis Valoración parcial-indicativa")
     assert "beta" in text
 
 
