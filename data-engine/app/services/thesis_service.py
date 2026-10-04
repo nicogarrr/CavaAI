@@ -642,8 +642,7 @@ class ThesisService:
             # un dato real. Se dice tal cual, sin porcentaje.
             return (
                 f"A {price:.2f}, el escenario base de {company.name} es {base:.2f} "
-                f"(no positivo): el modelo no sostiene un valor por accion y el "
-                f"margen de seguridad no es interpretable."
+                f"(no positivo): el margen de seguridad no es interpretable."
             )
         reverse = valuation.get("reverse_dcf") or {}
         required_growth = reverse.get("required_revenue_growth")

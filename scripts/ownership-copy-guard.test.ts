@@ -24,3 +24,8 @@ test('F14: cabeceras y avisos de /ownership con tildes (límites, todavía, esta
     assert.match(page, /Sin datos 13F todavía/);
     assert.match(page, /estará disponible tras el próximo trimestre/);
 });
+
+test('F14b: "últimos informes" con tilde', () => {
+    assert.doesNotMatch(page, /dos ultimos informes/);
+    assert.match(page, /dos últimos informes/);
+});
