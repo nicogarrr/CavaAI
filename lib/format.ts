@@ -391,3 +391,17 @@ export function researchMoneyToNumber(
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
+
+/** Margen de seguridad para mostrar. MoS = base/precio - 1: con un escenario base
+ *  no positivo el numero (p. ej. -249 %) no es interpretable, asi que se muestra N/D
+ *  en vez de un porcentaje que parece un dato. */
+export function marginOfSafetyDisplay(
+    margin: number | string | null | undefined,
+    base: number | string | null | undefined,
+): string {
+    const baseNum = typeof base === 'string' ? Number(base) : base;
+    if (baseNum !== null && baseNum !== undefined && !Number.isNaN(baseNum) && baseNum <= 0) return NA;
+    const m = typeof margin === 'string' ? Number(margin) : margin;
+    if (m === null || m === undefined || Number.isNaN(m)) return NA;
+    return formatPercent(m);
+}

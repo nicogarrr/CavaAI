@@ -1,5 +1,5 @@
 import { thesisScenarioDisplay } from '@/lib/research/listed-share-values';
-import { formatGeneratedDate, formatMoney, formatPercent, isValidCurrencyCode, NA } from '@/lib/format';
+import { formatGeneratedDate, formatMoney, formatPercent, isValidCurrencyCode, marginOfSafetyDisplay, NA } from '@/lib/format';
 import { GlossaryTerm } from '@/components/GlossaryTerm';
 import ScenarioAssumptions from '@/components/research/ScenarioAssumptions';
 import ThesisHumanInputForm from '@/components/research/ThesisHumanInputForm';
@@ -342,7 +342,7 @@ export default function ThesisMemo({
               </GlossaryTerm>
             </div>
             <div className="mt-1 text-base font-semibold text-gray-100">
-              {pct(thesis.margin_of_safety)}
+              {marginOfSafetyDisplay(thesis.margin_of_safety, thesis.base_value)}
             </div>
           </div>
         </div>
