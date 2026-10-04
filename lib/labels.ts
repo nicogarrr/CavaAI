@@ -232,3 +232,17 @@ export function etiquetaFactor(value: string): string {
   const plain = value.replace(/_/g, ' ');
   return plain.charAt(0).toUpperCase() + plain.slice(1);
 }
+
+/** Pendientes que explican «requiere revisión»: el estado sale de revisiones
+ * o alertas abiertas, no de la nota de completitud (que puede ser 100/100).
+ * Sin pendientes no se inventa texto. */
+export function pendientesRevisionLabel(
+    counts: { open_reviews?: number | null; open_alerts?: number | null } | null | undefined,
+): string | null {
+    const reviews = Number(counts?.open_reviews ?? 0);
+    const alerts = Number(counts?.open_alerts ?? 0);
+    const parts: string[] = [];
+    if (reviews > 0) parts.push(`${reviews} ${reviews === 1 ? 'revisión abierta' : 'revisiones abiertas'}`);
+    if (alerts > 0) parts.push(`${alerts} ${alerts === 1 ? 'alerta abierta' : 'alertas abiertas'}`);
+    return parts.length ? parts.join(' · ') : null;
+}
