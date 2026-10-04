@@ -37,6 +37,18 @@ describe('F50: formato de fecha+hora estable entre SSR e hidratación', () => {
   });
 });
 
+describe('F4: fecha sin hora (YYYY-MM-DD) estable entre SSR e hidratación', () => {
+  it('formatUserDateTime("2026-10-02") es el mismo día, sin hora inventada, en UTC y en Madrid', () => {
+    process.env.TZ = 'UTC';
+    const ssr = formatUserDateTime('2026-10-02');
+    process.env.TZ = 'Europe/Madrid';
+    const browser = formatUserDateTime('2026-10-02');
+    assert.equal(ssr, browser);
+    assert.match(ssr, /2 oct/);
+    assert.doesNotMatch(ssr, /\d{2}:\d{2}/, 'un día de calendario no lleva hora');
+  });
+});
+
 describe('F50: ningún callsite visible usa ya la zona implícita', () => {
   const walk = (dir: string, out: string[] = []): string[] => {
     for (const entry of readdirSync(dir)) {
