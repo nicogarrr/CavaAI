@@ -387,7 +387,7 @@ export function describeDetail(scene: Scene, nodeId: number): DetailField[] {
     field('entityId', 'knowledgeGraph.detail.fields.entityId', node.entityId === null ? null : String(node.entityId), 'Este nodo no esta enlazado con una entidad de otra tabla.'),
     field('confidence', 'knowledgeGraph.detail.fields.confidence', node.confidence === null ? null : `${Math.round(node.confidence * 100)}%`, 'El grafo no guarda confianza para este nodo.'),
     field('degree', 'knowledgeGraph.detail.fields.degree', `${node.degree}`, 'Sin aristas incidentes: el grafo no relaciona este nodo con ninguno.'),
-    field('description', 'knowledgeGraph.detail.fields.description', node.description, 'El grafo no guarda descripcion para este tipo de nodo.'),
+    field('description', 'knowledgeGraph.detail.fields.description', node.description, 'El grafo no guarda descripción para este tipo de nodo.'),
   ];
   const attributes = Object.entries(node.attributes).filter(([, value]) => value !== null && value !== undefined && String(value).trim() !== '');
   if (!attributes.length) {
