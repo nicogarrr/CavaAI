@@ -15,7 +15,7 @@ import { EmptyLink, EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
 import { Panel } from '@/components/ui/panel';
 import { Stat } from '@/components/ui/stat';
-import { sectorIndustryLine } from '@/lib/labels';
+import { openReviewsLabel, sectorIndustryLine } from '@/lib/labels';
 import { sortCompaniesByRelevance } from '@/lib/research/relevance';
 import { fetchInBatches } from '@/lib/research/snapshots';
 import {
@@ -173,6 +173,9 @@ function CompanyCard({ row }: { row: CompanyRow }) {
                                 Salud {formatNumber(health?.score)}/100
                             </span>
                             <Badge variant="outline">{HEALTH_LABELS[health?.status ?? ''] ?? 'estado sin dato'}</Badge>
+                            {health?.status === 'review_required' && openReviewsLabel(snapshot.counts) ? (
+                                <span className="text-xs text-gray-500">{openReviewsLabel(snapshot.counts)}</span>
+                            ) : null}
                         </>
                     )}
                     {thesis ? (
