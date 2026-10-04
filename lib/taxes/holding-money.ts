@@ -17,3 +17,25 @@ export function formatHoldingMoney(value: unknown, currency: unknown): string {
         : 'EUR';
     return formatMoney(value as number | string, cur);
 }
+
+/**
+ * Una posicion con cantidad > 0 y base de coste 0 (o ausente) NO tiene coste
+ * conocido: el 0 es ausencia de dato, no un coste real. Mismo criterio que el
+ * resumen de cartera (cost > 0). Base de coste y plusvalia latente (market_value
+ * menos esa base) se muestran N/D; el valor de mercado no depende de la base.
+ */
+export function formatHoldingCell(
+    column: (typeof TAX_HOLDING_MONEY_COLUMNS)[number],
+    value: unknown,
+    record: { quantity?: unknown; cost_basis?: unknown; currency?: unknown },
+): string {
+    if (column === 'cost_basis' || column === 'unrealized_pnl') {
+        const quantity = Number(record.quantity);
+        const cost = record.cost_basis === null || record.cost_basis === undefined || record.cost_basis === ''
+            ? null
+            : Number(record.cost_basis);
+        const costUnknown = cost === null || Number.isNaN(cost) || (cost === 0 && quantity > 0);
+        if (costUnknown) return NA;
+    }
+    return formatHoldingMoney(value, record.currency);
+}
