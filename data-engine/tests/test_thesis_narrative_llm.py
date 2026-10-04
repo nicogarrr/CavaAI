@@ -348,7 +348,7 @@ def test_section_templates_titles_and_slots():
     # Los parrafos salen de los mismos slots verificados de la capa resumen.
     assert sections["lo_que_sabemos"]["parrafos"][0] == FRAGMENTS["valoracion_posicion"]
     # La hipotesis (interpretacion) no convive con los hechos: seccion propia.
-    assert all("Hipotesis" not in p for p in sections["lo_que_sabemos"]["parrafos"])
+    assert all("Hipótesis" not in p for p in sections["lo_que_sabemos"]["parrafos"])
     assert sections["hipotesis"]["parrafos"] == [HYPOTHESIS]
     # El caveat de titulares cierra siempre la seccion de noticias.
     assert sections["lo_que_cambio"]["parrafos"][-1] == FRAGMENTS["caveat_titulares"]

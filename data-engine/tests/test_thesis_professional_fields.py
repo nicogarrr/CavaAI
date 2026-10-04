@@ -35,7 +35,7 @@ def test_hypothesis_above_base_value() -> None:
     valuation = {"current_price": 120.0, "base_value": 100.0, "margin_of_safety": -0.2}
     hypothesis = service._hypothesis(_company(), valuation)
     assert "margen de seguridad del -20%" in hypothesis
-    assert "descuenta mas" in hypothesis
+    assert "descuenta más" in hypothesis
 
 
 def test_hypothesis_negative_base_has_no_percentage() -> None:
@@ -50,7 +50,7 @@ def test_hypothesis_negative_base_has_no_percentage() -> None:
 def test_hypothesis_incomplete_data_is_honest() -> None:
     service = ThesisService()
     hypothesis = service._hypothesis(_company(), {"current_price": None, "base_value": None, "margin_of_safety": None})
-    assert "en formacion" in hypothesis
+    assert "en formación" in hypothesis
 
 
 def test_catalysts_from_earnings_calendar() -> None:
@@ -90,7 +90,7 @@ def test_invalidation_criteria_from_model_data() -> None:
 def test_invalidation_fallback_is_honest() -> None:
     service = ThesisService()
     criteria = service._invalidation_criteria(_company(), {})
-    assert criteria == ["Tesis en formacion: sin criterios automaticos hasta completar la valoracion."]
+    assert criteria == ["Tesis en formación: sin criterios automáticos hasta completar la valoración."]
 
 
 def test_scenario_probabilities_from_model() -> None:
@@ -99,3 +99,17 @@ def test_scenario_probabilities_from_model() -> None:
     assert service._scenario_probabilities(model) == {"bear": 0.25, "base": 0.5, "bull": 0.25}
     assert service._scenario_probabilities({}) is None
     assert service._scenario_probabilities({"scenarios": {"bear": {}}}) is None
+
+
+def test_visible_copy_has_accents_and_no_english_label() -> None:
+    """F13/B14: 'Hipotesis'/'valoracion' sin tilde y 'Missing valuation inputs' en ingles."""
+    import inspect
+
+    from app.services import thesis_service
+
+    source = inspect.getsource(thesis_service)
+    assert "Missing valuation inputs" not in source
+    assert "Faltan entradas de valoración" in source
+    assert "Hipotesis en formacion" not in source
+    hypothesis = ThesisService()._hypothesis(_company(), {"current_price": None, "base_value": None, "margin_of_safety": None})
+    assert "Hipótesis en formación" in hypothesis

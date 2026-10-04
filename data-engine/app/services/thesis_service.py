@@ -542,7 +542,7 @@ class ThesisService:
                 data_conflicts=audit.data_conflicts,
                 required_fixes=audit.required_fixes
                 + (
-                    [f"Missing valuation inputs: {', '.join(valuation.get('missing_inputs') or [])}"]
+                    [f"Faltan entradas de valoración (variables del modelo): {', '.join(valuation.get('missing_inputs') or [])}"]
                     if valuation.get("missing_inputs")
                     else []
                 ),
@@ -633,8 +633,8 @@ class ThesisService:
         mos = valuation.get("margin_of_safety")
         if price is None or base is None or mos is None:
             return (
-                "Hipotesis en formacion: faltan datos de mercado o de valoracion "
-                "para formular una hipotesis comprobable."
+                "Hipótesis en formación: faltan datos de mercado o de valoración "
+                "para formular una hipótesis comprobable."
             )
         if base <= 0:
             # Con un escenario base negativo o nulo el margen (base/precio - 1)
@@ -660,14 +660,14 @@ class ThesisService:
         if mos >= 0:
             return (
                 f"A {price:.2f}, {company.name} cotiza con un margen de seguridad "
-                f"del {mos:.0%} respecto al escenario base ({base:.2f}). Hipotesis: "
+                f"del {mos:.0%} respecto al escenario base ({base:.2f}). Hipótesis: "
                 f"los fundamentales modelados son alcanzables y el mercado corrige "
                 f"ese descuento.{growth_txt}"
             )
         return (
             f"A {price:.2f}, {company.name} cotiza con un margen de seguridad "
-            f"del {mos:.0%} respecto al escenario base ({base:.2f}). Hipotesis: "
-            f"el precio descuenta mas de lo que los fundamentales modelados "
+            f"del {mos:.0%} respecto al escenario base ({base:.2f}). Hipótesis: "
+            f"el precio descuenta más de lo que los fundamentales modelados "
             f"soportan.{growth_txt}"
         )
 
@@ -716,7 +716,7 @@ class ThesisService:
             criteria.append(f"Deterioro confirmado del moat: {', '.join(declining)}.")
         if not criteria:
             criteria.append(
-                "Tesis en formacion: sin criterios automaticos hasta completar la valoracion."
+                "Tesis en formación: sin criterios automáticos hasta completar la valoración."
             )
         return criteria
 
@@ -813,8 +813,8 @@ class ThesisService:
         elif valuation.get("status") == "partial":
             missing = ", ".join(valuation.get("missing_inputs") or []) or "algunos inputs"
             base = (
-                f"{hypothesis} Valoracion parcial-indicativa: "
-                f"faltan {missing} (ver seccion 13 del memo)."
+                f"{hypothesis} Valoración parcial-indicativa: "
+                f"faltan {missing} (ver sección 13 del memo)."
             )
         else:
             base = hypothesis
