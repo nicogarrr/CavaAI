@@ -10,6 +10,10 @@ import {
 } from '@/lib/actions/insider.actions';
 import { isBackendUnavailableError } from '@/lib/backend-offline';
 import { isAppError } from '@/lib/types/errors';
+import { getPortfolioSummary } from '@/lib/actions/portfolio.actions';
+import { getWatchlist } from '@/lib/actions/watchlist.actions';
+import { requireAuthenticatedUser } from '@/lib/auth/require-user';
+import { buildInsiderShortcuts } from '@/lib/insider/shortcuts';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -48,6 +52,15 @@ export default async function InsiderPage({ searchParams }: PageProps) {
             // Ticker sin datos: la vista lo explica en vez de mostrar un error.
         }
     }
+
+    // Atajos de solo lectura. Una lectura fallida degrada a «sin atajos», nunca
+    // fabrica tickers.
+    const userId = (await requireAuthenticatedUser()).id;
+    const [portfolioSummary, watchlist] = await Promise.all([
+        getPortfolioSummary(userId).catch(() => null),
+        getWatchlist().catch(() => [] as Array<{ symbol: string }>),
+    ]);
+    const shortcuts = buildInsiderShortcuts(portfolioSummary?.holdings, watchlist);
 
     return (
         <main id="content" tabIndex={-1} className="mx-auto flex w-full min-w-0 max-w-6xl flex-col gap-6 overflow-x-clip">
@@ -94,6 +107,7 @@ export default async function InsiderPage({ searchParams }: PageProps) {
                 initialTicker={ticker ?? ''}
                 initialResult={signals}
                 initialFilings={filings}
+                shortcuts={shortcuts}
             />
         </main>
     );
