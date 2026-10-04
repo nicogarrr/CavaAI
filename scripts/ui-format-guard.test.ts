@@ -21,6 +21,8 @@ describe('formato numérico es-ES', () => {
     assert.equal(formatCompact(416160000000), '416,16 mil M');
     assert.equal(formatCompact(1200000), '1,2 M');
     assert.equal(formatCompact(-2500000000), '-2,5 mil M');
+    assert.equal(formatCompact(4869930000000), '4,87 B');
+    assert.equal(formatCompact(999990000000), '999,99 mil M');
   });
 
   it('usa coma decimal en números, porcentajes e importes', () => {
