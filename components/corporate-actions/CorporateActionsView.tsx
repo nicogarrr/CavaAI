@@ -112,6 +112,12 @@ export default function CorporateActionsView({ initialActions }: CorporateAction
                         <span className="text-xs text-gray-500">Histórico, ya reflejado</span>
                     );
                 }
+                // Empresa fuera de tu cartera: no hay posición ni operaciones que ajustar.
+                if (record.no_position === true) {
+                    return (
+                        <span className="text-xs text-gray-500">Sin posición: nada que ajustar</span>
+                    );
+                }
                 return (
                     <Button
                         size="sm"

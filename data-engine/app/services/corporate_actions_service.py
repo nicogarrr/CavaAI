@@ -47,6 +47,28 @@ class CorporateActionService:
         return {row[0]: row[1] for row in rows}
 
     @staticmethod
+    def companies_with_holding(db: Session, company_ids: set[int]) -> set[int]:
+        """Empresas con posicion abierta o alguna compra/venta registrada (lote).
+
+        Un split de una empresa fuera de cartera no tiene nada que ajustar."""
+        if not company_ids:
+            return set()
+        with_position = set(
+            db.scalars(select(Position.company_id).where(Position.company_id.in_(company_ids)))
+        )
+        with_trades = set(
+            db.scalars(
+                select(Transaction.company_id)
+                .where(
+                    Transaction.company_id.in_(company_ids),
+                    Transaction.action.in_(("buy", "sell")),
+                )
+                .distinct()
+            )
+        )
+        return {cid for cid in (with_position | with_trades) if cid is not None}
+
+    @staticmethod
     def is_historical(action: CorporateAction, first_trade_date: object) -> bool:
         """Split anterior (o igual) a la primera operacion de la posicion: las
         acciones ya se compraron post-split, asi que ya esta reflejado y

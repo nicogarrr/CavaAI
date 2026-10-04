@@ -85,3 +85,26 @@ def test_no_transactions_is_not_historical(db):
     service = CorporateActionService()
     assert service.first_trade_dates(db, {company.id}) == {}
     assert service.is_historical(action, None) is False
+
+
+def test_company_outside_portfolio_has_no_holding(db):
+    held = _setup(db)
+    other = Company(
+        ticker="MSFT", name="MSFT", exchange="NASDAQ", currency="USD",
+        sector="S", industry="I", company_type="holding",
+        valuation_model="unassigned", special_sources=[], special_risks=[], factor_tags=[],
+    )
+    db.add(other)
+    db.commit()
+    service = CorporateActionService()
+    assert service.companies_with_holding(db, {held.id, other.id}) == {held.id}
+    assert service.companies_with_holding(db, set()) == set()
+
+
+def test_list_payload_marks_no_position(db):
+    from app.api.routes.corporate_actions import _payload
+
+    held = _setup(db)
+    action = _split(db, held, date(2022, 6, 1), "4")
+    assert _payload(action, "AAPL", None, has_holding=False)["no_position"] is True
+    assert _payload(action, "AAPL", None, has_holding=True)["no_position"] is False
