@@ -443,7 +443,7 @@ function AlertsManager() {
                         </div>
                     ))}
                     <p className="text-xs text-gray-500">
-                        Cada umbral de precio se compara con el último cierre del valor, en la divisa de su bolsa; la regla no guarda la divisa, por eso se muestra sin símbolo.
+                        Cada umbral de precio se compara con el último cierre guardado del valor, sin convertir divisas; la regla no guarda la divisa, por eso se muestra sin símbolo.
                     </p>
                 </div>
             )}
