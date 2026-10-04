@@ -23,6 +23,7 @@ export const SECTORES: Record<string, string> = {
   Materials: 'Materiales',
   'Communication Services': 'Servicios de comunicación',
   Media: 'Medios',
+  Unknown: 'Sin clasificar',
 };
 
 /** Etiqueta ES de un sector; si el backend manda uno desconocido, se muestra tal cual. */
@@ -163,4 +164,18 @@ export function sectorIndustryLine(sector: unknown, industry: unknown): string {
         .map(etiquetaSector);
     const unique = parts.filter((part, index) => parts.indexOf(part) === index);
     return unique.length ? unique.join(' · ') : 'Sector sin dato';
+}
+
+/** Etiqueta ES de la severidad de una alerta de riesgo (high/medium/low).
+ *  Valor desconocido: se muestra tal cual, nunca inventado. */
+const SEVERIDADES: Record<string, string> = {
+  critical: 'Crítica',
+  high: 'Alta',
+  medium: 'Media',
+  low: 'Baja',
+  info: 'Informativa',
+};
+
+export function etiquetaSeveridad(value: string): string {
+  return SEVERIDADES[value.toLowerCase()] ?? value;
 }
