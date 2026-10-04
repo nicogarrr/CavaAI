@@ -35,6 +35,10 @@ export type MarketMover = {
 export type MarketMovers = {
   as_of: string | null;
   universe: number;
+  /** Ultima sesion comun con la que se calculan los rankings. */
+  session_date?: string | null;
+  /** Empresas del universo sin cierre en esa sesion: fuera de los rankings. */
+  excluded_not_comparable?: number;
   gainers: MarketMover[];
   losers: MarketMover[];
   most_active: MarketMover[];
