@@ -86,6 +86,28 @@ def test_health_scheduler_job_count_is_cached(monkeypatch):
     assert len(calls) == 1, "el scheduler se reconstruyó en el segundo request"
 
 
+def test_health_scheduler_external_is_unknown_not_stopped(monkeypatch):
+    """F7: con WORKERS_ENABLED=false (scheduler en su servicio) no se afirma 'parado'."""
+    monkeypatch.setattr(
+        health_module,
+        "get_settings",
+        lambda: SimpleNamespace(workers_enabled=False),
+    )
+    status = health_module._scheduler_status()
+    assert status["enabled"] is False
+    assert status["running"] is None
+    assert status["external"] is True
+    assert "servicio aparte" in status["note"]
+
+
+def test_prod_compose_passes_app_version_to_backend():
+    """F7: sin APP_VERSION la API publica 'main-unknown' (la imagen no lleva git)."""
+    from pathlib import Path
+
+    compose = (Path(__file__).resolve().parents[2] / "docker-compose.prod.yml").read_text()
+    assert "APP_VERSION=${APP_VERSION:-}" in compose
+
+
 def test_required_probe_has_its_own_executor():
     """La BD no puede quedarse sin hilo por culpa de las sondas opcionales."""
     required = main_module._HEALTH_REQUIRED_EXECUTOR._max_workers
