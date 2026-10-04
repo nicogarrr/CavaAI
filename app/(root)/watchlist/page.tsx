@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { formatCompact, formatNumber, formatPercent, formatPrice, NA } from '@/lib/format';
+import { formatMarketCapUsd, formatNumber, formatPercent, formatPrice, NA } from '@/lib/format';
 import { getWatchlistState, getWatchlistEntryData } from '@/lib/actions/watchlist.actions';
 import { Eye, TrendingUp, TrendingDown, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
@@ -185,7 +185,7 @@ export default async function WatchlistPage() {
                                     <div className="min-w-0">
                                         <dt className="text-[11px] text-gray-500">Market Cap</dt>
                                         <dd className="truncate font-mono text-sm text-gray-400">
-                                            {stock.marketCap !== null ? `${formatCompact(stock.marketCap, { maximumFractionDigits: 2 })} US$` : NA}
+                                            {stock.marketCap !== null ? formatMarketCapUsd(stock.marketCap) : NA}
                                         </dd>
                                     </div>
                                     <div className="min-w-0">
@@ -272,7 +272,7 @@ export default async function WatchlistPage() {
                                             )}
                                         </TableCell>
                                         <TableCell className="text-right font-mono text-gray-400">
-                                            {stock.marketCap !== null ? `${formatCompact(stock.marketCap, { maximumFractionDigits: 2 })} US$` : NA}
+                                            {stock.marketCap !== null ? formatMarketCapUsd(stock.marketCap) : NA}
                                         </TableCell>
                                         <TableCell className="text-right">
                                             {stock.peRatio !== null && stock.peRatio !== undefined && Number.isFinite(stock.peRatio) ? (
