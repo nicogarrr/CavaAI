@@ -123,10 +123,11 @@ def test_unknown_volume_is_null_and_out_of_most_active(db: Session):
     assert "UVOL" not in most_active_tickers
 
 
-def test_company_with_last_close_older_than_10_days_stays_in_universe(db: Session):
-    """Ventana POR compania: un cierre global de N dias expulsaba a toda
-    compania con ultimo cierre viejo. El contrato es los DOS ULTIMOS
-    cierres de cada una, sin suelo temporal global."""
+def test_stale_company_stays_in_universe_but_out_of_rankings(db: Session):
+    """F9/F10: el ranking compara la ultima sesion comun. Una empresa con
+    ultimo cierre viejo sigue contando en el universo (y se declara en
+    excluded_not_comparable) pero no entra en subidas/bajadas/activas con una
+    variacion de otra epoca presentada como la de hoy."""
     fresh = _company(db, "FRESH")
     _price(db, fresh, date(2026, 9, 21), "100")
     _price(db, fresh, date(2026, 9, 22), "101")
@@ -137,23 +138,28 @@ def test_company_with_last_close_older_than_10_days_stays_in_universe(db: Sessio
     out = market_movers(db, 10)
     tickers = {m["ticker"] for m in out["gainers"] + out["losers"] + out["most_active"]}
     assert out["universe"] == 2
-    assert "STALE" in tickers
-    stale_mover = next(m for m in out["most_active"] if m["ticker"] == "STALE")
-    assert stale_mover["price"] == 55.0
-    assert stale_mover["change_pct"] == 10.0
+    assert out["session_date"] == "2026-09-22"
+    assert out["excluded_not_comparable"] == 1
+    assert "STALE" not in tickers
+    assert "FRESH" in tickers
 
 
-def test_gap_older_than_10_days_between_closes_still_computes_change(db: Session):
-    """Cierre dentro de cualquier ventana pero cierre anterior fuera: antes
-    salia con precio y variacion null. Ahora la variacion sale de SUS dos
-    ultimas barras, tengan la separacion que tengan."""
+def test_gap_between_closes_is_not_a_one_session_change(db: Session):
+    """IBRX (F9): si el cierre previo no es el de la sesion inmediatamente
+    anterior, el cambio seria de varios dias. Se queda en None, no +22 %."""
+    base = [_company(db, f"B{i}") for i in range(3)]
+    for c in base:
+        for day in (date(2026, 9, 30), date(2026, 10, 1), date(2026, 10, 2)):
+            _price(db, c, day, "10")
     gapped = _company(db, "GAP")
-    _price(db, gapped, date(2026, 1, 10), "100")
-    _price(db, gapped, date(2026, 9, 22), "130")
+    _price(db, gapped, date(2026, 9, 30), "100")
+    _price(db, gapped, date(2026, 10, 2), "130")
 
     out = market_movers(db, 10)
-    mover = next(m for m in out["gainers"] if m["ticker"] == "GAP")
-    assert mover["change_pct"] == 30.0
+    assert out["session_date"] == "2026-10-02"
+    assert "GAP" not in {m["ticker"] for m in out["gainers"] + out["losers"]}
+    gap_row = next(m for m in out["most_active"] if m["ticker"] == "GAP")
+    assert gap_row["change_pct"] is None
 
 
 def test_single_bar_company_keeps_null_change(db: Session):
