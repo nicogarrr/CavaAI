@@ -44,6 +44,7 @@ def test_hypothesis_negative_base_has_no_percentage() -> None:
     hypothesis = service._hypothesis(_company(), valuation)
     assert "-249%" not in hypothesis
     assert "no es interpretable" in hypothesis
+    assert "no sostiene" not in hypothesis
     assert "-84.70" in hypothesis
 
 
