@@ -480,3 +480,12 @@ def test_shared_budget_cap_within_one_generate(db, monkeypatch):
         db, _company(), VALUATION, HYPOTHESIS, NEWS, provider=provider2)
     assert result is None
     assert provider2.calls == 0
+
+
+def test_negative_base_fragment_has_no_margin_percentage():
+    valuation = {**VALUATION, "current_price": 58.45, "base_value": -84.7, "margin_of_safety": -2.49}
+    fragments = narrative._fragment_templates(_company(), valuation, NEWS)
+    text = fragments["valoracion_posicion"]
+    assert "-249%" not in text
+    assert "no es interpretable" in text
+    assert "-84.70" in text
