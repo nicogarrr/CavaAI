@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { RecordDetail, formatRecordValue, type DataRecord } from '@/components/data/RecordViews';
-import { etiquetaSector } from '@/lib/labels';
+import { etiquetaSector, etiquetaSeveridad } from '@/lib/labels';
 import { formatUserDateTime, formatMoney, formatPercent, NA } from '@/lib/format';
 import { getRiskDashboard } from '@/lib/actions/risk.actions';
 
@@ -277,7 +277,7 @@ export default function RiskDashboardView({ initialDashboard }: RiskDashboardVie
                             {alerts.map((alert) => (
                                 <div className="rounded-md border border-gray-700/60 bg-black/20 p-3" key={alertKey(alert)}>
                                     <div className="flex flex-wrap items-center gap-2">
-                                        <Badge variant="outline">{formatRecordValue(alert.severity)}</Badge>
+                                        <Badge variant="outline">{etiquetaSeveridad(formatRecordValue(alert.severity))}</Badge>
                                         <span className="text-sm text-gray-200">{formatRecordValue(alert.message)}</span>
                                     </div>
                                     <p className="mt-2 text-xs leading-5 text-gray-400">{thresholdExplanation(alert)}</p>
