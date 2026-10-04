@@ -150,7 +150,7 @@ export function formatPrice(
  * Intl es-ES con notation "compact" es inconsistente para miles de millones:
  * 9.447.000.000 se renderiza como "9447 M" mientras que 416.160.000.000 sale
  * como "416,16 mil M" (B18). Aquí la escala se fija siempre: millones como
- * "M", miles de millones como "mil M" y billones (1e12) como "B", con decimales es-ES.
+ * "M" y miles de millones como "mil M", con decimales es-ES.
  */
 export function formatCompact(
   value: NumericInput,
@@ -161,10 +161,6 @@ export function formatCompact(
   if (parsed === null) return fallback;
   const abs = Math.abs(parsed);
   const { maximumFractionDigits = 2, ...rest } = options;
-  if (abs >= 1e12) {
-    // 4.869.930.000.000 -> "4,87 B" (billón es-ES = 1e12), no "4869,93 mil M".
-    return `${formatNumber(parsed / 1e12, { maximumFractionDigits, ...rest }, fallback)} B`;
-  }
   if (abs >= 1e9) {
     return `${formatNumber(parsed / 1e9, { maximumFractionDigits, ...rest }, fallback)} mil M`;
   }
@@ -175,6 +171,24 @@ export function formatCompact(
     notation: 'compact',
     maximumFractionDigits,
     ...rest,
+  }).format(parsed);
+}
+
+/**
+ * Capitalización bursátil en dólares, estilo inglés compacto: "$4.87T",
+ * "$416.16B", "$9.45M". Es solo presentación (sin conversión de divisa): el
+ * llamante garantiza que `value` ya está en USD (la watchlist solo la rellena
+ * para el listado US con métricas Finnhub, que van en USD). No usar para
+ * volúmenes ni cantidades de acciones: no son dólares.
+ */
+export function formatMarketCapUsd(value: NumericInput, fallback: string = NA): string {
+  const parsed = toFinite(value);
+  if (parsed === null) return fallback;
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    notation: 'compact',
+    maximumFractionDigits: 2,
   }).format(parsed);
 }
 

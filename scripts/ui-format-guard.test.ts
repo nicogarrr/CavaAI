@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 // @ts-expect-error TS5097: la extensión explícita la exige node --experimental-strip-types.
-import { formatCompact, formatMoney, formatNumber, formatPercent } from '../lib/format.ts';
+import { formatCompact, formatMarketCapUsd, formatMoney, formatNumber, formatPercent } from '../lib/format.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
@@ -21,8 +21,23 @@ describe('formato numérico es-ES', () => {
     assert.equal(formatCompact(416160000000), '416,16 mil M');
     assert.equal(formatCompact(1200000), '1,2 M');
     assert.equal(formatCompact(-2500000000), '-2,5 mil M');
-    assert.equal(formatCompact(4869930000000), '4,87 B');
-    assert.equal(formatCompact(999990000000), '999,99 mil M');
+    // El volumen/cantidades siguen en es-ES: formatCompact no pone dólares.
+    assert.equal(formatCompact(4869930000000), '4869,93 mil M');
+  });
+
+  it('formatMarketCapUsd: dólares en inglés compacto, solo presentación', () => {
+    assert.equal(formatMarketCapUsd(4869930000000), '$4.87T');
+    assert.equal(formatMarketCapUsd(416160000000), '$416.16B');
+    assert.equal(formatMarketCapUsd(9447000000), '$9.45B');
+    assert.equal(formatMarketCapUsd(9447000), '$9.45M');
+    assert.equal(formatMarketCapUsd(null), 'N/D');
+    assert.equal(formatMarketCapUsd('abc'), 'N/D');
+  });
+
+  it('la watchlist usa formatMarketCapUsd y no el sufijo US$', () => {
+    const page = source('app/(root)/watchlist/page.tsx');
+    assert.ok(page.includes('formatMarketCapUsd(stock.marketCap)'));
+    assert.ok(!page.includes('} US$`'), 'sin el sufijo US$ pegado al valor');
   });
 
   it('usa coma decimal en números, porcentajes e importes', () => {
