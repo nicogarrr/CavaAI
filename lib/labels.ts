@@ -236,7 +236,7 @@ export function etiquetaFactor(value: string): string {
 /** Pendientes que explican «requiere revisión»: el estado sale de revisiones
  * o alertas abiertas, no de la nota de completitud (que puede ser 100/100).
  * Sin pendientes no se inventa texto. */
-export function pendientesRevisionLabel(
+export function openReviewsLabel(
     counts: { open_reviews?: number | null; open_alerts?: number | null } | null | undefined,
 ): string | null {
     const reviews = Number(counts?.open_reviews ?? 0);
