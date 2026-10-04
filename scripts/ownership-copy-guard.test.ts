@@ -14,3 +14,13 @@ test('F327: la vista /ownership no pierde tildes en su copy', () => {
     assert.match(page, /su último informe/);
     assert.match(page, /gestor aún no/);
 });
+
+test('F14: cabeceras y avisos de /ownership con tildes (límites, todavía, estará, próximo)', () => {
+    assert.doesNotMatch(page, /Limites de este dato/);
+    assert.doesNotMatch(page, /todavia/);
+    assert.doesNotMatch(page, /estara disponible/);
+    assert.doesNotMatch(page, /proximo trimestre/);
+    assert.match(page, /Límites de este dato/);
+    assert.match(page, /Sin datos 13F todavía/);
+    assert.match(page, /estará disponible tras el próximo trimestre/);
+});
