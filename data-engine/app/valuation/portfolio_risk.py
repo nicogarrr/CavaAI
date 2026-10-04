@@ -32,7 +32,7 @@ def calculate_portfolio_risk(positions: list[dict], cash: list[dict]) -> dict:
                 {
                     "severity": "high",
                     "ticker": position["ticker"],
-                    "message": f"{position['ticker']} exceeds 20% position weight",
+                    "message": f"{position['ticker']} supera el 20 % de peso en la cartera",
                     "metric_value": weight,
                     "threshold": 0.20,
                 }
@@ -42,7 +42,7 @@ def calculate_portfolio_risk(positions: list[dict], cash: list[dict]) -> dict:
                 {
                     "severity": "medium",
                     "ticker": position["ticker"],
-                    "message": f"{position['ticker']} is pre-FCF and above 10% weight",
+                    "message": f"{position['ticker']} es pre-FCF y supera el 10 % de peso en la cartera",
                     "metric_value": weight,
                     "threshold": 0.10,
                 }
@@ -54,7 +54,7 @@ def calculate_portfolio_risk(positions: list[dict], cash: list[dict]) -> dict:
                 {
                     "severity": "high",
                     "ticker": None,
-                    "message": f"{currency} cash is negative",
+                    "message": f"El saldo de caja en {currency} es negativo",
                     "metric_value": balance,
                     "threshold": 0,
                 }
