@@ -9,11 +9,15 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 // @ts-expect-error TS5097: la extensión explícita la exige node --experimental-strip-types.
-import { etiquetaSector, etiquetaTierFuente, etiquetaTipoEvento, etiquetaTipoInstrumento } from '../lib/labels.ts';
+import { etiquetaSector, etiquetaSeveridad, etiquetaTierFuente, etiquetaTipoEvento, etiquetaTipoInstrumento } from '../lib/labels.ts';
 
 void test('sectores de la cabecera de exposición se traducen (F208)', () => {
     assert.equal(etiquetaSector('Communication Services'), 'Servicios de comunicación');
     assert.equal(etiquetaSector('Sector Inventado'), 'Sector Inventado');
+    assert.equal(etiquetaSector('Unknown'), 'Sin clasificar');
+    assert.equal(etiquetaSeveridad('high'), 'Alta');
+    assert.equal(etiquetaSeveridad('medium'), 'Media');
+    assert.equal(etiquetaSeveridad('raro'), 'raro');
 });
 
 void test('tipos de instrumento del buscador en español (F174)', () => {
@@ -49,6 +53,7 @@ void test('tipos de evento y fallback de códigos futuros (F175)', () => {
 void test('los componentes usan las etiquetas, no la cadena cruda', () => {
     const risk = readFileSync('components/risk/RiskDashboardView.tsx', 'utf8');
     assert.match(risk, /exposureRecord\(value, etiquetaSector\)/);
+    assert.match(risk, /etiquetaSeveridad\(formatRecordValue\(alert\.severity\)\)/);
     assert.doesNotMatch(risk, /hace falta historia de precios/);
     const search = readFileSync('components/SearchCommand.tsx', 'utf8');
     assert.match(search, /etiquetaTipoInstrumento\(stock\.type\)/);
