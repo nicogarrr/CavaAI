@@ -320,6 +320,18 @@ export function formatUserDateTime(
   },
   fallback: string = NA,
 ): string {
+  // "YYYY-MM-DD" es un día de calendario, no un instante: toDate() lo parsea como
+  // medianoche en la zona del PROCESO (UTC en el servidor, Madrid en el navegador),
+  // y al formatearlo en Madrid salía "02:00" en el SSR y "00:00" en el cliente
+  // (React #418 en /risk, "Datos a fecha de"). Se pinta el día literal, sin hora.
+  const dateOnly = typeof value === 'string' ? DATE_ONLY_RE.exec(value) : null;
+  if (dateOnly) {
+    const literal = new Date(
+      Date.UTC(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3])),
+    );
+    const { hour: _hour, minute: _minute, second: _second, ...dayOnly } = options;
+    return new Intl.DateTimeFormat(FORMAT_LOCALE, { ...dayOnly, timeZone: 'UTC' }).format(literal);
+  }
   return formatDate(value, { ...options, timeZone: USER_TZ }, fallback);
 }
 
