@@ -38,6 +38,15 @@ def test_hypothesis_above_base_value() -> None:
     assert "descuenta mas" in hypothesis
 
 
+def test_hypothesis_negative_base_has_no_percentage() -> None:
+    service = ThesisService()
+    valuation = {"current_price": 58.45, "base_value": -84.7, "margin_of_safety": -2.49}
+    hypothesis = service._hypothesis(_company(), valuation)
+    assert "-249%" not in hypothesis
+    assert "no es interpretable" in hypothesis
+    assert "-84.70" in hypothesis
+
+
 def test_hypothesis_incomplete_data_is_honest() -> None:
     service = ThesisService()
     hypothesis = service._hypothesis(_company(), {"current_price": None, "base_value": None, "margin_of_safety": None})
