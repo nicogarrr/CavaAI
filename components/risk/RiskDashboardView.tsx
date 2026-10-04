@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { RecordDetail, formatRecordValue, type DataRecord } from '@/components/data/RecordViews';
-import { etiquetaSector, etiquetaSeveridad } from '@/lib/labels';
+import { etiquetaFactor, etiquetaSector, etiquetaSeveridad } from '@/lib/labels';
 import { formatUserDateTime, formatMoney, formatPercent, NA } from '@/lib/format';
 import { getRiskDashboard } from '@/lib/actions/risk.actions';
 
@@ -141,7 +141,7 @@ function humanizeRiskDashboard(dashboard: DataRecord | null): DataRecord | null 
             // cabecera las pintaba tal cual; las posiciones ya usan etiquetaSector.
             display[label] = exposureRecord(value, etiquetaSector);
         } else if (key === 'factor_exposure') {
-            display[label] = exposureRecord(value);
+            display[label] = exposureRecord(value, etiquetaFactor);
         } else if (key === 'status') {
             display[label] = RISK_STATUS_LABELS[String(value)] ?? String(value);
         } else if (key === 'missing_fx') {

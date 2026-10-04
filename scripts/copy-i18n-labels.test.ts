@@ -9,11 +9,14 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 // @ts-expect-error TS5097: la extensión explícita la exige node --experimental-strip-types.
-import { etiquetaSector, etiquetaSeveridad, etiquetaTierFuente, etiquetaTipoEvento, etiquetaTipoInstrumento } from '../lib/labels.ts';
+import { etiquetaFactor, etiquetaSector, etiquetaSeveridad, etiquetaTierFuente, etiquetaTipoEvento, etiquetaTipoInstrumento } from '../lib/labels.ts';
 
 void test('sectores de la cabecera de exposición se traducen (F208)', () => {
     assert.equal(etiquetaSector('Communication Services'), 'Servicios de comunicación');
     assert.equal(etiquetaSector('Sector Inventado'), 'Sector Inventado');
+    assert.equal(etiquetaFactor('pre_fcf'), 'Pre flujo de caja libre');
+    assert.equal(etiquetaFactor('adr:8'), 'ADR (ratio 8)');
+    assert.equal(etiquetaFactor('algo_nuevo'), 'Algo nuevo');
     assert.equal(etiquetaSector('Unknown'), 'Sin clasificar');
     assert.equal(etiquetaSeveridad('high'), 'Alta');
     assert.equal(etiquetaSeveridad('medium'), 'Media');
@@ -53,6 +56,7 @@ void test('tipos de evento y fallback de códigos futuros (F175)', () => {
 void test('los componentes usan las etiquetas, no la cadena cruda', () => {
     const risk = readFileSync('components/risk/RiskDashboardView.tsx', 'utf8');
     assert.match(risk, /exposureRecord\(value, etiquetaSector\)/);
+    assert.match(risk, /exposureRecord\(value, etiquetaFactor\)/);
     assert.match(risk, /etiquetaSeveridad\(formatRecordValue\(alert\.severity\)\)/);
     assert.doesNotMatch(risk, /hace falta historia de precios/);
     const search = readFileSync('components/SearchCommand.tsx', 'utf8');
