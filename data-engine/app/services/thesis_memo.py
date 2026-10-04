@@ -55,7 +55,7 @@ def build_memo_markdown(
         lines.append(f"\n> ⚠ Tesis potencialmente DESACTUALIZADA: hay datos mas nuevos (hasta {when}).")
     lines.append("")
 
-    lines.append("## Hipotesis")
+    lines.append("## Hipótesis")
     lines.append(thesis.hypothesis or "_Pendiente._")
     lines.append("")
 

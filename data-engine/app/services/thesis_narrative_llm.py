@@ -420,7 +420,7 @@ def _section_templates(
     # propia, opcional (no obligatoria en la seleccion).
     if hypothesis:
         sections["hipotesis"] = {
-            "titulo": "Hipotesis de trabajo",
+            "titulo": "Hipótesis de trabajo",
             "parrafos": [hypothesis],
         }
 
