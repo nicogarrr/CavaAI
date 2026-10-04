@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 // @ts-expect-error TS5097: la extensión explícita la exige node --experimental-strip-types.
-import { buildPortfolioInsight } from '../lib/portfolio-insight.ts';
+import { buildPortfolioInsight, hasCostBasis } from '../lib/portfolio-insight.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
@@ -104,5 +104,30 @@ describe('guardas de regresion de /inicio', () => {
       overview.includes('formatMoney(portfolioSummary.totalValue, portfolioSummary.baseCurrency)'),
       'el total de "Tu Cartera Hoy" debe usar portfolioSummary.baseCurrency',
     );
+  });
+});
+
+describe('hasCostBasis (F2)', () => {
+  it('sin coste conocido el coste, la ganancia y el rendimiento son N/D, no 0', () => {
+    assert.equal(hasCostBasis(null), false);
+    assert.equal(hasCostBasis({ holdings: [] }), false);
+    assert.equal(
+      hasCostBasis({ holdings: [{ symbol: 'A', cost: 0, gain: 0, gainPercent: 0 }] }),
+      false,
+    );
+    assert.equal(
+      hasCostBasis({ holdings: [{ symbol: 'A', cost: 100, gain: 5, gainPercent: 5, fxMissing: true }] }),
+      false,
+    );
+    assert.equal(
+      hasCostBasis({ holdings: [{ symbol: 'A', cost: 100, gain: 5, gainPercent: 5 }] }),
+      true,
+    );
+  });
+
+  it('el resumen de cartera muestra N/D en vez de 0,00 sin base de coste', () => {
+    const summary = source('components/portfolio/PortfolioSummary.tsx');
+    assert.ok(summary.includes('hasCostBasis(summary)'));
+    assert.ok(summary.includes('noData ? NA : format(summary.totalCost)'));
   });
 });

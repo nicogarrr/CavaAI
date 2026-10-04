@@ -3,6 +3,7 @@
 import { formatMoney, formatPercent, NA } from '@/lib/format';
 import { TrendingUp, TrendingDown, DollarSign, PiggyBank } from 'lucide-react';
 import { t } from '@/lib/i18n/t';
+import { hasCostBasis } from '@/lib/portfolio-insight';
 import type { PortfolioSummary as PortfolioSummaryType } from '@/lib/actions/portfolio.actions';
 
 type Props = {
@@ -12,6 +13,8 @@ type Props = {
 export default function PortfolioSummary({ summary }: Props) {
   // Cartera vacia: un "+0,00%" en verde sugiere ganancia donde no hay datos (F31)
   const isEmpty = summary.holdings.length === 0;
+  // Sin base de coste: coste, ganancia y rendimiento son N/D, no 0 (F2).
+  const noData = isEmpty || !hasCostBasis(summary);
   const isPositive = summary.totalGain >= 0;
   const format = (value: number) => formatMoney(value, summary.baseCurrency, {
     minimumFractionDigits: 2,
@@ -50,13 +53,13 @@ export default function PortfolioSummary({ summary }: Props) {
         </div>
         <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold mb-1">Costo Total</p>
         <p className="text-base min-[420px]:text-lg sm:text-2xl font-bold text-gray-100 tracking-tight break-words">
-          {format(summary.totalCost)}
+          {noData ? NA : format(summary.totalCost)}
         </p>
       </div>
 
       <div className="bg-[#111111] border border-gray-800 rounded-xl p-4 sm:p-5 relative overflow-hidden group hover:border-purple-500/30 transition-colors">
         <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-          {!isEmpty ? (
+          {!noData ? (
             isPositive ? (
               <TrendingUp className="h-12 w-12 text-green-500" />
             ) : (
@@ -65,8 +68,8 @@ export default function PortfolioSummary({ summary }: Props) {
           ) : null}
         </div>
         <p className="text-gray-400 text-[11px] sm:text-xs uppercase tracking-normal sm:tracking-wider font-semibold mb-1">Ganancia/Pérdida</p>
-        <p className={`text-base min-[420px]:text-lg sm:text-2xl font-bold tracking-tight break-words ${isEmpty ? 'text-gray-500' : isPositive ? 'text-green-400' : 'text-red-400'}`}>
-          {isEmpty
+        <p className={`text-base min-[420px]:text-lg sm:text-2xl font-bold tracking-tight break-words ${noData ? 'text-gray-500' : isPositive ? 'text-green-400' : 'text-red-400'}`}>
+          {noData
             ? NA
             : formatMoney(summary.totalGain, summary.baseCurrency, {
                 minimumFractionDigits: 2,
@@ -79,12 +82,12 @@ export default function PortfolioSummary({ summary }: Props) {
       <div className="bg-[#111111] border border-gray-800 rounded-xl p-4 sm:p-5 relative overflow-hidden group hover:border-orange-500/30 transition-colors">
         <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold mb-1">Rendimiento</p>
         <div className="flex items-baseline gap-2">
-          <p className={`text-base min-[420px]:text-lg sm:text-2xl font-bold tracking-tight break-words ${isEmpty ? 'text-gray-500' : isPositive ? 'text-green-400' : 'text-red-400'}`}>
-            {isEmpty ? NA : formatPercent(summary.totalGainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
+          <p className={`text-base min-[420px]:text-lg sm:text-2xl font-bold tracking-tight break-words ${noData ? 'text-gray-500' : isPositive ? 'text-green-400' : 'text-red-400'}`}>
+            {noData ? NA : formatPercent(summary.totalGainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
           </p>
         </div>
         {/* Barra de progreso visual */}
-        {!isEmpty ? (
+        {!noData ? (
           <div className="w-full bg-gray-800 h-1.5 rounded-full mt-3 overflow-hidden">
             <div
               className={`h-full rounded-full ${isPositive ? 'bg-green-500' : 'bg-red-500'}`}

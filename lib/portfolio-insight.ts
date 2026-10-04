@@ -55,3 +55,12 @@ export function buildPortfolioInsight(summary: PortfolioInsightSummary | null | 
         partial: conCoste.length < summary.holdings.length,
     };
 }
+
+/**
+ * Hay base de coste conocida en al menos una posicion (coste > 0 y FX resuelto).
+ * Sin ella, coste total, ganancia y rendimiento son N/D: un "0,00 EUR" o un
+ * "+0,00 %" se leeria como dato real y es solo ausencia de base (F2).
+ */
+export function hasCostBasis(summary: PortfolioInsightSummary | null | undefined): boolean {
+    return buildPortfolioInsight(summary).kind === 'movement';
+}
