@@ -281,7 +281,7 @@ export default async function OwnershipPage({ searchParams }: PageProps) {
                             </table>
                         </div>
                         {changes.changes.every((c) => c.change === 'unchanged') ? (
-                            <p className="mt-3 text-sm text-gray-400">Sin movimientos entre los dos ultimos informes.</p>
+                            <p className="mt-3 text-sm text-gray-400">Sin movimientos entre los dos últimos informes.</p>
                         ) : null}
                     </section>
                 ) : (
