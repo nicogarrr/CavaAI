@@ -179,3 +179,56 @@ const SEVERIDADES: Record<string, string> = {
 export function etiquetaSeveridad(value: string): string {
   return SEVERIDADES[value.toLowerCase()] ?? value;
 }
+
+/** Etiquetas ES de los factores/temas de cartera (factor_tags del backend).
+ *  Etiqueta desconocida: se humaniza el snake_case (sin inventar significado). */
+const FACTORES: Record<string, string> = {
+  ads: 'Publicidad',
+  ai: 'IA',
+  ai_biology: 'IA aplicada a biología',
+  auto: 'Automoción',
+  biotech: 'Biotecnología',
+  china: 'China',
+  cloud: 'Nube',
+  commodities: 'Materias primas',
+  cyclical: 'Cíclico',
+  defense: 'Defensa',
+  drones: 'Drones',
+  ecommerce: 'Comercio electrónico',
+  energy: 'Energía',
+  fcf: 'Genera flujo de caja libre',
+  financials: 'Financiero',
+  glp1: 'GLP-1',
+  government: 'Gobierno',
+  growth: 'Crecimiento',
+  healthcare: 'Salud',
+  infra: 'Infraestructura',
+  media: 'Medios',
+  mining: 'Minería',
+  mobility: 'Movilidad',
+  optionality: 'Opcionalidad',
+  platform: 'Plataforma / marketplace',
+  pre_fcf: 'Pre flujo de caja libre',
+  quality: 'Calidad',
+  rates: 'Tipos de interés',
+  regulatory: 'Regulatorio',
+  robotics: 'Robótica',
+  semiconductors: 'Semiconductores',
+  small_cap: 'Small cap',
+  software: 'Software',
+  sotp: 'Suma de partes',
+  space: 'Espacio',
+  speculative: 'Especulativo',
+  subscriber: 'Suscripción (ingresos recurrentes)',
+  telecom: 'Telecomunicaciones',
+  uranium: 'Uranio',
+};
+
+export function etiquetaFactor(value: string): string {
+  const known = FACTORES[value.toLowerCase()];
+  if (known) return known;
+  const adr = /^adr:(\d+)$/i.exec(value);
+  if (adr) return `ADR (ratio ${adr[1]})`;
+  const plain = value.replace(/_/g, ' ');
+  return plain.charAt(0).toUpperCase() + plain.slice(1);
+}
