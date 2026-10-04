@@ -20,7 +20,7 @@ import { t } from '@/lib/i18n/t';
 import { showErrorToast } from '@/lib/toast';
 import { toast } from 'sonner';
 import { onTheFlyReportNote } from '@/lib/taxes/report-note';
-import { TAX_HOLDING_MONEY_COLUMNS, formatHoldingMoney } from '@/lib/taxes/holding-money';
+import { TAX_HOLDING_MONEY_COLUMNS, formatHoldingCell } from '@/lib/taxes/holding-money';
 
 interface TaxesViewProps {
     initialHoldings: DataRecord[];
@@ -316,7 +316,7 @@ export default function TaxesView({ initialHoldings, initialReport, initialThres
                 formatColumns={Object.fromEntries(
                     TAX_HOLDING_MONEY_COLUMNS.map((column) => [
                         column,
-                        (value: unknown, record: DataRecord) => formatHoldingMoney(value, record.currency),
+                        (value: unknown, record: DataRecord) => formatHoldingCell(column, value, record),
                     ]),
                 )}
                 linkColumns={{ ticker: (record) => researchHrefFor(record) }}

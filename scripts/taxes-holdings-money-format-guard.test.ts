@@ -9,7 +9,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 // @ts-expect-error TS5097
-import { TAX_HOLDING_MONEY_COLUMNS, formatHoldingMoney } from '../lib/taxes/holding-money.ts';
+import { TAX_HOLDING_MONEY_COLUMNS, formatHoldingCell, formatHoldingMoney } from '../lib/taxes/holding-money.ts';
 
 void test('comportamiento: importes es-ES con divisa de la fila', () => {
     // es-ES agrupa millares a partir de 5 cifras (CLDR minimumGroupingDigits=2)
@@ -33,6 +33,20 @@ void test('RecordList aplica formatColumns antes del fallback genérico', () => 
 void test('TaxesView cablea las tres columnas monetarias con la divisa de la fila', () => {
     const taxes = readFileSync('components/taxes/TaxesView.tsx', 'utf8');
     assert.match(taxes, /TAX_HOLDING_MONEY_COLUMNS\.map/);
-    assert.match(taxes, /formatHoldingMoney\(value, record\.currency\)/);
+    assert.match(taxes, /formatHoldingCell\(column, value, record\)/);
     assert.match(taxes, /formatColumns=\{Object\.fromEntries/);
+});
+
+void test('B9: base de coste 0 con cantidad > 0 es N/D (no coste real), y la plusvalia latente tambien', () => {
+    const sinCoste = { quantity: 10, cost_basis: 0, currency: 'EUR' };
+    assert.equal(formatHoldingCell('cost_basis', 0, sinCoste), 'N/D');
+    assert.equal(formatHoldingCell('unrealized_pnl', 1500, sinCoste), 'N/D');
+    // el valor de mercado no depende de la base
+    assert.equal(formatHoldingCell('market_value', 1500, sinCoste), '1500,00\u00a0€');
+    // con coste real todo se pinta
+    const conCoste = { quantity: 10, cost_basis: 1000, currency: 'EUR' };
+    assert.equal(formatHoldingCell('cost_basis', 1000, conCoste), '1000,00\u00a0€');
+    assert.equal(formatHoldingCell('unrealized_pnl', 500, conCoste), '500,00\u00a0€');
+    // cantidad 0 con coste 0: no se afirma ausencia
+    assert.equal(formatHoldingCell('cost_basis', 0, { quantity: 0, cost_basis: 0 }), '0,00\u00a0€');
 });
