@@ -130,6 +130,9 @@ services:
     restart: unless-stopped
     environment:
       - APP_ENV=production
+      # Version desplegada que expone /api/health (la imagen no lleva git):
+      # se exporta al desplegar, p. ej. APP_VERSION=main-$(git rev-parse --short HEAD).
+      - APP_VERSION=${APP_VERSION:-}
       # El scheduler corre en su propio servicio (cavaai-scheduler);
       # sin esto, el backend arrancaria una segunda copia embebida.
       - WORKERS_ENABLED=false
