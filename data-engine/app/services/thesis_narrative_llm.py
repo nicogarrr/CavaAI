@@ -125,13 +125,13 @@ def _fragment_templates(
         # Es el crecimiento IMPLICITO del modelo con sus supuestos, no una
         # expectativa observada del mercado: la atribucion va al DCF inverso.
         fragments["expectativas_mercado"] = (
-            "Con los supuestos de este DCF inverso, el precio actual exigiria "
+            "Con los supuestos de este DCF inverso, el precio actual exigiría "
             f"un crecimiento de ingresos del {growth * 100:.1f}% anual."
         )
     if status == "partial":
         fragments["caveat_parcial"] = (
-            f"La valoracion es parcial-indicativa: faltan {missing or 'algunos inputs'} "
-            "(ver seccion 13 del memo)."
+            f"La valoración es parcial-indicativa: faltan {missing or 'algunos inputs'} "
+            "(ver sección 13 del memo)."
         )
 
     headline_count = 0
