@@ -11,7 +11,8 @@ export function PublicProfileSection({ profile }: { profile: PublicProfile }) {
                 <h2 className="text-xl font-semibold text-gray-100">{vehicle.name}</h2>
                 <p className="text-sm text-gray-400">{vehicle.type}</p>
                 <p className="text-sm text-gray-500">
-                    {vehicle.regulator_id} · Inicio {vehicle.start_date} ·{' '}
+                    {vehicle.regulator_id}
+                    {vehicle.start_date ? ` · Inicio ${vehicle.start_date}` : ''} ·{' '}
                     <a className={LINK} href={vehicle.source_url} rel="noreferrer" target="_blank">
                         Fuente
                     </a>
@@ -43,7 +44,7 @@ export function PublicProfileSection({ profile }: { profile: PublicProfile }) {
 
             {profile.letters.length > 0 ? (
                 <section className="flex flex-col gap-3">
-                    <h2 className="text-xl font-semibold text-gray-100">Cartas a los partícipes</h2>
+                    <h2 className="text-xl font-semibold text-gray-100">Cartas</h2>
                     <ul className="flex flex-col divide-y divide-gray-900">
                         {profile.letters.map((letter) => (
                             <li className="py-2 text-sm" key={letter.url}>
