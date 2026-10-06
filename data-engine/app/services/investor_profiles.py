@@ -90,6 +90,131 @@ PUBLIC_PROFILES: dict[str, dict[str, Any]] = {
 }
 
 
+_WEB_ASOF_GENERIC = "2026-10-06 (web consultada)"
+
+_CSU_RELEASE = "https://www.csisoftware.com/constellation-software-releases-letter-to-shareholders/"
+_CSU_WEB = "https://www.csisoftware.com/"
+_AMZN_LETTERS = "https://www.aboutamazon.com/about-us/shareholder-letters"
+_AMZN_1997 = "https://s2.q4cdn.com/299287126/files/doc_financials/annual/Shareholderletter97.pdf"
+_AMZN_EDGAR = "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1018724&type=10-K"
+_BRK_LETTERS = "https://www.berkshirehathaway.com/letters/letters.html"
+_BRK_2023 = "https://www.berkshirehathaway.com/letters/2023ltr.pdf"
+_BRK_NEWS = "https://www.berkshirehathaway.com/news/nov2823.pdf"
+_NOMAD = "https://igyfoundation.org.uk/wp-content/uploads/2021/03/Full_Collection_Nomad_Letters.pdf"
+
+PUBLIC_PROFILES["mark-leonard"] = {
+    "vehicle": {
+        "name": "Constellation Software Inc. (TSX: CSU)",
+        "type": "Empresa cotizada que adquiere, gestiona y construye negocios de software de mercado vertical; Mark Leonard firma como Presidente (comunicado del 15 feb 2021)",
+        "regulator_id": "TSX: CSU",
+        "manager_company": "Constellation Software Inc.",
+        "start_date": "",
+        "source_url": _CSU_RELEASE,
+    },
+    "facts": [
+        _fact("Actividad", "Adquiere, gestiona y construye negocios de software de mercado vertical", "2021-02-15", _CSU_RELEASE),
+        _fact("Clientes", "Más de 150.000 en más de 160 países", _WEB_ASOF_GENERIC, _CSU_WEB),
+        _fact("Enfoque", "Adquisiciones de compra y mantenimiento a largo plazo; las filiales operan con autonomía", _WEB_ASOF_GENERIC, _CSU_WEB),
+    ],
+    "letters": [
+        {"title": "Comunicado de la carta a los accionistas de Mark Leonard (15 feb 2021)", "date": "2021", "url": _CSU_RELEASE},
+    ],
+    "meetings": [],
+    "holdings": None,
+    "holdings_note": (
+        "Sin datos: Mark Leonard no presenta 13F y no hay una fuente pública incorporada con su cartera personal. "
+        "Los informes a accionistas de Constellation están en su web."
+    ),
+    "links": [
+        {"label": "Web oficial de Constellation", "url": _CSU_WEB},
+    ],
+}
+
+PUBLIC_PROFILES["bezos"] = {
+    "vehicle": {
+        "name": "Amazon.com, Inc.",
+        "type": "Empresa cotizada fundada por Jeff Bezos; su carta de 1997 a los accionistas está firmada por Jeffrey P. Bezos",
+        "regulator_id": "SEC CIK 0001018724",
+        "manager_company": "Amazon.com, Inc.",
+        "start_date": "",
+        "source_url": _AMZN_1997,
+    },
+    "facts": [
+        _fact("Clientes servidos a cierre de 1997", "Más de 1,5 millones", "carta a los accionistas de 1997", _AMZN_1997),
+        _fact("Crecimiento de ingresos en 1997", "+838% hasta 147,8 M$", "carta a los accionistas de 1997", _AMZN_1997),
+        _fact("Principio central de la carta de 1997", "\"It's All About the Long Term\"", "carta a los accionistas de 1997", _AMZN_1997),
+    ],
+    "letters": [
+        {"title": "Carta a los accionistas de 1997 (Jeffrey P. Bezos)", "date": "1997", "url": _AMZN_1997},
+        {"title": "Todas las cartas a los accionistas de Amazon", "date": "1997-", "url": _AMZN_LETTERS},
+    ],
+    "meetings": [],
+    "holdings": None,
+    "holdings_note": (
+        "Sin datos: Bezos no presenta 13F. Su participación en Amazon figura en los registros de la SEC (enlace en fuentes) "
+        "y aún no está incorporada con cifras verificadas."
+    ),
+    "links": [
+        {"label": "Documentos de Amazon en la SEC (EDGAR)", "url": _AMZN_EDGAR},
+    ],
+}
+
+PUBLIC_PROFILES["munger"] = {
+    "vehicle": {
+        "name": "Berkshire Hathaway (Charlie Munger, vicepresidente)",
+        "type": "Vicepresidente de Berkshire Hathaway hasta su fallecimiento el 28 nov 2023 (según Berkshire)",
+        "regulator_id": "Fallecido 2023-11-28",
+        "manager_company": "Berkshire Hathaway Inc.",
+        "start_date": "",
+        "source_url": _BRK_NEWS,
+    },
+    "facts": [
+        _fact("Fallecimiento", "28 nov 2023, 33 días antes de cumplir 100 años", "2023-11-28", _BRK_2023),
+        _fact("Rol en Berkshire", "Socio de Warren Buffett en la dirección de Berkshire; Buffett le dedica la carta anual 2023", "carta anual 2023", _BRK_2023),
+    ],
+    "letters": [
+        {"title": "Carta anual 2023 de Berkshire: «Charlie Munger - The Architect of Berkshire Hathaway»", "date": "2023", "url": _BRK_2023},
+        {"title": "Comunicado de Berkshire sobre su fallecimiento (28 nov 2023)", "date": "2023", "url": _BRK_NEWS},
+        {"title": "Todas las cartas de Berkshire Hathaway", "date": "1977-", "url": _BRK_LETTERS},
+    ],
+    "meetings": [],
+    "holdings": None,
+    "holdings_note": (
+        "Sin datos: Munger no presentaba 13F a título personal. La cartera de Berkshire está en la ficha de Warren Buffett."
+    ),
+    "links": [
+        {"label": "Cartas de Berkshire Hathaway", "url": _BRK_LETTERS},
+    ],
+}
+
+PUBLIC_PROFILES["nick-sleep"] = {
+    "vehicle": {
+        "name": "Nomad Investment Partnership (Nick Sleep y Qais Zakaria)",
+        "type": "Sociedad de inversión; cartas semestrales a socios de finales de 2001 a inicios de 2014",
+        "regulator_id": "Cartas 2001-2014",
+        "manager_company": "Nomad Investment Partnership",
+        "start_date": "2001",
+        "source_url": _NOMAD,
+    },
+    "facts": [
+        _fact("Cartas publicadas", "Semestrales, de finales de 2001 a inicios de 2014", "recopilación alojada en IGY Foundation", _NOMAD),
+        _fact("Evolución descrita por los autores", "Del estilo cigar butt a participaciones casi permanentes (\"from cigar butt investing to near permanent holdings\")", "recopilación alojada en IGY Foundation", _NOMAD),
+    ],
+    "letters": [
+        {"title": "Colección completa de cartas de Nomad a los socios (2001-2014), copia aprobada alojada en IGY Foundation", "date": "2001-2014", "url": _NOMAD},
+    ],
+    "meetings": [],
+    "holdings": None,
+    "holdings_note": (
+        "Sin datos: Nomad no presenta 13F público. Las posiciones se describen dentro de las cartas (enlace arriba), "
+        "no como una cartera con fechas y cifras."
+    ),
+    "links": [
+        {"label": "Cartas de Nomad (IGY Foundation, tercero)", "url": _NOMAD},
+    ],
+}
+
+
 def public_profile(slug: str) -> dict[str, Any] | None:
     return PUBLIC_PROFILES.get(slug)
 
