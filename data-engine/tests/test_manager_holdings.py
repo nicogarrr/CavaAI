@@ -66,6 +66,14 @@ INFO_TABLE = """<?xml version="1.0"?>
 """
 
 
+# Resumen minimo de una enmienda completa (sin totales): la enmienda se ingiere, sin verificar.
+RESTATEMENT_DOC = (
+    '<edgarSubmission xmlns="http://www.sec.gov/edgar/thirteenffiler"><formData>'
+    "<amendmentInfo><amendmentType>RESTATEMENT</amendmentType></amendmentInfo>"
+    "</formData></edgarSubmission>"
+)
+
+
 def _sec_client(fail: bool = False) -> httpx.Client:
     def handler(request: httpx.Request) -> httpx.Response:
         if fail:
@@ -77,6 +85,8 @@ def _sec_client(fail: bool = False) -> httpx.Client:
             return httpx.Response(200, json=INDEX)
         if url.endswith("form13fInfoTable.xml"):
             return httpx.Response(200, text=INFO_TABLE)
+        if url.endswith("primary_doc.xml"):
+            return httpx.Response(200, text=RESTATEMENT_DOC)
         return httpx.Response(404, text="not found")
 
     return httpx.Client(transport=httpx.MockTransport(handler))
@@ -236,6 +246,8 @@ def _sec_client_two() -> httpx.Client:
         for key, table in TABLES.items():
             if key in url and url.endswith("form13fInfoTable.xml"):
                 return httpx.Response(200, text=table)
+        if url.endswith("primary_doc.xml"):
+            return httpx.Response(200, text=RESTATEMENT_DOC)
         return httpx.Response(404, text="not found")
 
     return httpx.Client(transport=httpx.MockTransport(handler))
@@ -429,3 +441,38 @@ def test_most_bought_counts_a_manager_once_per_cusip_even_with_two_classes(db):
     item = most_bought(db)["items"][0]
     assert item["buyers_count"] == 1
     assert [b["slug"] for b in item["buyers"]] == ["buffett"]
+
+
+def test_amendment_without_readable_summary_is_skipped_not_ingested(db):
+    subs = {
+        "filings": {
+            "recent": {
+                "accessionNumber": ["0000950123-26-000011", "0000950123-26-000010"],
+                "form": ["13F-HR/A", "13F-HR"],
+                "reportDate": ["2026-06-30", "2026-06-30"],
+                "filingDate": ["2026-08-20", "2026-08-14"],
+                "primaryDocument": ["primary_doc.xml", "primary_doc.xml"],
+            }
+        }
+    }
+    client = _multi_client(None, subs)
+    result = ManagerHoldingIngestionService(client).sync_manager(db, cik=CIK)
+    assert result["skipped_amendments"] == [
+        {"accession": "0000950123-26-000011", "reason": "summary_unreadable"}
+    ]
+    accessions = {r.accession_number for r in db.scalars(select(ManagerHolding))}
+    assert accessions == {"0000950123-26-000010"}
+
+
+def test_investor_api_exposes_partial_coverage_after_a_totals_mismatch(db):
+    from app.services.investors import INVESTORS, investor_detail, list_investors
+
+    ManagerHoldingIngestionService(_multi_client(_primary_doc("999", 5))).sync_manager(db, cik=CIK)
+    slug = next(i.slug for i in INVESTORS if i.cik == CIK)
+    listed = next(i for i in list_investors(db)["investors"] if i["slug"] == slug)
+    detail = investor_detail(db, slug)
+    assert detail is not None
+    assert listed["coverage"] == "partial"
+    assert detail["coverage"] == "partial"
+    others = [i for i in list_investors(db)["investors"] if i["slug"] != slug]
+    assert all(i["coverage"] is None for i in others)
