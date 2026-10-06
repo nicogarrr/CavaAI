@@ -23,12 +23,20 @@ async function submitIngestFeed(formData: FormData): Promise<void> {
   await ingestResearchNewsFeed(formData);
 }
 
-type PageProps = { searchParams: Promise<{ lane?: string }> };
+type PageProps = { searchParams: Promise<{ lane?: string; pagina?: string }> };
 
 export default async function ResearchNewsPage({ searchParams }: PageProps) {
   const query = await searchParams;
   const lane = query.lane === 'macro' || query.lane === 'empresa' ? query.lane : null;
-  const [events, tickerContext] = await Promise.all([getResearchNews(lane, 0, NEWS_PAGE_SIZE), getTickerContext()]);
+  const parsed = Number.parseInt(query.pagina ?? '1', 10);
+  const page = Number.isFinite(parsed) ? Math.min(Math.max(1, parsed), 1000) : 1;
+  // Se pide uno de más para saber si hay página siguiente sin contar toda la tabla.
+  const [fetched, tickerContext] = await Promise.all([
+    getResearchNews(lane, (page - 1) * NEWS_PAGE_SIZE, NEWS_PAGE_SIZE + 1),
+    getTickerContext(),
+  ]);
+  const hasMore = fetched.length > NEWS_PAGE_SIZE;
+  const events = fetched.slice(0, NEWS_PAGE_SIZE);
 
   return (
     <main id="content" tabIndex={-1} className="mx-auto flex max-w-7xl flex-col gap-6">
@@ -46,9 +54,11 @@ export default async function ResearchNewsPage({ searchParams }: PageProps) {
       />
 
       <NewsEventsFlow
-        initialEvents={events}
-        key={lane ?? 'todas'}
+        events={events}
+        hasMore={hasMore}
+        key={`${lane ?? 'todas'}-${page}`}
         lane={lane}
+        page={page}
         portfolioTickers={tickerContext.portfolioTickers}
         watchlistTickers={tickerContext.watchlistTickers}
       />
