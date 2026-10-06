@@ -24,6 +24,12 @@ describe('fechas honestas', () => {
     assert.match(page, /timeZone:\s*USER_TZ/);
   });
 
+  it('el selector de años de TaxesView usa la zona del usuario, no la del navegador', () => {
+    const view = read('components', 'taxes', 'TaxesView.tsx');
+    assert.doesNotMatch(view, /new Date\(\)\.getFullYear\(\)/);
+    assert.match(view, /timeZone:\s*USER_TZ/);
+  });
+
   it('el sitemap no inventa lastModified: new Date() en rutas estáticas', () => {
     const sitemap = read('app', 'sitemap.ts');
     assert.doesNotMatch(sitemap, /lastModified/);

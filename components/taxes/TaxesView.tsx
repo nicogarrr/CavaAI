@@ -15,7 +15,7 @@ import { getTaxHoldings, getTaxReport, regenerateTaxReport } from '@/lib/actions
 import { FilingSection, Modelo720Section } from '@/components/taxes/FilingSections';
 import { recordDetailKey } from '@/components/taxes/record-detail-key';
 import { reportForYear, type ReportOverride } from '@/lib/taxes/report-state';
-import { formatUserDateTime, formatMoney, NA } from '@/lib/format';
+import { formatUserDateTime, formatMoney, NA, USER_TZ } from '@/lib/format';
 import { t } from '@/lib/i18n/t';
 import { showErrorToast } from '@/lib/toast';
 import { toast } from 'sonner';
@@ -245,7 +245,8 @@ export default function TaxesView({ initialHoldings, initialReport, initialThres
     // fija el año real en el primer efecto.
     const [currentYear, setCurrentYear] = useState(0);
     useEffect(() => {
-        setCurrentYear(new Date().getFullYear());
+        // Año civil del usuario (Europe/Madrid), igual que el servidor en taxes/page.tsx.
+        setCurrentYear(Number(new Intl.DateTimeFormat('en-CA', { timeZone: USER_TZ, year: 'numeric' }).format(new Date())));
     }, []);
     const yearOptions = currentYear === 0
         ? []
