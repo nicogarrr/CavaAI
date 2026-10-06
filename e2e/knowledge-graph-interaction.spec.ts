@@ -298,10 +298,15 @@ test.describe("knowledge-graph interactivo (D2b)", () => {
     }
 
     // Enlace compartible al nodo, con los filtros del ámbito conservados.
-    await expect(detail.getByRole("link", { name: "Enlace compartible a este nodo" })).toHaveAttribute(
-      "href",
-      new RegExp(`focus=${focus}`),
-    );
+    // Ahora es un boton que copia la URL (el antiguo <Link> apuntaba a la URL
+    // actual y no navegaba a ninguna parte). Con portapapeles disponible dice
+    // "copiado"; sin el, ensena el enlace con el nodo para copiarlo a mano.
+    await detail.getByRole("button", { name: "Enlace compartible a este nodo" }).click();
+    const copyStatus = detail.getByRole("status").filter({ hasText: /Enlace copiado|No se pudo copiar/ });
+    await expect(copyStatus).toBeVisible();
+    if ((await copyStatus.innerText()).includes("No se pudo copiar")) {
+      await expect(detail.locator("code")).toContainText(new RegExp(`focus=${focus}`));
+    }
   });
 
   test("el deep link abre la página con el nodo ya seleccionado", async ({ page, request }) => {
