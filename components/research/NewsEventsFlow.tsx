@@ -1,13 +1,9 @@
-"use client";
-
 import { AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button } from '@/components/ui/button';
 import { EmptyLink, EmptyState } from '@/components/ui/empty-state';
 import { TickerContextBadges } from '@/components/common/TickerContextBadges';
-import { loadMoreResearchNews, type ResearchNewsEvent } from '@/lib/actions/research.actions';
-import { NEWS_PAGE_SIZE, type NewsLane } from '@/lib/news-paging';
+import type { ResearchNewsEvent } from '@/lib/actions/research.actions';
+import type { NewsLane } from '@/lib/news-paging';
 import { formatPercent, NA } from '@/lib/format';
 import { newsDisplayTitle } from '@/lib/news-display';
 import { etiquetaDireccionImpacto, etiquetaTemaMacro, etiquetaTierFuente, etiquetaTipoEvento } from "@/lib/labels";
@@ -18,64 +14,40 @@ const CARRILES = [
   { key: 'macro', label: 'Macro', href: '/research/news?lane=macro' },
 ] as const;
 
+const PAGER_LINK = 'rounded-lg border border-gray-800 px-3 py-1.5 text-sm text-gray-300 hover:border-gray-700';
+const PAGER_OFF = 'rounded-lg border border-gray-900 px-3 py-1.5 text-sm text-gray-700';
+
+function newsPageHref(lane: NewsLane, page: number): string {
+  const query = new URLSearchParams();
+  if (lane) query.set('lane', lane);
+  if (page > 1) query.set('pagina', String(page));
+  const text = query.toString();
+  return text ? `/research/news?${text}` : '/research/news';
+}
+
 /**
- * Flujo de eventos con scroll infinito: la primera página llega del servidor
- * y el resto se pide por páginas de NEWS_PAGE_SIZE al acercarse al final. El
- * carril se filtra en la API (no sobre una ventana fija), así que "Macro" y
- * "Empresas" recorren todo el histórico.
+ * Flujo de eventos paginado dentro de la página (sin scroll infinito): el
+ * servidor entrega la página `?pagina=N` de NEWS_PAGE_SIZE eventos y los
+ * enlaces Anterior/Siguiente la cambian. El carril se filtra en la API (no
+ * sobre una ventana fija), así que "Macro" y "Empresas" recorren todo el histórico.
  */
 export function NewsEventsFlow({
-  initialEvents,
+  events,
+  hasMore,
   lane,
+  page,
   portfolioTickers,
   watchlistTickers,
 }: {
-  initialEvents: ResearchNewsEvent[];
+  events: ResearchNewsEvent[];
+  hasMore: boolean;
   lane: NewsLane;
+  page: number;
   portfolioTickers: string[];
   watchlistTickers: string[];
 }) {
-  const portfolioSet = useMemo(() => new Set(portfolioTickers), [portfolioTickers]);
-  const watchlistSet = useMemo(() => new Set(watchlistTickers), [watchlistTickers]);
-  const [events, setEvents] = useState<ResearchNewsEvent[]>(initialEvents);
-  const [hasMore, setHasMore] = useState(initialEvents.length >= NEWS_PAGE_SIZE);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(false);
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
-  const busy = useRef(false);
-
-  const loadMore = useCallback(async () => {
-    if (busy.current) return;
-    busy.current = true;
-    setLoading(true);
-    setError(false);
-    try {
-      const next = await loadMoreResearchNews(lane, events.length, NEWS_PAGE_SIZE);
-      const known = new Set(events.map((event) => event.id));
-      const fresh = next.filter((event) => !known.has(event.id));
-      setEvents((current) => [...current, ...fresh]);
-      setHasMore(next.length >= NEWS_PAGE_SIZE && fresh.length > 0);
-    } catch {
-      setError(true);
-    } finally {
-      busy.current = false;
-      setLoading(false);
-    }
-  }, [events, lane]);
-
-  useEffect(() => {
-    const node = sentinelRef.current;
-    if (!node || !hasMore || error || typeof IntersectionObserver === 'undefined') return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) void loadMore();
-      },
-      { rootMargin: '400px' },
-    );
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [hasMore, error, loadMore]);
-
+  const portfolioSet = new Set(portfolioTickers);
+  const watchlistSet = new Set(watchlistTickers);
   return (
     <section className="rounded-lg border border-gray-800 bg-surface-1 p-5">
         <div className="mb-4 flex items-center gap-2">
@@ -101,7 +73,7 @@ export function NewsEventsFlow({
             );
           })}
           <span className="text-gray-500">
-            {events.length} {events.length === 1 ? 'evento cargado' : 'eventos cargados'}
+            {events.length} {events.length === 1 ? 'evento' : 'eventos'} en la página {page}
           </span>
         </nav>
         {/* F176: sin contain, Chrome propaga el overflow horizontal de la
@@ -250,7 +222,7 @@ export function NewsEventsFlow({
                   </tr>
                 );
               })}
-              {!events.length && !loading ? (
+              {!events.length ? (
                 <tr>
                   <td className="p-0" colSpan={5}>
                     <EmptyState
@@ -264,21 +236,19 @@ export function NewsEventsFlow({
             </tbody>
           </table>
         </div>
-        <div className="mt-4 flex flex-col items-center gap-2" ref={sentinelRef}>
-          {loading ? <p className="text-xs text-gray-500" role="status">Cargando más eventos…</p> : null}
-          {error ? (
-            <p className="text-xs text-red-400" role="alert">
-              No se pudieron cargar más eventos.{' '}
-              <button className="underline" onClick={() => void loadMore()} type="button">Reintentar</button>
-            </p>
-          ) : null}
-          {!loading && !error && hasMore ? (
-            <Button onClick={() => void loadMore()} size="sm" type="button" variant="outline">Cargar más</Button>
-          ) : null}
-          {!hasMore && events.length > 0 ? (
-            <p className="text-xs text-gray-500">No hay más eventos.</p>
-          ) : null}
-        </div>
+        <nav aria-label="Paginación" className="mt-4 flex items-center justify-between gap-4">
+          {page > 1 ? (
+            <Link className={PAGER_LINK} href={newsPageHref(lane, page - 1)} rel="prev">Anterior</Link>
+          ) : (
+            <span aria-disabled="true" className={PAGER_OFF}>Anterior</span>
+          )}
+          <span className="text-sm text-gray-500">Página {page}</span>
+          {hasMore ? (
+            <Link className={PAGER_LINK} href={newsPageHref(lane, page + 1)} rel="next">Siguiente</Link>
+          ) : (
+            <span aria-disabled="true" className={PAGER_OFF}>Siguiente</span>
+          )}
+        </nav>
       </section>
   );
 }
