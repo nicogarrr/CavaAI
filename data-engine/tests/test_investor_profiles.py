@@ -55,3 +55,19 @@ def test_list_flags_public_profile_only_where_it_exists():
     assert by_slug["quintana"]["has_public_profile"] is True
     assert by_slug["lynch"]["has_public_profile"] is False
     assert by_slug["buffett"]["has_public_profile"] is False
+
+
+def test_five_non_13f_managers_have_traceable_profiles_and_lynch_stays_empty():
+    for slug in ("mark-leonard", "bezos", "munger", "nick-sleep"):
+        profile = public_profile(slug)
+        assert profile is not None, slug
+        assert validate_profile(profile) == [], slug
+        assert profile["holdings"] is None and profile["holdings_note"].startswith("Sin datos")
+        assert profile["facts"] and profile["letters"]
+    # Lynch: no hay fuente primaria incorporada, no se inventa ficha
+    assert public_profile("lynch") is None
+
+
+def test_no_profile_invents_a_portfolio():
+    for slug, profile in PUBLIC_PROFILES.items():
+        assert profile["holdings"] is None, slug
