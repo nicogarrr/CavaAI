@@ -476,3 +476,17 @@ def test_investor_api_exposes_partial_coverage_after_a_totals_mismatch(db):
     assert detail["coverage"] == "partial"
     others = [i for i in list_investors(db)["investors"] if i["slug"] != slug]
     assert all(i["coverage"] is None for i in others)
+
+
+def test_information_table_url_handles_styled_primary_document_and_hyphenated_name():
+    """Trian: primaryDocument con carpeta xsl y tabla 'Q22026-tfmlp-info-table.xml' daba 0 filas."""
+    index = {"directory": {"item": [{"name": "primary_doc.xml"}, {"name": "Q22026-tfmlp-info-table.xml"}]}}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=index)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        url = form13f.information_table_url(
+            "0001345471", "0001345471-26-000035", "xslForm13F_X02/primary_doc.xml", client=client
+        )
+    assert url is not None and url.endswith("/Q22026-tfmlp-info-table.xml")
