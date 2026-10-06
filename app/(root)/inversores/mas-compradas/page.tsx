@@ -76,7 +76,8 @@ export default async function MostBoughtPage() {
             <p className="text-xs text-gray-500">
                 Fuente: SEC, Form 13F (EDGAR){period ? `, informes a ${period}` : ''}. Trimestral, con hasta 45 días de retardo.
                 Compara cada inversor con su trimestre anterior ({data.managers_compared} comparados
-                {data.managers_without_history > 0 ? `, ${data.managers_without_history} sin dos trimestres todavía` : ''}). Solo
+                {data.managers_without_history > 0 ? `, ${data.managers_without_history} sin dos trimestres todavía` : ''}
+                {data.managers_partial ? `, ${data.managers_partial} con datos parciales` : ''}). Solo
                 acciones largas en EE. UU.; las opciones no cuentan. El 13F no trae ticker, se muestra el emisor y su CUSIP.
                 Valor = posición actual de quienes compran, en dólares.
             </p>
