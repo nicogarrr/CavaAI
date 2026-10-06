@@ -68,7 +68,9 @@ export default async function InvestorsPage({ searchParams }: PageProps) {
                                         ? investor.report_date
                                             ? `Cartera a ${periodLabel(investor.report_date)}`
                                             : 'Cartera sin sincronizar todavía'
-                                        : 'Sin datos: no presenta 13F'}
+                                        : investor.has_public_profile
+                                          ? 'Ficha pública, sin 13F'
+                                          : 'Sin datos: no presenta 13F'}
                                 </span>
                             </span>
                         </Link>
