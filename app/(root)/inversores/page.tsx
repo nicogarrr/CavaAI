@@ -7,6 +7,7 @@ import { isBackendUnavailableError } from '@/lib/backend-offline';
 
 import { InvestorAvatar } from './_components/Avatar';
 import { periodLabel } from './_components/format';
+import { Pagination, paginate } from './_components/Pagination';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -16,7 +17,14 @@ export const metadata: Metadata = {
     description: 'Quién invierte mejor y qué tiene en cartera, con la fuente y la fecha de cada dato.',
 };
 
-export default async function InvestorsPage() {
+const PAGE_SIZE = 12;
+
+type PageProps = {
+    searchParams: Promise<{ pagina?: string }>;
+};
+
+export default async function InvestorsPage({ searchParams }: PageProps) {
+    const { pagina } = await searchParams;
     let data: Awaited<ReturnType<typeof getInvestors>>;
     try {
         data = await getInvestors();
@@ -27,21 +35,25 @@ export default async function InvestorsPage() {
         throw error;
     }
 
+    const paged = paginate(data.investors, pagina, PAGE_SIZE);
+
     return (
         <main id="content" tabIndex={-1} className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-12 overflow-x-clip py-6">
             <header className="flex flex-col gap-3">
                 <h1 className="text-3xl font-semibold text-gray-100">Inversores</h1>
                 <p className="text-base text-gray-400">Quienes mejor invierten y lo que tienen en cartera.</p>
-                <Link className="text-sm text-lime-300 hover:underline" href="/inversores/carteras">
-                    Ver carteras
-                </Link>
-                <Link className="text-sm text-lime-300 hover:underline" href="/inversores/mas-compradas">
-                    Más compradas
-                </Link>
+                <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                    <Link className="text-sm text-lime-300 hover:underline" href="/inversores/carteras">
+                        Ver carteras
+                    </Link>
+                    <Link className="text-sm text-lime-300 hover:underline" href="/inversores/mas-compradas">
+                        Más compradas
+                    </Link>
+                </div>
             </header>
 
             <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {data.investors.map((investor) => (
+                {paged.items.map((investor) => (
                     <li key={investor.slug}>
                         <Link
                             className="flex h-full items-center gap-4 rounded-2xl border border-gray-800 bg-surface-1 p-5 transition-colors hover:border-gray-700"
@@ -63,6 +75,8 @@ export default async function InvestorsPage() {
                     </li>
                 ))}
             </ul>
+
+            <Pagination basePath="/inversores" page={paged.page} total={paged.total} />
 
             <p className="text-xs text-gray-500">
                 Fuente: SEC, Form 13F (EDGAR). Trimestral, con hasta 45 días de retardo; solo posiciones largas en EE. UU.
