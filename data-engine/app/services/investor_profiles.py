@@ -132,7 +132,7 @@ PUBLIC_PROFILES["mark-leonard"] = {
 
 PUBLIC_PROFILES["bezos"] = {
     "vehicle": {
-        "name": "Amazon.com, Inc.",
+        "name": "Amazon (carta de 1997)",
         "type": "Empresa cotizada fundada por Jeff Bezos; su carta de 1997 a los accionistas está firmada por Jeffrey P. Bezos",
         "regulator_id": "SEC CIK 0001018724",
         "manager_company": "Amazon.com, Inc.",
@@ -151,8 +151,8 @@ PUBLIC_PROFILES["bezos"] = {
     "meetings": [],
     "holdings": None,
     "holdings_note": (
-        "Sin datos: Bezos no presenta 13F. Su participación en Amazon figura en los registros de la SEC (enlace en fuentes) "
-        "y aún no está incorporada con cifras verificadas."
+        "Sin datos: Bezos no presenta 13F y su participación no está incorporada con una fuente verificada. "
+        "El enlace de fuentes lleva a los documentos de Amazon en la SEC."
     ),
     "links": [
         {"label": "Documentos de Amazon en la SEC (EDGAR)", "url": _AMZN_EDGAR},
@@ -161,12 +161,12 @@ PUBLIC_PROFILES["bezos"] = {
 
 PUBLIC_PROFILES["munger"] = {
     "vehicle": {
-        "name": "Berkshire Hathaway (Charlie Munger, vicepresidente)",
-        "type": "Vicepresidente de Berkshire Hathaway hasta su fallecimiento el 28 nov 2023 (según Berkshire)",
+        "name": "Berkshire Hathaway (Charlie Munger)",
+        "type": "Durante décadas, socio de Warren Buffett en la dirección de Berkshire Hathaway (carta anual 2023); falleció el 28 nov 2023",
         "regulator_id": "Fallecido 2023-11-28",
         "manager_company": "Berkshire Hathaway Inc.",
         "start_date": "",
-        "source_url": _BRK_NEWS,
+        "source_url": _BRK_2023,
     },
     "facts": [
         _fact("Fallecimiento", "28 nov 2023, 33 días antes de cumplir 100 años", "2023-11-28", _BRK_2023),
@@ -201,7 +201,7 @@ PUBLIC_PROFILES["nick-sleep"] = {
         _fact("Evolución descrita por los autores", "Del estilo cigar butt a participaciones casi permanentes (\"from cigar butt investing to near permanent holdings\")", "recopilación alojada en IGY Foundation", _NOMAD),
     ],
     "letters": [
-        {"title": "Colección completa de cartas de Nomad a los socios (2001-2014), copia aprobada alojada en IGY Foundation", "date": "2001-2014", "url": _NOMAD},
+        {"title": "Colección completa de cartas de Nomad a los socios (2001-2014), alojada en IGY Foundation (tercero; su prefacio la presenta como copia aprobada por los autores)", "date": "2001-2014", "url": _NOMAD},
     ],
     "meetings": [],
     "holdings": None,
