@@ -167,9 +167,9 @@
       "provenance": "Procedencia",
       "scopeLink": "Abrir el entorno completo de este nodo en el servidor",
       "unknownNode": "El nodo #{id} no está en el subgrafo que se ha cargado.",
-                    "shareLink":  "Enlace compartible a este nodo",
-                    "shareLinkCopied":  "Enlace copiado al portapapeles.",
-                    "shareLinkFailed":  "No se pudo copiar el enlace: selecciónalo aquí abajo y cópialo a mano.",
+      "shareLink": "Enlace compartible a este nodo",
+      "shareLinkCopied": "Enlace copiado al portapapeles.",
+      "shareLinkFailed": "No se pudo copiar el enlace: selecciónalo aquí abajo y cópialo a mano.",
       "fields": {
         "id": "Identificador",
         "label": "Etiqueta",
