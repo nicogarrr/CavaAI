@@ -53,7 +53,7 @@ export default async function PortfoliosPage() {
                             {investor.report_date ? (
                                 <span className="flex items-end justify-between gap-4">
                                     <span>
-                                        <span className="block text-2xl font-semibold text-gray-100">{usd(investor.value_usd_thousands)}</span>
+                                        <span className="block text-2xl font-semibold text-gray-100">{usd(investor.value_usd_thousands, investor.report_date)}</span>
                                         <span className="block text-xs text-gray-500">
                                             {investor.positions !== null
                                                 ? `${formatNumber(investor.positions, { maximumFractionDigits: 0 })} posiciones`

@@ -6,6 +6,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import { form13fValueToUsd } from '../lib/form13f-value.ts';
+
 const grid = readFileSync('app/(root)/inversores/page.tsx', 'utf8');
 const portfolios = readFileSync('app/(root)/inversores/carteras/page.tsx', 'utf8');
 const detail = readFileSync('app/(root)/inversores/[slug]/page.tsx', 'utf8');
@@ -24,8 +26,22 @@ test('cada pagina cita la fuente (SEC 13F) y el retardo de 45 días', () => {
     }
 });
 
-test('el valor se muestra como dólares compactos desde miles de dólares', () => {
-    assert.match(format, /formatMarketCapUsd\(thousands \* 1000\)/);
+test('el <value> del 13F va en dolares desde 2023: Apple 200237120 son 200,2 M, no miles', () => {
+    // 13F-HR de Berkshire (acc. 0001193125-26-352200, 30-06-2026): 692.000 acciones de Apple.
+    assert.equal(form13fValueToUsd(200237120, '2026-06-30'), 200237120);
+    assert.equal(form13fValueToUsd(200237120, '2022-12-31'), 200237120);
+});
+
+test('los informes anteriores a 2023 siguen en miles y se pasan a dolares', () => {
+    assert.equal(form13fValueToUsd(200237, '2022-09-30'), 200237000);
+    assert.equal(form13fValueToUsd(null, '2026-06-30'), null);
+    assert.equal(form13fValueToUsd(1, null), null);
+});
+
+test('las paginas pasan la fecha del informe y no multiplican por mil a ciegas', () => {
+    assert.match(format, /form13fValueToUsd\(raw, reportDate\)/);
+    assert.ok(!/thousands \* 1000/.test(format));
+    assert.ok(!/thousands \* 1000/.test(readFileSync('app/(root)/ownership/page.tsx', 'utf8')));
 });
 
 test('ninguna pagina etiqueta una cartera como cartera de Munger', () => {

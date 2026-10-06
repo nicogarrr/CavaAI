@@ -81,7 +81,7 @@ export default async function InvestorPage({ params, searchParams }: PageProps) 
                 <>
                     <div className="flex items-end justify-between gap-4">
                         <div>
-                            <p className="text-3xl font-semibold text-gray-100">{usd(investor.value_usd_thousands)}</p>
+                            <p className="text-3xl font-semibold text-gray-100">{usd(investor.value_usd_thousands, investor.report_date)}</p>
                             <p className="text-sm text-gray-500">
                                 {investor.positions !== null
                                     ? `${formatNumber(investor.positions, { maximumFractionDigits: 0 })} posiciones`
@@ -120,7 +120,7 @@ export default async function InvestorPage({ params, searchParams }: PageProps) 
                                         {row.put_call ? <span className="ml-2 text-xs text-gray-500">{row.put_call}</span> : null}
                                     </span>
                                     <span className="flex shrink-0 items-baseline gap-4 text-sm">
-                                        <span className="text-gray-400">{usd(row.value_usd_thousands)}</span>
+                                        <span className="text-gray-400">{usd(row.value_usd_thousands, investor.report_date)}</span>
                                         <span className="w-14 text-right text-gray-500">
                                             {row.weight_pct === null ? NA : formatPercent(row.weight_pct, { fromRatio: false })}
                                         </span>

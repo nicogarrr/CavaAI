@@ -1,9 +1,10 @@
+import { form13fValueToUsd } from '@/lib/form13f-value';
 import { formatDate, formatMarketCapUsd, NA } from '@/lib/format';
 
-/** `value_usd_thousands` viene en miles de dólares (13F): "$4.87B". */
-export function usd(thousands: number | null | undefined): string {
-    if (thousands === null || thousands === undefined) return NA;
-    return formatMarketCapUsd(thousands * 1000);
+/** Valor 13F (dolares desde 2023, miles antes; se normaliza por fecha del informe): "$4.87B". */
+export function usd(raw: number | null | undefined, reportDate: string | null | undefined): string {
+    const dollars = form13fValueToUsd(raw, reportDate);
+    return dollars === null ? NA : formatMarketCapUsd(dollars);
 }
 
 /** Periodo del informe ("2026-06-30") en español: "30 jun 2026". */
