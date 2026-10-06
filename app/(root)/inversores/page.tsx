@@ -1,0 +1,69 @@
+import type { Metadata } from 'next';
+import Link from 'next/link';
+
+import BackendOffline from '@/components/system/BackendOffline';
+import { getInvestors } from '@/lib/actions/investors.actions';
+import { isBackendUnavailableError } from '@/lib/backend-offline';
+
+import { InvestorAvatar } from './_components/Avatar';
+import { periodLabel } from './_components/format';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+export const metadata: Metadata = {
+    title: 'Inversores',
+    description: 'Quién invierte mejor y qué tiene en cartera, con la fuente y la fecha de cada dato.',
+};
+
+export default async function InvestorsPage() {
+    let data: Awaited<ReturnType<typeof getInvestors>>;
+    try {
+        data = await getInvestors();
+    } catch (error) {
+        if (isBackendUnavailableError(error)) {
+            return <BackendOffline feature="Inversores" retryHref="/inversores" />;
+        }
+        throw error;
+    }
+
+    return (
+        <main id="content" tabIndex={-1} className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-12 overflow-x-clip py-6">
+            <header className="flex flex-col gap-3">
+                <h1 className="text-3xl font-semibold text-gray-100">Inversores</h1>
+                <p className="text-base text-gray-400">Quienes mejor invierten y lo que tienen en cartera.</p>
+                <Link className="text-sm text-lime-300 hover:underline" href="/inversores/carteras">
+                    Ver carteras
+                </Link>
+            </header>
+
+            <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {data.investors.map((investor) => (
+                    <li key={investor.slug}>
+                        <Link
+                            className="flex h-full items-center gap-4 rounded-2xl border border-gray-800 bg-surface-1 p-5 transition-colors hover:border-gray-700"
+                            href={`/inversores/${investor.slug}`}
+                        >
+                            <InvestorAvatar name={investor.name} />
+                            <span className="min-w-0">
+                                <span className="block truncate text-base font-medium text-gray-100">{investor.name}</span>
+                                <span className="block truncate text-sm text-gray-500">{investor.firm}</span>
+                                <span className="mt-1 block text-xs text-gray-500">
+                                    {investor.has_13f
+                                        ? investor.report_date
+                                            ? `Cartera a ${periodLabel(investor.report_date)}`
+                                            : 'Cartera sin sincronizar todavía'
+                                        : 'Sin datos: no presenta 13F'}
+                                </span>
+                            </span>
+                        </Link>
+                    </li>
+                ))}
+            </ul>
+
+            <p className="text-xs text-gray-500">
+                Fuente: SEC, Form 13F (EDGAR). Trimestral, con hasta 45 días de retardo; solo posiciones largas en EE. UU.
+            </p>
+        </main>
+    );
+}

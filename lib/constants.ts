@@ -26,6 +26,7 @@ import {
   TrendingUp,
   Landmark,
     Users,
+    UsersRound,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -145,6 +146,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { href: '/movers', label: 'Movers', icon: TrendingUp },
       { href: '/insider', label: 'Insider', icon: Users },
       { href: '/ownership', label: '13F', icon: Landmark },
+      { href: '/inversores', label: 'Inversores', icon: UsersRound },
       { href: '/alerts', label: 'Alertas', icon: Bell },
       { href: '/propicks', label: 'ProPicks', icon: Lightbulb },
     ],
