@@ -69,7 +69,12 @@ export default async function PortfoliosPage({ searchParams }: PageProps) {
                                                 : 'N/D'}
                                         </span>
                                     </span>
-                                    <span className="text-xs text-gray-500">Cartera a {periodLabel(investor.report_date)}</span>
+                                    <span className="text-right text-xs text-gray-500">
+                                        Cartera a {periodLabel(investor.report_date)}
+                                        {investor.coverage === 'partial' ? (
+                                            <span className="block text-amber-300">Datos parciales</span>
+                                        ) : null}
+                                    </span>
                                 </span>
                             ) : (
                                 <span className="text-sm text-gray-500">Sin datos todavía: falta sincronizar su 13F.</span>
