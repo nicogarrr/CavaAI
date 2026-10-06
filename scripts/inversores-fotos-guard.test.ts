@@ -40,3 +40,10 @@ test('la ficha muestra la atribucion de la foto', () => {
     assert.match(ficha, /INVESTOR_PHOTOS\[investor\.slug\]/);
     assert.match(ficha, /Wikimedia Commons/);
 });
+
+test('lista y carteras atribuyen las fotos (title en la miniatura y nota al pie)', () => {
+    assert.match(readFileSync('app/(root)/inversores/_components/Avatar.tsx', 'utf8'), /title=\{`Foto: \$\{photo\.author\}/);
+    for (const file of ['app/(root)/inversores/page.tsx', 'app/(root)/inversores/carteras/page.tsx']) {
+        assert.match(readFileSync(file, 'utf8'), /Fotos con licencia libre de Wikimedia Commons/, file);
+    }
+});

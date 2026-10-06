@@ -14,6 +14,7 @@ export function InvestorAvatar({ name, slug, size = 'md' }: { name: string; slug
                 className={`${box} shrink-0 rounded-full object-cover object-top`}
                 height={px}
                 src={photo.src}
+                title={`Foto: ${photo.author}, ${photo.license}, vía Wikimedia Commons`}
                 width={px}
             />
         );
