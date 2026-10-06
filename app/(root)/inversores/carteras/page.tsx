@@ -8,6 +8,7 @@ import { formatNumber } from '@/lib/format';
 
 import { InvestorAvatar } from '../_components/Avatar';
 import { periodLabel, usd } from '../_components/format';
+import { Pagination, paginate } from '../_components/Pagination';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -17,7 +18,14 @@ export const metadata: Metadata = {
     description: 'Posiciones declaradas ante la SEC (13F) por los inversores, con su fecha.',
 };
 
-export default async function PortfoliosPage() {
+const PAGE_SIZE = 12;
+
+type PageProps = {
+    searchParams: Promise<{ pagina?: string }>;
+};
+
+export default async function PortfoliosPage({ searchParams }: PageProps) {
+    const { pagina } = await searchParams;
     let data: Awaited<ReturnType<typeof getInvestors>>;
     try {
         data = await getInvestors();
@@ -28,6 +36,7 @@ export default async function PortfoliosPage() {
         throw error;
     }
     const withPortfolio = data.investors.filter((investor) => investor.has_13f);
+    const paged = paginate(withPortfolio, pagina, PAGE_SIZE);
 
     return (
         <main id="content" tabIndex={-1} className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-12 overflow-x-clip py-6">
@@ -37,7 +46,7 @@ export default async function PortfoliosPage() {
             </header>
 
             <ul className="grid gap-4 sm:grid-cols-2">
-                {withPortfolio.map((investor) => (
+                {paged.items.map((investor) => (
                     <li key={investor.slug}>
                         <Link
                             className="flex h-full flex-col gap-4 rounded-2xl border border-gray-800 bg-surface-1 p-6 transition-colors hover:border-gray-700"
@@ -69,6 +78,8 @@ export default async function PortfoliosPage() {
                     </li>
                 ))}
             </ul>
+
+            <Pagination basePath="/inversores/carteras" page={paged.page} total={paged.total} />
 
             <p className="text-xs text-gray-500">
                 Fuente: SEC, Form 13F (EDGAR). Trimestral, con hasta 45 días de retardo; solo posiciones largas en EE. UU.

@@ -7,6 +7,7 @@ import { isBackendUnavailableError } from '@/lib/backend-offline';
 import { formatMarketCapUsd, formatNumber, NA } from '@/lib/format';
 
 import { periodLabel } from '../_components/format';
+import { newLabel } from '../_components/labels';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -51,7 +52,7 @@ export default async function MostBoughtPage() {
                                         {formatNumber(item.buyers_count, { maximumFractionDigits: 0 })} compran
                                     </p>
                                     <p className="text-xs text-gray-500">
-                                        {item.new_count > 0 ? `${formatNumber(item.new_count, { maximumFractionDigits: 0 })} nuevas · ` : ''}
+                                        {item.new_count > 0 ? `${newLabel(item.new_count)} · ` : ''}
                                         {item.sellers_count > 0 ? `${formatNumber(item.sellers_count, { maximumFractionDigits: 0 })} reducen · ` : ''}
                                         {item.value_usd === null ? NA : formatMarketCapUsd(item.value_usd)}
                                     </p>

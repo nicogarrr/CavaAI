@@ -8,6 +8,7 @@ import { isBackendUnavailableError } from '@/lib/backend-offline';
 import { formatNumber, formatPercent, NA } from '@/lib/format';
 
 import { InvestorAvatar } from '../_components/Avatar';
+import { Pagination, paginate } from '../_components/Pagination';
 import { periodLabel, usd } from '../_components/format';
 
 export const dynamic = 'force-dynamic';
@@ -15,7 +16,7 @@ export const revalidate = 0;
 
 type PageProps = {
     params: Promise<{ slug: string }>;
-    searchParams: Promise<{ vista?: string }>;
+    searchParams: Promise<{ vista?: string; pagina?: string }>;
 };
 
 const VIEWS = [
@@ -38,7 +39,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function InvestorPage({ params, searchParams }: PageProps) {
     const { slug } = await params;
-    const { vista } = await searchParams;
+    const { vista, pagina } = await searchParams;
     const view = VIEWS.some((item) => item.id === vista) ? vista : 'posiciones';
 
     let investor: Awaited<ReturnType<typeof getInvestor>>;
@@ -51,6 +52,11 @@ export default async function InvestorPage({ params, searchParams }: PageProps) 
         throw error;
     }
     if (!investor) notFound();
+
+    const positionsPage = paginate(investor.holdings, pagina, 25);
+    const changeRows =
+        investor.changes?.status === 'ok' ? investor.changes.changes.filter((row) => row.change !== 'unchanged') : [];
+    const changesPage = paginate(changeRows, pagina, 25);
 
     const hasPortfolio = investor.has_13f && investor.holdings.length > 0;
     const source = `Fuente: SEC, Form 13F (EDGAR), informe a ${periodLabel(investor.report_date)}.`;
@@ -110,7 +116,7 @@ export default async function InvestorPage({ params, searchParams }: PageProps) 
 
                     {view === 'posiciones' ? (
                         <ul className="flex flex-col divide-y divide-gray-900">
-                            {investor.holdings.slice(0, 50).map((row) => (
+                            {positionsPage.items.map((row) => (
                                 <li
                                     className="flex items-center justify-between gap-4 py-3"
                                     key={`${row.cusip}-${row.title_of_class}-${row.put_call ?? ''}`}
@@ -128,6 +134,15 @@ export default async function InvestorPage({ params, searchParams }: PageProps) 
                                 </li>
                             ))}
                         </ul>
+                    ) : null}
+
+                    {view === 'posiciones' ? (
+                        <Pagination
+                            basePath={`/inversores/${investor.slug}`}
+                            page={positionsPage.page}
+                            params={{ vista: 'posiciones' }}
+                            total={positionsPage.total}
+                        />
                     ) : null}
 
                     {view === 'distribucion' ? (
@@ -158,10 +173,7 @@ export default async function InvestorPage({ params, searchParams }: PageProps) 
                                     {periodLabel(investor.changes.previous_report)} a {periodLabel(investor.changes.latest_report)}
                                 </p>
                                 <ul className="flex flex-col divide-y divide-gray-900">
-                                    {investor.changes.changes
-                                        .filter((row) => row.change !== 'unchanged')
-                                        .slice(0, 40)
-                                        .map((row) => (
+                                    {changesPage.items.map((row) => (
                                             <li
                                                 className="flex items-center justify-between gap-4 py-3"
                                                 key={`${row.cusip}-${row.title_of_class}-${row.put_call ?? ''}`}
@@ -171,6 +183,12 @@ export default async function InvestorPage({ params, searchParams }: PageProps) 
                                             </li>
                                         ))}
                                 </ul>
+                                <Pagination
+                                    basePath={`/inversores/${investor.slug}`}
+                                    page={changesPage.page}
+                                    params={{ vista: 'cambios' }}
+                                    total={changesPage.total}
+                                />
                             </div>
                         ) : (
                             <p className="text-sm text-gray-500">
