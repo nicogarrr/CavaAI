@@ -174,3 +174,34 @@ def test_missed_expectation_becomes_approved_lesson_and_graph_evidence():
             edge["type"] == "produced_lesson"
             for edge in neighborhood["edges"]
         )
+
+
+def test_graph_declares_trim_with_and_without_filters():
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        tenant = Tenant(external_id="kg-trim", name="KG trim")
+        db.add(tenant)
+        db.flush()
+        db.info["tenant_id"] = tenant.id
+        db.info["user_id"] = "analyst"
+        for i in range(5):
+            db.add(
+                KnowledgeGraphNode(
+                    node_key=f"k{i}",
+                    node_type="company" if i < 3 else "lesson",
+                    label=f"N{i}",
+                    status="active",
+                )
+            )
+        db.flush()
+        service = KnowledgeGraphService()
+        sin_filtros = service.graph(db, limit=500)
+        assert sin_filtros["node_count"] == 5
+        assert sin_filtros["total_node_count"] == 5
+        recortado = service.graph(db, limit=2)
+        assert recortado["node_count"] == 2
+        assert recortado["total_node_count"] == 5
+        filtrado = service.graph(db, node_types={"company"}, limit=2)
+        assert filtrado["node_count"] == 2
+        assert filtrado["total_node_count"] == 3
