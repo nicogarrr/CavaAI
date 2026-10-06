@@ -18,7 +18,7 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
-from app.models.entities import Base, Company, Document, FinancialFact
+from app.models.entities import Base, Company, FinancialFact
 from app.services import financial_ingestion_service as ingestion
 from app.services.financial_ingestion_service import (
     FinancialIngestionService,

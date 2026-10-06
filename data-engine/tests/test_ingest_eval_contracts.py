@@ -553,7 +553,6 @@ def test_dataset_declares_every_measured_gap():
         "neg-001-lookahead-anclado-filtrado",
         "neg-002-epoch-en-la-etiqueta-de-periodo",
         "neg-003-fila-de-otro-emisor",
-        "neg-013-filas-duplicadas-del-proveedor",
         "neg-015-ixbrl-con-scale-y-sign",
     }
     assert measured <= {gap["case"] for gap in gaps}
