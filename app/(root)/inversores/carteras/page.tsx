@@ -90,6 +90,9 @@ export default async function PortfoliosPage({ searchParams }: PageProps) {
                 Fuente: SEC, Form 13F (EDGAR). Trimestral, con hasta 45 días de retardo; solo posiciones largas en EE. UU.
                 Valor en dólares tal como se declara.
             </p>
+            <p className="text-xs text-gray-500">
+                Fotos con licencia libre de Wikimedia Commons; autor y licencia en cada ficha. Sin foto libre, inicial.
+            </p>
         </main>
     );
 }
