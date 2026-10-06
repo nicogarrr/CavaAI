@@ -20,6 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import FundManager, ManagerHolding
+from app.services.investor_profiles import public_profile
 from app.services.manager_holding_ingestion_service import (
     LIMITATIONS,
     REVIEWED_MANAGERS,
@@ -162,6 +163,7 @@ def investor_detail(db: Session, slug: str) -> dict[str, Any] | None:
         return None
     detail = _entry(inv)
     detail["note"] = None if inv.cik else NO_13F_NOTE
+    detail["public_profile"] = None if inv.cik else public_profile(slug)
     manager = _manager(db, inv)
     rows = _latest_view(db, manager) if manager else []
     rows.sort(key=lambda r: r.value_usd_thousands or Decimal(0), reverse=True)
