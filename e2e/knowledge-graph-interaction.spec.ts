@@ -323,7 +323,8 @@ test.describe("knowledge-graph interactivo (D2b)", () => {
   test("un nodo que no existe en el subgrafo no rompe la página", async ({ page }) => {
     await page.goto("/knowledge-graph?focus=999999");
     await waitForCanvas(page);
-    await expect(page.getByTestId("kg-detail")).toContainText("Selecciona un nodo del grafo");
+    // Un ?focus= que no esta en el subgrafo cargado se dice, no se calla.
+    await expect(page.getByTestId("kg-detail")).toContainText("El nodo #999999 no está en el subgrafo que se ha cargado.");
     expect(new URL(page.url()).searchParams.get("focus")).toBe("999999");
   });
 
@@ -431,7 +432,9 @@ test.describe("knowledge-graph accesibilidad (D2b)", () => {
     await expect(canvas).toHaveAttribute("aria-roledescription", "Grafo de conocimiento");
     const describedBy = await canvas.getAttribute("aria-describedby");
     expect(describedBy).toBeTruthy();
-    const help = page.locator(`#${describedBy}`);
+    // aria-describedby lleva ahora dos ids (ayuda de teclado y descripcion del grafo).
+    const [helpId] = describedBy!.split(" ");
+    const help = page.locator(`#${helpId}`);
     await expect(help).toContainText("flechas");
     await expect(help).toContainText("Escape");
 
