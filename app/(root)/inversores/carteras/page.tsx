@@ -53,7 +53,7 @@ export default async function PortfoliosPage({ searchParams }: PageProps) {
                             href={`/inversores/${investor.slug}`}
                         >
                             <span className="flex items-center gap-4">
-                                <InvestorAvatar name={investor.name} />
+                                <InvestorAvatar name={investor.name} slug={investor.slug} />
                                 <span className="min-w-0">
                                     <span className="block truncate text-base font-medium text-gray-100">{investor.name}</span>
                                     <span className="block truncate text-sm text-gray-500">{investor.firm}</span>
