@@ -310,6 +310,9 @@ export type PortfolioIntelligence = {
 export type KnowledgeGraph = {
   node_count: number;
   edge_count: number;
+  /** Total con los MISMOS filtros, sin el `limit` del backend. Ausente en el
+   *  vecindario de un nodo (ahi no hay paginacion): null/ausente = N/D. */
+  total_node_count?: number;
   nodes: Array<{ id: number; key: string; type: string; label: string; description: string; company_id: number | null; entity_type: string | null; entity_id: number | null; confidence: string | number; attributes: Record<string, unknown> }>;
   edges: Array<{ id: number; from: number; to: number; type: string; weight: string | number; confidence: string | number; evidence: Array<Record<string, unknown>>; provenance: string }>;
 };

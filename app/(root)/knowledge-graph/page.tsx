@@ -27,9 +27,13 @@ export const metadata: Metadata = {
 export default async function KnowledgeGraphPage({ searchParams }: { searchParams: Promise<{ node_types?: string; ticker?: string; limit?: string; node?: string; depth?: string }> }) {
   const query = await searchParams;
   const selectedNode = Number(query.node) || null;
-  const retryHref = `/knowledge-graph?${new URLSearchParams(
+  // Con query vacío `URLSearchParams.toString()` es '' y la plantilla
+  // producía '/knowledge-graph?': el guard `retryHref || '/knowledge-graph'`
+  // no lo neutraliza porque '…?' es truthy.
+  const queryString = new URLSearchParams(
     Object.entries(query).filter(([, value]) => typeof value === 'string' && value !== ''),
-  ).toString()}`;
+  ).toString();
+  const retryHref = queryString ? `/knowledge-graph?${queryString}` : '/knowledge-graph';
   // El motor caido se dice con su motivo (BackendOffline), no con un lienzo
   // vacio: el grafo sin backend no es "un grafo sin nodos", es un grafo que no
   // se ha podido leer. Cualquier otro error (un 404 del backend por un nodo o
@@ -40,14 +44,14 @@ export default async function KnowledgeGraphPage({ searchParams }: { searchParam
       ? await getKnowledgeNeighborhood(selectedNode, Number(query.depth) || 2)
       : await getKnowledgeGraph({ nodeTypes: query.node_types, ticker: query.ticker, limit: Number(query.limit) || 120 });
   } catch (error) {
-    if (isBackendUnavailableError(error)) return <BackendOffline feature={t('knowledgeGraph.canvas.feature')} retryHref={retryHref || '/knowledge-graph'} />;
+    if (isBackendUnavailableError(error)) return <BackendOffline feature={t('knowledgeGraph.canvas.feature')} retryHref={retryHref} />;
     throw error;
   }
   const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
   const typeCounts = Object.entries(graph.nodes.reduce<Record<string, number>>((acc, node) => ({ ...acc, [node.type]: (acc[node.type] ?? 0) + 1 }), {})).sort((a, b) => b[1] - a[1]);
     return <main id="content" tabIndex={-1} className="mx-auto flex w-full min-w-0 max-w-[1500px] flex-col gap-6 overflow-x-clip"><PageHeader actions={<MutationForm action={syncKnowledgeGraph} successMessage="Grafo sincronizado"><Button className="h-11 w-full md:w-auto" type="submit"><RefreshCcw aria-hidden="true" className="h-4 w-4" />Sincronizar grafo</Button></MutationForm>} description="Explora enlaces deterministas entre autores, principios, empresas, KPIs, riesgos, decisiones, lecciones y conceptos." kicker="Research conectado" title="Grafo de conocimiento" />
     {selectedNode ? <div className="flex flex-wrap items-center gap-3 rounded-xl border border-teal-900/50 bg-teal-950/10 p-4"><span className="text-sm text-gray-300">Entorno del nodo #{selectedNode}</span><Button asChild className="ml-auto" size="sm" variant="outline"><Link href="/knowledge-graph">Grafo completo</Link></Button></div> : <form className="min-w-0 rounded-xl border border-gray-800 bg-surface-1 p-4" method="get"><div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_160px_120px_auto]"><Input className="h-11 w-full" defaultValue={query.node_types} name="node_types" placeholder="Tipos de nodo, separados por comas" /><Input className="h-11 w-full" defaultValue={query.ticker} name="ticker" placeholder="Ticker" /><label className="grid content-start gap-1 text-xs text-gray-500">Máximo de nodos<Input className="h-11 w-full" defaultValue={query.limit ?? '120'} max="500" min="1" name="limit" type="number" /></label><Button className="h-11 w-full md:w-auto" type="submit">Filtrar</Button></div></form>}
-    <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-6"><Stat label="Nodos" value={graph.node_count} /><Stat label="Aristas" value={graph.edge_count} />{typeCounts.slice(0, 4).map(([type, count]) => <Stat key={type} label={type.replaceAll('_', ' ')} value={<span style={{ color: nodeColor(type) }}>{count}</span>} />)}</section>
+    <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-6"><Stat label="Nodos" value={graph.node_count} /><Stat label="Aristas" value={graph.edge_count} />{typeCounts.slice(0, 4).map(([type, count]) => <Stat key={type} label={type.replaceAll('_', ' ')} value={<span style={{ color: nodeColor(type) }}>{count}</span>} />)}{graph.total_node_count != null && graph.total_node_count > graph.node_count ? <p className="col-span-full text-xs text-gray-500">Mostrando {graph.node_count} de {graph.total_node_count} nodos con estos filtros: acota con los filtros de arriba o sube el máximo de nodos.</p> : null}</section>
     {/* El dibujo interactivo (pan, zoom, seleccion, busqueda, aislamiento y
         volcado) vive en el cliente; su listado de nodos en texto y el panel de
         detalle se renderizan en el servidor, asi que la pagina no depende del

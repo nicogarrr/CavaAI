@@ -6,7 +6,7 @@ import re
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -367,13 +367,12 @@ class KnowledgeGraphService:
         company_id: int | None = None,
         limit: int = 500,
     ) -> dict[str, Any]:
-        statement = select(KnowledgeGraphNode).where(
-            KnowledgeGraphNode.status == "active"
-        )
+        conds: list[Any] = [KnowledgeGraphNode.status == "active"]
         if node_types:
-            statement = statement.where(KnowledgeGraphNode.node_type.in_(node_types))
+            conds.append(KnowledgeGraphNode.node_type.in_(node_types))
         if company_id is not None:
-            statement = statement.where(KnowledgeGraphNode.company_id == company_id)
+            conds.append(KnowledgeGraphNode.company_id == company_id)
+        statement = select(KnowledgeGraphNode).where(*conds)
         nodes = list(db.scalars(statement.order_by(KnowledgeGraphNode.id).limit(limit)).all())
         node_ids = {node.id for node in nodes}
         edges = (
@@ -389,7 +388,20 @@ class KnowledgeGraphService:
             if node_ids
             else []
         )
-        return self._payload(nodes, edges)
+        payload = self._payload(nodes, edges)
+        # El recorte del backend se DECLARA: `node_count` es lo devuelto (lo que
+        # dejo `limit`), `total_node_count` es cuantos nodos hay con los MISMOS
+        # filtros. Sin esto la pagina presenta 120 (lo paginado) como el tamano
+        # del grafo y el usuario cree que el grafo tiene 120 nodos.
+        payload["total_node_count"] = int(
+            db.scalar(
+                select(func.count())
+                .select_from(KnowledgeGraphNode)
+                .where(*conds)
+            )
+            or 0
+        )
+        return payload
 
     def neighborhood(
         self, db: Session, node_id: int, *, depth: int = 2
