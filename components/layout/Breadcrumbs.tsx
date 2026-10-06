@@ -26,7 +26,19 @@ const SUBROUTE_LABELS: Record<string, string> = {
   'management-credibility': 'Credibilidad de la directiva',
   // Fuera del nav principal (quick win UX 3); la miga sigue legible.
   'workflows': 'Workflows',
+  // Modulo Inversores: sub-paginas fijas (no son un slug de inversor).
+  'carteras': 'Carteras',
+  'mas-compradas': 'Más compradas',
 };
+
+/** Slug sin etiqueta propia (p. ej. "warren-buffett") -> "Warren Buffett" en vez del slug crudo. */
+function humanizeSlug(segment: string): string {
+  if (!/^[a-z]+(?:-[a-z]+)+$|^[a-z]{4,}$/.test(segment)) return segment;
+  return segment
+    .split('-')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
 
 /** El dashboard vive en `/inicio` porque `/` es la landing pública. */
 const HOME_HREF = '/inicio';
@@ -74,7 +86,7 @@ function buildCrumbs(pathname: string): Crumb[] {
       parent = declared;
       return;
     }
-    crumbs.push({ href: pathSoFar, label: SUBROUTE_LABELS[segment] ?? segment });
+    crumbs.push({ href: pathSoFar, label: SUBROUTE_LABELS[segment] ?? (anchor.href === '/inversores' ? humanizeSlug(segment) : segment) });
   });
 
   return crumbs;

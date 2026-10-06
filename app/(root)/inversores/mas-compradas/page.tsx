@@ -51,7 +51,7 @@ export default async function MostBoughtPage() {
                                         {formatNumber(item.buyers_count, { maximumFractionDigits: 0 })} compran
                                     </p>
                                     <p className="text-xs text-gray-500">
-                                        {item.new_count > 0 ? `${formatNumber(item.new_count, { maximumFractionDigits: 0 })} nuevas · ` : ''}
+                                        {item.new_count > 0 ? `${formatNumber(item.new_count, { maximumFractionDigits: 0 })} {item.new_count === 1 ? 'nueva' : 'nuevas'} · ` : ''}
                                         {item.sellers_count > 0 ? `${formatNumber(item.sellers_count, { maximumFractionDigits: 0 })} reducen · ` : ''}
                                         {item.value_usd === null ? NA : formatMarketCapUsd(item.value_usd)}
                                     </p>
