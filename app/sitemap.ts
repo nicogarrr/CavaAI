@@ -12,22 +12,24 @@ import { siteUrl } from '@/lib/config/site';
 export default function sitemap(): MetadataRoute.Sitemap {
   const base = siteUrl();
 
+  // Sin `lastModified`: las tres páginas son rutas estáticas sin fecha de
+  // edición real en un dato. `lastModified: new Date()` decía «modificado
+  // ahora» en contenido que no cambia, TODOS los días: una afirmación de
+  // frescura falsa en el canal que leen los buscadores. Sin la clave, el
+  // buscador trata la fecha como desconocida, que es la verdad.
   return [
     {
       url: `${base}/`,
-      lastModified: new Date(),
       changeFrequency: 'weekly',
       priority: 0.9,
     },
     {
       url: `${base}/metodologia`,
-      lastModified: new Date(),
       changeFrequency: 'monthly',
       priority: 0.7,
     },
     {
       url: `${base}/help`,
-      lastModified: new Date(),
       changeFrequency: 'monthly',
       priority: 0.5,
     },
