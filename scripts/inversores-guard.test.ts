@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+// @ts-expect-error TS5097: explicit extension for node strip-types.
 import { form13fValueToUsd } from '../lib/form13f-value.ts';
 
 const grid = readFileSync('app/(root)/inversores/page.tsx', 'utf8');
