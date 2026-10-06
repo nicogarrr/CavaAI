@@ -30,9 +30,33 @@ from app.services.provenance import Coverage, SourceKind, provenance
 SOURCE = "sec_edgar_13f"
 
 # Reviewed one by one before adding: exact CIK <-> official EDGAR name.
-# Small by design; Nico extends this table explicitly.
+# Small by design; Nico extends this table explicitly. Verified against EDGAR
+# submissions (13F-HR for the 2026-06-30 period) on 2026-10-06.
 REVIEWED_MANAGERS: dict[str, str] = {
     "0001067983": "Berkshire Hathaway Inc",
+    "0002026053": "PERSHING SQUARE INC.",
+    "0001709323": "Himalaya Capital Management LLC",
+    "0000783412": "DAILY JOURNAL CORP",
+    "0001549575": "Dalal Street, LLC",
+    "0001112520": "AKRE CAPITAL MANAGEMENT LLC",
+    "0001061768": "BAUPOST GROUP LLC/MA",
+    "0001536411": "Duquesne Family Office LLC",
+    "0001656456": "Appaloosa LP",
+    "0001040273": "Third Point LLC",
+    "0001056831": "FAIRHOLME CAPITAL MANAGEMENT LLC",
+    "0000732905": "Tweedy, Browne Co LLC",
+    "0000813917": "HARRIS ASSOCIATES L P",
+    "0001345471": "TRIAN FUND MANAGEMENT, L.P.",
+    "0001061165": "LONE PINE CAPITAL LLC",
+    "0000807985": "SOUTHEASTERN ASSET MANAGEMENT INC/TN/",
+    "0001167483": "TIGER GLOBAL MANAGEMENT LLC",
+    "0001034524": "POLEN CAPITAL MANAGEMENT LLC",
+    "0001569205": "Fundsmith LLP",
+    "0001096343": "MARKEL GROUP INC.",
+    "0001166559": "GATES FOUNDATION TRUST",
+    "0001317588": "ABRAMS BISON INVESTMENTS, LLC",
+    "0001376879": "AKO CAPITAL LLP",
+    "0001063296": "ATLANTIC INVESTMENT MANAGEMENT, INC.",
 }
 
 LIMITATIONS = [

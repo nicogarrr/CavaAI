@@ -12,6 +12,7 @@ from app.api.routes import (
     earnings,
     export,
     insider,
+    investors,
     knowledge,
     knowledge_graph,
     macro,
@@ -61,6 +62,7 @@ api_router.include_router(portfolio_moves.router, prefix="/portfolio", tags=["po
 api_router.include_router(propicks.router, prefix="/propicks", tags=["propicks"])
 api_router.include_router(plan.router, prefix="/plan", tags=["plan"])
 api_router.include_router(ownership.router, prefix="/ownership", tags=["ownership"])
+api_router.include_router(investors.router, prefix="/investors", tags=["investors"])
 api_router.include_router(taxes.router, prefix="/taxes", tags=["taxes"])
 api_router.include_router(thesis.router, prefix="/thesis", tags=["thesis"])
 api_router.include_router(obsidian.router, prefix="/thesis", tags=["thesis"])
