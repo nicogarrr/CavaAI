@@ -10,6 +10,6 @@ test('F312: Confianza y Procedencia no quedan pegadas en la tabla de relaciones'
     // («CONFIANZAPROCEDENCIA») a cualquier ancho (confirmado 1440 y 1920).
     assert.match(page, /px-3 py-2 text-right" scope="col">Confianza/);
     assert.match(page, /py-2 pl-3" scope="col">Procedencia/);
-    assert.match(page, /px-3 py-3 text-right text-gray-400">\{\(Number\(edge\.confidence\)/);
+    assert.match(page, /px-3 py-3 text-right text-gray-400">\{formatConfidence\(edge\.confidence\)/);
     assert.match(page, /py-3 pl-3 text-xs text-gray-500">\{edge\.provenance\}/);
 });
