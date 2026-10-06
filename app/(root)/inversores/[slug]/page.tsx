@@ -8,6 +8,7 @@ import { isBackendUnavailableError } from '@/lib/backend-offline';
 import { formatNumber, formatPercent, NA } from '@/lib/format';
 
 import { InvestorAvatar } from '../_components/Avatar';
+import { INVESTOR_PHOTOS } from '../_components/photos';
 import { Pagination, paginate } from '../_components/Pagination';
 import { periodLabel, usd } from '../_components/format';
 
@@ -58,6 +59,7 @@ export default async function InvestorPage({ params, searchParams }: PageProps) 
         investor.changes?.status === 'ok' ? investor.changes.changes.filter((row) => row.change !== 'unchanged') : [];
     const changesPage = paginate(changeRows, pagina, 25);
 
+    const photo = INVESTOR_PHOTOS[investor.slug];
     const hasPortfolio = investor.has_13f && investor.holdings.length > 0;
     const source = `Fuente: SEC, Form 13F (EDGAR), informe a ${periodLabel(investor.report_date)}.`;
 
@@ -68,10 +70,22 @@ export default async function InvestorPage({ params, searchParams }: PageProps) 
             </Link>
 
             <header className="flex items-center gap-5">
-                <InvestorAvatar name={investor.name} size="lg" />
+                <InvestorAvatar name={investor.name} size="lg" slug={investor.slug} />
                 <div className="min-w-0">
                     <h1 className="truncate text-3xl font-semibold text-gray-100">{investor.name}</h1>
                     <p className="text-base text-gray-500">{investor.firm}</p>
+                    {photo ? (
+                        <p className="mt-1 text-xs text-gray-600">
+                            Foto: {photo.author},{' '}
+                            <a className="hover:underline" href={photo.licenseUrl} rel="noreferrer" target="_blank">
+                                {photo.license}
+                            </a>
+                            , vía{' '}
+                            <a className="hover:underline" href={photo.source} rel="noreferrer" target="_blank">
+                                Wikimedia Commons
+                            </a>
+                        </p>
+                    ) : null}
                 </div>
             </header>
 
