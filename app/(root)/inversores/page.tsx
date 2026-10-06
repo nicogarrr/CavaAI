@@ -59,7 +59,7 @@ export default async function InvestorsPage({ searchParams }: PageProps) {
                             className="flex h-full items-center gap-4 rounded-2xl border border-gray-800 bg-surface-1 p-5 transition-colors hover:border-gray-700"
                             href={`/inversores/${investor.slug}`}
                         >
-                            <InvestorAvatar name={investor.name} />
+                            <InvestorAvatar name={investor.name} slug={investor.slug} />
                             <span className="min-w-0">
                                 <span className="block truncate text-base font-medium text-gray-100">{investor.name}</span>
                                 <span className="block truncate text-sm text-gray-500">{investor.firm}</span>
