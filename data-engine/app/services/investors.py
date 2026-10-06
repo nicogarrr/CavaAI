@@ -247,7 +247,12 @@ def most_bought(db: Session) -> dict[str, Any]:
                 },
             )
             if row["change"] in ("new", "increased"):
-                entry["buyers"].append({"slug": inv.slug, "name": inv.name, "change": row["change"]})
+                # Un gestor puede tener varias clases del mismo CUSIP: cuenta una vez.
+                same = next((b for b in entry["buyers"] if b["slug"] == inv.slug), None)
+                if same is None:
+                    entry["buyers"].append({"slug": inv.slug, "name": inv.name, "change": row["change"]})
+                elif row["change"] == "new":
+                    same["change"] = "new"
                 value = _value_usd(row["value_usd_thousands_latest"], result["latest_report"])
                 entry["value_usd"] += value or 0.0
             elif row["change"] in ("closed", "decreased"):
