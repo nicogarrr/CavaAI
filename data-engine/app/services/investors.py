@@ -138,6 +138,7 @@ def list_investors(db: Session) -> dict[str, Any]:
         rows = _latest_view(db, manager) if manager else []
         item.update(
             {
+                "coverage": manager.coverage if manager and rows else None,
                 "official_name": REVIEWED_MANAGERS.get(inv.cik or ""),
                 "report_date": manager.last_report_date.isoformat()
                 if manager and manager.last_report_date
@@ -167,6 +168,7 @@ def investor_detail(db: Session, slug: str) -> dict[str, Any] | None:
     total = _total(rows)
     detail.update(
         {
+            "coverage": manager.coverage if manager and rows else None,
             "official_name": REVIEWED_MANAGERS.get(inv.cik or ""),
             "report_date": manager.last_report_date.isoformat()
             if manager and manager.last_report_date

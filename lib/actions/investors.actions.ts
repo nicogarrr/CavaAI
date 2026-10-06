@@ -14,6 +14,8 @@ export type InvestorSummary = {
   kind: 'person' | 'firm' | 'company';
   cik: string | null;
   has_13f: boolean;
+  /** 'partial' si el total guardado no cuadra con el declarado en el 13F; null sin datos. */
+  coverage?: string | null;
   official_name: string | null;
   report_date: string | null;
   positions: number | null;

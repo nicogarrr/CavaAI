@@ -161,6 +161,10 @@ def aggregate_rows(rows: list[dict]) -> list[dict]:
     manager" o por discrecion. La tabla guarda una fila por clave, asi que se
     SUMAN valor, acciones y votos; del resto se conserva el primer valor no
     vacio. Las filas sin CUSIP se descartan (nunca se inventa uno).
+
+    Limite conocido: la clave NO incluye SH/PRN (acciones vs importe nominal). Si un
+    gestor declarase ambos tipos para el mismo CUSIP y titulo, "shares" mezclaria
+    unidades; el valor en dolares si es correcto y se verifica contra tableValueTotal.
     """
     summed = ("value_usd_thousands", "ssh_prnamt", "voting_sole", "voting_shared", "voting_none")
     merged: dict[tuple[str, str, str], dict] = {}

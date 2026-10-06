@@ -97,6 +97,16 @@ export default async function InvestorPage({ params, searchParams }: PageProps) 
                         <p className="text-sm text-gray-500">Cartera a {periodLabel(investor.report_date)}</p>
                     </div>
 
+                    {investor.coverage === 'partial' ? (
+                        <p
+                            className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-amber-200"
+                            role="status"
+                        >
+                            Datos parciales: el total guardado no cuadra con el que declara el propio 13F. Las cifras
+                            pueden estar incompletas.
+                        </p>
+                    ) : null}
+
                     <nav aria-label="Vistas de la cartera" className="flex gap-6 border-b border-gray-800">
                         {VIEWS.map((item) => (
                             <Link
