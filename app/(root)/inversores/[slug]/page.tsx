@@ -9,6 +9,7 @@ import { formatNumber, formatPercent, NA } from '@/lib/format';
 
 import { InvestorAvatar } from '../_components/Avatar';
 import { INVESTOR_PHOTOS } from '../_components/photos';
+import { PublicProfileSection } from '../_components/PublicProfile';
 import { Pagination, paginate } from '../_components/Pagination';
 import { periodLabel, usd } from '../_components/format';
 
@@ -90,9 +91,13 @@ export default async function InvestorPage({ params, searchParams }: PageProps) 
             </header>
 
             {!investor.has_13f ? (
-                <p className="rounded-2xl border border-gray-800 bg-surface-1 p-6 text-base text-gray-400">
-                    Sin datos: no presenta 13F.
-                </p>
+                investor.public_profile ? (
+                    <PublicProfileSection profile={investor.public_profile} />
+                ) : (
+                    <p className="rounded-2xl border border-gray-800 bg-surface-1 p-6 text-base text-gray-400">
+                        Sin datos: no presenta 13F.
+                    </p>
+                )
             ) : !hasPortfolio ? (
                 <p className="rounded-2xl border border-gray-800 bg-surface-1 p-6 text-base text-gray-400">
                     Sin datos todavía: falta sincronizar su 13F.
