@@ -12,6 +12,7 @@ import {
     type ManagerHoldings,
 } from '@/lib/actions/ownership.actions';
 import { isBackendUnavailableError } from '@/lib/backend-offline';
+import { form13fValueToUsd } from '@/lib/form13f-value';
 import { formatCompact, formatDate, formatUserDateTime, formatNumber, NA } from '@/lib/format';
 import { t } from '@/lib/i18n/t';
 
@@ -48,11 +49,11 @@ export const metadata: Metadata = {
         'Carteras de gestores institucionales tal como se declaran ante la SEC (Form 13F, EDGAR), con cambios trimestre a trimestre.',
 };
 
-/** `value_usd_thousands` viene en miles de dólares (13F): se pasa a unidades
- *  y de ahí a la cifra compacta es-ES ("416,16 mil M", no "416.16B"). */
-function formatValueUsd(thousands: number | null): string {
-    if (thousands === null) return NA;
-    return formatCompact(thousands * 1000, { maximumFractionDigits: 2 });
+/** El <value> del 13F va en dolares desde 2023 y en miles antes: se normaliza por
+ *  la fecha del informe y se muestra la cifra compacta es-ES ("416,16 mil M"). */
+function formatValueUsd(raw: number | null, reportDate: string | null | undefined): string {
+    const dollars = form13fValueToUsd(raw, reportDate);
+    return dollars === null ? NA : formatCompact(dollars, { maximumFractionDigits: 2 });
 }
 
 function formatShares(shares: number | null): string {
@@ -200,7 +201,7 @@ export default async function OwnershipPage({ searchParams }: PageProps) {
                                             </th>
                                             <td className="py-3 text-gray-400">{row.title_of_class || NA}</td>
                                             <td className="py-3 font-mono text-xs text-gray-400">{row.cusip}</td>
-                                            <td className="py-3 text-right text-gray-200">{formatValueUsd(row.value_usd_thousands)}</td>
+                                            <td className="py-3 text-right text-gray-200">{formatValueUsd(row.value_usd_thousands, holdings.report_date)}</td>
                                             <td className="py-3 text-right text-gray-400">{formatShares(row.shares)}</td>
                                             <td className="py-3 text-gray-400">{row.put_call ?? row.share_type}</td>
                                             <td className="py-3">
@@ -273,8 +274,8 @@ export default async function OwnershipPage({ searchParams }: PageProps) {
                                             </td>
                                             <td className="py-3 text-right text-gray-400">{formatShares(row.shares_previous)}</td>
                                             <td className="py-3 text-right text-gray-200">{formatShares(row.shares_latest)}</td>
-                                            <td className="py-3 text-right text-gray-400">{formatValueUsd(row.value_usd_thousands_previous)}</td>
-                                            <td className="py-3 text-right text-gray-200">{formatValueUsd(row.value_usd_thousands_latest)}</td>
+                                            <td className="py-3 text-right text-gray-400">{formatValueUsd(row.value_usd_thousands_previous, changes.previous_report)}</td>
+                                            <td className="py-3 text-right text-gray-200">{formatValueUsd(row.value_usd_thousands_latest, changes.latest_report)}</td>
                                         </tr>
                                     ))}
                                 </tbody>

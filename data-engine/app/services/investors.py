@@ -1,0 +1,200 @@
+"""Tabla fija de inversores para el modulo "Inversores" (13F oficial, EUR 0).
+
+- Solo los inversores de esta tabla se muestran; el CIK, si existe, debe estar
+  en REVIEWED_MANAGERS (CIK exacto <-> nombre oficial EDGAR, revisado uno a uno).
+- Quien no presenta 13F tiene ``cik=None``: la cartera se muestra como
+  "Sin datos: no presenta 13F", nunca se inventa ni se infiere.
+- Daily Journal se rotula "Daily Journal": no es la cartera personal de Munger.
+- Pershing Square: las posiciones de 2026 van bajo el CIK nuevo 0002026053; el
+  antiguo 0001336528 presento un 13F-NT (aviso, sin posiciones) y no se da de alta.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import date
+from decimal import Decimal
+from typing import Any
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.models import FundManager, ManagerHolding
+from app.services.manager_holding_ingestion_service import (
+    LIMITATIONS,
+    REVIEWED_MANAGERS,
+    SOURCE,
+)
+from app.services.provenance import Coverage, SourceKind, provenance
+
+NO_13F_NOTE = "Sin datos: no presenta 13F"
+
+
+@dataclass(frozen=True)
+class Investor:
+    slug: str
+    name: str
+    firm: str
+    cik: str | None
+    kind: str = "person"  # person | firm | company
+
+
+INVESTORS: tuple[Investor, ...] = (
+    Investor("buffett", "Warren Buffett", "Berkshire Hathaway", "0001067983"),
+    Investor("ackman", "Bill Ackman", "Pershing Square", "0002026053"),
+    Investor("terry-smith", "Terry Smith", "Fundsmith", "0001569205"),
+    Investor("li-lu", "Li Lu", "Himalaya Capital", "0001709323"),
+    Investor("daily-journal", "Daily Journal", "Daily Journal Corp", "0000783412", "company"),
+    Investor("pabrai", "Mohnish Pabrai", "Dalal Street", "0001549575"),
+    Investor("akre", "Chuck Akre", "Akre Capital Management", "0001112520"),
+    Investor("klarman", "Seth Klarman", "Baupost Group", "0001061768"),
+    Investor("druckenmiller", "Stanley Druckenmiller", "Duquesne Family Office", "0001536411"),
+    Investor("tepper", "David Tepper", "Appaloosa", "0001656456"),
+    Investor("loeb", "Daniel Loeb", "Third Point", "0001040273"),
+    Investor("berkowitz", "Bruce Berkowitz", "Fairholme Capital", "0001056831"),
+    Investor("tweedy-browne", "Tweedy, Browne", "Tweedy, Browne", "0000732905", "firm"),
+    Investor("oakmark", "Harris Associates (Oakmark)", "Harris Associates", "0000813917", "firm"),
+    Investor("peltz", "Nelson Peltz", "Trian Fund Management", "0001345471"),
+    Investor("lone-pine", "Lone Pine Capital", "Lone Pine Capital", "0001061165", "firm"),
+    Investor("southeastern", "Southeastern Asset Management", "Southeastern", "0000807985", "firm"),
+    Investor("tiger-global", "Tiger Global", "Tiger Global Management", "0001167483", "firm"),
+    Investor("polen", "Polen Capital", "Polen Capital", "0001034524", "firm"),
+    Investor("markel", "Markel", "Markel Group", "0001096343", "company"),
+    Investor("gates-foundation", "Gates Foundation Trust", "Gates Foundation Trust", "0001166559", "firm"),
+    Investor("abrams-bison", "Abrams Bison", "Abrams Bison Investments", "0001317588", "firm"),
+    Investor("ako", "AKO Capital", "AKO Capital", "0001376879", "firm"),
+    Investor("roepers", "Alex Roepers", "Atlantic Investment Management", "0001063296"),
+    # Sin 13F: cartas, videos y conceptos; cartera "Sin datos".
+    Investor("mark-leonard", "Mark Leonard", "Constellation Software", None),
+    Investor("bezos", "Jeff Bezos", "Amazon", None),
+    Investor("quintana", "Emerito Quintana", "Numantia", None),
+    Investor("munger", "Charlie Munger", "Berkshire Hathaway", None),
+    Investor("nick-sleep", "Nick Sleep", "Nomad Investment Partnership", None),
+    Investor("lynch", "Peter Lynch", "Fidelity Magellan", None),
+)
+
+_BY_SLUG = {i.slug: i for i in INVESTORS}
+
+
+def get_investor(slug: str) -> Investor | None:
+    return _BY_SLUG.get(slug)
+
+
+def _latest_view(db: Session, manager: FundManager) -> list[ManagerHolding]:
+    """Filas del ultimo periodo y de su ultima accession (las enmiendas sustituyen
+    al filing base en esta vista; todos los filings siguen almacenados)."""
+    if manager.last_report_date is None:
+        return []
+    rows = list(
+        db.scalars(
+            select(ManagerHolding).where(
+                ManagerHolding.manager_id == manager.id,
+                ManagerHolding.report_date == manager.last_report_date,
+            )
+        )
+    )
+    if not rows:
+        return []
+    accession = max(
+        {r.accession_number for r in rows},
+        key=lambda acc: (
+            max((r.filing_date or date.min) for r in rows if r.accession_number == acc),
+            acc,
+        ),
+    )
+    return [r for r in rows if r.accession_number == accession]
+
+
+def _total(rows: list[ManagerHolding]) -> float | None:
+    values = [r.value_usd_thousands for r in rows if r.value_usd_thousands is not None]
+    if not values:
+        return None
+    return float(sum(values, Decimal(0)))
+
+
+def _entry(inv: Investor) -> dict[str, Any]:
+    return {
+        "slug": inv.slug,
+        "name": inv.name,
+        "firm": inv.firm,
+        "kind": inv.kind,
+        "cik": inv.cik,
+        "has_13f": inv.cik is not None,
+    }
+
+
+def _manager(db: Session, inv: Investor) -> FundManager | None:
+    if inv.cik is None or inv.cik not in REVIEWED_MANAGERS:
+        return None
+    return db.scalar(select(FundManager).where(FundManager.cik == inv.cik))
+
+
+def list_investors(db: Session) -> dict[str, Any]:
+    out: list[dict[str, Any]] = []
+    for inv in INVESTORS:
+        item = _entry(inv)
+        manager = _manager(db, inv)
+        rows = _latest_view(db, manager) if manager else []
+        item.update(
+            {
+                "official_name": REVIEWED_MANAGERS.get(inv.cik or ""),
+                "report_date": manager.last_report_date.isoformat()
+                if manager and manager.last_report_date
+                else None,
+                "positions": len(rows) if rows else None,
+                "value_usd_thousands": _total(rows),
+                "note": None if inv.cik else NO_13F_NOTE,
+            }
+        )
+        out.append(item)
+    return {
+        "investors": out,
+        "limitations": LIMITATIONS,
+        "provenance": provenance(SOURCE, SourceKind.INTERNAL, coverage=Coverage.OK),
+    }
+
+
+def investor_detail(db: Session, slug: str) -> dict[str, Any] | None:
+    inv = get_investor(slug)
+    if inv is None:
+        return None
+    detail = _entry(inv)
+    detail["note"] = None if inv.cik else NO_13F_NOTE
+    manager = _manager(db, inv)
+    rows = _latest_view(db, manager) if manager else []
+    rows.sort(key=lambda r: r.value_usd_thousands or Decimal(0), reverse=True)
+    total = _total(rows)
+    detail.update(
+        {
+            "official_name": REVIEWED_MANAGERS.get(inv.cik or ""),
+            "report_date": manager.last_report_date.isoformat()
+            if manager and manager.last_report_date
+            else None,
+            "positions": len(rows) if rows else None,
+            "value_usd_thousands": total,
+            "holdings": [
+                {
+                    "name_of_issuer": r.name_of_issuer,
+                    "title_of_class": r.title_of_class,
+                    "cusip": r.cusip,
+                    "shares": float(r.shares) if r.shares is not None else None,
+                    "value_usd_thousands": float(r.value_usd_thousands)
+                    if r.value_usd_thousands is not None
+                    else None,
+                    "weight_pct": round(float(r.value_usd_thousands) / total * 100, 2)
+                    if total and r.value_usd_thousands is not None
+                    else None,
+                    "put_call": r.put_call or None,
+                    "filing_url": r.filing_url,
+                }
+                for r in rows
+            ],
+            "limitations": LIMITATIONS,
+            "provenance": provenance(
+                SOURCE,
+                SourceKind.OFFICIAL if rows else SourceKind.INTERNAL,
+                coverage=Coverage.OK if rows else Coverage.UNAVAILABLE,
+            ),
+        }
+    )
+    return detail
