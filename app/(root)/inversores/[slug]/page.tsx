@@ -102,8 +102,8 @@ export default async function InvestorPage({ params, searchParams }: PageProps) 
                             className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-amber-200"
                             role="status"
                         >
-                            Datos parciales: el total guardado no cuadra con el que declara el propio 13F. Las cifras
-                            pueden estar incompletas.
+                            Datos parciales: la sincronización no se completó o no cuadra con el total que declara el propio
+                            13F. Las cifras pueden estar incompletas.
                         </p>
                     ) : null}
 
