@@ -32,13 +32,11 @@ import {
     buildScene,
     describeDetail,
     EDGE_COLOR,
+    exportFullGraph,
     focusIds,
     MAX_SCENE_NODES,
     neighborRows,
     searchNodes,
-    serializeJson,
-    serializeSvg,
-    subgraphFor,
     type GraphPayload,
     type SceneNode,
 } from '@/lib/knowledge-graph/graph-model';
@@ -172,6 +170,26 @@ export default function KnowledgeGraphCanvas({ graph }: Props) {
         const queryString = params.toString();
         return queryString ? `${pathname}?${queryString}` : pathname;
     }, [pathname, searchParams, selectedId]);
+
+    /**
+     * «Enlace compartible» era un `<Link>` a la URL ACTUAL: el panel solo se
+     * pinta con `?focus=` ya en la URL, así que el href era idéntico a
+     * `location.href` y Next no navegaba a ninguna parte (clic muerto). El
+     * botón copia la URL absoluta al portapapeles; sin Clipboard API (contexto
+     * no seguro) lo dice y enseña el enlace para copiarlo a mano.
+     */
+    const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
+    useEffect(() => setCopyState('idle'), [selectedId]);
+    const copyShareLink = useCallback(async () => {
+        const absolute = new URL(shareHref, window.location.href).toString();
+        try {
+            if (!navigator.clipboard?.writeText) throw new Error('Clipboard API no disponible');
+            await navigator.clipboard.writeText(absolute);
+            setCopyState('copied');
+        } catch {
+            setCopyState('failed');
+        }
+    }, [shareHref]);
 
     const selectAndCenter = useCallback(
         (id: number) => {
@@ -376,16 +394,19 @@ export default function KnowledgeGraphCanvas({ graph }: Props) {
         fit(null);
     }, [fit, writeFocus]);
 
-    const exportSubgraph = useCallback(
+    const exportGraph = useCallback(
         (kind: 'svg' | 'json') => {
-            const count = subgraphFor(scene, keep).nodes.length;
+            // El volcado NO pasa por el recorte del dibujo: `truncatedHint`
+            // promete «el subgrafo completo» y una exportación de los 80 nodos
+            // dibujados no lo era. El nombre del fichero declara lo que lleva.
+            const count = graph.nodes.length;
             if (kind === 'svg') {
-                download(`cavaai-grafo-${count}-nodos.svg`, serializeSvg(scene, { keep, selectedId }), 'image/svg+xml');
+                download(`cavaai-grafo-${count}-nodos.svg`, exportFullGraph(graph, 'svg', { selectedId }), 'image/svg+xml');
                 return;
             }
-            download(`cavaai-grafo-${count}-nodos.json`, serializeJson(scene, { keep }), 'application/json');
+            download(`cavaai-grafo-${count}-nodos.json`, exportFullGraph(graph, 'json'), 'application/json');
         },
-        [keep, scene, selectedId],
+        [graph, selectedId],
     );
 
     /* -------------------------------------------------------------- *
@@ -393,6 +414,7 @@ export default function KnowledgeGraphCanvas({ graph }: Props) {
      * -------------------------------------------------------------- */
 
     const helpId = 'knowledge-graph-keyboard-help';
+    const descriptionId = 'knowledge-graph-canvas-description';
     const showLabels = scene.nodes.length <= 45;
     const truncatedNodes = scene.hiddenNodeCount > 0;
     const truncatedEdges = scene.hiddenEdgeCount > 0;
@@ -448,11 +470,11 @@ export default function KnowledgeGraphCanvas({ graph }: Props) {
                         <span className="text-xs text-gray-500">
                             {t('knowledgeGraph.canvas.zoomLimits', { min: Math.round(MIN_SCALE * 100), max: Math.round(MAX_SCALE * 100) })}
                         </span>
-                        <Button data-testid="kg-export-svg" onClick={() => exportSubgraph('svg')} size="sm" type="button" variant="ghost">
+                        <Button data-testid="kg-export-svg" onClick={() => exportGraph('svg')} size="sm" type="button" variant="ghost">
                             <Download aria-hidden="true" className="h-4 w-4" />
                             {t('knowledgeGraph.canvas.exportSvg')}
                         </Button>
-                        <Button data-testid="kg-export-json" onClick={() => exportSubgraph('json')} size="sm" type="button" variant="ghost">
+                        <Button data-testid="kg-export-json" onClick={() => exportGraph('json')} size="sm" type="button" variant="ghost">
                             <Download aria-hidden="true" className="h-4 w-4" />
                             {t('knowledgeGraph.canvas.exportJson')}
                         </Button>
@@ -461,7 +483,7 @@ export default function KnowledgeGraphCanvas({ graph }: Props) {
 
                 {/* Lienzo */}
                 <div
-                    aria-describedby={helpId}
+                    aria-describedby={`${helpId} ${descriptionId}`}
                     aria-label={t('knowledgeGraph.canvas.label')}
                     aria-roledescription={t('knowledgeGraph.canvas.roleDescription')}
                     className="relative h-[clamp(360px,58dvh,620px)] w-full touch-none overflow-hidden rounded-xl border border-gray-800 bg-surface-0 select-none"
@@ -476,7 +498,11 @@ export default function KnowledgeGraphCanvas({ graph }: Props) {
                     role="application"
                     tabIndex={0}
                 >
-                    {size.width > 0 && size.height > 0 ? (
+                    {scene.nodes.length === 0 ? (
+                        <p className="flex h-full items-center justify-center p-6 text-center text-sm text-gray-500" role="status">
+                            {t('knowledgeGraph.canvas.noNodesInScene')}
+                        </p>
+                    ) : size.width > 0 && size.height > 0 ? (
                         <svg aria-hidden="true" className="block" focusable="false" height={size.height} viewBox={`0 0 ${size.width} ${size.height}`} width={size.width}>
                             <g data-testid="kg-layer" ref={layerRef}>
                                 <g stroke={EDGE_COLOR} strokeOpacity="0.65">
@@ -549,6 +575,17 @@ export default function KnowledgeGraphCanvas({ graph }: Props) {
                             </p>
                         </div>
                     ) : null}
+                    {/* Anuncio accesible del hover: el tooltip es visual y no se
+                        entera un lector de pantalla. */}
+                    <p aria-live="polite" className="sr-only" role="status">
+                        {hoveredNode
+                            ? t('knowledgeGraph.canvas.hoverNode', {
+                                  label: hoveredNode.label,
+                                  type: hoveredNode.type,
+                                  degree: hoveredNode.degree,
+                              })
+                            : ''}
+                    </p>
                 </div>
 
                 <p className="text-xs text-gray-500" data-testid="kg-counts">
@@ -564,6 +601,9 @@ export default function KnowledgeGraphCanvas({ graph }: Props) {
                     {isolated && selectedId !== null
                         ? t('knowledgeGraph.canvas.isolatedOn', { count: keep ? keep.size - 1 : scene.nodes.length - 1 })
                         : t('knowledgeGraph.canvas.isolatedOff')}
+                </p>
+                <p className="text-xs text-gray-500" id={descriptionId}>
+                    {t('knowledgeGraph.canvas.description')}
                 </p>
                 <p className="text-xs text-gray-500" id={helpId}>
                     {t('knowledgeGraph.canvas.keyboardHelp')}
@@ -676,7 +716,14 @@ export default function KnowledgeGraphCanvas({ graph }: Props) {
                 <h2 className="font-semibold text-gray-100" id="knowledge-graph-detail-title">
                     {t('knowledgeGraph.detail.title')}
                 </h2>
-                {!selectedNode ? (
+                {/* Anuncio accesible de la selección: el panel cambia visualmente
+                    y un lector de pantalla no se entera por sí solo. */}
+                <p aria-live="polite" className="sr-only" role="status">
+                    {selectedNode ? t('knowledgeGraph.canvas.selectedNode', { label: selectedNode.label }) : ''}
+                </p>
+                {!selectedNode && focusParam ? (
+                    <p className="mt-2 text-sm text-gray-500">{t('knowledgeGraph.detail.unknownNode', { id: focusParam })}</p>
+                ) : !selectedNode ? (
                     <p className="mt-2 text-sm text-gray-500">{t('knowledgeGraph.detail.empty')}</p>
                 ) : (
                     <div className="mt-3 space-y-4">
@@ -720,7 +767,10 @@ export default function KnowledgeGraphCanvas({ graph }: Props) {
                                                     {t('knowledgeGraph.detail.confidence')}
                                                     {row.confidence === null ? t('knowledgeGraph.detail.absent') : ` ${Math.round(row.confidence * 100)}%`}
                                                 </span>
-                                                <span>{row.provenance}</span>
+                                                <span>
+                                                    {t('knowledgeGraph.detail.provenance')}
+                                                    {row.provenance ? ` ${row.provenance}` : ` ${t('knowledgeGraph.detail.absent')}`}
+                                                </span>
                                             </div>
                                         </li>
                                     ))}
@@ -736,9 +786,17 @@ export default function KnowledgeGraphCanvas({ graph }: Props) {
                                     {t('knowledgeGraph.detail.scopeLink')}
                                 </Link>
                             </Button>
-                            <Button asChild className="w-full" size="sm" variant="ghost">
-                                <Link href={shareHref}>{t('knowledgeGraph.detail.shareLink')}</Link>
-                            </Button>
+                        <Button className="w-full" data-testid="kg-copy-link" onClick={() => void copyShareLink()} size="sm" type="button" variant="ghost">
+                            {t('knowledgeGraph.detail.shareLink')}
+                        </Button>
+                        <p aria-live="polite" className="text-xs text-gray-500" role="status">
+                            {copyState === 'copied' ? t('knowledgeGraph.detail.shareLinkCopied') : copyState === 'failed' ? t('knowledgeGraph.detail.shareLinkFailed') : ''}
+                        </p>
+                        {copyState === 'failed' ? (
+                            <code className="block w-full break-all rounded-md border border-gray-800 bg-black/30 p-2 text-xs text-gray-300">
+                                {new URL(shareHref, typeof window === 'undefined' ? 'http://localhost' : window.location.href).toString()}
+                            </code>
+                        ) : null}
                         </div>
                     </div>
                 )}

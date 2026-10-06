@@ -44,6 +44,9 @@ export type GraphEdgePayload = {
 export type GraphPayload = {
   node_count: number;
   edge_count: number;
+  /** Total de nodos con los MISMOS filtros, sin el `limit` de la pagina.
+   *  Ausente cuando el backend no lo devuelve (vecindario): N/D. */
+  total_node_count?: number;
   nodes: GraphNodePayload[];
   edges: GraphEdgePayload[];
 };
@@ -218,7 +221,18 @@ export type BuildSceneOptions = { maxNodes?: number };
  */
 export function buildScene(graph: GraphPayload, options: BuildSceneOptions = {}): Scene {
   const maxNodes = Math.max(1, Math.floor(options.maxNodes ?? MAX_SCENE_NODES));
-  const visible = graph.nodes.slice(0, maxNodes);
+  // El recorte elige por GRADO (los mas conectados primero), no por el orden
+  // de id del backend: con un hub de grado 79 al final del payload, cortar por
+  // id lo excluia y el grafo dibujado degeneraba en 80 nodos sueltos (grado
+  // maximo 2), indistinguibles de un grafo plano. Desempate por id para que el
+  // corte sea determinista y reproducible.
+  const totalDegrees = degreeMap(
+    graph.nodes.map((node) => node.id),
+    graph.edges,
+  );
+  const visible = [...graph.nodes]
+    .sort((a, b) => (totalDegrees.get(b.id) ?? 0) - (totalDegrees.get(a.id) ?? 0) || a.id - b.id)
+    .slice(0, maxNodes);
   const visibleIds = new Set(visible.map((node) => node.id));
   const degrees = degreeMap(
     visible.map((node) => node.id),
@@ -473,6 +487,19 @@ export function serializeSvg(scene: Scene, options: ExportOptions = {}): string 
 
 function round(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+/**
+ * Volcado del grafo CARGADO entero, sin el recorte del dibujo. El copy
+ * (`truncatedHint`) promete «exporta el JSON para ver el subgrafo completo» y
+ * antes el volcado serializaba la escena recortada a MAX_SCENE_NODES: los
+ * nodos y aristas ocultos NUNCA llegaban al fichero que los prometia.
+ */
+export function exportFullGraph(graph: GraphPayload, kind: 'svg' | 'json', options: { selectedId?: number | null } = {}): string {
+  const scene = buildScene(graph, { maxNodes: Number.MAX_SAFE_INTEGER });
+  return kind === 'svg'
+    ? serializeSvg(scene, { keep: null, selectedId: options.selectedId ?? null })
+    : serializeJson(scene, { keep: null });
 }
 
 /** JSON del subgrafo, con la procedencia de cada arista (lo que hace auditable el volcado). */
