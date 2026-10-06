@@ -73,3 +73,26 @@ export async function getInvestor(slug: string): Promise<InvestorDetail | null> 
     throw error;
   }
 }
+
+export type MostBoughtItem = {
+  name_of_issuer: string;
+  cusip: string;
+  buyers_count: number;
+  new_count: number;
+  sellers_count: number;
+  value_usd: number | null;
+  buyers: { slug: string; name: string; change: 'new' | 'increased' }[];
+};
+
+export type MostBought = {
+  status: 'ok' | 'sin_datos';
+  managers_compared: number;
+  managers_without_history: number;
+  report_dates: string[];
+  items: MostBoughtItem[];
+  limitations: string[];
+};
+
+export async function getMostBought(): Promise<MostBought> {
+  return requestJson('/api/investors/most-bought');
+}
