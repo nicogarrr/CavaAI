@@ -200,3 +200,15 @@ def test_most_bought_without_history_says_sin_datos():
     assert result["status"] == "sin_datos"
     assert result["items"] == []
     assert result["managers_compared"] == 0
+
+
+def test_most_bought_counts_partial_managers_among_compared():
+    db = _db()
+    _two_quarters(db, "0001067983", {"AAA": ("10", "20")})
+    _two_quarters(db, "0001061768", {"AAA": ("5", "7")})
+    baupost = db.scalar(select(FundManager).where(FundManager.cik == "0001061768"))
+    baupost.coverage = "partial"
+    db.commit()
+    result = most_bought(db)
+    assert result["managers_compared"] == 2
+    assert result["managers_partial"] == 1

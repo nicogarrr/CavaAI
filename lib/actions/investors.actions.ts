@@ -90,6 +90,7 @@ export type MostBought = {
   status: 'ok' | 'sin_datos';
   managers_compared: number;
   managers_without_history: number;
+  managers_partial?: number;
   report_dates: string[];
   items: MostBoughtItem[];
   limitations: string[];

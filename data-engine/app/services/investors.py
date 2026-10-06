@@ -225,15 +225,21 @@ def most_bought(db: Session) -> dict[str, Any]:
     issuers: dict[str, dict[str, Any]] = {}
     compared = 0
     pending = 0
+    partial = 0
     periods: set[str] = set()
     for inv in INVESTORS:
-        if inv.cik is None or _manager(db, inv) is None:
+        if inv.cik is None:
+            continue
+        manager = _manager(db, inv)
+        if manager is None:
             continue
         result = service.changes(db, cik=inv.cik)
         if result.get("status") != "ok":
             pending += 1
             continue
         compared += 1
+        if manager.coverage == "partial":
+            partial += 1
         periods.add(result["latest_report"])
         for row in result["changes"]:
             if row["put_call"]:
@@ -277,6 +283,7 @@ def most_bought(db: Session) -> dict[str, Any]:
         "status": "ok" if compared else "sin_datos",
         "managers_compared": compared,
         "managers_without_history": pending,
+        "managers_partial": partial,
         "report_dates": sorted(periods),
         "items": items,
         "limitations": LIMITATIONS,

@@ -13,10 +13,18 @@ test('el tipo de inversor lleva coverage', () => {
 
 test('la ficha avisa de datos parciales cuando coverage es partial', () => {
     assert.match(ficha, /investor\.coverage === 'partial'/);
-    assert.match(ficha, /Datos parciales: el total guardado no cuadra/);
+    assert.match(ficha, /la sincronización no se completó o no cuadra/);
 });
 
 test('las carteras marcan "Datos parciales" en la tarjeta', () => {
     assert.match(carteras, /investor\.coverage === 'partial'/);
     assert.match(carteras, /Datos parciales/);
+});
+
+const masCompradas = readFileSync('app/(root)/inversores/mas-compradas/page.tsx', 'utf8');
+
+test('mas-compradas avisa de cuantos gestores comparados van parciales', () => {
+    assert.match(actions, /managers_partial\?: number/);
+    assert.match(masCompradas, /data\.managers_partial \?/);
+    assert.match(masCompradas, /con datos parciales/);
 });
