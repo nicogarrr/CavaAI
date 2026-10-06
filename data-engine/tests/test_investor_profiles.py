@@ -40,3 +40,18 @@ def test_urls_are_ascii_only():
         urls += [f["source_url"] for f in profile["facts"]]
         urls += [x["url"] for x in (*profile["letters"], *profile["meetings"], *profile["links"])]
         assert all(u.isascii() and " " not in u for u in urls), slug
+
+
+def test_no_hardcoded_nav_that_goes_stale():
+    for profile in PUBLIC_PROFILES.values():
+        assert not any("liquidativo" in f["label"].lower() for f in profile["facts"])
+
+
+def test_list_flags_public_profile_only_where_it_exists():
+    from app.services.investors import list_investors
+    from tests.test_investors import _db
+
+    by_slug = {i["slug"]: i for i in list_investors(_db())["investors"]}
+    assert by_slug["quintana"]["has_public_profile"] is True
+    assert by_slug["lynch"]["has_public_profile"] is False
+    assert by_slug["buffett"]["has_public_profile"] is False

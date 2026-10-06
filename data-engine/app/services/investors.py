@@ -122,6 +122,7 @@ def _entry(inv: Investor) -> dict[str, Any]:
         "kind": inv.kind,
         "cik": inv.cik,
         "has_13f": inv.cik is not None,
+        "has_public_profile": inv.cik is None and public_profile(inv.slug) is not None,
     }
 
 

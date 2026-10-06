@@ -14,6 +14,8 @@ export type InvestorSummary = {
   kind: 'person' | 'firm' | 'company';
   cik: string | null;
   has_13f: boolean;
+  /** Sin 13F pero con ficha pública (cifras con fuente y fecha). */
+  has_public_profile?: boolean;
   /** 'partial' si el total guardado no cuadra con el declarado en el 13F; null sin datos. */
   coverage?: string | null;
   official_name: string | null;
