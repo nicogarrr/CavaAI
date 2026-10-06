@@ -1192,18 +1192,6 @@ export async function getResearchNews(
   return getJson<ResearchNewsEvent[]>(`/api/news?${params.toString()}`, []);
 }
 
-/** Página siguiente del flujo (scroll infinito); el cliente la llama al llegar al final. */
-export async function loadMoreResearchNews(
-  lane: 'empresa' | 'macro' | null,
-  offset: number,
-  limit: number,
-): Promise<ResearchNewsEvent[]> {
-  const safeLane = lane === 'macro' || lane === 'empresa' ? lane : null;
-  const safeOffset = Math.max(0, Math.floor(Number(offset) || 0));
-  const safeLimit = Math.min(100, Math.max(1, Math.floor(Number(limit) || 30)));
-  return getResearchNews(safeLane, safeOffset, safeLimit);
-}
-
 export async function analyzeManualNews(
   formData: FormData,
 ): Promise<{
