@@ -177,15 +177,22 @@ class ManagerHoldingIngestionService:
                 errors.append({"accession": accession, "error": redact_secrets(f"{type(exc).__name__}: {exc}")})
                 continue
             summary = form13f.fetch_primary_summary(cik, accession, client=self.client)
-            if (
-                filing["is_amendment"]
-                and summary is not None
-                and (summary["amendment_type"] or "").upper() != "RESTATEMENT"
+            if filing["is_amendment"] and summary is None:
+                # Sin el resumen no sabemos si la enmienda es completa (RESTATEMENT) o
+                # parcial (NEW HOLDINGS): no se ingiere como cartera del periodo.
+                skipped_amendments.append({"accession": accession, "reason": "summary_unreadable"})
+                continue
+            if filing["is_amendment"] and summary is not None and (
+                (summary["amendment_type"] or "").upper() != "RESTATEMENT"
             ):
                 # Una enmienda "NEW HOLDINGS" solo trae parte de la cartera: usarla
                 # como cartera del periodo inventaria compras y cierres.
                 skipped_amendments.append(
-                    {"accession": accession, "amendment_type": summary["amendment_type"]}
+                    {
+                        "accession": accession,
+                        "amendment_type": summary["amendment_type"],
+                        "reason": "not_restatement",
+                    }
                 )
                 continue
             existing = {
