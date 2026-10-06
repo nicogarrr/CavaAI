@@ -1,0 +1,32 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { test } from 'node:test';
+
+const flow = readFileSync('components/research/NewsEventsFlow.tsx', 'utf8');
+const page = readFileSync('app/(root)/research/news/page.tsx', 'utf8');
+const actions = readFileSync('lib/actions/research.actions.ts', 'utf8');
+const route = readFileSync('data-engine/app/api/routes/news.py', 'utf8');
+
+test('el flujo de noticias pagina dentro de la pagina, sin scroll infinito', () => {
+  assert.doesNotMatch(flow, /IntersectionObserver/);
+  assert.doesNotMatch(flow, /Cargar más/);
+  assert.doesNotMatch(actions, /loadMoreResearchNews/);
+  assert.match(flow, /aria-label="Paginación"/);
+  assert.match(flow, /rel="prev"/);
+  assert.match(flow, /rel="next"/);
+  assert.match(flow, /'pagina'/);
+});
+
+test('la pagina pide al servidor la ventana de ?pagina y un evento extra para saber si hay siguiente', () => {
+  assert.match(page, /pagina\?: string/);
+  assert.match(page, /getResearchNews\(lane, \(page - 1\) \* NEWS_PAGE_SIZE, NEWS_PAGE_SIZE \+ 1\)/);
+  assert.match(page, /fetched\.length > NEWS_PAGE_SIZE/);
+  assert.doesNotMatch(page, /events\.filter\(/);
+});
+
+test('el carril cambia de pagina conservando lane y la API acota limit/offset en SQL', () => {
+  assert.match(flow, /query\.set\('lane', lane\)/);
+  assert.match(route, /Annotated\[int, Query\(ge=1, le=100\)\] = 100/);
+  assert.match(route, /offset: Annotated\[int, Query\(ge=0\)\] = 0/);
+  assert.match(route, /lane: Literal\["empresa", "macro"\]/);
+});
