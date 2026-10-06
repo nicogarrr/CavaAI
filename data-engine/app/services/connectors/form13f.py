@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation
 from xml.etree import ElementTree as ET
 
 import httpx
@@ -142,3 +143,73 @@ def parse_information_table(xml_text: str) -> list[dict]:
             }
         )
     return rows
+
+
+def _dec(value: str | None) -> Decimal | None:
+    if value in (None, ""):
+        return None
+    try:
+        return Decimal(str(value).strip())
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def aggregate_rows(rows: list[dict]) -> list[dict]:
+    """Une las filas del information table con la misma clave.
+
+    Un 13F real repite (cusip, titulo, put/call) una vez por gestor "other
+    manager" o por discrecion. La tabla guarda una fila por clave, asi que se
+    SUMAN valor, acciones y votos; del resto se conserva el primer valor no
+    vacio. Las filas sin CUSIP se descartan (nunca se inventa uno).
+    """
+    summed = ("value_usd_thousands", "ssh_prnamt", "voting_sole", "voting_shared", "voting_none")
+    merged: dict[tuple[str, str, str], dict] = {}
+    for row in rows:
+        cusip = (row.get("cusip") or "").strip()
+        if not cusip:
+            continue
+        key = (cusip, (row.get("title_of_class") or "").strip(), (row.get("put_call") or "").strip())
+        current = merged.get(key)
+        if current is None:
+            merged[key] = dict(row)
+            continue
+        for name in summed:
+            a, b = _dec(current.get(name)), _dec(row.get(name))
+            if a is None and b is None:
+                continue
+            current[name] = str((a or Decimal(0)) + (b or Decimal(0)))
+        for name, value in row.items():
+            if name not in summed and not current.get(name) and value:
+                current[name] = value
+    return list(merged.values())
+
+
+def parse_primary_summary(xml_text: str) -> dict:
+    """tableEntryTotal, tableValueTotal y amendmentType del primary_doc.xml."""
+
+    def local(tag: str) -> str:
+        return tag.rsplit("}", 1)[-1]
+
+    found: dict[str, str] = {}
+    for elem in ET.fromstring(xml_text).iter():
+        name = local(elem.tag)
+        if name in {"tableEntryTotal", "tableValueTotal", "amendmentType"} and (elem.text or "").strip():
+            found.setdefault(name, (elem.text or "").strip())
+    entries = _dec(found.get("tableEntryTotal"))
+    value = _dec(found.get("tableValueTotal"))
+    return {
+        "table_entry_total": int(entries) if entries is not None else None,
+        "table_value_total": value,
+        "amendment_type": found.get("amendmentType"),
+    }
+
+
+def fetch_primary_summary(
+    cik: str | int, accession_number: str, *, client: httpx.Client | None = None
+) -> dict | None:
+    """Resumen declarado por el propio filing; None si no se puede leer."""
+    url = filing_index_url(cik, accession_number) + "primary_doc.xml"
+    try:
+        return parse_primary_summary(_get(url, client).text)
+    except Exception:  # noqa: BLE001 - sin resumen => "no verificado", nunca invent
+        return None
