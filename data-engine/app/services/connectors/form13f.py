@@ -97,12 +97,19 @@ def information_table_url(
         name = str(item.get("name") or "")
         if not name.lower().endswith(".xml"):
             continue
-        if primary_document and name == primary_document:
+        # primaryDocument puede venir con carpeta de estilo ("xslForm13F_X02/primary_doc.xml"):
+        # se compara el nombre base, y primary_doc.xml nunca es el information table.
+        primary_base = (primary_document or "").rsplit("/", 1)[-1]
+        if name == primary_document or (primary_base and name == primary_base) or name.lower() == "primary_doc.xml":
             continue
         candidates.append(name)
     if not candidates:
         return None
-    preferred = [n for n in candidates if "infotable" in n.lower() or "13f" in n.lower()]
+    def _is_info_table(n: str) -> bool:
+        flat = n.lower().replace("-", "").replace("_", "")
+        return "infotable" in flat or "13f" in flat
+
+    preferred = [n for n in candidates if _is_info_table(n)]
     return base + (preferred[0] if preferred else candidates[0])
 
 
