@@ -14,6 +14,8 @@ export type InvestorSummary = {
   kind: 'person' | 'firm' | 'company';
   cik: string | null;
   has_13f: boolean;
+  /** Sin 13F pero con ficha pública (cifras con fuente y fecha). */
+  has_public_profile?: boolean;
   /** 'partial' si el total guardado no cuadra con el declarado en el 13F; null sin datos. */
   coverage?: string | null;
   official_name: string | null;
@@ -34,7 +36,34 @@ export type InvestorHolding = {
   filing_url: string;
 };
 
+export type PublicFact = {
+  label: string;
+  value: string;
+  as_of: string;
+  source_url: string;
+  kind: 'oficial' | 'inferido';
+};
+
+/** Ficha pública de gestores sin 13F: solo lo que publican ellos o un regulador, con fuente y fecha. */
+export type PublicProfile = {
+  vehicle: {
+    name: string;
+    type: string;
+    regulator_id: string;
+    manager_company: string;
+    start_date: string;
+    source_url: string;
+  };
+  facts: PublicFact[];
+  letters: { title: string; date: string; url: string }[];
+  meetings: { title: string; year: string; url: string }[];
+  holdings: unknown[] | null;
+  holdings_note: string;
+  links: { label: string; url: string }[];
+};
+
 export type InvestorDetail = InvestorSummary & {
+  public_profile?: PublicProfile | null;
   holdings: InvestorHolding[];
   limitations: string[];
   provenance?: OwnershipProvenance;
