@@ -1,5 +1,5 @@
 /**
- * Guard de i18n. Fallo rapido y sin dependencias para dos regresiones concretas:
+ * Guard de i18n. Fallo rapido y sin dependencias para tres regresiones concretas:
  *
  *  1. Una clave de `t()` que ya no existe en lib/i18n/es.json. En produccion
  *     `t()` devuelve la propia clave, asi que el usuario veria literalmente
@@ -8,6 +8,10 @@
  *     app es es-ES y en el repo ya se colaron paginas enteras en ingles
  *     (app/(root)/screeners/[screenId]/page.tsx era un unico literal de 16
  *     lineas) y el boton de cerrar de todos los modales decia "Close".
+ *  3. Claves huerfanas: en el diccionario pero sin ningun `t()` que las use.
+ *     En produccion son copy que nadie pinta (y que nadie revisa cuando
+ *     cambia la interfaz). Solo se falla si la huerfana es NUEVA: las ya
+ *     conocidas estan listadas con su motivo y la lista no puede crecer sola.
  *
  * Solo se inspecciona TEXTO VISIBLE: el contenido de los literales de cadena y
  * los text nodes de JSX. Los identificadores (`isSubmitting`), los nombres de
@@ -141,6 +145,99 @@ for (const file of files) {
   }
 }
 
+/* ------------------------------------------------------------------ *
+ * 3. Claves huerfanas: en el diccionario pero sin uso
+ * ------------------------------------------------------------------ */
+
+/**
+ * Claves que llegan a `t()` a traves de una variable: `t(item.labelKey)` en
+ * components/knowledge-graph/KnowledgeGraphCanvas.tsx, con el labelKey
+ * construido como literal en lib/knowledge-graph/graph-model.ts. Sin contar
+ * esos literales como uso, todo el bloque `knowledgeGraph.detail.fields.*`
+ * pareceria huerfano siendo copy que si se pinta.
+ */
+const used = new Set();
+const literals = new Set();
+for (const file of files) {
+  const source = readFileSync(file, "utf8");
+  for (const match of source.matchAll(/\bt\(\s*'([^']+)'/g)) used.add(match[1]);
+  // Solo literales con FORMA de clave (mismo patron que el chequeo 1): un
+  // "cualquier cosa entre comillas" se come bloques enteros cuando hay
+  // comillas sin parear en comentarios y esconde usos reales.
+  for (const match of source.matchAll(/'([a-z][A-Za-z0-9]*(?:\.[A-Za-z0-9]+)+)'/g)) literals.add(match[1]);
+}
+for (const key of literals) if (validKeys.has(key)) used.add(key);
+
+const orphans = [...validKeys].filter((k) => !used.has(k));
+
+/**
+ * Huerfanas conocidas, con motivo. RATCHET y no carta blanca: una huerfana
+ * NUEVA es fallo, para que el diccionario no crezca solo con copy que nadie
+ * pinta. Si una clave de esta lista empieza a usarse, el guard AVISA para
+ * que se borre la entrada (aviso y no fallo porque 2 de las claves de
+ * knowledgeGraph las va a consumir el trabajo de honestidad de fx6 y no
+ * queremos bloquear ese landing).
+ */
+const KNOWN_ORPHANS = {
+  // Vocabulario canonico del diseno (acciones, estados y etiquetas de tabla)
+  // definido en el diccionario comun para que los componentes no reescriban
+  // el copy uno a uno. Sin consumidor todavia: si acaba sin adoptarse, la
+  // accion correcta es borrar la clave de lib/i18n/es.json.
+  'common.actions.cancel': 'verbo canonico de accion del diseno, sin boton que lo consuma hoy',
+  'common.actions.save': 'verbo canonico de accion del diseno, sin boton que lo consuma hoy',
+  'common.actions.close': 'verbo canonico de accion del diseno, sin boton que lo consuma hoy',
+  'common.actions.delete': 'verbo canonico de accion del diseno, sin boton que lo consuma hoy',
+  'common.actions.regenerate': 'verbo canonico de accion del diseno, sin boton que lo consuma hoy',
+  'common.actions.export': 'verbo canonico de accion del diseno, sin boton que lo consuma hoy',
+  'common.actions.search': 'verbo canonico de accion del diseno, sin boton que lo consuma hoy',
+  'common.states.loading': 'estado canonico de carga, sin componente que lo consuma hoy',
+  'common.states.empty': 'estado canonico de lista vacia, sin componente que lo consuma hoy',
+  'common.states.noResults': 'estado canonico de busqueda sin resultados, sin componente que lo consuma hoy',
+  'common.states.error': 'estado canonico de error, sin componente que lo consuma hoy',
+  'common.states.errorHint': 'estado canonico de error, sin componente que lo consuma hoy',
+  'common.states.backendOfflineTitle': 'estado canonico de backend caido, sin componente que lo consuma hoy',
+  'common.labels.company': 'etiqueta canonica de tabla, sin tabla que la consuma hoy',
+  'common.labels.sector': 'etiqueta canonica de tabla, sin tabla que la consuma hoy',
+  'common.labels.price': 'etiqueta canonica de tabla, sin tabla que la consuma hoy',
+  'common.labels.score': 'etiqueta canonica de tabla, sin tabla que la consuma hoy',
+  'common.labels.coverage': 'etiqueta canonica de tabla, sin tabla que la consuma hoy',
+  'common.labels.confidence': 'etiqueta canonica de tabla, sin tabla que la consuma hoy',
+  'common.labels.missing': 'etiqueta canonica de tabla, sin tabla que la consuma hoy',
+  'nav.portfolio': 'etiqueta de navegacion reservada; la sidebar compone su propio copy',
+  'nav.research': 'etiqueta de navegacion reservada; la sidebar compone su propio copy',
+  'nav.screeners': 'etiqueta de navegacion reservada; la sidebar compone su propio copy',
+  'nav.search': 'etiqueta de navegacion reservada; la sidebar compone su propio copy',
+  'ui.dialog.close': 'copy del dialogo/modal; el cierre todavia se localiza inline',
+  'ui.dialog.confirm': 'copy del dialogo/modal; la confirmacion todavia se localiza inline',
+  'ui.dialog.cancel': 'copy del dialogo/modal; la cancelacion todavia se localiza inline',
+  'ui.command.placeholder': 'copy de la paleta de comandos, sin componente que lo consuma hoy',
+  'ui.command.error': 'copy de la paleta de comandos, sin componente que lo consuma hoy',
+  'ui.search.placeholder': 'copy del buscador, sin componente que lo consuma hoy',
+  'ui.search.noResults': 'copy del buscador, sin componente que lo consuma hoy',
+  'research.sources': 'rotulo "Fuentes" reservado para la ficha de research, sin consumidor hoy',
+  'movers.gainers': 'rotulo de la tabla de movers; la pagina usa caption literal, pendiente de migrar',
+  'movers.losers': 'rotulo de la tabla de movers; la pagina usa caption literal, pendiente de migrar',
+  // D2b: copy de accesibilidad y de honestidad del grafo escrito pero sin
+  // cablear en KnowledgeGraphCanvas. Dos de ellos (noNodesInScene,
+  // unknownNode) los consume fx6 con el copy de honestidad que falta; si
+  // este guard avisa de que ya no son huerfanas, quita estas entradas.
+  'knowledgeGraph.canvas.description':
+    'descripcion accesible del lienzo (D2b) sin cablear: pendiente de aria/aria-describedby en KnowledgeGraphCanvas',
+  'knowledgeGraph.canvas.selectedNode':
+    'anuncio de nodo seleccionado (D2b) sin cablear: pendiente de live region en KnowledgeGraphCanvas',
+  'knowledgeGraph.canvas.hoverNode':
+    'anuncio de nodo bajo el puntero (D2b) sin cablear: pendiente de live region en KnowledgeGraphCanvas',
+  'knowledgeGraph.canvas.noNodesInScene':
+    'copy de honestidad sin nodos que dibujar (D2b): lo consume fx6, no tocar aqui',
+  'knowledgeGraph.detail.provenance':
+    'rotulo de procedencia del panel de detalle (D2b) sin cablear en KnowledgeGraphCanvas',
+  'knowledgeGraph.detail.unknownNode':
+    'copy de honestidad de nodo desconocido (D2b): lo consume fx6, no tocar aqui',
+};
+
+const newOrphans = orphans.filter((k) => !(k in KNOWN_ORPHANS));
+const staleOrphans = Object.keys(KNOWN_ORPHANS).filter((k) => !orphans.includes(k));
+
 /* ------------------------------------------------------------------ */
 
 const unique = [...new Set(englishHits)];
@@ -155,7 +252,18 @@ if (unique.length > 0) {
   for (const hit of unique) console.error(`  - ${hit}`);
 }
 
-if (missingKeys.length > 0 || unique.length > 0) {
+if (newOrphans.length > 0) {
+  console.error(`\ni18n: ${newOrphans.length} clave(s) sin uso NUEVA(S) (no estan en KNOWN_ORPHANS):`);
+  for (const key of newOrphans) console.error(`  - ${key}`);
+  console.error('  Usa la clave en un t() o, si el copy sobra, borrala de lib/i18n/es.json.');
+}
+
+if (staleOrphans.length > 0) {
+  console.error(`\ni18n (aviso, no fallo): ${staleOrphans.length} entrada(s) de KNOWN_ORPHANS ya no son huerfanas, borralas:`);
+  for (const key of staleOrphans) console.error(`  - ${key}`);
+}
+
+if (missingKeys.length > 0 || unique.length > 0 || newOrphans.length > 0) {
   console.error(
     "\nVer lib/i18n/README.md. Los anglicismos aceptados (Watchlist, Screeners, Sharpe, CAGR, PER (TTM)...) no deben aparecer aqui.\n",
   );
@@ -163,5 +271,5 @@ if (missingKeys.length > 0 || unique.length > 0) {
 }
 
 console.log(
-  `i18n ok: ${validKeys.size} claves, ${files.length} ficheros, 0 literales en ingles.`,
+  `i18n ok: ${validKeys.size} claves, ${files.length} ficheros, 0 literales en ingles, ${orphans.length} huerfana(s) conocida(s) y listada(s).`,
 );
