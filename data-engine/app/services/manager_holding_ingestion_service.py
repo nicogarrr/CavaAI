@@ -85,6 +85,23 @@ def _date(value: Any) -> date | None:
         return None
 
 
+def _verify_totals(summary: dict | None, raw_rows: list[dict], merged: list[dict]) -> dict:
+    """Compara lo guardado con lo que el propio filing declara (tableValueTotal/EntryTotal)."""
+    stored = sum((_decimal(r.get("value_usd_thousands")) or Decimal(0) for r in merged), Decimal(0))
+    if summary is None or summary["table_value_total"] is None:
+        return {"status": "unverified", "stored_value_total": str(stored)}
+    declared = summary["table_value_total"]
+    entries = summary["table_entry_total"]
+    ok = stored == declared and (entries is None or entries == len(raw_rows))
+    return {
+        "status": "ok" if ok else "mismatch",
+        "stored_value_total": str(stored),
+        "declared_value_total": str(declared),
+        "raw_rows": len(raw_rows),
+        "declared_entry_total": entries,
+    }
+
+
 class ManagerHoldingIngestionService:
     def __init__(self, client: httpx.Client | None = None) -> None:
         self.client = client
@@ -142,6 +159,8 @@ class ManagerHoldingIngestionService:
         group = [f for f in filings if f["report_date"] in report_dates]
         ingested = 0
         errors: list[dict] = []
+        verification: list[dict] = []
+        skipped_amendments: list[dict] = []
         fetched_at = datetime.now(UTC)
 
         for filing in group:
@@ -157,6 +176,18 @@ class ManagerHoldingIngestionService:
             except Exception as exc:  # noqa: BLE001 - partial coverage, keep going
                 errors.append({"accession": accession, "error": redact_secrets(f"{type(exc).__name__}: {exc}")})
                 continue
+            summary = form13f.fetch_primary_summary(cik, accession, client=self.client)
+            if (
+                filing["is_amendment"]
+                and summary is not None
+                and (summary["amendment_type"] or "").upper() != "RESTATEMENT"
+            ):
+                # Una enmienda "NEW HOLDINGS" solo trae parte de la cartera: usarla
+                # como cartera del periodo inventaria compras y cierres.
+                skipped_amendments.append(
+                    {"accession": accession, "amendment_type": summary["amendment_type"]}
+                )
+                continue
             existing = {
                 (row.cusip, row.title_of_class, row.put_call)
                 for row in db.scalars(
@@ -166,10 +197,13 @@ class ManagerHoldingIngestionService:
                     )
                 )
             }
-            for row in rows:
+            merged = form13f.aggregate_rows(rows)
+            check = _verify_totals(summary, rows, merged)
+            verification.append({"accession": accession, **check})
+            if check["status"] == "mismatch":
+                errors.append({"accession": accession, "error": "totals_mismatch"})
+            for row in merged:
                 cusip = (row.get("cusip") or "").strip()
-                if not cusip:
-                    continue  # a row without CUSIP is unusable; never invent one
                 title = (row.get("title_of_class") or "").strip()
                 put_call = (row.get("put_call") or "").strip()
                 if (cusip, title, put_call) in existing:
@@ -221,6 +255,8 @@ class ManagerHoldingIngestionService:
                 for f in group
             ],
             "ingested_rows": ingested,
+            "verification": verification,
+            "skipped_amendments": skipped_amendments,
             "errors": errors,
             "limitations": LIMITATIONS,
             "provenance": provenance(
