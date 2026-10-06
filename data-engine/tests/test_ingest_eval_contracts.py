@@ -544,6 +544,8 @@ def test_dataset_declares_every_measured_gap():
     gaps = dataset.get("known_gaps") or []
     assert gaps, "el dataset no declara sus huecos medidos"
     for gap in gaps:
+        if gap.get("status") == "closed":
+            continue  # defecto arreglado: el control negativo ya no se espera
         case = negatives.get(gap["case"])
         assert case is not None, f"{gap['case']} no es un control negativo"
         assert case["expect_gate_failure"] == gap["gate"], gap["case"]
