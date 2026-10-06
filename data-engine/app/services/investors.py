@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from app.models import FundManager, ManagerHolding
 from app.services.manager_holding_ingestion_service import (
     LIMITATIONS,
+    ManagerHoldingIngestionService,
     REVIEWED_MANAGERS,
     SOURCE,
 )
@@ -198,3 +199,83 @@ def investor_detail(db: Session, slug: str) -> dict[str, Any] | None:
         }
     )
     return detail
+
+
+# El <value> del 13F va en dolares desde los informes de 2022-12-31 y en miles antes.
+_DOLLARS_FROM = date(2022, 12, 31)
+MOST_BOUGHT_TOP = 30
+
+
+def _value_usd(raw: Decimal | float | None, report_date: str | None) -> float | None:
+    if raw is None or not report_date:
+        return None
+    return float(raw) if date.fromisoformat(report_date) >= _DOLLARS_FROM else float(raw) * 1000
+
+
+def most_bought(db: Session) -> dict[str, Any]:
+    """Acciones que mas gestores revisados compraron (nueva posicion o mas acciones).
+
+    Solo posiciones largas en acciones (las filas put/call se ignoran: son
+    nocionales de opciones). Se agrupa por CUSIP; nunca se infiere ticker.
+    Cada gestor se compara contra su trimestre anterior.
+    """
+    service = ManagerHoldingIngestionService()
+    issuers: dict[str, dict[str, Any]] = {}
+    compared = 0
+    pending = 0
+    periods: set[str] = set()
+    for inv in INVESTORS:
+        if inv.cik is None or _manager(db, inv) is None:
+            continue
+        result = service.changes(db, cik=inv.cik)
+        if result.get("status") != "ok":
+            pending += 1
+            continue
+        compared += 1
+        periods.add(result["latest_report"])
+        for row in result["changes"]:
+            if row["put_call"]:
+                continue
+            entry = issuers.setdefault(
+                row["cusip"],
+                {
+                    "name_of_issuer": row["name_of_issuer"],
+                    "cusip": row["cusip"],
+                    "buyers": [],
+                    "sellers": 0,
+                    "value_usd": 0.0,
+                },
+            )
+            if row["change"] in ("new", "increased"):
+                entry["buyers"].append({"slug": inv.slug, "name": inv.name, "change": row["change"]})
+                value = _value_usd(row["value_usd_thousands_latest"], result["latest_report"])
+                entry["value_usd"] += value or 0.0
+            elif row["change"] in ("closed", "decreased"):
+                entry["sellers"] += 1
+    ranked = [e for e in issuers.values() if e["buyers"]]
+    ranked.sort(key=lambda e: (-len(e["buyers"]), -e["value_usd"], e["name_of_issuer"]))
+    items = [
+        {
+            "name_of_issuer": e["name_of_issuer"],
+            "cusip": e["cusip"],
+            "buyers_count": len(e["buyers"]),
+            "new_count": sum(1 for b in e["buyers"] if b["change"] == "new"),
+            "sellers_count": e["sellers"],
+            "value_usd": e["value_usd"] or None,
+            "buyers": e["buyers"],
+        }
+        for e in ranked[:MOST_BOUGHT_TOP]
+    ]
+    return {
+        "status": "ok" if compared else "sin_datos",
+        "managers_compared": compared,
+        "managers_without_history": pending,
+        "report_dates": sorted(periods),
+        "items": items,
+        "limitations": LIMITATIONS,
+        "provenance": provenance(
+            SOURCE,
+            SourceKind.OFFICIAL if compared else SourceKind.INTERNAL,
+            coverage=Coverage.OK if compared else Coverage.UNAVAILABLE,
+        ),
+    }

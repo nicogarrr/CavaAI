@@ -3,7 +3,7 @@
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.models.entities import Base, FundManager, ManagerHolding
@@ -13,6 +13,7 @@ from app.services.investors import (
     get_investor,
     investor_detail,
     list_investors,
+    most_bought,
 )
 from app.services.manager_holding_ingestion_service import (
     REVIEWED_MANAGERS,
@@ -131,3 +132,71 @@ def test_summary_uses_latest_accession_so_amendments_do_not_double_count():
 
 def test_unknown_slug_has_no_detail():
     assert investor_detail(_db(), "no-existe") is None
+
+
+def _two_quarters(db: Session, cik: str, rows: dict[str, tuple[str, str]]):
+    """rows: cusip -> (shares Q1, shares Q2); '0' = no existe ese trimestre."""
+    manager = FundManager(cik=cik, name=REVIEWED_MANAGERS[cik], last_report_date=date(2026, 6, 30))
+    db.add(manager)
+    db.flush()
+    for cusip, (before, now) in rows.items():
+        for period, shares, acc in (
+            (date(2026, 3, 31), before, f"{cik}-Q1"),
+            (date(2026, 6, 30), now, f"{cik}-Q2"),
+        ):
+            if shares == "0":
+                continue
+            db.add(
+                ManagerHolding(
+                    manager_id=manager.id,
+                    accession_number=acc,
+                    report_date=period,
+                    filing_date=period,
+                    name_of_issuer=f"EMISOR {cusip}",
+                    title_of_class="COM",
+                    cusip=cusip,
+                    value_usd_thousands=Decimal("1000000") if period.month == 6 else Decimal("500000"),
+                    shares=Decimal(shares),
+                    is_amendment=False,
+                )
+            )
+
+
+def test_most_bought_counts_buyers_without_inferring_tickers_or_options():
+    db = _db()
+    _two_quarters(db, "0001067983", {"AAA": ("10", "20"), "BBB": ("0", "5"), "CCC": ("9", "3")})
+    _two_quarters(db, "0001061768", {"AAA": ("0", "7"), "CCC": ("1", "1")})
+    db.add(
+        ManagerHolding(
+            manager_id=db.scalar(select(FundManager.id).limit(1)),
+            accession_number="0001067983-Q2",
+            report_date=date(2026, 6, 30),
+            filing_date=date(2026, 6, 30),
+            name_of_issuer="EMISOR OPC",
+            title_of_class="COM",
+            cusip="OPC",
+            put_call="Put",
+            value_usd_thousands=Decimal("1"),
+            shares=Decimal("1"),
+            is_amendment=False,
+        )
+    )
+    db.commit()
+    result = most_bought(db)
+    assert result["status"] == "ok"
+    assert result["managers_compared"] == 2
+    top = result["items"][0]
+    assert top["cusip"] == "AAA" and top["buyers_count"] == 2
+    assert top["new_count"] == 1
+    assert [i["cusip"] for i in result["items"]] == ["AAA", "BBB"]  # CCC solo vende, OPC es opcion
+    assert "ticker" not in top
+    # 2026: <value> ya en dolares (1.000.000 por posicion y comprador)
+    assert top["value_usd"] == 2_000_000.0
+
+
+def test_most_bought_without_history_says_sin_datos():
+    db = _db()
+    result = most_bought(db)
+    assert result["status"] == "sin_datos"
+    assert result["items"] == []
+    assert result["managers_compared"] == 0
