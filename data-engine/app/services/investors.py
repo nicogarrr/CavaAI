@@ -22,9 +22,9 @@ from sqlalchemy.orm import Session
 from app.models import FundManager, ManagerHolding
 from app.services.manager_holding_ingestion_service import (
     LIMITATIONS,
-    ManagerHoldingIngestionService,
     REVIEWED_MANAGERS,
     SOURCE,
+    ManagerHoldingIngestionService,
 )
 from app.services.provenance import Coverage, SourceKind, provenance
 
