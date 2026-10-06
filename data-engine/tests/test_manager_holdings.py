@@ -278,3 +278,154 @@ def test_changes_insufficient_history_is_honest(db):
 def test_changes_unknown_manager_is_unavailable(db):
     result = ManagerHoldingIngestionService(client=_sec_client()).changes(db, cik=CIK)
     assert result["status"] == "unavailable"
+
+
+# --- filas repetidas por clave (secciones "other manager") ------------------
+
+
+def _info_row(cusip: str, value: str, shares: str, issuer: str = "APPLE INC") -> str:
+    return f"""<infoTable><nameOfIssuer>{issuer}</nameOfIssuer><titleOfClass>COM</titleOfClass>
+    <cusip>{cusip}</cusip><value>{value}</value>
+    <shrsOrPrnAmt><sshPrnamt>{shares}</sshPrnamt><sshPrnamtType>SH</sshPrnamtType></shrsOrPrnAmt>
+    <investmentDiscretion>DFND</investmentDiscretion>
+    <votingAuthority><Sole>{shares}</Sole><Shared>0</Shared><None>0</None></votingAuthority></infoTable>"""
+
+
+# Forma real del 13F de Berkshire (acc. 0001193125-26-352200, 30-06-2026): Apple
+# aparece en varias filas con la misma clave; solo la suma cuadra con tableValueTotal.
+MULTI_ROWS = (
+    [_info_row("037833100", "200237120", "692000")]
+    + [_info_row("037833100", "1000", "10")] * 3
+    + [_info_row("060505104", "40000000", "1000000", "BANK OF AMERICA CORP")]
+)
+
+
+def _primary_doc(value_total: str, entry_total: int, amendment_type: str | None = None) -> str:
+    amendment = f"<amendmentInfo><amendmentType>{amendment_type}</amendmentType></amendmentInfo>" if amendment_type else ""
+    return (
+        '<edgarSubmission xmlns="http://www.sec.gov/edgar/thirteenffiler"><formData>'
+        f"{amendment}<summaryPage><tableEntryTotal>{entry_total}</tableEntryTotal>"
+        f"<tableValueTotal>{value_total}</tableValueTotal></summaryPage></formData></edgarSubmission>"
+    )
+
+
+def _multi_client(primary: str | None, submissions: dict | None = None) -> httpx.Client:
+    table = (
+        '<informationTable xmlns="http://www.sec.gov/edgar/document/thirteenf/informationtable">'
+        + "".join(MULTI_ROWS)
+        + "</informationTable>"
+    )
+    subs = submissions or {
+        "filings": {
+            "recent": {
+                "accessionNumber": ["0000950123-26-000010"],
+                "form": ["13F-HR"],
+                "reportDate": ["2026-06-30"],
+                "filingDate": ["2026-08-14"],
+                "primaryDocument": ["primary_doc.xml"],
+            }
+        }
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if url.startswith("https://data.sec.gov/submissions/"):
+            return httpx.Response(200, json=subs)
+        if url.endswith("index.json"):
+            return httpx.Response(200, json=INDEX)
+        if url.endswith("form13fInfoTable.xml"):
+            return httpx.Response(200, text=table)
+        if url.endswith("primary_doc.xml") and primary is not None:
+            return httpx.Response(200, text=primary)
+        return httpx.Response(404, text="not found")
+
+    return httpx.Client(transport=httpx.MockTransport(handler))
+
+
+def test_aggregate_rows_sums_value_and_shares_per_key():
+    merged = form13f.aggregate_rows(form13f.parse_information_table(
+        '<informationTable xmlns="http://www.sec.gov/edgar/document/thirteenf/informationtable">'
+        + "".join(MULTI_ROWS)
+        + "</informationTable>"
+    ))
+    apple = next(r for r in merged if r["cusip"] == "037833100")
+    assert apple["value_usd_thousands"] == "200240120"
+    assert apple["ssh_prnamt"] == "692030"
+    assert len(merged) == 2
+
+
+def test_sync_stores_the_sum_of_repeated_keys_and_matches_declared_total(db):
+    total = 200237120 + 3 * 1000 + 40000000
+    client = _multi_client(_primary_doc(str(total), 5))
+    result = ManagerHoldingIngestionService(client).sync_manager(db, cik=CIK)
+    assert result["verification"][0]["status"] == "ok"
+    assert result["errors"] == []
+    rows = db.scalars(select(ManagerHolding)).all()
+    assert len(rows) == 2
+    assert sum(float(r.value_usd_thousands) for r in rows) == float(total)
+    apple = next(r for r in rows if r.cusip == "037833100")
+    assert float(apple.value_usd_thousands) == 200240120.0
+
+
+def test_sync_flags_partial_coverage_when_totals_do_not_match(db):
+    client = _multi_client(_primary_doc("999", 5))
+    result = ManagerHoldingIngestionService(client).sync_manager(db, cik=CIK)
+    assert result["verification"][0]["status"] == "mismatch"
+    assert {"accession": "0000950123-26-000010", "error": "totals_mismatch"} in result["errors"]
+    manager = db.scalar(select(FundManager))
+    assert manager is not None and manager.coverage == "partial"
+
+
+def test_sync_without_primary_doc_is_unverified_not_ok_claim(db):
+    result = ManagerHoldingIngestionService(_multi_client(None)).sync_manager(db, cik=CIK)
+    assert result["verification"][0]["status"] == "unverified"
+
+
+def test_partial_amendment_is_not_ingested_as_the_period_portfolio(db):
+    subs = {
+        "filings": {
+            "recent": {
+                "accessionNumber": ["0000950123-26-000011", "0000950123-26-000010"],
+                "form": ["13F-HR/A", "13F-HR"],
+                "reportDate": ["2026-06-30", "2026-06-30"],
+                "filingDate": ["2026-08-20", "2026-08-14"],
+                "primaryDocument": ["primary_doc.xml", "primary_doc.xml"],
+            }
+        }
+    }
+    client = _multi_client(_primary_doc("1", 1, "NEW HOLDINGS"), subs)
+    result = ManagerHoldingIngestionService(client).sync_manager(db, cik=CIK)
+    assert [a["accession"] for a in result["skipped_amendments"]] == ["0000950123-26-000011"]
+    accessions = {r.accession_number for r in db.scalars(select(ManagerHolding))}
+    assert accessions == {"0000950123-26-000010"}
+
+
+def test_most_bought_counts_a_manager_once_per_cusip_even_with_two_classes(db):
+    from datetime import date
+    from decimal import Decimal
+
+    from app.services.investors import most_bought
+
+    manager = FundManager(cik=CIK, name=REVIEWED_MANAGERS[CIK], last_report_date=date(2026, 6, 30))
+    db.add(manager)
+    db.flush()
+    for period, acc, shares in ((date(2026, 3, 31), "Q1", "1"), (date(2026, 6, 30), "Q2", "5")):
+        for title in ("CL A", "CL B"):
+            db.add(
+                ManagerHolding(
+                    manager_id=manager.id,
+                    accession_number=acc,
+                    report_date=period,
+                    filing_date=period,
+                    name_of_issuer="EMISOR X",
+                    title_of_class=title,
+                    cusip="XXX",
+                    value_usd_thousands=Decimal("10"),
+                    shares=Decimal(shares),
+                    is_amendment=False,
+                )
+            )
+    db.commit()
+    item = most_bought(db)["items"][0]
+    assert item["buyers_count"] == 1
+    assert [b["slug"] for b in item["buyers"]] == ["buffett"]
