@@ -217,22 +217,6 @@ const KNOWN_ORPHANS = {
   'research.sources': 'rotulo "Fuentes" reservado para la ficha de research, sin consumidor hoy',
   'movers.gainers': 'rotulo de la tabla de movers; la pagina usa caption literal, pendiente de migrar',
   'movers.losers': 'rotulo de la tabla de movers; la pagina usa caption literal, pendiente de migrar',
-  // D2b: copy de accesibilidad y de honestidad del grafo escrito pero sin
-  // cablear en KnowledgeGraphCanvas. Dos de ellos (noNodesInScene,
-  // unknownNode) los consume fx6 con el copy de honestidad que falta; si
-  // este guard avisa de que ya no son huerfanas, quita estas entradas.
-  'knowledgeGraph.canvas.description':
-    'descripcion accesible del lienzo (D2b) sin cablear: pendiente de aria/aria-describedby en KnowledgeGraphCanvas',
-  'knowledgeGraph.canvas.selectedNode':
-    'anuncio de nodo seleccionado (D2b) sin cablear: pendiente de live region en KnowledgeGraphCanvas',
-  'knowledgeGraph.canvas.hoverNode':
-    'anuncio de nodo bajo el puntero (D2b) sin cablear: pendiente de live region en KnowledgeGraphCanvas',
-  'knowledgeGraph.canvas.noNodesInScene':
-    'copy de honestidad sin nodos que dibujar (D2b): lo consume fx6, no tocar aqui',
-  'knowledgeGraph.detail.provenance':
-    'rotulo de procedencia del panel de detalle (D2b) sin cablear en KnowledgeGraphCanvas',
-  'knowledgeGraph.detail.unknownNode':
-    'copy de honestidad de nodo desconocido (D2b): lo consume fx6, no tocar aqui',
 };
 
 const newOrphans = orphans.filter((k) => !(k in KNOWN_ORPHANS));
