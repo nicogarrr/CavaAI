@@ -1,0 +1,79 @@
+import type { Metadata } from 'next';
+import Link from 'next/link';
+
+import BackendOffline from '@/components/system/BackendOffline';
+import { getInvestors } from '@/lib/actions/investors.actions';
+import { isBackendUnavailableError } from '@/lib/backend-offline';
+import { formatNumber } from '@/lib/format';
+
+import { InvestorAvatar } from '../_components/Avatar';
+import { periodLabel, usd } from '../_components/format';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+export const metadata: Metadata = {
+    title: 'Carteras de inversores',
+    description: 'Posiciones declaradas ante la SEC (13F) por los inversores, con su fecha.',
+};
+
+export default async function PortfoliosPage() {
+    let data: Awaited<ReturnType<typeof getInvestors>>;
+    try {
+        data = await getInvestors();
+    } catch (error) {
+        if (isBackendUnavailableError(error)) {
+            return <BackendOffline feature="Carteras de inversores" retryHref="/inversores/carteras" />;
+        }
+        throw error;
+    }
+    const withPortfolio = data.investors.filter((investor) => investor.has_13f);
+
+    return (
+        <main id="content" tabIndex={-1} className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-12 overflow-x-clip py-6">
+            <header className="flex flex-col gap-3">
+                <h1 className="text-3xl font-semibold text-gray-100">Carteras</h1>
+                <p className="text-base text-gray-400">Lo que declaran tener, tal como lo presentan a la SEC.</p>
+            </header>
+
+            <ul className="grid gap-4 sm:grid-cols-2">
+                {withPortfolio.map((investor) => (
+                    <li key={investor.slug}>
+                        <Link
+                            className="flex h-full flex-col gap-4 rounded-2xl border border-gray-800 bg-surface-1 p-6 transition-colors hover:border-gray-700"
+                            href={`/inversores/${investor.slug}`}
+                        >
+                            <span className="flex items-center gap-4">
+                                <InvestorAvatar name={investor.name} />
+                                <span className="min-w-0">
+                                    <span className="block truncate text-base font-medium text-gray-100">{investor.name}</span>
+                                    <span className="block truncate text-sm text-gray-500">{investor.firm}</span>
+                                </span>
+                            </span>
+                            {investor.report_date ? (
+                                <span className="flex items-end justify-between gap-4">
+                                    <span>
+                                        <span className="block text-2xl font-semibold text-gray-100">{usd(investor.value_usd_thousands, investor.report_date)}</span>
+                                        <span className="block text-xs text-gray-500">
+                                            {investor.positions !== null
+                                                ? `${formatNumber(investor.positions, { maximumFractionDigits: 0 })} posiciones`
+                                                : 'N/D'}
+                                        </span>
+                                    </span>
+                                    <span className="text-xs text-gray-500">Cartera a {periodLabel(investor.report_date)}</span>
+                                </span>
+                            ) : (
+                                <span className="text-sm text-gray-500">Sin datos todavía: falta sincronizar su 13F.</span>
+                            )}
+                        </Link>
+                    </li>
+                ))}
+            </ul>
+
+            <p className="text-xs text-gray-500">
+                Fuente: SEC, Form 13F (EDGAR). Trimestral, con hasta 45 días de retardo; solo posiciones largas en EE. UU.
+                Valor en dólares tal como se declara.
+            </p>
+        </main>
+    );
+}
