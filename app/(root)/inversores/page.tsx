@@ -35,6 +35,9 @@ export default async function InvestorsPage() {
                 <Link className="text-sm text-lime-300 hover:underline" href="/inversores/carteras">
                     Ver carteras
                 </Link>
+                <Link className="text-sm text-lime-300 hover:underline" href="/inversores/mas-compradas">
+                    Más compradas
+                </Link>
             </header>
 
             <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.services.investors import investor_detail, list_investors
+from app.services.investors import investor_detail, list_investors, most_bought
 from app.services.manager_holding_ingestion_service import ManagerHoldingIngestionService
 
 router = APIRouter()
@@ -14,6 +14,12 @@ router = APIRouter()
 def investors(db: Session = Depends(get_db)) -> dict:
     """Lista de inversores con resumen de su ultimo 13F (o 'Sin datos')."""
     return list_investors(db)
+
+
+@router.get("/most-bought")
+def most_bought_route(db: Session = Depends(get_db)) -> dict:
+    """Acciones mas compradas por los gestores revisados (13F, trimestre vs anterior)."""
+    return most_bought(db)
 
 
 @router.get("/{slug}")
