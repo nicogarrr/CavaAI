@@ -21,7 +21,6 @@ import { MoatTerm } from '@/components/GlossaryTerm';
 import { MutationForm } from '@/components/forms/MutationForm';
 import { FileUploadInput } from '@/components/forms/FileUploadInput';
 import { CompanyHeaderQuote } from '@/components/research/CompanyHeaderQuote';
-import { CompanyMarketPanel } from '@/components/research/CompanyMarketPanel';
 import { missingLayerAction, missingLayerLabel } from '@/lib/research/missing-layer-guidance';
 import { metricLabel } from '@/lib/research/metric-labels';
 import { MoatPanel } from '@/components/research/MoatPanel';
@@ -804,6 +803,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     let market: Awaited<ReturnType<typeof getCompanyMarketSnapshot>>;
     try {
       market = await marketPromise;
+      headerMarket = market;
     } catch (error) {
       if (isBackendUnavailableError(error)) {
         return <BackendOffline feature={`Datos de mercado de ${ticker}`} retryHref={`/research/${ticker}`} />;
@@ -984,7 +984,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
           </div>
         </Panel>
         {ticker === 'ASTS' ? <Panel title="Satélites AST"><p className="text-sm text-gray-400">Elementos orbitales de CelesTrak y evolución del semieje mayor.</p><Link className="mt-2 inline-block text-sm text-teal-300" href={`/research/${encodeURIComponent(ticker)}?view=satellites`}>Ver señal orbital exploratoria</Link></Panel> : null}
-        <CompanyMarketPanel snapshot={market} />
+        {/* Price chart lives once in the company header, across all views. */}
       </div>
     );
   } else if (activeView === 'thesis') {
