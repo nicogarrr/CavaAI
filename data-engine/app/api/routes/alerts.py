@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.models import AlertRule, Company, NewsEvent, ResearchAlert
+from app.models.entities import InsiderFiling, InsiderTransaction
 from app.schemas import (
     AlertRuleOut,
     ResearchAlertAction,
@@ -220,6 +221,27 @@ def list_alerts(
         {event.id: event for event in db.scalars(select(NewsEvent).where(NewsEvent.id.in_(news_ids)))}
         if news_ids else {}
     )
+    # Older insider alerts retain a transaction fingerprint even when the
+    # issuer has no Company row. Read identity from that exact source row,
+    # never from the alert title, and keep the tenant in the lookup key.
+    fingerprints = {
+        alert.metadata_.get("tx_fingerprint")
+        for alert in alerts
+        if alert.alert_type.startswith("insider_") and alert.metadata_
+        and isinstance(alert.metadata_.get("tx_fingerprint"), str)
+    }
+    insider_issuers = {}
+    if fingerprints:
+        rows = db.execute(
+            select(InsiderTransaction, InsiderFiling)
+            .join(InsiderFiling, InsiderFiling.id == InsiderTransaction.filing_id)
+            .where(InsiderTransaction.fingerprint.in_(fingerprints))
+        ).all()
+        insider_issuers = {
+            (tx.tenant_id, tx.fingerprint): (tx.issuer_ticker, filing.issuer_name)
+            for tx, filing in rows
+            if tx.tenant_id == filing.tenant_id
+        }
     result: list[ResearchAlertOut] = []
     for alert in alerts:
         out = ResearchAlertOut.model_validate(alert)
@@ -227,6 +249,16 @@ def list_alerts(
         out.ticker = company.ticker if company else None
         out.company_name = company.name if company else None
         metadata = alert.metadata_ or {}
+        if company is None and alert.alert_type.startswith("insider_"):
+            fingerprint = metadata.get("tx_fingerprint")
+            issuer = (
+                insider_issuers.get((alert.tenant_id, fingerprint))
+                if isinstance(fingerprint, str) else None
+            )
+            if issuer is not None:
+                out.ticker, out.company_name = issuer
+            elif isinstance(metadata.get("issuer_ticker"), str):
+                out.ticker = metadata["issuer_ticker"].strip() or None
         event = news_events.get(metadata.get("news_event_id"))
         out.source_url = _safe_http_url(metadata.get("source_url")) or (
             _safe_http_url(event.url) if event else None
