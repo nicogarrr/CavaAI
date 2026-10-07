@@ -5,8 +5,8 @@ import { getCandles } from '@/lib/actions/finnhub.actions';
 import { quoteSymbolFor } from '@/lib/market/quote-symbol';
 import { chartRequestWindow, intradayWindow, isChartRange } from '@/lib/market/chart-ranges';
 import { e2eMarketFixture, isE2EMarketFixtureEnabled } from '@/lib/e2e-market-fixture';
-import { cleanBars, hasOHLC, type TechnicalBar } from '@/lib/market/technical';
-export type CompanyChartBar = TechnicalBar & { timestamp?: number };
+import { normalizeChartCandles, type CompanyChartBar } from '@/lib/market/normalize-chart';
+export type { CompanyChartBar } from '@/lib/market/normalize-chart';
 export type CompanyChartHistory = { bars: CompanyChartBar[]; source: string | null; resolution: 'D' | '60' };
 
 export async function getCompanyChartHistory(ticker: string, range: string): Promise<CompanyChartHistory> {
@@ -27,15 +27,6 @@ export async function getCompanyChartHistory(ticker: string, range: string): Pro
     if (!symbol) return empty; // Never read a same-ticker listing from the wrong exchange.
     const candles = await getCandles(symbol, window.from, window.to, window.resolution, 900);
     if (candles.s !== 'ok') return empty;
-    const byTimestamp = new Map<number, CompanyChartBar>();
-    candles.t.forEach((timestamp, index) => {
-        const close = candles.c[index];
-        if (!Number.isFinite(timestamp) || timestamp < window.from || timestamp > window.to || !Number.isFinite(close) || close <= 0) return;
-        const raw = { date: new Date(timestamp * 1000).toISOString().slice(0, 10), close, open: candles.o?.[index] ?? null, high: candles.h?.[index] ?? null, low: candles.l?.[index] ?? null, volume: candles.v?.[index] ?? null };
-        // Bad OHLC does not destroy a genuine close, but cannot drive indicators.
-        const bar = hasOHLC(raw) ? raw : { ...raw, open: null, high: null, low: null };
-        byTimestamp.set(timestamp, { ...bar, ...(window.resolution === '60' ? { timestamp } : {}) });
-    });
-    const bars = [...byTimestamp.entries()].sort(([a], [b]) => a - b).map(([, bar]) => bar);
-    return { bars: range === '1D' || range === '5D' ? intradayWindow(bars, range) : cleanBars(bars), source: candles.source ?? null, resolution: window.resolution };
+    const bars = normalizeChartCandles(candles, window);
+    return { bars: range === '1D' || range === '5D' ? intradayWindow(bars, range) : bars, source: candles.source ?? null, resolution: window.resolution };
 }
