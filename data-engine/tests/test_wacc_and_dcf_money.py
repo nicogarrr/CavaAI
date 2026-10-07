@@ -409,3 +409,12 @@ def test_sotp_adr_does_not_invent_factor_eight_money_loss():
     from tests.test_sotp_engine import _sotp_result
     result = _sotp_result({}, tags=["sotp", "adr:8"], price=80)
     assert result["margin_of_safety"] == pytest.approx(result["expected_value"] / 10 - 1)
+
+
+def test_funding_gap_never_treats_missing_capex_or_ocf_as_zero_money():
+    from app.valuation.funding_gap import estimate_funding_gap
+    from tests.test_funding_gap import _snapshot_completo
+    for absent in ("capital_expenditure", "operating_cash_flow"):
+        result = estimate_funding_gap(_snapshot_completo(**{absent: None}), current_price=10, value_per_share=8)
+        assert result.funding_gap is None
+        assert result.dilution is None
