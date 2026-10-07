@@ -39,9 +39,15 @@ class RAGIndex:
             return bool(hybrid)
         return bool(self._setting("rag_hybrid_enabled", False))
 
+    _st_model = None
+
     def _embedder(self):
-        from sentence_transformers import SentenceTransformer
-        return SentenceTransformer("all-MiniLM-L6-v2")
+        cls = type(self)
+        if cls._st_model is None:
+            from sentence_transformers import SentenceTransformer
+
+            cls._st_model = SentenceTransformer("all-MiniLM-L6-v2")
+        return cls._st_model
 
     def _dense_vectors(self, texts: list[str]) -> list[list[float]]:
         """Vectores densos normalizados: fastembed (ONNX) primero, ST fallback.
