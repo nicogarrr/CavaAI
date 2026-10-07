@@ -86,3 +86,40 @@ def test_norm_symbol_treats_share_class_separators_as_the_same_issuer():
     assert _norm_symbol("BRK-B") == _norm_symbol("BRK.B") == _norm_symbol("brk/b")
     assert _norm_symbol("BRK-B") != _norm_symbol("BRK-A")
     assert _norm_symbol("AAPL") != _norm_symbol("MSFT")
+
+
+def _bad_unit_instance(num: str, den: str | None, metric: str = "EarningsPerShareDiluted") -> bytes:
+    unit = (
+        f"<unit id=\"U_x\"><divide><unitNumerator><measure>{num}</measure></unitNumerator>"
+        f"<unitDenominator><measure>{den}</measure></unitDenominator></divide></unit>"
+        if den
+        else f"<unit id=\"U_x\"><measure>{num}</measure></unit>"
+    )
+    return f"""<xbrl {_NS}>{unit}
+<context id="c1"><entity><identifier scheme="http://www.sec.gov/CIK">1</identifier>
+<segment><xbrldi:explicitMember dimension="us-gaap:StatementClassOfStockAxis">v:CommonClassAMember</xbrldi:explicitMember></segment></entity>
+<period><startDate>2024-01-01</startDate><endDate>2024-12-31</endDate></period></context>
+<us-gaap:{metric} contextRef="c1" unitRef="U_x">8.5</us-gaap:{metric}></xbrl>""".encode()
+
+
+def _tags(raw: bytes) -> set[str]:
+    return {f.tag for f in parse_instance_dimensioned_facts(io.BytesIO(raw))}
+
+
+def test_eps_requires_currency_per_share_structure():
+    assert _tags(_bad_unit_instance("iso4217:USD", "xbrli:shares")) == {"EarningsPerShareDiluted"}
+    assert _tags(_bad_unit_instance("xbrli:shares", "iso4217:USD")) == set()
+    assert _tags(_bad_unit_instance("xbrli:shares", "xbrli:shares")) == set()
+    assert _tags(_bad_unit_instance("iso4217:USD", None)) == set()
+
+
+def test_share_count_requires_a_simple_shares_unit():
+    m = "WeightedAverageNumberOfDilutedSharesOutstanding"
+    assert _tags(_bad_unit_instance("xbrli:shares", None, m)) == {m}
+    assert _tags(_bad_unit_instance("iso4217:USD", "xbrli:shares", m)) == set()
+    assert _tags(_bad_unit_instance("xbrli:shares", "xbrli:shares", m)) == set()
+
+
+def test_undeclared_unit_fails_closed():
+    raw = _bad_unit_instance("iso4217:USD", "xbrli:shares").replace(b'unitRef="U_x"', b'unitRef="U_missing"')
+    assert _tags(raw) == set()

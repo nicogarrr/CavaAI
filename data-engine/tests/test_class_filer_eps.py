@@ -27,6 +27,8 @@ INSTANCE_XML = """<?xml version="1.0"?>
 <xbrl xmlns="http://www.xbrl.org/2003/instance"
       xmlns:us-gaap="http://fasb.org/us-gaap/2023"
       xmlns:v="http://www.example.com/v">
+  <unit id="uUSD"><divide><unitNumerator><measure>iso4217:USD</measure></unitNumerator><unitDenominator><measure>xbrli:shares</measure></unitDenominator></divide></unit>
+  <unit id="ushares"><measure>xbrli:shares</measure></unit>
   <context id="c1"><entity><identifier scheme="s">X</identifier>
     <segment><explicitMember dimension="v:CommonClassAxis">us-gaap:CommonClassAMember</explicitMember></segment></entity>
     <period><startDate>2024-10-01</startDate><endDate>2025-09-30</endDate></period></context>
@@ -56,6 +58,8 @@ BRK_INSTANCE_XML = """<?xml version="1.0"?>
 <xbrl xmlns="http://www.xbrl.org/2003/instance"
       xmlns:us-gaap="http://fasb.org/us-gaap/2023"
       xmlns:brka="http://www.example.com/brka">
+  <unit id="uUSD"><divide><unitNumerator><measure>iso4217:USD</measure></unitNumerator><unitDenominator><measure>xbrli:shares</measure></unitDenominator></divide></unit>
+  <unit id="ushares"><measure>xbrli:shares</measure></unit>
   <context id="a1"><entity><identifier scheme="s">X</identifier>
     <segment><explicitMember dimension="brka:EquivalentClassAxis">brka:EquivalentClassAMember</explicitMember></segment></entity>
     <period><startDate>2025-01-01</startDate><endDate>2025-12-31</endDate></period></context>
@@ -74,6 +78,8 @@ SEGMENT_INSTANCE_XML = """<?xml version="1.0"?>
      eps_diluted del consolidado (FIX5-9). -->
 <xbrl xmlns="http://www.xbrl.org/2003/instance"
       xmlns:us-gaap="http://fasb.org/us-gaap/2023">
+  <unit id="uUSD"><divide><unitNumerator><measure>iso4217:USD</measure></unitNumerator><unitDenominator><measure>xbrli:shares</measure></unitDenominator></divide></unit>
+  <unit id="ushares"><measure>xbrli:shares</measure></unit>
   <context id="s1"><entity><identifier scheme="s">X</identifier>
     <segment><explicitMember dimension="us-gaap:StatementBusinessSegmentsAxis">us-gaap:DomesticMember</explicitMember></segment></entity>
     <period><startDate>2025-01-01</startDate><endDate>2025-12-31</endDate></period></context>

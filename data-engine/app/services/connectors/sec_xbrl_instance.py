@@ -42,22 +42,30 @@ ALLOWED_UNITS: dict[str, frozenset[str]] = {
 _ALL_TAGS = {tag for tags in METRIC_TAGS.values() for tag in tags}
 
 
-def _unit_allowed(tag: str, unit_ref: str, units: dict[str, tuple[str, ...]]) -> bool:
-    """Resuelve el `unitRef` contra el `<unit>` declarado en la instancia.
+def _unit_allowed(tag: str, unit_ref: str, units: dict[str, tuple[tuple[str, ...], tuple[str, ...]]]) -> bool:
+    """Valida la unidad CONTRA su estructura declarada en la instancia.
 
     Los emisores reales usan ids propios (BRK: `U_UnitedStatesOfAmericaDollarsShare`,
-    `U_shares`): el id no dice la magnitud, el `<measure>` si (`iso4217:USD`,
-    `xbrli:shares`). Sin `<unit>` resoluble se cae a la lista de ids conocidos.
+    `U_shares`): el id no dice la magnitud, el `<unit>` si. Se conserva la
+    estructura (numerador, denominador): el BPA es moneda / acciones, no
+    shares / USD ni shares / shares, y las acciones son una unidad simple
+    `xbrli:shares`. Una unidad no declarada en la instancia no prueba la
+    magnitud: fallo cerrado.
     """
     allowed = ALLOWED_UNITS.get(tag)
     if allowed is None:
         return True
-    measures = units.get(unit_ref)
-    if not measures:
-        return unit_ref in allowed
+    structure = units.get(unit_ref)
+    if structure is None:
+        return False
+    numerator, denominator = structure
     if allowed is _EPS_UNITS:
-        return any(m.startswith("iso4217:") for m in measures)
-    return all(m in ("xbrli:shares", "xbrli:pure") for m in measures)
+        return (
+            len(numerator) == 1
+            and numerator[0].startswith("iso4217:")
+            and denominator == ("xbrli:shares",)
+        )
+    return numerator == ("xbrli:shares",) and not denominator
 
 
 @dataclass(frozen=True)
@@ -135,16 +143,29 @@ def parse_instance_dimensioned_facts(
     `unitRef` que la metrica no admite descarta el hecho entero.
     """
     contexts: dict[str, tuple[date | None, date | None, date | None, tuple[tuple[str, str], ...]]] = {}
-    units: dict[str, tuple[str, ...]] = {}
+    units: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {}
     facts: list[DimensionedFact] = []
     for _event, el in ET.iterparse(stream):
         tag = _local(el.tag)
         if tag == "unit":
-            units[el.get("id") or ""] = tuple(
-                (node.text or "").strip()
-                for node in el.iter()
-                if _local(node.tag) == "measure"
-            )
+            def _measures(parent) -> tuple[str, ...]:
+                return tuple(
+                    (node.text or "").strip()
+                    for node in parent.iter()
+                    if _local(node.tag) == "measure"
+                )
+
+            numerator = denominator = None
+            for child in el:
+                if _local(child.tag) == "divide":
+                    for part in child:
+                        if _local(part.tag) == "unitNumerator":
+                            numerator = _measures(part)
+                        elif _local(part.tag) == "unitDenominator":
+                            denominator = _measures(part)
+            if numerator is None:
+                numerator, denominator = _measures(el), ()
+            units[el.get("id") or ""] = (numerator, denominator or ())
             el.clear()
         elif tag == "context":
             members = _member_pairs(el)
