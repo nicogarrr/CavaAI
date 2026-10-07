@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
+// @ts-expect-error TS5097: la extensión explícita la exige node --experimental-strip-types.
 import { authorKey, groupLetters, titleYear, type LetterDoc } from '../app/(root)/inversores/cartas/letters.ts';
 
 const doc = (id: number, title: string, author: string | null, extra: Partial<LetterDoc> = {}): LetterDoc => ({
