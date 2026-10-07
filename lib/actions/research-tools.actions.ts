@@ -379,6 +379,10 @@ export async function getKnowledgeLibrary() {
   return { collections, documents, principles, jobs };
 }
 
+export async function getKnowledgeDocuments() {
+  return requestJson<KnowledgeDocument[]>('/api/knowledge/documents?limit=500');
+}
+
 export async function getKnowledgeDocumentChunks(documentId: number | null) {
   if (!documentId) return [];
   return requestJson<KnowledgeChunk[]>(`/api/knowledge/documents/${assertPositiveInt(documentId, 'documentId')}/chunks?limit=300`);

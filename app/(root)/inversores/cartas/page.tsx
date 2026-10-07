@@ -1,0 +1,118 @@
+import type { Metadata } from 'next';
+import Link from 'next/link';
+
+import BackendOffline from '@/components/system/BackendOffline';
+import { getKnowledgeDocuments } from '@/lib/actions/research-tools.actions';
+import { isBackendUnavailableError } from '@/lib/backend-offline';
+
+import { Pagination, paginate } from '../_components/Pagination';
+import { groupLetters, titleYear } from './letters';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+export const metadata: Metadata = {
+    title: 'Cartas de inversores',
+    description: 'Las cartas a inversores de la biblioteca, por autor, con enlace al PDF original.',
+};
+
+const PAGE_SIZE = 12;
+const LINK = 'text-sm text-lime-300 hover:underline';
+
+type PageProps = {
+    searchParams: Promise<{ autor?: string; pagina?: string }>;
+};
+
+export default async function LettersPage({ searchParams }: PageProps) {
+    const { autor, pagina } = await searchParams;
+    let documents: Awaited<ReturnType<typeof getKnowledgeDocuments>>;
+    try {
+        documents = await getKnowledgeDocuments();
+    } catch (error) {
+        if (isBackendUnavailableError(error)) {
+            return <BackendOffline feature="Cartas de inversores" retryHref="/inversores/cartas" />;
+        }
+        throw error;
+    }
+    const groups = groupLetters(documents);
+    const selected = groups.find((group) => group.key === autor) ?? groups[0];
+    const paged = selected ? paginate(selected.letters, pagina, PAGE_SIZE) : null;
+
+    return (
+        <main id="content" tabIndex={-1} className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-10 overflow-x-clip py-6">
+            <header className="flex flex-col gap-3">
+                <h1 className="text-3xl font-semibold text-gray-100">Cartas</h1>
+                <p className="text-base text-gray-400">
+                    Las cartas a inversores que tiene la biblioteca, por autor. Lee el texto por fragmentos o abre el PDF original.
+                </p>
+                <Link className={LINK} href="/inversores">
+                    Volver a inversores
+                </Link>
+            </header>
+
+            {groups.length === 0 || !selected || !paged ? (
+                <p className="text-sm text-gray-500">Todavía no hay cartas en la biblioteca.</p>
+            ) : (
+                <>
+                    <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                        {groups.map((group) => (
+                            <li key={group.key}>
+                                <Link
+                                    aria-current={group.key === selected.key ? 'page' : undefined}
+                                    className={`flex h-full flex-col gap-1 rounded-2xl border bg-surface-1 p-4 transition-colors hover:border-gray-700 ${
+                                        group.key === selected.key ? 'border-lime-300/60' : 'border-gray-800'
+                                    }`}
+                                    href={`/inversores/cartas?autor=${group.key}`}
+                                >
+                                    <span className="text-base font-medium text-gray-100">{group.name}</span>
+                                    <span className="text-sm text-gray-500">
+                                        {group.letters.length} {group.letters.length === 1 ? 'carta' : 'cartas'}
+                                    </span>
+                                </Link>
+                            </li>
+                        ))}
+                    </ul>
+
+                    <section className="flex flex-col gap-3">
+                        <h2 className="text-xl font-semibold text-gray-100">{selected.name}</h2>
+                        <ul className="flex flex-col divide-y divide-gray-900">
+                            {paged.items.map((letter) => {
+                                const year = titleYear(letter.title);
+                                return (
+                                    <li className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-3" key={letter.id}>
+                                        <span className="min-w-0 text-sm text-gray-200">{letter.title}</span>
+                                        <span className="flex items-center gap-4">
+                                            <Link className={LINK} href={`/knowledge?document=${letter.id}`}>
+                                                Leer
+                                            </Link>
+                                            {letter.source_url ? (
+                                                <a className={LINK} href={letter.source_url} rel="noreferrer" target="_blank">
+                                                    PDF original
+                                                </a>
+                                            ) : (
+                                                <span className="text-xs text-gray-600">Sin PDF original</span>
+                                            )}
+                                        </span>
+                                        <span className="w-full text-xs text-gray-500">
+                                            {letter.publication_date
+                                                ? `Publicada el ${letter.publication_date}`
+                                                : 'Fecha de publicación no registrada'}
+                                            {year && !letter.publication_date ? ` · el título indica ${year}` : ''}
+                                        </span>
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                    </section>
+
+                    <Pagination basePath="/inversores/cartas" page={paged.page} params={{ autor: selected.key }} total={paged.total} />
+                </>
+            )}
+
+            <p className="text-xs text-gray-500">
+                Fuente: biblioteca de CavaAI. Las cartas son doctrina de inversión, no datos de las empresas. Si no hay fecha de
+                publicación registrada se dice; el año del título es solo una pista.
+            </p>
+        </main>
+    );
+}
