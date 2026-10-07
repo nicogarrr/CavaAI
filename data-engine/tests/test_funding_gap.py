@@ -17,7 +17,7 @@ from app.valuation.funding_gap import FundingGapResult, estimate_funding_gap
 
 def _snapshot(**metrics) -> FinancialSnapshot:
     return FinancialSnapshot(
-        facts={name: SimpleNamespace(value=value) for name, value in metrics.items()}
+        facts={name: SimpleNamespace(value=value) for name, value in metrics.items() if value is not None}
     )
 
 
@@ -74,7 +74,7 @@ def test_sin_capex_ni_ocf_es_incompleto():
         _snapshot(cash_and_equivalents=10.0), current_price=5.0, value_per_share=5.0
     )
     assert result.status == "incomplete"
-    assert result.missing_inputs == ["capital_expenditure_or_operating_cash_flow"]
+    assert result.missing_inputs == ["capital_expenditure", "operating_cash_flow"]
     assert result.available_cash == 10.0
 
 
@@ -83,7 +83,8 @@ def test_snapshot_totalmente_vacio_reporta_los_dos_huecos():
     assert result.status == "incomplete"
     assert result.missing_inputs == [
         "cash_and_equivalents",
-        "capital_expenditure_or_operating_cash_flow",
+        "capital_expenditure",
+        "operating_cash_flow",
     ]
 
 
@@ -123,21 +124,21 @@ def test_caja_suficiente_no_hueco():
     assert result.dilution is None
 
 
-def test_solo_ocf_negativo_basta_para_estimar():
+def test_solo_ocf_negativo_no_inventa_capex_cero():
     result = estimate_funding_gap(
         _snapshot(cash_and_equivalents=0.0, operating_cash_flow=-10.0),
         current_price=2.0,
         value_per_share=2.0,
     )
-    assert result.status == "estimated"
+    assert result.status == "incomplete"
     assert result.planned_capex is None
-    # burn 10*2 = 20 + buffer 50 - caja 0 = 70.
-    assert result.funding_gap == pytest.approx(70.0)
+    assert result.funding_gap is None
+    assert result.missing_inputs == ["capital_expenditure"]
 
 
 def test_buffer_minimo_configurable():
     result = estimate_funding_gap(
-        _snapshot(cash_and_equivalents=0.0, operating_cash_flow=0.0),
+        _snapshot(cash_and_equivalents=0.0, operating_cash_flow=0.0, capital_expenditure=0.0),
         current_price=2.0,
         value_per_share=2.0,
         min_cash_buffer=250.0,
@@ -224,3 +225,12 @@ def test_caja_negativa_amplia_el_hueco():
     assert result.available_cash == -500.0
     # 60 + 100 + 50 - (-500) = 710.
     assert result.funding_gap == pytest.approx(710.0)
+
+
+@pytest.mark.parametrize("absent", ["capital_expenditure", "operating_cash_flow"])
+def test_partial_burn_inputs_fail_closed(absent):
+    result = estimate_funding_gap(_snapshot_completo(**{absent: None}), current_price=10, value_per_share=8)
+    assert result.status == "incomplete"
+    assert result.missing_inputs == [absent]
+    assert result.funding_gap is None
+    assert result.dilution is None
