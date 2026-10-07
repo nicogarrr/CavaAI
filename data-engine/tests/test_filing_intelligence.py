@@ -5,7 +5,16 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
-from app.models.entities import Base, Company, Document, DocumentChunk, Position, ResearchAlert, Tenant, WatchItem
+from app.models.entities import (
+    Base,
+    Company,
+    Document,
+    DocumentChunk,
+    Position,
+    ResearchAlert,
+    Tenant,
+    WatchItem,
+)
 from app.services.earnings_releases import summarize_release
 from app.services.filing_changes import comparable, compare_sections
 from app.services.filing_intelligence import KEY, analyze_document, official_document

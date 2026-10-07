@@ -2,7 +2,6 @@ import asyncio
 
 from app.services.feed_ingestion_service import FeedIngestionService
 
-
 INDEX = '''Accession No. 0000000001-26-000001
 <a href="?CIK=0000000001">CIK</a>
 Filing Date</div><div class="info">2026-10-01</div>
