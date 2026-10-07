@@ -21,7 +21,7 @@ import { volumeTrendStats } from '@/lib/market/volume-trend';
 
 const FINNHUB_BASE_URL = env.FINNHUB_BASE_URL;
 
-export type FinnhubCandles = { s: 'ok' | 'no_data'; c: number[]; t: number[]; o: number[]; h: number[]; l: number[]; v: (number | null)[] };
+export type FinnhubCandles = { source?: string; s: 'ok' | 'no_data'; c: number[]; t: number[]; o: number[]; h: number[]; l: number[]; v: (number | null)[] };
 
 export async function getCandles(symbol: string, from: number, to: number, resolution: 'D' | 'W' | 'M' | '60' = 'D', revalidateSeconds = 1800): Promise<FinnhubCandles> {
     await requireAuthenticatedUser();
@@ -33,7 +33,7 @@ export async function getCandles(symbol: string, from: number, to: number, resol
             const result = await fetchJSON<FinnhubCandles>(url, revalidateSeconds);
             // fetchJSON puede retornar array vacío en caso de error, verificar si es un objeto válido
             if (!Array.isArray(result) && result && typeof result === 'object' && result.s === 'ok' && result.c?.length) {
-                return result;
+                return { ...result, source: 'Finnhub' };
             }
         } catch {
             // Si el plan no permite el recurso (403) u otro error, seguimos al fallback
@@ -53,7 +53,7 @@ export async function getCandles(symbol: string, from: number, to: number, resol
             if (response.ok) {
                 const data = await response.json();
                 if (data && data.s === 'ok' && Array.isArray(data.c) && data.c.length) {
-                    return data;
+                    return { ...data, source: data.source ?? 'Yahoo Finance' };
                 }
             }
         } catch {
