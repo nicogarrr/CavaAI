@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
+// @ts-expect-error TS5097: la extensión explícita la exige node --experimental-strip-types.
 import { moatChecksToScore, MOAT_V2_MAX_CHECKS } from '../lib/propicks/moat-scale.ts';
 
 describe('escala del moat V2 en el adaptador del embudo', () => {
