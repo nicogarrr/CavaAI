@@ -48,6 +48,8 @@ test("el sidebar de escritorio muestra el nav limpio", async ({ page }) => {
 
   const sidebar = page.locator("aside");
   await expect(sidebar).toBeVisible();
+  await expect(sidebar).toHaveAttribute('data-collapsed', 'true');
+  await expect(sidebar.getByRole('button', { name: 'Expandir menú' })).toBeVisible();
 
   await expect(sidebar.getByRole("link", { name: "Mercado", exact: true })).toBeVisible();
   await expect(sidebar.getByRole("link", { name: "Workflows", exact: true })).toHaveCount(0);
@@ -59,6 +61,16 @@ test("el sidebar de escritorio muestra el nav limpio", async ({ page }) => {
   // El pie conserva lo que no está en el árbol.
   await expect(sidebar.getByRole("link", { name: "Seguridad", exact: true })).toHaveCount(1);
 
+  await page.screenshot({ path: "test-results/nav-cleanup-sidebar-rail.png" });
+  await sidebar.getByRole('button', { name: 'Expandir menú' }).click();
+  await expect(sidebar).not.toHaveAttribute('data-collapsed', 'true');
+  await expect(sidebar.getByRole('button', { name: 'Plegar menú' })).toBeVisible();
+  await expect(sidebar.getByText('Mercado', { exact: true })).toBeVisible();
+  const preference = (await page.context().cookies()).find((cookie) => cookie.name === 'cavaai-sidebar-collapsed');
+  expect(preference?.value).toBe('0');
+  await page.reload();
+  await ocultarDevIndicator(page);
+  await expect(sidebar).not.toHaveAttribute('data-collapsed', 'true');
   await page.screenshot({ path: "test-results/nav-cleanup-sidebar-desktop.png" });
 
   // Igual en desktop: captura del sidebar tras scroll al fondo, con el

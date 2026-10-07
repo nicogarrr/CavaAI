@@ -1,7 +1,8 @@
 import Breadcrumbs from "@/components/layout/Breadcrumbs";
 import Header from "@/components/Header";
 import BottomNav from "@/components/layout/BottomNav";
-import Sidebar, { SIDEBAR_COLLAPSED_COOKIE } from "@/components/layout/Sidebar";
+import Sidebar from "@/components/layout/Sidebar";
+import { SIDEBAR_COLLAPSED_COOKIE } from "@/lib/ui/sidebar-preference";
 import OnlineBanner from "@/components/OnlineBanner";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { requireAuthenticatedUser } from "@/lib/auth/require-user";
@@ -33,7 +34,7 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
     // las carga perezosamente al abrirse por primera vez y las reutiliza el
     // resto de la sesion; el header se monta una sola vez igualmente.
     const collapsed = await cookies().then(
-        (jar) => jar.get(SIDEBAR_COLLAPSED_COOKIE)?.value === '1',
+        (jar) => jar.get(SIDEBAR_COLLAPSED_COOKIE)?.value !== '0',
     );
 
     return (
