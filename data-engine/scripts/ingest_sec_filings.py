@@ -30,7 +30,7 @@ from app.core.database import SessionLocal
 from app.models import Company, Document, DocumentChunk, Tenant
 from app.services.document_ingestion_service import DocumentIngestionService
 from app.services.document_store import DocumentStore
-from app.services.sec_filing_evidence import EvidenceError, derive_index_url, verify_entry
+from app.services.sec_filing_evidence import EvidenceError, derive_index_url, parse_index, verify_entry
 
 
 def ingest_filings(db, company: Company, entries: list[dict], base_dir: Path, *, dry_run: bool) -> list[dict]:
@@ -66,6 +66,8 @@ def ingest_filings(db, company: Company, entries: list[dict], base_dir: Path, *,
             company.ticker, "primary_official", f"{filing.sha256[:12]}-{filing.filename}", filing.raw,
             tenant_id=tenant_id, content_type="text/html",
         )
+        index_evidence = parse_index((base_dir / entry["index_file"]).read_text(encoding="utf-8"))
+        parent_form = "8-K" if any(form == "8-K" for form, _ in index_evidence.documents.values()) else None
         document = Document(
             company_id=company.id,
             title=f"{company.ticker} {filing.form_type} {filing.filing_date.isoformat()} ({filing.filename})",
@@ -76,6 +78,7 @@ def ingest_filings(db, company: Company, entries: list[dict], base_dir: Path, *,
             checksum=filing.sha256,
             metadata_={
                 "form": filing.form_type,
+                "parent_form": parent_form,
                 "accession": filing.accession,
                 "cik": filing.cik,
                 "period_of_report": filing.period.isoformat() if filing.period else None,
@@ -100,7 +103,11 @@ def ingest_filings(db, company: Company, entries: list[dict], base_dir: Path, *,
                 token_count=len(chunk["text"].split()), metadata_=chunk["metadata"],
             ))
         db.commit()
-        results.append({"url": filing.url, "status": "ingested", "document_id": document.id, "chunks": len(chunks)})
+        from app.services.filing_intelligence import analyze_document
+
+        analysis = analyze_document(db, document)
+        db.commit()
+        results.append({"url": filing.url, "status": "ingested", "document_id": document.id, "chunks": len(chunks), "filing_analysis": analysis})
     return results
 
 

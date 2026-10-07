@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from urllib.parse import urlparse
@@ -206,6 +207,7 @@ class FeedIngestionService:
         url: str,
         source_type: str,
         published_at=None,
+        filing_metadata: dict | None = None,
     ) -> dict:
         """Download a discovered document, preserving SEC request policy when needed."""
 
@@ -225,7 +227,7 @@ class FeedIngestionService:
         from app.services.document_ingestion_service import DocumentIngestionService
 
         filename = PurePosixPath(parsed_url.path).name or f"{parsed_url.hostname}.html"
-        return DocumentIngestionService().ingest_bytes(
+        result = DocumentIngestionService().ingest_bytes(
             db,
             ticker=ticker,
             title=title,
@@ -235,4 +237,50 @@ class FeedIngestionService:
             source_url=final_url if not is_sec_host else url,
             content_type=content_type,
             published_at=published_at,
+            filing_metadata=filing_metadata,
         )
+
+        # 8-K Item 2.02 is often just a pointer. Fetch only earnings exhibits
+        # declared in the official index, at most three, with the SEC client.
+        if is_sec_host and (filing_metadata or {}).get("form") == "8-K":
+            result["earnings_exhibits"] = await self._earnings_exhibits(
+                db, ticker=ticker, url=url, published_at=published_at,
+                filing_metadata=filing_metadata or {},
+            )
+        return result
+
+    async def _earnings_exhibits(self, db, *, ticker, url, published_at, filing_metadata) -> list[dict]:
+        from app.services.sec_filing_evidence import derive_index_url, parse_index
+
+        accession = filing_metadata.get("accession_number")
+        cik = filing_metadata.get("cik")
+        if not accession or not cik:
+            return [{"status": "insufficient_data", "reason": "Sin accession o CIK del 8-K."}]
+        if not re.fullmatch(r"\d{10}-\d{2}-\d{6}", str(accession)) or not str(cik).isdigit():
+            return [{"status": "insufficient_data", "reason": "Identidad SEC inválida."}]
+        sec = self._sec_client or SECClient()
+        try:
+            index_url = derive_index_url(str(cik), str(accession))
+            raw, _ = await sec.filing_document(index_url)
+            index = parse_index(raw.decode("utf-8", errors="replace"))
+            if index.accession != accession or int(index.cik) != int(cik):
+                raise ValueError("SEC index identity mismatch")
+            prefix = SECClient.filing_index_url(str(cik), str(accession))
+            if not url.startswith(prefix):
+                raise ValueError("8-K URL does not match index")
+            results = []
+            for filename, (form, _) in index.documents.items():
+                if not form.startswith("EX-99"):
+                    continue
+                if len(results) >= 3:
+                    results.append({"status": "partial", "reason": "Máximo de tres anexos por 8-K."})
+                    break
+                results.append(await self.ingest_document_url(
+                    db, ticker=ticker, title=f"Comunicado adjunto al 8-K: {filename}",
+                    url=SECClient.filing_document_url(str(cik), str(accession), filename),
+                    source_type="SEC", published_at=published_at,
+                    filing_metadata={**filing_metadata, "form": form, "parent_form": "8-K"},
+                ))
+            return results or [{"status": "insufficient_data", "reason": "Sin anexos EX-99 en el índice SEC."}]
+        except Exception as exc:
+            return [{"status": "unavailable", "error": type(exc).__name__}]

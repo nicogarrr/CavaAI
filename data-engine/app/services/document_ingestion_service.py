@@ -84,6 +84,7 @@ class DocumentIngestionService:
         source_url: str | None = None,
         content_type: str | None = None,
         published_at: datetime | None = None,
+        filing_metadata: dict | None = None,
     ) -> dict:
         if not content:
             raise ValueError("Document is empty")
@@ -165,6 +166,8 @@ class DocumentIngestionService:
             published_at=published_at or datetime.now(UTC),
             checksum=checksum,
             metadata_={
+                **{key: value for key, value in (filing_metadata or {}).items()
+                   if key in {"form", "report_date", "period_of_report", "accession_number", "parent_form", "fiscal_quarter"}},
                 "parser": parsed.parser,
                 "filename": filename,
                 "content_type": content_type,
@@ -208,6 +211,20 @@ class DocumentIngestionService:
 
         db.commit()
         db.refresh(document)
+
+        filing_analysis = {"status": "not_applicable"}
+        if db.info.get("tenant_id") is not None:
+            try:
+                from app.services.filing_intelligence import analyze_document, official_document
+
+                if official_document(document):
+                    filing_analysis = analyze_document(db, document)
+                    db.commit()
+            except Exception as exc:
+                db.rollback()
+                # Ingestion has already committed. A failed optional analysis
+                # must not disguise a successfully persisted source as failure.
+                filing_analysis = {"status": "failed", "error": type(exc).__name__}
 
         kpi_extraction = {"status": "not_queued"}
         if (
@@ -290,6 +307,7 @@ class DocumentIngestionService:
             "warnings": parsed.warnings,
             "rag": rag_result,
             "intelligence": intelligence_result,
+            "filing_analysis": filing_analysis,
         }
 
     def ingest_url(
