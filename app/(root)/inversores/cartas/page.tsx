@@ -43,7 +43,7 @@ export default async function LettersPage({ searchParams }: PageProps) {
             <header className="flex flex-col gap-3">
                 <h1 className="text-3xl font-semibold text-gray-100">Cartas</h1>
                 <p className="text-base text-gray-400">
-                    Las cartas a inversores que tiene la biblioteca, por autor. Lee el texto por fragmentos o abre el PDF original.
+                    Las cartas a inversores que tiene la biblioteca, por autor. Lee cada carta en su propia página o abre el PDF original.
                 </p>
                 <Link className={LINK} href="/inversores">
                     Volver a inversores
@@ -82,7 +82,7 @@ export default async function LettersPage({ searchParams }: PageProps) {
                                     <li className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-3" key={letter.id}>
                                         <span className="min-w-0 text-sm text-gray-200">{letter.title}</span>
                                         <span className="flex items-center gap-4">
-                                            <Link className={LINK} href={`/knowledge?document=${letter.id}`}>
+                                            <Link className={LINK} href={`/inversores/cartas/${letter.id}`}>
                                                 Leer
                                             </Link>
                                             {letter.source_url ? (

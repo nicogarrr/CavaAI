@@ -383,6 +383,24 @@ export async function getKnowledgeDocuments() {
   return requestJson<KnowledgeDocument[]>('/api/knowledge/documents?limit=500');
 }
 
+export type KnowledgeDocumentDetail = KnowledgeDocument & { chunk_count: number };
+
+/** Un documento por id. `null` si no existe (404); cualquier otro error se propaga. */
+export async function getKnowledgeDocument(documentId: number): Promise<KnowledgeDocumentDetail | null> {
+  try {
+    return await requestJson<KnowledgeDocumentDetail>(`/api/knowledge/documents/${assertPositiveInt(documentId, 'documentId')}`);
+  } catch (error) {
+    if (error instanceof AppError && error.code === 'RESEARCH_API_ERROR' && error.statusCode === 404) return null;
+    throw error;
+  }
+}
+
+/** Una pagina de fragmentos (orden de lectura) sin tope silencioso: el total viene de `chunk_count`. */
+export async function getKnowledgeDocumentChunkPage(documentId: number, offset: number, limit: number) {
+  const id = assertPositiveInt(documentId, 'documentId');
+  return requestJson<KnowledgeChunk[]>(`/api/knowledge/documents/${id}/chunks?limit=${Math.min(Math.max(1, limit), 100)}&offset=${Math.max(0, offset)}`);
+}
+
 export async function getKnowledgeDocumentChunks(documentId: number | null) {
   if (!documentId) return [];
   return requestJson<KnowledgeChunk[]>(`/api/knowledge/documents/${assertPositiveInt(documentId, 'documentId')}/chunks?limit=300`);
