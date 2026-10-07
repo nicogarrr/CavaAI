@@ -1,5 +1,5 @@
 /**
- * Inputs inferidos: valores formateados, nunca decimales largos ni claves crudas.
+ * Inputs inferidos: el formato lo manda la unidad declarada, nunca la clave ni la magnitud.
  * Ejecución: node --experimental-strip-types --test scripts/provenance-format-guard.test.ts
  */
 import { describe, it } from "node:test"
@@ -9,20 +9,38 @@ import { readFileSync } from "node:fs"
 import { capitalizeLabel, formatProvenanceValue } from "../lib/research/provenance-format.ts"
 
 describe("formatProvenanceValue", () => {
-    it("porcentajes con coma y un decimal", () => {
-        assert.match(formatProvenanceValue("penetration", 0.1442999), /^14,4\s?%$/)
-        assert.match(formatProvenanceValue("fcf_margin", 25), /^25,0\s?%$/)
+    it("unidad decimal/ratio: fracción a porcentaje, incluido más de 100 %", () => {
+        assert.match(formatProvenanceValue(0.1442999, "decimal"), /^14,4\s?%$/)
+        assert.match(formatProvenanceValue(1.5, "decimal"), /^150,0\s?%$/)
+        assert.match(formatProvenanceValue(1, "ratio"), /^100,0\s?%$/)
     })
-    it("dinero en dólares estilo inglés", () => {
-        assert.equal(formatProvenanceValue("total_debt", 4869930000), "$4.87B")
-        assert.equal(formatProvenanceValue("monthly_arpu", 14.4), "$14.40")
+    it("unidad %: ya es porcentaje, no se multiplica", () => {
+        assert.match(formatProvenanceValue(25, "%"), /^25,0\s?%$/)
+        assert.match(formatProvenanceValue(1.5, "%"), /^1,5\s?%$/)
     })
-    it("cantidades sin decimales largos", () => {
-        const out = formatProvenanceValue("satellites", 45.123456789)
-        assert.ok(!/\d{3,}$/.test(out.split(",")[1] ?? ""), out)
+    it("importe en la divisa declarada (USD y no USD)", () => {
+        assert.equal(formatProvenanceValue(4869930000, "USD"), "$4.87B")
+        assert.equal(formatProvenanceValue(14.4, "USD"), "$14.40")
+        assert.match(formatProvenanceValue(2500000000, "EUR"), /^€2\.50B$/)
+    })
+    it("sin unidad declarada: número sin símbolo ni %, también para shares_* y penetration", () => {
+        const shares = formatProvenanceValue(255982592, null)
+        assert.ok(!shares.includes("%") && !shares.includes("$"), shares)
+        for (const v of [1, 1.2, 25, 0.5]) {
+            const out = formatProvenanceValue(v, undefined)
+            assert.ok(!/[%$€]/.test(out), out)
+        }
+    })
+    it("otra unidad: número + unidad", () => {
+        assert.equal(formatProvenanceValue(45, "shares"), "45 acciones")
+        assert.equal(formatProvenanceValue(12, "satélites"), "12 satélites")
     })
     it("sin dato es N/D", () => {
-        assert.equal(formatProvenanceValue("penetration", null), "N/D")
+        assert.equal(formatProvenanceValue(null, "USD"), "N/D")
+    })
+    it("no adivina por el nombre de la clave: la firma no recibe la clave", () => {
+        const src = readFileSync("lib/research/provenance-format.ts", "utf8")
+        assert.doesNotMatch(src, /_HINT|test\(key\)/)
     })
     it("capitalizeLabel", () => {
         assert.equal(capitalizeLabel("suscriptores direccionables"), "Suscriptores direccionables")
@@ -35,7 +53,7 @@ describe("ThesisMemo", () => {
         assert.match(src, /metricLabel\(item\.key\)/)
         assert.doesNotMatch(src, />\{item\.key\}</)
     })
-    it("usa formatProvenanceValue", () => {
-        assert.match(src, /formatProvenanceValue\(/)
+    it("formatea con el valor y la unidad del input", () => {
+        assert.match(src, /formatProvenanceValue\(item\.value, item\.unit\)/)
     })
 })

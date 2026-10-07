@@ -228,7 +228,7 @@ export default function ThesisMemo({
                     </span>
                   )}
                   <span className="order-1 text-gray-300">{capitalizeLabel(metricLabel(item.key))}</span>
-                  <span className="order-2 ml-auto font-medium tabular-nums text-gray-100">{formatProvenanceValue(item.key, item.value)}</span>
+                  <span className="order-2 ml-auto font-medium tabular-nums text-gray-100">{formatProvenanceValue(item.value, item.unit)}</span>
                   {isVerifiedOficial(item) ? (
                     <span className="order-3 basis-full text-xs text-gray-500">
                       ·{' '}
