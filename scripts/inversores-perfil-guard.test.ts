@@ -8,7 +8,7 @@ const ficha = readFileSync('app/(root)/inversores/[slug]/page.tsx', 'utf8');
 const actions = readFileSync('lib/actions/investors.actions.ts', 'utf8');
 
 test('el tipo de hecho exige fuente, fecha y tipo', () => {
-    assert.match(actions, /as_of: string;\s+source_url: string;\s+kind: 'oficial' \| 'inferido';/);
+    assert.match(actions, /as_of: string;\s+source_url: string;\s+kind: 'oficial' \| 'inferido' \| 'prensa';/);
 });
 
 test('cada cifra se muestra con tipo, fecha y enlace a la fuente', () => {
