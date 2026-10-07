@@ -7,6 +7,7 @@ import { datedQuoteMetrics } from '@/lib/market/quote-metrics';
 import { marketHistoryStatus } from '@/lib/market/history-status';
 import { sessionDateEt } from '@/lib/market/quote-freshness';
 import { quoteSymbolFor } from '@/lib/market/quote-symbol';
+import { normalizeChartCandles } from '@/lib/market/normalize-chart';
 import { e2eMarketFixture, isE2EMarketFixtureEnabled } from '@/lib/e2e-market-fixture';
 
 export type CompanyMarketSnapshot = {
@@ -102,18 +103,7 @@ export async function getCompanyMarketSnapshot(ticker: string): Promise<CompanyM
         getStockQuote(quoteSymbol),
         getCandles(quoteSymbol, from, to, 'D', 900),
     ]);
-    const history = candles.s === 'ok'
-        ? candles.t.map((timestamp, index) => ({
-            date: new Date(timestamp * 1000).toISOString().slice(0, 10),
-            // El endpoint ya trae o/h/l en la misma respuesta; antes se
-            // descartaban y el chart de velas no tenia con que pintar.
-            open: candles.o?.[index] ?? null,
-            high: candles.h?.[index] ?? null,
-            low: candles.l?.[index] ?? null,
-            close: candles.c[index],
-            volume: candles.v[index] ?? null,
-        })).filter((point) => Number.isFinite(point.close))
-        : [];
+    const history = normalizeChartCandles(candles, { from, to, resolution: 'D' });
     const livePrice = quote?.c;
     // F358: solo se acepta cotización con frescura validada en origen
     // (sanitizeFinnhubQuote; el fallback Yahoo llega marcado como cierre).

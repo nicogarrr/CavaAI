@@ -49,5 +49,6 @@ void test('estructura: el backend conserva null y el frontend tipa huecos', () =
     assert.match(finnhub, /v: \(number \| null\)\[\]/);
     assert.match(finnhub, /volumeTrendStats\(volumes\)/);
     const workspace = readFileSync('lib/actions/market-workspace.actions.ts', 'utf8');
-    assert.match(workspace, /volume: candles\.v\[index\] \?\? null/);
+    assert.match(workspace, /normalizeChartCandles\(candles,/);
+    assert.match(readFileSync('lib/market/normalize-chart.ts', 'utf8'), /volume: candles\.v\?\.\[index\] \?\? null/);
 });
