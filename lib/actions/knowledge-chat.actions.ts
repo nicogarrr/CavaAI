@@ -1,6 +1,6 @@
 'use server';
 
-import { normalizeResearchBody, researchIdentityHeaders } from '@/lib/auth/research-identity';
+import { jsonBody, researchRequest } from '@/lib/research/client';
 
 export type LibraryAnswer = {
   status: 'ok' | 'fragmentos' | 'sin_datos';
@@ -20,13 +20,9 @@ export type LibraryAnswer = {
 export async function askKnowledge(question: string, scope: 'letters' | 'library', author?: string): Promise<LibraryAnswer> {
   const trimmed = question.trim();
   if (trimmed.length < 3 || trimmed.length > 1200) throw new Error('Escribe una pregunta de 3 a 1200 caracteres.');
-  const path = '/api/knowledge/chat';
-  const normalized = await normalizeResearchBody(JSON.stringify({ question: trimmed, scope, author: author || null }));
-  const identity = await researchIdentityHeaders({ method: 'POST', path, body: normalized.body ?? null });
-  const response = await fetch(`${process.env.FMP_BACKEND_URL ?? 'http://localhost:8000'}${path}`, {
-    method: 'POST', cache: 'no-store', body: normalized.body,
-    headers: { ...identity, 'Content-Type': 'application/json' },
+  // POST LLM: presupuesto explícito, no el GET rápido. Sin catch: conserva errores API/sesión.
+  return researchRequest<LibraryAnswer>('/api/knowledge/chat', {
+    method: 'POST', timeoutMs: 60_000,
+    body: jsonBody({ question: trimmed, scope, author: author || null }),
   });
-  if (!response.ok) throw new Error('No se pudo consultar la biblioteca. Inténtalo de nuevo.');
-  return response.json() as Promise<LibraryAnswer>;
 }

@@ -132,3 +132,57 @@ def test_multi_page_chunk_never_attributes_quote_to_first_page(monkeypatch):
     db.commit()
     result = asyncio.run(ask_library(db, "repurchases", author="Buffett", provider=Provider()))
     assert result["answers"][0]["citation"]["page_number"] is None
+
+
+def test_no_pool_checkout_during_vector_or_llm_after_tenant_lookup(monkeypatch):
+    from sqlalchemy import select
+    from sqlalchemy.pool import QueuePool
+
+    from app.models import Tenant
+    from app.services.rag import RAGIndex
+
+    monkeypatch.setenv("CAVAAI_ENABLE_VECTOR_SEARCH", "1")
+    engine = create_engine("sqlite://", poolclass=QueuePool, pool_size=1, max_overflow=0)
+    Base.metadata.create_all(engine)
+    db = Session(engine)
+    tenant = Tenant(external_id="pool-test", name="pool")
+    db.add(tenant)
+    db.flush()
+    tenant_id = tenant.id
+    document = KnowledgeDocument(tenant_id=tenant_id, title="Letter", author="Buffett",
+                                 document_type="fund_letter", status="ready")
+    db.add(document)
+    db.flush()
+    chunk = KnowledgeChunk(tenant_id=tenant_id, knowledge_document_id=document.id,
+                           chunk_index=0, content="Repurchases can add value at sensible prices.")
+    db.add(chunk)
+    db.flush()
+    chunk_id = chunk.id
+    db.commit()
+    # Reproduce get_db: lookup del tenant más lectura lexical previa.
+    assert db.scalar(select(Tenant).where(Tenant.external_id == "pool-test")).id == tenant_id
+    db.info["tenant_id"] = tenant_id
+    assert db.scalar(select(KnowledgeChunk).where(KnowledgeChunk.id == chunk_id)) is not None
+    assert engine.pool.checkedout() == 1
+    phases = []
+
+    def search(*args, **kwargs):
+        assert engine.pool.checkedout() == 0
+        assert db.info["tenant_id"] == tenant_id
+        phases.append("vector")
+        return [{"entity_id": chunk_id}]
+
+    class PoolProvider(Provider):
+        async def complete(self, request):
+            assert engine.pool.checkedout() == 0
+            assert db.info["tenant_id"] == tenant_id
+            phases.append("llm")
+            return await super().complete(request)
+
+    monkeypatch.setattr(RAGIndex, "search", search)
+    result = asyncio.run(ask_library(db, "repurchases", author="Buffett", provider=PoolProvider()))
+    assert result["status"] == "ok"
+    assert phases == ["vector", "llm"]
+    assert engine.pool.checkedout() == 0
+    db.close()
+    engine.dispose()

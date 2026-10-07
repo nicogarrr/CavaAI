@@ -11,17 +11,40 @@ from app.models.entities import InstrumentReference
 from app.services.investors import INVESTORS, _latest_view, _manager, most_bought
 
 
+def _isin_cusip(isin: str | None) -> str | None:
+    value = isin or ""
+    if not re.fullmatch(r"(?:US|CA)[A-Z0-9]{9}\d", value):
+        return None
+    digits = "".join(str(ord(c) - 55) if c.isalpha() else c for c in value)
+    checksum = sum((n * 2 // 10 + n * 2 % 10) if i % 2 else n
+                   for i, n in enumerate(map(int, reversed(digits))))
+    return value[2:11] if checksum % 10 == 0 else None
+
+
 def _cusip(company: Company, reference: InstrumentReference | None) -> tuple[str | None, str | None]:
-    if reference and reference.cusip and re.fullmatch(r"[A-Z0-9*@#]{9}", reference.cusip):
-        return reference.cusip, f"Referencia {reference.source} · {reference.as_of.isoformat()}"
-    isin = company.isin or ""
-    # Un ISIN US/CA contiene el CUSIP. Validar el checksum ISIN antes de derivarlo.
-    if re.fullmatch(r"(?:US|CA)[A-Z0-9]{9}\d", isin):
-        digits = "".join(str(ord(c) - 55) if c.isalpha() else c for c in isin)
-        checksum = sum((n * 2 // 10 + n * 2 % 10) if i % 2 else n
-                       for i, n in enumerate(map(int, reversed(digits))))
-        if checksum % 10 == 0:
-            return isin[2:11], "CUSIP derivado del ISIN registrado"
+    own = _isin_cusip(company.isin)
+    ref_cusip = reference.cusip if reference and reference.cusip else None
+    ref_isin = reference.isin if reference and reference.isin else None
+    if reference and reference.ticker_normalized != company.ticker.strip().upper():
+        return None, "Identidad en conflicto: la referencia no corresponde al ticker."
+    if company.isin and ref_isin and company.isin != ref_isin:
+        return None, "Identidad en conflicto: los ISIN registrados no coinciden."
+    if ref_cusip and not re.fullmatch(r"[A-Z0-9*@#]{9}", ref_cusip):
+        return None, "Referencia CUSIP inválida."
+    derived_ref = _isin_cusip(ref_isin)
+    if ref_cusip and derived_ref and ref_cusip != derived_ref:
+        return None, "Identidad en conflicto: CUSIP e ISIN de la referencia."
+    if own and ref_cusip and own != ref_cusip:
+        return None, "Identidad en conflicto: CUSIP de referencia e ISIN de cartera."
+    if own:
+        return own, "CUSIP derivado del ISIN registrado"
+    if company.isin:
+        # Un identificador mal formado o no derivable no permite usar un ticker como sustituto.
+        return None, "ISIN registrado sin CUSIP derivable verificado."
+    if ref_isin and derived_ref is None:
+        return None, "ISIN de referencia sin CUSIP derivable verificado."
+    if reference and ref_cusip:
+        return ref_cusip, f"Referencia {reference.source} · {reference.as_of.isoformat()}"
     return None, None
 
 

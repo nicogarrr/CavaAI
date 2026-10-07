@@ -45,14 +45,10 @@ def retrieve(db: Session, question: str, *, scope: str, author: str | None = Non
         statement = statement.where(KnowledgeDocument.id == document_id)
     if collection_id:
         statement = statement.where(KnowledgeDocument.collection_id == collection_id)
-    terms = _terms(question)
-    lexical = []
-    if terms:
-        lexical = list(db.execute(statement.where(or_(
-            *[KnowledgeChunk.content.ilike(f"%{term.replace('%', '').replace('_', '')}%") for term in terms]
-        )).order_by(KnowledgeChunk.id).limit(120)).all())
-        lexical.sort(key=lambda row: -sum(_fold(t) in _fold(row[0].content) for t in terms))
-    semantic = []
+    # El lookup de tenant del request puede haber abierto ya una transacción.
+    # Esta operación es de solo lectura: cerrar ANTES del embedder/Qdrant.
+    db.rollback()
+    ids = []
     if os.getenv("CAVAAI_ENABLE_VECTOR_SEARCH") == "1":
         from app.services.rag import RAGIndex
         try:
@@ -61,9 +57,18 @@ def retrieve(db: Session, question: str, *, scope: str, author: str | None = Non
             logger.warning("Knowledge retrieval unavailable: %s", type(exc).__name__)
             hits = []
         ids = [h.get("entity_id") for h in hits if isinstance(h.get("entity_id"), int)]
-        if ids:
-            verified = {c.id: (c, d) for c, d in db.execute(statement.where(KnowledgeChunk.id.in_(ids))).all()}
-            semantic = [verified[i] for i in ids if i in verified]
+    # Solo tras terminar todo el I/O vectorial se abre la lectura SQL.
+    terms = _terms(question)
+    lexical = []
+    if terms:
+        lexical = list(db.execute(statement.where(or_(
+            *[KnowledgeChunk.content.ilike(f"%{term.replace('%', '').replace('_', '')}%") for term in terms]
+        )).order_by(KnowledgeChunk.id).limit(120)).all())
+        lexical.sort(key=lambda row: -sum(_fold(t) in _fold(row[0].content) for t in terms))
+    semantic = []
+    if ids:
+        verified = {c.id: (c, d) for c, d in db.execute(statement.where(KnowledgeChunk.id.in_(ids))).all()}
+        semantic = [verified[i] for i in ids if i in verified]
     # Alternar conserva resultados semánticos y lexicales; no lee el texto del vector como evidencia.
     chosen = []
     seen = set()
@@ -96,6 +101,7 @@ async def ask_library(db: Session, question: str, *, scope: str = "letters",
     result = {"status": "sin_datos", "kind": "doctrina", "retrieval": retrieval, "answers": [],
               "message": "No hay fragmentos de la biblioteca para esta pregunta."}
     if not rows:
+        db.rollback()
         return result
     # Los modelos solo pueden citar el texto efectivamente enviado; nunca adjudicar páginas o URLs.
     sources = {c.id: {"text": c.content[:2200], "citation": _citation(c, d, c.content[:2200])} for c, d in rows}

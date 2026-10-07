@@ -40,9 +40,9 @@ def test_exact_isin_derivation_and_invalid_checksum():
     company = Company(isin="US0378331005")
     assert _cusip(company, None)[0] == "037833100"
     company.isin = "US0378331006"
-    assert _cusip(company, None) == (None, None)
+    assert _cusip(company, None) == (None, "ISIN registrado sin CUSIP derivable verificado.")
     company.isin = "GB0378331005"
-    assert _cusip(company, None) == (None, None)
+    assert _cusip(company, None) == (None, "ISIN registrado sin CUSIP derivable verificado.")
 
 
 def test_overlap_latest_filing_no_options_no_other_tenant():
@@ -97,3 +97,41 @@ def test_joint_buys_exclude_owned_and_single_buyers(monkeypatch):
     result = portfolio_overlap(db)
     assert result["not_owned"] == [{"cusip": "222222222", "buyers_count": 2}]
     assert result["comparison_complete"] is False
+
+
+def test_contradictory_reference_rejected_even_if_ticker_matches():
+    company = Company(ticker="AAPL", isin="US0378331005")
+    reference = InstrumentReference(ticker_normalized="AAPL", isin="US5949181045",
+                                    cusip="594918104", source="openfigi", as_of=date(2026, 10, 1))
+    cusip, reason = _cusip(company, reference)
+    assert cusip is None and "conflicto" in reason
+    reference.isin = None
+    assert _cusip(company, reference)[0] is None
+    reference.cusip = "037833100"
+    assert _cusip(company, reference)[0] == "037833100"
+
+
+def test_reference_internal_conflict_malformed_and_bad_isin_checksum():
+    company = Company(ticker="AAPL")
+    reference = InstrumentReference(ticker_normalized="AAPL", isin="US0378331005",
+                                    cusip="594918104", source="openfigi", as_of=date(2026, 10, 1))
+    assert _cusip(company, reference)[0] is None
+    reference.cusip = "INVALID"
+    assert _cusip(company, reference)[0] is None
+    reference.cusip = "037833100"
+    reference.isin = "US0378331006"
+    assert _cusip(company, reference)[0] is None
+    reference.isin = None
+    company.isin = "US0378331006"
+    assert _cusip(company, reference)[0] is None
+
+
+def test_identity_conflict_never_matches_or_claims_not_owned(monkeypatch):
+    db = setup_portfolio()
+    db.add(InstrumentReference(ticker_normalized="AAPL", isin="US5949181045",
+                              cusip="594918104", source="openfigi", as_of=date(2026, 10, 1)))
+    db.commit()
+    result = portfolio_overlap(db)
+    assert result["positions"][0]["status"] == "sin_identificador"
+    assert "conflicto" in result["positions"][0]["identity_source"]
+    assert result["not_owned"] == []
