@@ -44,4 +44,18 @@ export const INVESTOR_PHOTOS: Record<string, InvestorPhoto> = {
         licenseUrl: 'https://creativecommons.org/licenses/by/2.0',
         source: 'https://commons.wikimedia.org/wiki/File:Charlie_Munger_%28cropped%29.jpg',
     },
+    'trump': {
+        src: '/investors/trump.jpg',
+        author: 'Daniel Torok (Casa Blanca)',
+        license: 'Public domain',
+        licenseUrl: 'https://commons.wikimedia.org/wiki/Category:Public_domain',
+        source: 'https://commons.wikimedia.org/wiki/File:Official_Presidential_Portrait_of_President_Donald_J._Trump_(2025)_(3x4_close_cropped).jpg',
+    },
+    'barron-trump': {
+        src: '/investors/barron-trump.jpg',
+        author: 'Andrea Hanks (Casa Blanca)',
+        license: 'Public domain',
+        licenseUrl: 'https://commons.wikimedia.org/wiki/Category:Public_domain',
+        source: 'https://commons.wikimedia.org/wiki/File:Barron_Trump_2026_(cropped).jpg',
+    },
 };

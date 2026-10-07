@@ -27,7 +27,7 @@ export function PublicProfileSection({ profile }: { profile: PublicProfile }) {
                             <span className="text-sm text-gray-300">{fact.label}</span>
                             <span className="text-sm font-medium text-gray-100">{fact.value}</span>
                             <span className="w-full text-xs text-gray-500">
-                                {fact.kind === 'oficial' ? 'Oficial' : 'Inferido'} · {fact.as_of} ·{' '}
+                                {fact.kind === 'oficial' ? 'Oficial' : fact.kind === 'prensa' ? 'Prensa' : 'Inferido'} · {fact.as_of} ·{' '}
                                 <a className={LINK} href={fact.source_url} rel="noreferrer" target="_blank">
                                     Fuente
                                 </a>

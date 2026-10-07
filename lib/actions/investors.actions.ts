@@ -43,7 +43,7 @@ export type PublicFact = {
   value: string;
   as_of: string;
   source_url: string;
-  kind: 'oficial' | 'inferido';
+  kind: 'oficial' | 'inferido' | 'prensa';
 };
 
 /** Ficha pública de gestores sin 13F: solo lo que publican ellos o un regulador, con fuente y fecha. */

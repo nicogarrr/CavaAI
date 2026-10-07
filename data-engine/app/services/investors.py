@@ -73,6 +73,8 @@ INVESTORS: tuple[Investor, ...] = (
     Investor("munger", "Charlie Munger", "Berkshire Hathaway", None),
     Investor("nick-sleep", "Nick Sleep", "Nomad Investment Partnership", None),
     Investor("lynch", "Peter Lynch", "Fidelity Magellan", None),
+    Investor("trump", "Donald Trump", "Participaciones personales documentadas", None),
+    Investor("barron-trump", "Barron Trump", "World Liberty Financial", None),
 )
 
 _BY_SLUG = {i.slug: i for i in INVESTORS}
