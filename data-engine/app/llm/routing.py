@@ -17,7 +17,8 @@ class TaskModelRouter:
 
     def resolve(self, request: LLMRequest) -> str:
         if request.model:
-            model = request.model
+            # Un override de entorno tambien mueve el modelo fijado en codigo.
+            model = self.overrides.get(request.model, request.model)
         elif request.task is None:
             model = self.default_model
         elif request.task in self.overrides:
