@@ -276,11 +276,11 @@ class Settings(BaseSettings):
     )
     instrument_snapshot_dir: str = "./data/instruments"
     opencode_go_api_key: str | None = Field(default=None, repr=False)
-    opencode_go_base_url: str = "https://opencode.ai/zen/go/v1"
+    opencode_go_base_url: str = "https://opencode.ai/zen/v1"
     # Default cheap-but-good model. Overridable WITHOUT code change via env
     # OPENCODE_GO_MODEL (e.g. OPENCODE_GO_MODEL=qwen3.7-plus). Ver también
     # default_model_from_env() en app/llm/model_aliases.py.
-    opencode_go_model: str = "longcat-2.5-preview-free"
+    opencode_go_model: str = "space-bunny-free"
     # Fallback automatico: si el modelo resuelto falla (cualquier error de
     # capa LLM tras sus reintentos internos), la llamada se reintenta UNA
     # vez con este modelo antes de propagar el error. Cadena vacia = sin
