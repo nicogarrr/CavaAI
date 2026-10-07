@@ -31,14 +31,15 @@ test.describe("investor watchlist flow", () => {
 
     await expect(page.getByRole("heading", { name: "Watchlist", level: 1 })).toBeVisible();
 
-    const rows = page.locator("table tbody tr");
+    const mobile = (page.viewportSize()?.width ?? 1440) < 768;
+    const rows = page.locator(mobile ? "main article" : "table tbody tr");
     if ((await rows.count()) === 0) {
       await expect(page.getByText("Tu Watchlist está vacía")).toBeVisible();
       await expect(page.getByRole("link", { name: /Ir a buscar acciones/ })).toBeVisible();
       return;
     }
 
-    await expect(page.getByRole("columnheader", { name: "Símbolo" })).toBeVisible();
+    if (!mobile) await expect(page.getByRole("columnheader", { name: "Símbolo" })).toBeVisible();
     const rowCount = await rows.count();
     expect(rowCount).toBeGreaterThan(0);
     for (let i = 0; i < rowCount; i += 1) {
@@ -47,7 +48,7 @@ test.describe("investor watchlist flow", () => {
         "href",
         /\/research\/[^/]+$/,
       );
-      await row.locator("summary").click();
+      if (!mobile) await row.locator("summary").click();
       await expect(
         row.getByRole("button", { name: /^Eliminar .+ de la watchlist$/i }),
       ).toBeVisible();
@@ -57,18 +58,19 @@ test.describe("investor watchlist flow", () => {
   test("watchlist remove drops the row", async ({ page }) => {
     await page.goto("/watchlist");
 
-    const rows = page.locator("table tbody tr");
+    const mobile = (page.viewportSize()?.width ?? 1440) < 768;
+    const rows = page.locator(mobile ? "main article" : "table tbody tr");
     const initial = await rows.count();
     if (initial === 0) {
       test.skip(true, "Watchlist is empty; nothing to remove.");
     }
 
-    await rows.first().locator("summary").click();
+    if (!mobile) await rows.first().locator("summary").click();
     await rows.first().getByRole("button", { name: /^Eliminar .+ de la watchlist$/i }).click();
     if (initial === 1) {
       await expect(page.getByText("Tu Watchlist está vacía")).toBeVisible({ timeout: 15_000 });
     } else {
-      await expect(page.locator("table tbody tr")).toHaveCount(initial - 1, {
+      await expect(rows).toHaveCount(initial - 1, {
         timeout: 15_000,
       });
     }
