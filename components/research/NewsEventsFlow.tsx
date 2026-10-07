@@ -25,6 +25,24 @@ function newsPageHref(lane: NewsLane, page: number): string {
   return text ? `/research/news?${text}` : '/research/news';
 }
 
+function NewsPager({label,lane,page,hasMore}:{label:string;lane:NewsLane;page:number;hasMore:boolean}){
+ return (
+        <nav aria-label={label} className="mt-4 flex items-center justify-between gap-4">
+          {page > 1 ? (
+            <Link className={PAGER_LINK} href={newsPageHref(lane, page - 1)} rel="prev">Anterior</Link>
+          ) : (
+            <span aria-disabled="true" className={PAGER_OFF}>Anterior</span>
+          )}
+          <span className="text-sm text-gray-500">Página {page}</span>
+          {hasMore ? (
+            <Link className={PAGER_LINK} href={newsPageHref(lane, page + 1)} rel="next">Siguiente</Link>
+          ) : (
+            <span aria-disabled="true" className={PAGER_OFF}>Siguiente</span>
+          )}
+        </nav>
+ );
+}
+
 /**
  * Flujo de eventos paginado dentro de la página (sin scroll infinito): el
  * servidor entrega la página `?pagina=N` de NEWS_PAGE_SIZE eventos y los
@@ -54,6 +72,7 @@ export function NewsEventsFlow({
           <AlertTriangle aria-hidden="true" className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">Flujo de eventos</h2>
         </div>
+        <NewsPager label="Paginación" lane={lane} page={page} hasMore={hasMore} />
         <nav aria-label="Filtrar por carril" className="mb-4 flex flex-wrap items-center gap-2 text-xs">
           {CARRILES.map((option) => {
             const active = lane === option.key;
@@ -243,19 +262,7 @@ export function NewsEventsFlow({
             </tbody>
           </table>
         </div>
-        <nav aria-label="Paginación" className="mt-4 flex items-center justify-between gap-4">
-          {page > 1 ? (
-            <Link className={PAGER_LINK} href={newsPageHref(lane, page - 1)} rel="prev">Anterior</Link>
-          ) : (
-            <span aria-disabled="true" className={PAGER_OFF}>Anterior</span>
-          )}
-          <span className="text-sm text-gray-500">Página {page}</span>
-          {hasMore ? (
-            <Link className={PAGER_LINK} href={newsPageHref(lane, page + 1)} rel="next">Siguiente</Link>
-          ) : (
-            <span aria-disabled="true" className={PAGER_OFF}>Siguiente</span>
-          )}
-        </nav>
+        <NewsPager label="Paginación inferior" lane={lane} page={page} hasMore={hasMore} />
       </section>
   );
 }
