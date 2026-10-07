@@ -39,3 +39,37 @@ def test_warm_models_loads_model_and_is_fail_open(monkeypatch):
     monkeypatch.setitem(sys.modules, "fastembed", None)
     hr.clear_model_cache()
     assert hr.warm_models() is False
+
+
+def test_st_fallback_builds_model_once_under_concurrency(monkeypatch):
+    import threading
+    import time
+
+    from app.services.rag import RAGIndex
+
+    built = {"n": 0}
+
+    class FakeST:
+        def __init__(self, name):
+            built["n"] += 1
+            time.sleep(0.2)  # ventana para que otro hilo entre a la vez
+
+    module = types.ModuleType("sentence_transformers")
+    module.SentenceTransformer = FakeST
+    monkeypatch.setitem(sys.modules, "sentence_transformers", module)
+    monkeypatch.setattr(RAGIndex, "_st_model", None)
+
+    barrier = threading.Barrier(4)
+    results = []
+
+    def worker():
+        barrier.wait()
+        results.append(RAGIndex()._embedder())
+
+    threads = [threading.Thread(target=worker) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert built["n"] == 1
+    assert len({id(r) for r in results}) == 1
