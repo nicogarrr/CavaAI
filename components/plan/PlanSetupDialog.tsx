@@ -17,6 +17,7 @@ import { Label } from '@/components/ui/label';
 import { upsertPlan, type PlanTargetInput } from '@/lib/actions/plan.actions';
 import { formatNumber, parseLocalizedNumber, todayLocal } from '@/lib/format';
 import { t } from '@/lib/i18n/t';
+import { overallocatedDimension } from '@/lib/plan/target-totals';
 import { showErrorToast } from '@/lib/toast';
 import { toast } from 'sonner';
 
@@ -91,7 +92,6 @@ export default function PlanSetupDialog({
             return;
         }
         const allocations: PlanTargetInput[] = [];
-        let totalPct = 0;
         for (const row of rows) {
             const label = row.kind === 'ticker' ? row.label.trim().toUpperCase() : row.label.trim();
             if (!label && !row.target_pct.trim()) continue;
@@ -100,7 +100,6 @@ export default function PlanSetupDialog({
                 setError('Cada asignación necesita una etiqueta y un porcentaje entre 0 y 100.');
                 return;
             }
-            totalPct += pct;
             const band = parseLocalizedNumber(row.band_pct);
             if (band === null || band < 0 || band > 50) {
                 setError('La banda debe estar entre 0 y 50 puntos porcentuales.');
@@ -112,9 +111,11 @@ export default function PlanSetupDialog({
             }
             allocations.push({ kind: row.kind, label, target_pct: pct, band_pct: band });
         }
-        if (totalPct > 100) {
+        const overallocated = overallocatedDimension(allocations);
+        if (overallocated) {
+            const labels = { ticker: 'tickers', sector: 'sectores', asset_class: 'clases de activo' };
             setError(
-                `Las asignaciones suman ${formatNumber(totalPct, { maximumFractionDigits: 2 })}%: no pueden superar el 100%.`,
+                `Los objetivos de ${labels[overallocated.kind]} suman ${formatNumber(overallocated.total, { maximumFractionDigits: 2 })}%: no pueden superar el 100% dentro de esa categoría.`,
             );
             return;
         }
@@ -155,8 +156,8 @@ export default function PlanSetupDialog({
                 <DialogHeader>
                     <DialogTitle>Configurar plan de inversión</DialogTitle>
                     <DialogDescription className="text-gray-400">
-                        Aportación mensual, horizonte y asignación objetivo. La suma de
-                        porcentajes no puede superar el 100%.
+                        Aportación mensual, horizonte y asignación objetivo. Cada categoría (tickers,
+                        sectores o clases de activo) puede sumar hasta el 100%.
                     </DialogDescription>
                 </DialogHeader>
                 <form id="plan-setup-form" onSubmit={handleSubmit} className="space-y-4">
