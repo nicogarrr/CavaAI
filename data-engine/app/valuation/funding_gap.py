@@ -42,8 +42,10 @@ def estimate_funding_gap(
     missing: list[str] = []
     if cash is None:
         missing.append("cash_and_equivalents")
-    if planned_capex is None and ocf is None:
-        missing.append("capital_expenditure_or_operating_cash_flow")
+    if planned_capex is None:
+        missing.append("capital_expenditure")
+    if ocf is None:
+        missing.append("operating_cash_flow")
 
     if missing:
         return FundingGapResult(

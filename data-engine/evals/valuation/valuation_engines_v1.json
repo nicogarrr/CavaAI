@@ -4912,7 +4912,8 @@
         "publishable": false,
         "missing_inputs": [
           "cash_and_equivalents",
-          "capital_expenditure_or_operating_cash_flow"
+          "capital_expenditure",
+          "operating_cash_flow"
         ],
         "publication_blockers": [
           "traceable_wacc"
