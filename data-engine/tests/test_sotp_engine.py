@@ -91,7 +91,7 @@ BASE_FACTS = {
 }
 
 
-def _sotp_result(facts_overrides: dict) -> dict:
+def _sotp_result(facts_overrides: dict, *, tags=None, price=None) -> dict:
     """Valida SOTPE con `facts_overrides` aplicando encima de BASE_FACTS.
 
     `None` como valor borra el fact: es la forma de expresar "no existe".
@@ -113,7 +113,7 @@ def _sotp_result(facts_overrides: dict) -> dict:
             industry="Conglomerate",
             company_type="multi_segment",
             valuation_model="sotp",
-            factor_tags=["sotp"],
+            factor_tags=tags if tags is not None else ["sotp"],
         )
         db.add(company)
         db.flush()
@@ -134,6 +134,10 @@ def _sotp_result(facts_overrides: dict) -> dict:
                 )
             )
         db.commit()
+        if price is not None:
+            from app.valuation.engines.sotp_engine import SOTPEngine
+            engine = SOTPEngine()
+            return engine.value(engine.build_context(db, company, price))
         return ValuationService().value_company(db, company)
     finally:
         db.execute(delete(FinancialFact).where(FinancialFact.company_id == company.id))
@@ -194,3 +198,21 @@ def test_every_blocking_input_is_named_in_missing_inputs():
     assert result["status"] == "ok"
     assert result["publishable"] is True
 
+
+
+def test_sotp_adr_price_uses_ordinary_share_basis():
+    import pytest
+    ordinary = _sotp_result({}, price=10)
+    adr = _sotp_result({}, tags=["sotp", "adr:8"], price=80)
+    assert adr["expected_value"] == pytest.approx(ordinary["expected_value"])
+    assert adr["margin_of_safety"] == pytest.approx(ordinary["margin_of_safety"])
+    assert adr["adr_ratio"] == 8
+    assert adr["trace"]["comparable_price"] == 10
+
+
+def test_sotp_adr_without_valid_ratio_refuses():
+    for tag in ("adr", "adr:0", "adr:invalid"):
+        result = _sotp_result({}, tags=["sotp", tag], price=80)
+        assert result["status"] == "insufficient_data"
+        assert result["publishable"] is False
+        assert "adr_ratio" in result["missing_inputs"]
