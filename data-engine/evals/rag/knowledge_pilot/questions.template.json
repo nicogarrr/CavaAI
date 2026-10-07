@@ -1,0 +1,29 @@
+{
+  "dataset": "knowledge_pilot_v1",
+  "status": "TEMPLATE - rellenar con 30-50 preguntas DESPUES de elegir el corpus piloto",
+  "how_to_fill": "Para cada pregunta copia de la fuente original un fragmento literal (expected_quote, 8-40 palabras) que la responda, y el sha256 del fichero. Incluye 6-8 preguntas sin respuesta en el corpus (expected_quote null) para medir abstencion.",
+  "distribution_target": {
+    "factual_lookup": 10,
+    "concept_explanation": 10,
+    "cross_document_comparison": 6,
+    "filtered_by_author_or_date": 6,
+    "cross_language_es_en": 6,
+    "unanswerable": 8
+  },
+  "cases": [
+    {
+      "id": "kp-001",
+      "question": "EJEMPLO: Que entiende el autor por margen de seguridad?",
+      "expected_quote": "EJEMPLO: fragmento literal del documento",
+      "expected_source_sha256": "EJEMPLO: sha256 del fichero",
+      "expected_title": null,
+      "filters": {"corpus": "evergreen", "authors": []}
+    },
+    {
+      "id": "kp-050",
+      "question": "EJEMPLO: Cual fue el beneficio por accion de la empresa X en 2031?",
+      "expected_quote": null,
+      "filters": {"corpus": "any"}
+    }
+  ]
+}

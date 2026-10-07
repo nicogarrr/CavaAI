@@ -1350,6 +1350,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/knowledge-rag/query": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Query */
+        post: operations["query_api_knowledge_rag_query_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge-rag/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Sources */
+        get: operations["list_sources_api_knowledge_rag_sources_get"];
+        put?: never;
+        /** Create Source */
+        post: operations["create_source_api_knowledge_rag_sources_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge-rag/sources/{source_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Source */
+        get: operations["get_source_api_knowledge_rag_sources__source_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge-rag/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Status */
+        get: operations["status_api_knowledge_rag_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/knowledge/collections": {
         parameters: {
             query?: never;
@@ -4528,6 +4597,11 @@ export interface components {
              */
             taxonomy: "overestimating_TAM" | "underestimating_dilution" | "extrapolating_peak_margin" | "ignoring_balance_sheet" | "management_trust_error" | "valuation_anchoring" | "position_sizing_error" | "selling_too_early" | "ignoring_cyclicality" | "thesis_drift";
         };
+        /**
+         * DocType
+         * @enum {string}
+         */
+        DocType: "letter" | "book" | "memo" | "article" | "transcript" | "filing" | "dataset";
         /** DocumentItemOut */
         DocumentItemOut: {
             /** Imported At */
@@ -5431,6 +5505,43 @@ export interface components {
             /** Universe Size */
             universe_size: number;
         };
+        /** QueryRequest */
+        QueryRequest: {
+            /** As Of From */
+            as_of_from?: string | null;
+            /** As Of To */
+            as_of_to?: string | null;
+            /** Authors */
+            authors?: string[];
+            /**
+             * Corpus
+             * @default evergreen
+             * @enum {string}
+             */
+            corpus: "evergreen" | "dated" | "any";
+            /** Doc Types */
+            doc_types?: components["schemas"]["DocType"][];
+            /**
+             * Include Context
+             * @default true
+             */
+            include_context: boolean;
+            /** Languages */
+            languages?: ("en" | "es")[];
+            /** Published From */
+            published_from?: string | null;
+            /** Published To */
+            published_to?: string | null;
+            /** Query */
+            query: string;
+            /** Source Ids */
+            source_ids?: number[];
+            /**
+             * Top K
+             * @default 6
+             */
+            top_k: number;
+        };
         /** ResearchAlertAction */
         ResearchAlertAction: {
             /**
@@ -5832,6 +5943,36 @@ export interface components {
             updated_at?: string | null;
             /** Version */
             version?: number | null;
+        };
+        /** SourceCreate */
+        SourceCreate: {
+            /** As Of */
+            as_of?: string | null;
+            /** Author */
+            author?: string | null;
+            doc_type: components["schemas"]["DocType"];
+            /**
+             * Language
+             * @enum {string}
+             */
+            language: "en" | "es";
+            /**
+             * Path
+             * @description Relativo al inbox del servidor
+             */
+            path: string;
+            /** Published Date */
+            published_date?: string | null;
+            /**
+             * Rights
+             * @default unknown
+             * @enum {string}
+             */
+            rights: "public_domain" | "open_license" | "owner_licensed" | "private_use" | "unknown";
+            /** Source Uri */
+            source_uri: string;
+            /** Title */
+            title: string;
         };
         /** SynthesisSection */
         SynthesisSection: {
@@ -9651,6 +9792,216 @@ export interface operations {
         };
     };
     sync_knowledge_graph_api_knowledge_graph_sync_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    query_api_knowledge_rag_query_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QueryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_sources_api_knowledge_rag_sources_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_source_api_knowledge_rag_sources_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourceCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_source_api_knowledge_rag_sources__source_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path: {
+                source_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    status_api_knowledge_rag_status_get: {
         parameters: {
             query?: never;
             header?: {
