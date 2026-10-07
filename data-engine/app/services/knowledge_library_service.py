@@ -11,7 +11,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
 from app.llm import LLMProvider, LLMRequest, Message, ResponseFormat, create_llm_provider
@@ -687,6 +687,23 @@ class KnowledgeLibraryService:
         return contradictions
 
     @staticmethod
+    def document_dict(document: KnowledgeDocument) -> dict:
+        return {
+            "id": document.id,
+            "collection_id": document.collection_id,
+            "title": document.title,
+            "author": document.author,
+            "document_type": document.document_type,
+            "source_url": document.source_url,
+            "publication_date": document.publication_date,
+            "language": document.language,
+            "status": document.status,
+            "checksum": document.checksum,
+            "metadata": document.metadata_,
+            "created_at": document.created_at,
+        }
+
+    @staticmethod
     def list_documents(
         db: Session, *, collection_id: int | None = None, limit: int = 200
     ) -> list[dict]:
@@ -698,22 +715,22 @@ class KnowledgeLibraryService:
         if collection_id is not None:
             statement = statement.where(KnowledgeDocument.collection_id == collection_id)
         return [
-            {
-                "id": document.id,
-                "collection_id": document.collection_id,
-                "title": document.title,
-                "author": document.author,
-                "document_type": document.document_type,
-                "source_url": document.source_url,
-                "publication_date": document.publication_date,
-                "language": document.language,
-                "status": document.status,
-                "checksum": document.checksum,
-                "metadata": document.metadata_,
-                "created_at": document.created_at,
-            }
+            KnowledgeLibraryService.document_dict(document)
             for document in db.scalars(statement).all()
         ]
+
+    @staticmethod
+    def get_document(db: Session, document_id: int) -> dict | None:
+        """Un documento por id, con el numero total de fragmentos (``chunk_count``)."""
+        document = db.get(KnowledgeDocument, document_id)
+        if document is None:
+            return None
+        count = db.scalar(
+            select(func.count())
+            .select_from(KnowledgeChunk)
+            .where(KnowledgeChunk.knowledge_document_id == document_id)
+        )
+        return {**KnowledgeLibraryService.document_dict(document), "chunk_count": int(count or 0)}
 
     @staticmethod
     def _strings(value: Any) -> list[str]:
