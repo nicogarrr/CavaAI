@@ -5,6 +5,7 @@ Cache en memoria de 60s para no golpear Yahoo en cada carga de la home.
 """
 from __future__ import annotations
 
+import math
 import re
 import threading
 import time
@@ -256,23 +257,32 @@ def _fetch_yahoo_candles(
         volumes_raw = quote.get("volume") or []
         t: list[int] = []
         c: list[float] = []
-        o: list[float] = []
-        h: list[float] = []
-        l: list[float] = []
+        o: list[float | None] = []
+        h: list[float | None] = []
+        l: list[float | None] = []
         v: list[float | None] = []
+        def optional_value(values: list, index: int) -> float | None:
+            if index >= len(values) or values[index] is None:
+                return None
+            try:
+                value = float(values[index])
+            except (TypeError, ValueError):
+                return None
+            return value if math.isfinite(value) else None
+
         for index, close in enumerate(closes_raw):
             if close is None:
                 continue
             close = float(close)
             t.append(int(timestamps[index]))
             c.append(close)
-            o.append(float(opens_raw[index]) if opens_raw[index] is not None else close)
-            h.append(float(highs_raw[index]) if highs_raw[index] is not None else close)
-            l.append(float(lows_raw[index]) if lows_raw[index] is not None else close)
+            o.append(optional_value(opens_raw, index))
+            h.append(optional_value(highs_raw, index))
+            l.append(optional_value(lows_raw, index))
             # F318: volumen desconocido = None (la UI muestra N/D y el
             # análisis técnico lo ignora), nunca un 0.0 fabricado que se
             # presenta como dato conocido y arrastra las medias a 0/0.
-            v.append(float(volumes_raw[index]) if volumes_raw and volumes_raw[index] is not None else None)
+            v.append(optional_value(volumes_raw, index))
         if not c:
             return None
         return {"s": "ok", "c": c, "t": t, "o": o, "h": h, "l": l, "v": v}
