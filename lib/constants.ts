@@ -167,6 +167,19 @@ export const NAV_SECTIONS: NavSection[] = [
   },
 ];
 
+/**
+ * Barra inferior movil: 5 destinos, nada mas. El resto del arbol sigue en el
+ * menu lateral (icono de menu de la cabecera). Cada href existe en NAV_SECTIONS
+ * o es la ruta del asistente.
+ */
+export const MOBILE_TAB_ITEMS: NavItem[] = [
+  { href: '/inicio', label: 'Inicio', icon: Home },
+  { href: '/movers', label: 'Mercados', icon: LineChart },
+  { href: '/watchlist', label: 'Watchlist', icon: Star },
+  { href: '/portfolio', label: 'Cartera', icon: Briefcase },
+  { href: '/research/assistant', label: 'IA', icon: Sparkles },
+];
+
 /** Aplana el arbol a una lista de rutas, para buscar un href puntual. */
 export function flattenNavItems(sections: NavSection[] = NAV_SECTIONS): NavItem[] {
   return sections.flatMap((section) =>
