@@ -22,7 +22,8 @@ test('F306: el pie distingue cobertura histórica y respeta la concordancia 1 a�
     assert.doesNotMatch(panels, /El modelo cubre \{model\.historical_review\.years_covered\} años/);
 });
 
-test('F307: el estado sin alertas de /risk dice «de la cartera»', () => {
-    assert.match(risk, /20% de la cartera en una/);
+test('F307: el estado sin alertas de /risk solo tranquiliza con estado ok y escribe «de la cartera»', () => {
+    assert.match(risk, /status === 'ok'\s*\?\s*'Sin alertas de concentración o liquidez en los datos calculados\.'/);
+    assert.match(risk, /La cobertura incompleta no permite descartar alertas en el resto de la cartera/);
     assert.doesNotMatch(risk, /del cartera/);
 });
