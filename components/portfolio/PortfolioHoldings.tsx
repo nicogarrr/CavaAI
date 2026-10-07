@@ -137,6 +137,7 @@ export default function PortfolioHoldings({ holdings, userId, cash, baseCurrency
             {/* Móvil: cards sin scroll horizontal */}
             <div className="space-y-3 md:hidden">
               {currentHoldings.map((holding) => {
+                const gainKnown = !holding.fxMissing && holding.cost > 0;
                 const isPositive = holding.gain >= 0;
                 return (
                   <div key={holding.symbol} className="rounded-xl border border-gray-700 p-4">
@@ -162,20 +163,20 @@ export default function PortfolioHoldings({ holdings, userId, cash, baseCurrency
                     </div>
                     <dl className="mt-3 space-y-1.5 text-sm">
                       <div className="flex justify-between gap-2"><dt className="text-gray-500">Cantidad</dt><dd className="text-gray-200">{formatNumber(holding.quantity, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</dd></div>
-                      <div className="flex justify-between gap-2"><dt className="text-gray-500">Promedio</dt><dd className="text-gray-200">{format(holding.avgPrice, holding.nativeCurrency)}</dd></div>
+                      <div className="flex justify-between gap-2"><dt className="text-gray-500">Promedio</dt><dd className="text-gray-200">{holding.avgPrice > 0 ? format(holding.avgPrice, holding.nativeCurrency) : NA}</dd></div>
                       <div className="flex justify-between gap-2"><dt className="text-gray-500">Actual</dt><dd className="font-medium text-gray-200">{format(holding.currentPrice, holding.nativeCurrency)}</dd></div>
-                      <div className="flex justify-between gap-2"><dt className="text-gray-500">Valor</dt><dd className="font-semibold text-gray-100">{holding.fxMissing ? 'FX missing' : format(holding.value, holding.baseCurrency)}</dd></div>
+                      <div className="flex justify-between gap-2"><dt className="text-gray-500">Valor</dt><dd className="font-semibold text-gray-100">{holding.fxMissing ? 'Conversión o coste no disponible' : format(holding.value, holding.baseCurrency)}</dd></div>
                       <div className="flex items-center justify-between gap-2">
                         <dt className="text-gray-500">G/P</dt>
                         <dd className="flex items-center gap-2">
-                          <span className={`font-semibold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
-                            {holding.fxMissing ? NA : format(holding.gain, holding.baseCurrency)}
+                          <span className={`font-semibold ${!gainKnown ? 'text-gray-400' : isPositive ? 'text-green-400' : 'text-red-400'}`}>
+                            {gainKnown ? format(holding.gain, holding.baseCurrency) : NA}
                           </span>
                           <Badge
-                            variant={isPositive ? 'default' : 'destructive'}
-                            className={`${isPositive ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30' : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'}`}
+                            variant={!gainKnown ? 'outline' : isPositive ? 'default' : 'destructive'}
+                            className={`${!gainKnown ? 'text-gray-400' : isPositive ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30' : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'}`}
                           >
-                            {formatPercent(holding.gainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' }, NA)}
+                            {gainKnown ? formatPercent(holding.gainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' }, NA) : NA}
                           </Badge>
                         </dd>
                       </div>
@@ -234,6 +235,7 @@ export default function PortfolioHoldings({ holdings, userId, cash, baseCurrency
               </TableHeader>
               <TableBody>
                 {currentHoldings.map((holding) => {
+                  const gainKnown = !holding.fxMissing && holding.cost > 0;
                   const isPositive = holding.gain >= 0;
                   return (
                     <TableRow key={holding.symbol} className="border-gray-700 hover:bg-gray-800/50">
@@ -264,24 +266,24 @@ export default function PortfolioHoldings({ holdings, userId, cash, baseCurrency
                         {formatNumber(holding.quantity, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </TableCell>
                       <TableCell className="text-right text-gray-300">
-                        {format(holding.avgPrice, holding.nativeCurrency)}
+                        {holding.avgPrice > 0 ? format(holding.avgPrice, holding.nativeCurrency) : NA}
                       </TableCell>
                       <TableCell className="text-right text-gray-300 font-medium">
                         {format(holding.currentPrice, holding.nativeCurrency)}
                       </TableCell>
                       <TableCell className="text-right font-semibold text-gray-100">
-                        {holding.fxMissing ? <Badge variant="outline">FX missing</Badge> : format(holding.value, holding.baseCurrency)}
+                        {holding.fxMissing ? <Badge variant="outline">Conversión o coste no disponible</Badge> : format(holding.value, holding.baseCurrency)}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex flex-col items-end gap-1">
-                          <span className={`font-semibold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
-                            {holding.fxMissing ? NA : format(holding.gain, holding.baseCurrency)}
+                          <span className={`font-semibold ${!gainKnown ? 'text-gray-400' : isPositive ? 'text-green-400' : 'text-red-400'}`}>
+                            {gainKnown ? format(holding.gain, holding.baseCurrency) : NA}
                           </span>
                           <Badge
-                            variant={isPositive ? 'default' : 'destructive'}
-                            className={`${isPositive ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30' : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'}`}
+                            variant={!gainKnown ? 'outline' : isPositive ? 'default' : 'destructive'}
+                            className={`${!gainKnown ? 'text-gray-400' : isPositive ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30' : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'}`}
                           >
-                            {formatPercent(holding.gainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' }, NA)}
+                            {gainKnown ? formatPercent(holding.gainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' }, NA) : NA}
                           </Badge>
                         </div>
                       </TableCell>
