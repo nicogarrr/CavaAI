@@ -35,6 +35,9 @@ describe("formatProvenanceValue", () => {
         assert.equal(formatProvenanceValue(45, "shares"), "45 acciones")
         assert.equal(formatProvenanceValue(12, "satélites"), "12 satélites")
     })
+    it("pure y unidades adimensionales: sin sufijo técnico", () => {
+        for (const unit of ["pure", "unitless", "dimensionless"]) assert.equal(formatProvenanceValue(1.25, unit), "1,25")
+    })
     it("sin dato es N/D", () => {
         assert.equal(formatProvenanceValue(null, "USD"), "N/D")
     })
