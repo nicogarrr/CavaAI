@@ -210,10 +210,21 @@ jobs:
           script: |
             const marker = process.env.PREVIEW_MARKER;
             const issue = context.issue;
-            const { data: comments } = await github.paginate(github.rest.issues.listComments, {
-              ...issue,
-              per_page: 100,
-            });
+            // paginate devuelve el array de comentarios directamente (no {data}).
+            // Un 404 al listar significa que el PR/hilo ya no esta: nada que retirar.
+            let comments;
+            try {
+              comments = await github.paginate(github.rest.issues.listComments, {
+                ...issue,
+                per_page: 100,
+              });
+            } catch (error) {
+              if (error.status === 404) {
+                core.info('El hilo ya no existe; no hay comentario que retirar.');
+                return;
+              }
+              throw error;
+            }
             const mine = comments.filter((c) => c.body && c.body.includes(marker));
             if (mine.length === 0) {
               core.info('No habia comentario de preview que retirar.');
@@ -260,7 +271,8 @@ jobs:
             const issue = context.issue;
             const url = process.env.PREVIEW_URL;
             const sha = (process.env.PREVIEW_SHA || '').slice(0, 7);
-            const { data: comments } = await github.paginate(github.rest.issues.listComments, {
+            // paginate devuelve el array de comentarios directamente (no {data}).
+            const comments = await github.paginate(github.rest.issues.listComments, {
               ...issue,
               per_page: 100,
             });
