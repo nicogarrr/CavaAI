@@ -2042,6 +2042,8 @@ class FinancialIngestionService:
             select(FinancialFact).where(
                 FinancialFact.company_id == company.id,
                 FinancialFact.metric.in_(DERIVED_PAIR_METRICS),
+                FinancialFact.source_type == "FMP",
+                FinancialFact.fiscal_quarter == "FY",
             )
         ):
             if fact.fiscal_year is None:

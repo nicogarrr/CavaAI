@@ -347,3 +347,47 @@ def test_el_conteo_de_portada_no_entra_como_shares_diluted_trimestral(db, monkey
     assert [f.period for f in outstanding] == ["2025-08-15:Q3"]
 
 
+
+
+@pytest.mark.parametrize("foreign_source,quarter", [("SEC", "FY"), ("FMP", "TTM")])
+def test_fmp_derivatives_never_borrow_foreign_provider_or_ttm(db, foreign_source, quarter):
+    from app.models.entities import Document
+    company = _company(db)
+    document = Document(company_id=company.id, title="FMP test", source_type="FMP")
+    db.add(document)
+    db.flush()
+    for metric, value, source, period_type in (
+        ("operating_cash_flow", "100", "FMP", "FY"),
+        ("capital_expenditure", "-20", foreign_source, quarter),
+    ):
+        db.add(FinancialFact(company_id=company.id, metric=metric, value=Decimal(value),
+            unit="USD", period=f"2025-12-31:{period_type}", fiscal_year=2025,
+            fiscal_quarter=period_type, source_type=source, is_reported=True,
+            confidence=Decimal("0.9")))
+    db.flush()
+    FinancialIngestionService()._add_derived_facts(db, company, document)
+    assert _facts(db, company, "free_cash_flow") == []
+
+
+def test_fmp_derivatives_use_only_own_annual_pair(db):
+    from app.models.entities import Document
+    company = _company(db)
+    document = Document(company_id=company.id, title="FMP test", source_type="FMP")
+    db.add(document)
+    db.flush()
+    for metric, value, source, quarter in (
+        ("operating_cash_flow", "100", "FMP", "FY"),
+        ("capital_expenditure", "-20", "FMP", "FY"),
+        ("operating_cash_flow", "900", "SEC", "FY"),
+        ("capital_expenditure", "-800", "FMP", "TTM"),
+    ):
+        db.add(FinancialFact(company_id=company.id, metric=metric, value=Decimal(value),
+            unit="USD", period=f"2025-12-31:{quarter}", fiscal_year=2025,
+            fiscal_quarter=quarter, source_type=source, is_reported=True,
+            confidence=Decimal("0.9")))
+    db.flush()
+    FinancialIngestionService()._add_derived_facts(db, company, document)
+    (fact,) = _facts(db, company, "free_cash_flow")
+    assert fact.value == Decimal("80")
+    assert fact.source_type == "FMP"
+    assert fact.fiscal_quarter == "FY"
