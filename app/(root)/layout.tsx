@@ -1,7 +1,8 @@
 import Breadcrumbs from "@/components/layout/Breadcrumbs";
 import Header from "@/components/Header";
 import BottomNav from "@/components/layout/BottomNav";
-import Sidebar, { SIDEBAR_COLLAPSED_COOKIE } from "@/components/layout/Sidebar";
+import Sidebar from "@/components/layout/Sidebar";
+import { SIDEBAR_COLLAPSED_COOKIE } from "@/lib/ui/sidebar-preference";
 import OnlineBanner from "@/components/OnlineBanner";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { requireAuthenticatedUser } from "@/lib/auth/require-user";

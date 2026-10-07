@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 describe('navegación compacta', () => {
     it('barra de iconos por defecto, conserva la elección de expandir', () => {
-        assert.match(readFileSync('components/layout/Sidebar.tsx', 'utf8'), /SIDEBAR_COLLAPSED_COOKIE = 'cavaai-sidebar-collapsed'/);
+        assert.match(readFileSync('lib/ui/sidebar-preference.ts', 'utf8'), /SIDEBAR_COLLAPSED_COOKIE = 'cavaai-sidebar-collapsed'/);
+        const layout = readFileSync('app/(root)/layout.tsx', 'utf8');
+        assert.match(layout, /import \{ SIDEBAR_COLLAPSED_COOKIE \} from [\"']@\/lib\/ui\/sidebar-preference[\"']/);
+        assert.doesNotMatch(layout, /import Sidebar, \{/);
         assert.match(readFileSync('app/(root)/layout.tsx', 'utf8'), /jar.get\(SIDEBAR_COLLAPSED_COOKIE\)\?\.value !== '0'/);
     });
     it('móvil mantiene Cartera activa en sus subrutas sin alterar desktop', () => {
