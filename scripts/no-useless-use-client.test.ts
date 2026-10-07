@@ -295,6 +295,13 @@ describe('la lista de excepciones no crece sin motivo', () => {
 });
 
 describe('el escaner y el guard cuentan lo mismo', () => {
+  it('LibraryChat justifica su directiva por estado y envío interactivo', () => {
+    const row = byRel.get('app/(root)/inversores/_components/LibraryChat.tsx');
+    assert.ok(row);
+    assert.equal(row.hasUseClient, true);
+    assert.equal(row.justified, true, 'preguntas, respuesta y estado busy/error requieren hooks y eventos');
+  });
+
   it('scan-use-client.mjs no reporta ninguna clase (B)', () => {
     // El escaner es la herramienta de lectura humana y el guard el que
     // bloquea. Si se desincronizasen, el guard pasaria en verde mientras el
@@ -309,7 +316,8 @@ describe('el escaner y el guard cuentan lo mismo', () => {
   });
 
   it('el numero de directivas client del repo no crece sin explicacion', () => {
-    // 83 = NewsHeadline adds visible-only async translation state/IntersectionObserver; 82 = 77 justificadas (SectionNav: usePathname para contexto de rutas) y antes 81 = 76 justificadas (CompanyTechnicalChart: hooks/canvas/rangos; CompanyTechnicalWorkspace: dynamic ssr:false) + 5 heredadas. Antes: 79 = 74 justificadas (A, incluye KnowledgeGraphCanvas: eventos de puntero, pan/zoom y BottomNav: usePathname; YouTubeEmbed: useState para cargar tras clic) + 5 heredadas del padre (C). Si sube, alguien
+    // 84 = LibraryChat: useState para pregunta/autor/respuesta/busy/error y eventos onSubmit/onChange;
+    // requiere interactividad real, no es excepción heredada. 83 = NewsHeadline adds visible-only async translation state/IntersectionObserver; 82 = 77 justificadas (SectionNav: usePathname para contexto de rutas) y antes 81 = 76 justificadas (CompanyTechnicalChart: hooks/canvas/rangos; CompanyTechnicalWorkspace: dynamic ssr:false) + 5 heredadas. Antes: 79 = 74 justificadas (A, incluye KnowledgeGraphCanvas: eventos de puntero, pan/zoom y BottomNav: usePathname; YouTubeEmbed: useState para cargar tras clic) + 5 heredadas del padre (C). Si sube, alguien
     // ha anadido un modulo cliente: que lo justifique en la revision.
     const total = audit.filter((r) => r.hasUseClient).length;
     const justified = audit.filter((r) => r.hasUseClient && r.justified).length;
@@ -317,7 +325,7 @@ describe('el escaner y el guard cuentan lo mismo', () => {
     assert.equal(inherited, 5, 'cambian las excepciones: revisa COMPONENTS_EXCEPTIONS y su motivo');
     assert.equal(
       total,
-      83,
+      84,
       `han aparecido directivas 'use client' sin revisar (total ${total}, justificadas ${justified}, heredadas ${inherited})`,
     );
   });

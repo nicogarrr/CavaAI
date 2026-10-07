@@ -100,7 +100,7 @@ export type MostBoughtItem = {
   new_count: number;
   sellers_count: number;
   value_usd: number | null;
-  buyers: { slug: string; name: string; change: 'new' | 'increased' }[];
+  buyers: { slug: string; name: string; change: 'new' | 'increased'; report_date?: string }[];
 };
 
 export type MostBought = {
@@ -115,4 +115,26 @@ export type MostBought = {
 
 export async function getMostBought(): Promise<MostBought> {
   return requestJson('/api/investors/most-bought');
+}
+
+export type PortfolioOverlap = {
+  status: 'ok' | 'sin_datos';
+  kind: 'derivado';
+  message: string | null;
+  unresolved_positions: number;
+  managers_with_data: number;
+  managers_without_data: number;
+  managers_partial: number;
+  comparison_complete?: boolean;
+  report_dates: string[];
+  positions: {
+    ticker: string; name: string; cusip: string | null; identity_source: string | null;
+    status: 'sin_identificador' | 'sin_coincidencias' | 'coincidencia';
+    holders: { slug: string; name: string; report_date: string; filing_date: string | null; filing_url: string; coverage: string | null }[];
+  }[];
+  not_owned: MostBoughtItem[];
+};
+
+export async function getPortfolioOverlap(): Promise<PortfolioOverlap> {
+  return requestJson('/api/investors/portfolio-overlap');
 }
