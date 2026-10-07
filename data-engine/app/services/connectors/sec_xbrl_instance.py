@@ -178,10 +178,15 @@ def parse_instance_dimensioned_facts(
             continue
         scope = scopes.pop()
         tag = _local(el.tag)
+        if tag == "measure":
+            # Cada measure se resuelve con SU propio ambito (puede redeclarar
+            # prefijos o el ns por defecto) antes de perderlo al cerrarse.
+            el.set("clark", _qname_clark((el.text or "").strip(), scope))
+            continue
         if tag == "unit":
-            def _measures(parent, scope=scope) -> tuple[str, ...]:
+            def _measures(parent) -> tuple[str, ...]:
                 return tuple(
-                    _qname_clark((node.text or "").strip(), scope)
+                    node.get("clark") or ""
                     for node in parent.iter()
                     if _local(node.tag) == "measure"
                 )

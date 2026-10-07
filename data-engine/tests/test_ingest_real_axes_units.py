@@ -160,3 +160,31 @@ def test_visa_style_unprefixed_shares_still_yields_a_class_member():
     facts = parse_instance_dimensioned_facts(io.BytesIO(raw))
     assert len(facts) == 2
     assert pick_member(facts, None) == "CommonClassAMember"
+
+
+def test_measure_scope_is_its_own_not_the_unit_scope():
+    # Alias declarado SOLO en el measure del denominador: valido.
+    local_alias = b"""<xbrl xmlns="http://www.xbrl.org/2003/instance" xmlns:iso4217="http://www.xbrl.org/2003/iso4217"
+ xmlns:us-gaap="http://fasb.org/us-gaap/2024" xmlns:xbrldi="http://xbrl.org/2006/xbrldi">
+<unit id="U_x"><divide><unitNumerator><measure>iso4217:USD</measure></unitNumerator>
+<unitDenominator><measure xmlns:q="http://www.xbrl.org/2003/instance">q:shares</measure></unitDenominator></divide></unit>
+<context id="c1"><entity><identifier scheme="s">1</identifier>
+<segment><xbrldi:explicitMember dimension="us-gaap:StatementClassOfStockAxis">v:CommonClassAMember</xbrldi:explicitMember></segment></entity>
+<period><startDate>2024-01-01</startDate><endDate>2024-12-31</endDate></period></context>
+<us-gaap:EarningsPerShareDiluted contextRef="c1" unitRef="U_x">8.5</us-gaap:EarningsPerShareDiluted></xbrl>"""
+    assert _tags(local_alias) == {"EarningsPerShareDiluted"}
+    # El prefijo xbrli redefinido a un ns ajeno en el measure: rechazado.
+    foreign = local_alias.replace(
+        b'<measure xmlns:q="http://www.xbrl.org/2003/instance">q:shares</measure>',
+        b'<measure xmlns:xbrli="urn:foreign">xbrli:shares</measure>',
+    )
+    assert _tags(foreign) == set()
+    # Ns por defecto redefinido dentro del denominador a un ns ajeno: rechazado.
+    default_redef = local_alias.replace(
+        b'<measure xmlns:q="http://www.xbrl.org/2003/instance">q:shares</measure>',
+        b'<measure xmlns="urn:foreign">shares</measure>',
+    )
+    assert _tags(default_redef) == set()
+    # Ns por defecto redefinido al de xbrli en el denominador: valido.
+    default_ok = default_redef.replace(b"urn:foreign", b"http://www.xbrl.org/2003/instance")
+    assert _tags(default_ok) == {"EarningsPerShareDiluted"}
