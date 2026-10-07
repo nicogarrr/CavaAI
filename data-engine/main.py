@@ -31,6 +31,11 @@ except Exception:  # noqa: BLE001 — readiness reports the unavailable dependen
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     settings = get_settings()
+    if settings.app_env.lower() != "test":
+        from app.core.database import engine as _engine
+        from app.core.pool_probe import install as _install_pool_probe
+
+        _install_pool_probe(_engine)
     if settings.app_env.lower() == "test":
         # Tests use an isolated disposable schema. Runtime environments migrate
         # with Alembic before the process starts.
