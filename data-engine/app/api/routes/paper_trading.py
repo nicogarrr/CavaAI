@@ -1,0 +1,63 @@
+from datetime import UTC, datetime
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.core.database import get_db
+from app.models.paper_trading import PaperTrade
+from app.schemas.paper_trading import PaperProposal
+from app.services.paper_trading_service import create_proposal, refresh_trades, scoreboard, trade_out
+
+router = APIRouter()
+
+
+@router.post("/proposals", status_code=201)
+def propose(body: PaperProposal, db: Session = Depends(get_db)) -> dict:
+    try:
+        return trade_out(create_proposal(db, body))
+    except (ValueError, IntegrityError) as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Clave de propuesta duplicada o en conflicto") from exc
+
+
+@router.get("/proposals")
+def proposals(limit: int = Query(100, ge=1, le=500), db: Session = Depends(get_db)) -> list[dict]:
+    rows = db.scalars(select(PaperTrade).order_by(PaperTrade.id.desc()).limit(limit)).all()
+    return [trade_out(row) for row in rows]
+
+
+@router.get("/scoreboard")
+def score(db: Session = Depends(get_db)) -> dict:
+    return scoreboard(list(db.scalars(select(PaperTrade)).all()))
+
+
+@router.post("/refresh", status_code=202)
+def refresh(db: Session = Depends(get_db)) -> dict:
+    from app.workers.dramatiq_app import refresh_paper_trades
+
+    message = refresh_paper_trades.send(db.info.get("tenant_id"), db.info.get("user_id"))
+    return {"status": "queued", "message_id": str(message.message_id)}
+
+
+@router.post("/proposals/{proposal_id}/close")
+def close(proposal_id: int, db: Session = Depends(get_db)) -> dict:
+    row = db.scalar(select(PaperTrade).where(PaperTrade.id == proposal_id).with_for_update())
+    if row is None:
+        raise HTTPException(status_code=404, detail="Propuesta no encontrada")
+    if row.status == "closed":
+        return trade_out(row)
+    refresh_trades(db, only_id=proposal_id)
+    db.refresh(row, with_for_update=True)
+    if row.status == "closed":
+        return trade_out(row)
+    out = trade_out(row)
+    if row.status != "open" or out["quote_status"] != "available" or row.mark_at is None:
+        raise HTTPException(status_code=409, detail="Sin precio real reciente para cerrar")
+    if row.entry_at == row.mark_at:
+        raise HTTPException(status_code=409, detail="Falta una cotización posterior a la entrada")
+    row.exit_price, row.exit_at = row.mark_price, row.mark_at
+    row.close_reason, row.status = "manual", "closed"
+    db.commit()
+    return trade_out(row, datetime.now(UTC))

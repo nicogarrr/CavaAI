@@ -2222,3 +2222,17 @@ def generate_thesis_job(run_id: int) -> None:
     from app.services.thesis_job_service import run_thesis_job
 
     run_thesis_job(run_id)
+
+
+@dramatiq.actor(max_retries=1, min_backoff=30_000, time_limit=900_000)
+def refresh_paper_trades(tenant_id: int | None = None, user_id: str | None = None) -> dict[str, Any]:
+    from app.services.paper_trading_service import refresh_trades
+
+    db = _session(tenant_id, user_id)
+    try:
+        return {"actor": "refresh_paper_trades", **refresh_trades(db)}
+    except Exception as exc:
+        _rollback(db)
+        return _handle_actor_error("refresh_paper_trades", exc, tenant_id=tenant_id)
+    finally:
+        db.close()
