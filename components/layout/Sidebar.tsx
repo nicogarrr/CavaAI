@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import { ChevronsLeft, ChevronsRight, Settings, Target } from 'lucide-react';
 import { isNavItemActive, NAV_SECTIONS, showsNavSectionTitle, type NavItem } from '@/lib/constants';
 
-export const SIDEBAR_COLLAPSED_COOKIE = 'cavaai:sidebar-collapsed';
+import { SIDEBAR_COLLAPSED_COOKIE } from '@/lib/ui/sidebar-preference';
 
 /**
  * Navegacion de escritorio. Complementa a `components/MobileNav.tsx`, que usa
@@ -106,6 +106,7 @@ function NavLink({ item, pathname, collapsed }: { item: NavItem; pathname: strin
             <Link
                 href={item.href}
                 prefetch
+                aria-label={item.label}
                 title={collapsed ? item.label : undefined}
                 aria-current={active ? 'page' : undefined}
                 className={linkClasses(active, collapsed, 'text-sm', branchActive)}
@@ -113,17 +114,19 @@ function NavLink({ item, pathname, collapsed }: { item: NavItem; pathname: strin
                 {item.icon && <item.icon aria-hidden="true" className="h-4 w-4 shrink-0" />}
                 {!collapsed && <span className="truncate">{item.label}</span>}
             </Link>
-            {!collapsed && item.children && (
-                <ul className="mt-1 flex flex-col gap-1 border-l border-gray-700/50 pl-3">
+            {item.children && (
+                <ul className={collapsed ? "mt-1 flex flex-col gap-1" : "mt-1 flex flex-col gap-1 border-l border-gray-700/50 pl-3"}>
                     {item.children.map((child) => (
                         <li key={child.href}>
                             <Link
                                 href={child.href}
+                                aria-label={child.label}
+                                title={collapsed ? child.label : undefined}
                                 prefetch
                                 aria-current={isNavItemActive(pathname, child.href) ? 'page' : undefined}
-                                className={linkClasses(isNavItemActive(pathname, child.href), false, 'text-sm')}
+                                className={linkClasses(isNavItemActive(pathname, child.href), collapsed, 'text-sm')}
                             >
-                                <span className="truncate">{child.label}</span>
+                                {collapsed ? <child.icon aria-hidden="true" className="h-4 w-4 shrink-0" /> : <span className="truncate">{child.label}</span>}
                             </Link>
                         </li>
                     ))}
@@ -149,6 +152,7 @@ function FooterLink({
     return (
         <Link
             href={href}
+            aria-label={label}
             title={collapsed ? label : undefined}
             aria-current={isNavItemActive(pathname, href) ? 'page' : undefined}
             className={linkClasses(isNavItemActive(pathname, href), collapsed, 'text-sm')}
