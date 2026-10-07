@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 };
 
 export default async function ProPicksPage() {
-    // Preparar picks iniciales y estrategias disponibles en paralelo
+    // El render inicial usa el run persistido: no consulta fuentes externas opcionales.
     let initialResult: Awaited<ReturnType<typeof generateEnhancedProPicksWithRun>>;
     let strategies: Awaited<ReturnType<typeof getAvailableStrategies>>;
     try {
@@ -30,7 +30,7 @@ export default async function ProPicksPage() {
                 minScore: 70,
                 sector: 'all',
                 sortBy: 'score',
-            }),
+            }, { includeSignalOverlays: false }),
             getAvailableStrategies(),
         ]);
     } catch (error) {
