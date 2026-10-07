@@ -269,3 +269,35 @@ def test_duplicate_fact_and_chunk_ids_rejected():
         payload[field].append(copy.deepcopy(payload[field][0]))
         with pytest.raises(ValidationError, match="duplicate_"):
             EvidenceSource.model_validate(payload)
+
+
+@pytest.mark.parametrize("tenant_id", [None, "tenant-test", "1", "", True, False, 1.0, 0, -1])
+def test_legacy_or_invalid_tenant_is_unbound_and_cannot_enter_registry(tenant_id):
+    from app.services.evidence_contract import EvidenceRegistry
+
+    ledger = build_ingestion_evidence(
+        tenant_id=tenant_id,
+        document_id="document:1",
+        checksum="a" * 64,
+        source_type="SEC",
+        chunks=[{"text": "Legacy original", "metadata": {}}],
+    )
+    assert ledger == {"contract_version": "evidence.v1", "status": "tenant_unbound"}
+    assert "source_id" not in ledger and "chunks" not in ledger
+    with pytest.raises(ValidationError):
+        EvidenceSource.model_validate(ledger)
+    with pytest.raises(ValueError, match="tenant_required"):
+        EvidenceRegistry(tenant_id, ())
+
+
+@pytest.mark.parametrize("tenant_id", ["tenant-test", "1", True, 1.0, 0, -1])
+def test_source_and_translation_reject_tenant_coercion(tenant_id):
+    source = EvidenceSource.model_validate(fixture_source())
+    payload = fixture_source()
+    payload["tenant_id"] = tenant_id
+    with pytest.raises(ValidationError):
+        EvidenceSource.model_validate(payload)
+    with pytest.raises(ValueError, match="cross_tenant_translation"):
+        attach_translation(
+            source, chunk_id="c0", tenant_id=tenant_id, variant_id="es", language="es", text="Hola"
+        )

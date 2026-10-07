@@ -91,7 +91,7 @@ class ReportedObservation(ContractModel):
 class EvidenceSource(ContractModel):
     contract_version: Literal["evidence.v1"] = CONTRACT_VERSION
     source_id: str = Field(min_length=1)
-    tenant_id: int = Field(ge=1)
+    tenant_id: int = Field(ge=1, strict=True)
     document_id: str = Field(min_length=1)
     url: str | None = None
     author: str | None = None
@@ -141,7 +141,7 @@ class EvidenceRegistry:
     """Explicit tenant boundary even when SQL/RAG callers already filter."""
 
     def __init__(self, tenant_id: int, sources: tuple[EvidenceSource, ...]):
-        if tenant_id < 1:
+        if type(tenant_id) is not int or tenant_id < 1:
             raise ValueError("tenant_required")
         self.tenant_id = tenant_id
         self.sources: dict[str, EvidenceSource] = {}
@@ -256,7 +256,7 @@ def category_for_type(source_type: str) -> SourceCategory:
 
 def build_ingestion_evidence(
     *,
-    tenant_id: int | None,
+    tenant_id: int | str | None,
     document_id: str,
     checksum: str,
     source_type: str,
@@ -268,11 +268,14 @@ def build_ingestion_evidence(
 ) -> dict:
     """Persist one ledger per document in existing JSON metadata, no migration.
 
-    Legacy anonymous test imports retain an explicit unbound state; production
+    Legacy anonymous/string-tenant imports retain an explicit unbound state; production
     sessions provide tenant_id. They cannot enter a registry until rebound.
     This does not extract/review financial observations, or infer dates/rights.
     """
-    if tenant_id is None:
+    # Legacy fixtures use string identifiers. Keep their document import working
+    # without creating evidence authority for an unresolved tenant. Never coerce
+    # "1", 1.0 or True to tenant 1, nor assign an anonymous default tenant.
+    if type(tenant_id) is not int or tenant_id < 1:
         return {"contract_version": CONTRACT_VERSION, "status": "tenant_unbound"}
     source_id = f"tenant:{tenant_id}:{document_id}:{checksum}"
     evidence_chunks = []
@@ -328,7 +331,7 @@ def attach_translation(
     source: EvidenceSource, *, chunk_id: str, tenant_id: int, variant_id: str, language: str, text: str
 ) -> EvidenceSource:
     """A translation is a variant under the SAME source/chunk ID, never a vote."""
-    if tenant_id != source.tenant_id:
+    if type(tenant_id) is not int or tenant_id < 1 or tenant_id != source.tenant_id:
         raise ValueError("cross_tenant_translation")
     if not any(chunk.chunk_id == chunk_id for chunk in source.chunks):
         raise ValueError("translation_chunk_missing")

@@ -25,9 +25,10 @@ There is no migration, network call, paid provider or frontend change here.
 Every record names URL, author, publication date, language, rights, byte hash,
 version, tenant, category and original chunk text/hash. Missing values remain
 null/`und`/`unknown`; a fetch timestamp is not a publication date. Public access
-is not treated as redistribution permission. Anonymous legacy/test ingestion
+is not treated as redistribution permission. Anonymous or non-integer legacy/test ingestion
 is explicitly `tenant_unbound`, not silently assigned to a tenant; it cannot
-be loaded as a valid `EvidenceSource`. Existing imported documents are NOT
+be loaded as a valid `EvidenceSource`. Numeric strings, booleans and floats are
+not coerced into tenant IDs by sources, registries or translation attachment. Existing imported documents are NOT
 backfilled by this patch.
 
 Routing is conservative: filings are candidate reported evidence, news is a
