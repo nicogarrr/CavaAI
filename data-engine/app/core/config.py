@@ -1,10 +1,11 @@
+import json
 from functools import lru_cache
 from pathlib import Path
-from typing import Self
+from typing import Annotated, Self
 from urllib.parse import urlsplit
 
-from pydantic import Field, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 # Los unicos APP_ENV que authorizes a saltarse las garantias de produccion.
 # Todo lo demas (incluidos 'staging', 'preprod' y los typos) se trata como
@@ -325,7 +326,7 @@ class Settings(BaseSettings):
     # max_tokens bajo devuelven "no assistant message". Suelo de salida para ellos.
     llm_hidden_reasoning_models: str = "longcat-2.5-preview-free"
     llm_hidden_reasoning_min_tokens: int = Field(default=1024, ge=1, le=100_000)
-    llm_model_overrides: dict[str, str] = Field(default_factory=dict)
+    llm_model_overrides: Annotated[dict[str, str], NoDecode] = Field(default_factory=dict)
     llm_max_output_tokens: int = Field(default=16_000, ge=1, le=1_000_000)
     llm_daily_cap_eur: float = Field(default=1.50, ge=0)
     llm_monthly_cap_eur: float = Field(default=40.00, ge=0)
@@ -355,6 +356,15 @@ class Settings(BaseSettings):
         'dev' y 'ci' sin limite efectivo.
         """
         return not self.is_production
+
+    @field_validator("llm_model_overrides", mode="before")
+    @classmethod
+    def _empty_overrides_is_empty_dict(cls, value):
+        """Una variable vacia (LLM_MODEL_OVERRIDES=) no puede tumbar el arranque."""
+        if isinstance(value, str):
+            text = value.strip()
+            return json.loads(text) if text else {}
+        return value
 
     @model_validator(mode="after")
     def validate_production_security(self) -> Self:
