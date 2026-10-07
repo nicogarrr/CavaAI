@@ -3,6 +3,7 @@
 import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 import { researchIdentityHeaders } from '@/lib/auth/research-identity';
 import { getCandles, getProfile, getStockQuote } from '@/lib/actions/finnhub.actions';
+import { datedQuoteMetrics } from '@/lib/market/quote-metrics';
 import { marketHistoryStatus } from '@/lib/market/history-status';
 import { sessionDateEt } from '@/lib/market/quote-freshness';
 import { quoteSymbolFor } from '@/lib/market/quote-symbol';
@@ -21,6 +22,8 @@ export type CompanyMarketSnapshot = {
         high: number | null;
         low: number | null;
         previousClose: number | null;
+        metricsSource?: string | null;
+        metricsSession?: string | null;
         // Fecha del dato mostrado como precio: cotización en vivo -> null;
         // fallback al último cierre de vela -> la fecha de esa vela, para
         // que la cabecera la rotule y no parezca precio actual.
@@ -136,6 +139,7 @@ export async function getCompanyMarketSnapshot(ticker: string): Promise<CompanyM
             ? sessionDateEt(quote.t)
             : null
           : lastClose?.date ?? null;
+    const metrics = datedQuoteMetrics(quote, quoteUsable);
     return {
         ticker: normalized,
         // La identidad la pone el master (curado); el perfil del proveedor
@@ -148,10 +152,12 @@ export async function getCompanyMarketSnapshot(ticker: string): Promise<CompanyM
             price,
             change,
             changePercent,
-            open: quote?.o ?? null,
-            high: quote?.h ?? null,
-            low: quote?.l ?? null,
-            previousClose: quote?.pc ?? null,
+            open: metrics.open,
+            high: metrics.high,
+            low: metrics.low,
+            previousClose: metrics.previousClose,
+            metricsSource: metrics.source,
+            metricsSession: metrics.timestamp ? sessionDateEt(metrics.timestamp) : null,
             priceAsOf,
             priceKind: quoteLive ? 'live' : price !== null ? 'close' : null,
         },

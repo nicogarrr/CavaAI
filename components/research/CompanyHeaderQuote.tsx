@@ -16,6 +16,7 @@ const SHORT_DATE: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' 
  */
 export function CompanyHeaderQuote({ snapshot }: { snapshot: CompanyMarketSnapshot }) {
     const { quote, currency, history } = snapshot;
+    const hasDatedMetrics = !!quote.metricsSource && !!quote.metricsSession;
     const showPrice = quote.price != null && isValidCurrencyCode(currency);
     if (!showPrice && history.length === 0) return null;
     const sessions = history.slice(-SPARK_SESSIONS);
@@ -61,8 +62,8 @@ export function CompanyHeaderQuote({ snapshot }: { snapshot: CompanyMarketSnapsh
                 <div className="overflow-x-auto">
                 <dl className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-gray-800 border-y border-gray-800" data-testid="company-metric-strip">
                     {[
-                        ['Apertura', quote.open], ['Máximo', quote.high],
-                        ['Mínimo', quote.low], ['Cierre anterior', quote.previousClose],
+                        ['Apertura', hasDatedMetrics ? quote.open : null], ['Máximo', hasDatedMetrics ? quote.high : null],
+                        ['Mínimo', hasDatedMetrics ? quote.low : null], ['Cierre anterior', null],
                     ].map(([label, value]) => (
                         <div className="min-w-0 px-2 py-3 first:pl-0 sm:px-3" key={String(label)}>
                             <dt className="text-xs text-gray-500">{label}</dt>
@@ -70,6 +71,7 @@ export function CompanyHeaderQuote({ snapshot }: { snapshot: CompanyMarketSnapsh
                         </div>
                     ))}
                 </dl>
+                {hasDatedMetrics ? <p className="mt-2 text-xs text-gray-500">Fuente: {quote.metricsSource} · Sesión del {formatMarketDate(quote.metricsSession, SHORT_DATE)}</p> : null}
                 </div>
             ) : null}
             {points && firstDate && lastDate ? (
