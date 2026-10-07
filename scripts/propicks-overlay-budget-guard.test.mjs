@@ -4,8 +4,11 @@ import test from 'node:test';
 import { withOptionalBudget } from '../lib/propicks/optional-budget.ts';
 const action = readFileSync('lib/actions/proPicks.actions.ts', 'utf8');
 const page = readFileSync('app/(root)/propicks/page.tsx', 'utf8');
+const tabs = readFileSync('components/proPicks/ProPicksTabs.tsx', 'utf8');
 test('el primer render no dispara consultas de overlays', () => {
     assert.match(page, /includeSignalOverlays: false/);
+    assert.match(tabs, /if \(activeTab !== 'estrategia'\) return;/);
+    assert.match(tabs, /\[activeTab, currentStrategy, picksByStrategy\]/);
     assert.match(action, /options\.includeSignalOverlays === false\s*\? finalists\s*: await attachSignalOverlays/);
     assert.match(action, /return withOptionalBudget\(async \(\) =>/);
     assert.match(action, /\}, finalists, 4_000\)/);
