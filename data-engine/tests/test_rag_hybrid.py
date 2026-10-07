@@ -109,7 +109,11 @@ def _wire(index, monkeypatch, fake):
 
 def test_search_signature_only_adds_optional_hybrid():
     params = inspect.signature(RAGIndex.search).parameters
-    assert list(params) == ["self", "query", "ticker", "limit", "tenant_id", "hybrid"]
+    assert list(params)[:6] == ["self", "query", "ticker", "limit", "tenant_id", "hybrid"]
+    # Unico anadido posterior: filtro opcional por tipo, solo por keyword.
+    assert list(params)[6:] == ["entity_type"]
+    assert params["entity_type"].kind is inspect.Parameter.KEYWORD_ONLY
+    assert params["entity_type"].default is None
     assert params["hybrid"].default is None
     assert params["query"].default is inspect.Parameter.empty
     assert params["ticker"].default is None

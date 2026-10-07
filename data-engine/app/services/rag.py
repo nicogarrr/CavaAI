@@ -396,7 +396,7 @@ class RAGIndex:
             row["scores"] = scores
         return row
 
-    def _query_filter(self, ticker: str | None, tenant_id: int):
+    def _query_filter(self, ticker: str | None, tenant_id: int, entity_type: str | None = None):
         from qdrant_client.models import FieldCondition, Filter, MatchValue
         conditions = []
         if ticker:
@@ -411,6 +411,10 @@ class RAGIndex:
                 match=MatchValue(value=tenant_id),
             )
         )
+        if entity_type:
+            conditions.append(
+                FieldCondition(key="entity_type", match=MatchValue(value=entity_type))
+            )
         return Filter(must=conditions) if conditions else None
 
     def search(
@@ -420,6 +424,8 @@ class RAGIndex:
         limit: int = 5,
         tenant_id: int | None = None,
         hybrid: bool | None = None,
+        *,
+        entity_type: str | None = None,
     ) -> list[dict]:
         """Busqueda semantica densa (default, contrato intacto) o hibrida RRF.
 
@@ -434,7 +440,11 @@ class RAGIndex:
             vector = self._dense_vectors([query])[0]
             client = self.client()
             self._ensure_collection(client)
-            query_filter = self._query_filter(ticker, tenant_id)
+            query_filter = (
+                self._query_filter(ticker, tenant_id, entity_type)
+                if entity_type
+                else self._query_filter(ticker, tenant_id)
+            )
             if not self._hybrid_wanted(hybrid):
                 results = client.search(
                     collection_name=self._collection(),
