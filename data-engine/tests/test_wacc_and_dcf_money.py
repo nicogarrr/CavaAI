@@ -403,3 +403,9 @@ def test_wacc_computes_for_megacap_with_tiny_real_debt(company_factory):
     assert Decimal(trace["debt_weight"]) == Decimal("300000000") / Decimal(
         "200300000000"
     )
+
+
+def test_sotp_adr_does_not_invent_factor_eight_money_loss():
+    from tests.test_sotp_engine import _sotp_result
+    result = _sotp_result({}, tags=["sotp", "adr:8"], price=80)
+    assert result["margin_of_safety"] == pytest.approx(result["expected_value"] / 10 - 1)

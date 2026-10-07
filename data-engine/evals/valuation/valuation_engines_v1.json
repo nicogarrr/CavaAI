@@ -6352,6 +6352,61 @@
         "gate_does_not_omit_itself"
       ],
       "hand_calculation": "Mismo cruce de ejercicio en pre-revenue: el margen FY2024 no entra en el snapshot FY2025, y sin precio no hay ni rango indicativo. Rechazo con la causa."
+    },
+    {
+      "id": "evsot_adr8_ordinary_price_basis",
+      "engine": "sotp",
+      "category": "happy_path",
+      "company": {
+        "ticker": "EVSOTADR8",
+        "name": "eval EVSOT01",
+        "company_type": "multi_segment",
+        "valuation_model": "sotp",
+        "factor_tags": [
+          "sotp",
+          "adr:8"
+        ]
+      },
+      "facts": {
+        "shares_diluted": 100,
+        "net_debt": 250,
+        "holding_company_discount": 0.12,
+        "segment_alpha_operating_metric": 80,
+        "segment_alpha_valuation_multiple": 12,
+        "segment_beta_operating_metric": 500,
+        "segment_beta_valuation_multiple": 1.1
+      },
+      "expected": {
+        "engine_key": "sotp",
+        "status": "ok",
+        "publishable": true,
+        "missing_inputs": [],
+        "publication_blockers": [],
+        "trace_engine": "sotp",
+        "closed_form": {
+          "bear_value": 9.198,
+          "base_value": 11.088,
+          "bull_value": 13.54752,
+          "expected_value": 11.1179069245
+        },
+        "adr_ratio": 8
+      },
+      "applies_to": [
+        "engine_publishable_status",
+        "bear_le_base_le_bull",
+        "expected_value_within_band",
+        "value_matches_closed_form",
+        "probabilities_sum_to_one",
+        "sensitivity_covers_base",
+        "missing_inputs_declared",
+        "no_silent_zero_net_debt",
+        "routing_expected",
+        "trace_records_evidence",
+        "gate_does_not_omit_itself",
+        "adr_ratio_basis"
+      ],
+      "price": 80,
+      "hand_calculation": "NAV ordinary unchanged; ADR80/8=10 comparable ordinary price; margin=expected/10-1."
     }
   ]
 }
