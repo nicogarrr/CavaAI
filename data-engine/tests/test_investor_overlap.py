@@ -18,18 +18,21 @@ def setup_portfolio():
     db.flush()
     db.add_all([Position(tenant_id=1, company_id=company.id, quantity=2),
                 Position(tenant_id=2, company_id=private.id, quantity=2)])
-    manager = FundManager(cik="0001067983", name="Berkshire", last_report_date=date(2026, 6, 30), coverage="partial")
+    manager = FundManager(tenant_id=1, cik="0001067983", name="Berkshire", last_report_date=date(2026, 6, 30), coverage="partial")
     db.add(manager)
     db.flush()
     for accession, filing, cusip, put_call in [("A-1", date(2026, 8, 14), "037833100", ""),
                                                ("A-2", date(2026, 8, 20), "037833100", ""),
                                                ("A-2", date(2026, 8, 20), "037833100", "CALL")]:
-        db.add(ManagerHolding(manager_id=manager.id, accession_number=accession, report_date=date(2026, 6, 30),
+        db.add(ManagerHolding(tenant_id=1, manager_id=manager.id, accession_number=accession, report_date=date(2026, 6, 30),
                               filing_date=filing, name_of_issuer="Apple", title_of_class="COM", cusip=cusip,
                               put_call=put_call, value_usd_thousands=Decimal(100), shares=Decimal(10),
                               filing_url="https://www.sec.gov/Archives/example"))
     db.commit()
     db.info["tenant_id"] = 1
+    # El fixture debe tener informes del tenant. NULL queda fuera correctamente.
+    assert db.query(FundManager).count() == 1
+    assert db.query(ManagerHolding).count() == 3
     return db
 
 
