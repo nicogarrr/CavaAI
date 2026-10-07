@@ -6,6 +6,8 @@ import type { LucideIcon } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 
+const subscribeHydration = () => () => undefined;
+
 /** `compact` para las vistas densas (terminal financiero, intelligence). */
 export type PanelDensity = 'default' | 'compact';
 
@@ -85,6 +87,7 @@ export function Panel({
     children,
     ...props
 }: PanelProps) {
+    const hydrated = React.useSyncExternalStore(subscribeHydration, () => true, () => false);
     const [open, setOpen] = React.useState(defaultOpen);
     const contentId = React.useId();
     const mobileOnly = collapsible === 'mobile';
@@ -119,6 +122,7 @@ export function Panel({
                 ) : null}
                 {toggleable ? (
                     <button
+                        disabled={!hydrated}
                         aria-controls={contentId}
                         aria-expanded={effectiveOpen}
                         className={cn(
