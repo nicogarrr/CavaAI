@@ -231,3 +231,27 @@ def test_oversized_section_not_treated_as_complete():
     )
     result = compare_sections(chunks(huge), chunks(huge))
     assert result["sections"][0]["status"] == "insufficient_data"
+
+
+def test_real_html_parser_and_long_chunker_preserve_sec_sections():
+    from app.services.document_ingestion_service import DocumentIngestionService
+
+    service = DocumentIngestionService()
+
+    def parse_html(risk):
+        body = ("<div><b><span>Item </span><span>1A.</span></b> <span>Risk Factors</span></div>"
+                + "".join(f"<p>{risk} Risk detail number {i} may affect revenue and production.</p>" for i in range(60))
+                + "<div><b>Item </b><span>2.</span> <span>Properties</span></div>"
+                + "<p>Our buildings outside the risk section should never appear as risks.</p>")
+        parsed = service._parse_html(body.encode())
+        raw_chunks = service._chunk_blocks(parsed.blocks, "hash", parsed.parser, "sec.htm", "https://www.sec.gov/")
+        assert len(raw_chunks) > 1
+        return [{"id": i + 1, "chunk_index": i, "text": c["text"]} for i, c in enumerate(raw_chunks)]
+
+    old, new = parse_html("Our supplier concentration can delay launch."), parse_html("Our single supplier can delay launch.")
+    result = compare_sections(new, old)
+    risk = result["sections"][0]
+    assert risk["status"] == "changed"
+    assert "Our single supplier" in str(risk)
+    assert "buildings" not in str(risk)
+    assert "Properties" not in str(risk)

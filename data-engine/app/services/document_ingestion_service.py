@@ -42,13 +42,23 @@ class _HTMLTextExtractor(HTMLParser):
         super().__init__()
         self._parts: list[str] = []
 
+    # Inline markup is not a paragraph boundary: SEC headings commonly split
+    # Item / 1A / Risk Factors across spans. Block elements are boundaries.
+    _BLOCK_TAGS = {"p", "div", "br", "tr", "td", "th", "li", "h1", "h2", "h3", "h4", "h5", "h6", "section", "table"}
+
+    def handle_starttag(self, tag: str, attrs: list) -> None:
+        if tag.lower() in self._BLOCK_TAGS:
+            self._parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() in self._BLOCK_TAGS:
+            self._parts.append("\n")
+
     def handle_data(self, data: str) -> None:
-        stripped = " ".join(data.split())
-        if stripped:
-            self._parts.append(stripped)
+        self._parts.append(re.sub(r"\s+", " ", data))
 
     def text(self) -> str:
-        return "\n".join(self._parts)
+        return "\n".join(" ".join(line.split()) for line in "".join(self._parts).splitlines())
 
 
 def _compact(text: str) -> str:
@@ -471,17 +481,27 @@ class DocumentIngestionService:
                 continue
             if len(text) > max_chars:
                 flush()
-                words = text.split()
+                # Keep each short line intact, especially section headings.
+                # Split only oversized lines and retain paragraph boundaries.
+                lines = []
+                for line in text.splitlines():
+                    while len(line) > max_chars:
+                        cut = line.rfind(" ", 0, max_chars + 1)
+                        if cut <= 0:
+                            cut = max_chars
+                        lines.append(line[:cut])
+                        line = line[cut:].lstrip(" ")
+                    lines.append(line)
                 piece: list[str] = []
-                for word in words:
-                    if sum(len(item) + 1 for item in piece) + len(word) > max_chars:
-                        current_text.append(" ".join(piece))
+                for line in lines:
+                    if piece and len("\n".join([*piece, line])) > max_chars:
+                        current_text.append("\n".join(piece))
                         current_meta.append(block.metadata)
                         flush()
                         piece = []
-                    piece.append(word)
+                    piece.append(line)
                 if piece:
-                    current_text.append(" ".join(piece))
+                    current_text.append("\n".join(piece))
                     current_meta.append(block.metadata)
                 continue
             if sum(len(item) + 2 for item in current_text) + len(text) > max_chars:

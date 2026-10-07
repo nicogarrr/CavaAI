@@ -71,6 +71,16 @@ def _unique_feeds(feeds: list[RSSFeed]) -> list[RSSFeed]:
     return unique
 
 
+def _release_before_fetch(db) -> None:
+    """Commit pending writes and return connection before network I/O.
+
+    Fail closed on commit failure: do not discard caller writes and fetch
+    anyway. Session identity and tenant scope survive the boundary.
+    """
+    if db is not None and hasattr(db, "in_transaction") and db.in_transaction():
+        db.commit()
+
+
 class FeedIngestionService:
     """Poll connectors and adapt their common result into existing ingestion services."""
 
@@ -217,8 +227,9 @@ class FeedIngestionService:
         is_sec_host = (parsed_url.hostname or "").lower() in {"sec.gov", "www.sec.gov"}
         final_url = url
 
+        _release_before_fetch(db)
         if is_sec_host:
-            content, content_type = await SECClient().filing_document(url)
+            content, content_type = await (self._sec_client or SECClient()).filing_document(url)
         else:
             content, content_type, final_url = await fetch_public_url_async(
                 url, max_bytes=MAX_DOCUMENT_BYTES, timeout=30
@@ -261,6 +272,7 @@ class FeedIngestionService:
         sec = self._sec_client or SECClient()
         try:
             index_url = derive_index_url(str(cik), str(accession))
+            _release_before_fetch(db)
             raw, _ = await sec.filing_document(index_url)
             index = parse_index(raw.decode("utf-8", errors="replace"))
             if index.accession != accession or int(index.cik) != int(cik):
