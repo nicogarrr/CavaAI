@@ -57,3 +57,11 @@ test('noticias y movers componen los badges junto al ticker', () => {
     // En movers, las tres tablas reciben el contexto.
     assert.equal((movers.match(/tickerSets=\{tickerSets\}/g) ?? []).length, 3);
 });
+
+ test('las tarjetas móviles conservan el contexto de cartera y watchlist', () => {
+    const flow = readFileSync('components/research/NewsEventsFlow.tsx', 'utf8');
+    const mobile = flow.slice(flow.indexOf('<ul aria-label="Eventos de noticias"'), flow.indexOf('</ul>'));
+    assert.match(mobile, /<TickerContextBadges/);
+    assert.match(mobile, /portfolioTickers=\{portfolioSet\}/);
+    assert.match(mobile, /watchlistTickers=\{watchlistSet\}/);
+});
