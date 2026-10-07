@@ -47,7 +47,7 @@ CLASS_MEMBER_PREFERENCE: dict[str, str] = {
 # hecho por segmento (StatementBusinessSegmentsAxis / DomesticMember) es el
 # BPA de un negocio, no el del emisor: no puede escribirse como eps_diluted
 # del consolidado (FIX5-9).
-CLASS_AXIS_SUFFIXES = ("ClassAxis", "ClassMemberAxis")
+CLASS_AXIS_SUFFIXES = ("ClassAxis", "ClassMemberAxis", "ClassOfStockAxis")
 CLASS_MEMBER_RE = re.compile(r"Class[A-Z]Member")
 
 _SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"

@@ -42,6 +42,24 @@ ALLOWED_UNITS: dict[str, frozenset[str]] = {
 _ALL_TAGS = {tag for tags in METRIC_TAGS.values() for tag in tags}
 
 
+def _unit_allowed(tag: str, unit_ref: str, units: dict[str, tuple[str, ...]]) -> bool:
+    """Resuelve el `unitRef` contra el `<unit>` declarado en la instancia.
+
+    Los emisores reales usan ids propios (BRK: `U_UnitedStatesOfAmericaDollarsShare`,
+    `U_shares`): el id no dice la magnitud, el `<measure>` si (`iso4217:USD`,
+    `xbrli:shares`). Sin `<unit>` resoluble se cae a la lista de ids conocidos.
+    """
+    allowed = ALLOWED_UNITS.get(tag)
+    if allowed is None:
+        return True
+    measures = units.get(unit_ref)
+    if not measures:
+        return unit_ref in allowed
+    if allowed is _EPS_UNITS:
+        return any(m.startswith("iso4217:") for m in measures)
+    return all(m in ("xbrli:shares", "xbrli:pure") for m in measures)
+
+
 @dataclass(frozen=True)
 class DimensionedFact:
     tag: str
@@ -117,10 +135,18 @@ def parse_instance_dimensioned_facts(
     `unitRef` que la metrica no admite descarta el hecho entero.
     """
     contexts: dict[str, tuple[date | None, date | None, date | None, tuple[tuple[str, str], ...]]] = {}
+    units: dict[str, tuple[str, ...]] = {}
     facts: list[DimensionedFact] = []
     for _event, el in ET.iterparse(stream):
         tag = _local(el.tag)
-        if tag == "context":
+        if tag == "unit":
+            units[el.get("id") or ""] = tuple(
+                (node.text or "").strip()
+                for node in el.iter()
+                if _local(node.tag) == "measure"
+            )
+            el.clear()
+        elif tag == "context":
             members = _member_pairs(el)
             start = end = instant = None
             for node in el.iter():
@@ -144,8 +170,7 @@ def parse_instance_dimensioned_facts(
                 el.clear()
                 continue
             unit_ref = (el.get("unitRef") or "").strip() or None
-            allowed = ALLOWED_UNITS.get(tag)
-            if unit_ref is not None and allowed is not None and unit_ref not in allowed:
+            if unit_ref is not None and not _unit_allowed(tag, unit_ref, units):
                 el.clear()
                 continue
             scale = el.get("scale") or "0"

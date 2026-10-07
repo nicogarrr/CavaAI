@@ -623,6 +623,11 @@ def _merge_esef_periods(
     return by_period, coverage
 
 
+def _norm_symbol(value: object) -> str:
+    """Normaliza la clase de acciones: BRK-B, BRK.B y BRK/B son el mismo emisor."""
+    return re.sub(r"[.\-/ ]", "", str(value)).upper()
+
+
 def _norm_date(value: Any) -> str | None:
     """Fecha ISO de un campo `date` (FMP): acepta ISO y epoch (segundos).
 
@@ -920,7 +925,7 @@ class FinancialIngestionService:
                 # este ticker - contaminaria la serie y el crecimiento derivado
                 # (FIX5-3). Una fila sin `symbol` no puede contradecirse y se
                 # acepta como hasta ahora.
-                if str(row.get("symbol") or ticker).upper() != ticker:
+                if _norm_symbol(row.get("symbol") or ticker) != _norm_symbol(ticker):
                     rows_rechazadas_por_symbol += 1
                     continue
                 statements += self._add_statement(
