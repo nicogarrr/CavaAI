@@ -87,6 +87,12 @@ test.describe("research thesis workspace", () => {
     // Without a persisted thesis the workspace says so - nothing invented.
     await expect(page.getByText("Aún no existe ninguna tesis.")).toBeVisible();
 
+    // Mobile intentionally starts collapsed; open the real control before checking content.
+    if ((page.viewportSize()?.width ?? 1440) < 768) {
+      const toggle = page.getByRole("button", { name: "Historial de versiones y aprobaciones" });
+      await toggle.click();
+      await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    }
     // Collapsible panels open by default on desktop viewports.
     await expect(
       page.getByText("Aún no hay historial de versiones."),

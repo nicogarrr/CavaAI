@@ -62,7 +62,7 @@ test.describe("investor knowledge flow", () => {
     await expect(page.getByText("Documento ingerido")).toBeVisible({ timeout: 30_000 });
 
     await page.goto("/knowledge");
-    await expect(page.getByText(title).first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(title).filter({ visible: true }).first()).toBeVisible({ timeout: 30_000 });
   });
 
   test("knowledge upload reset clears the visible filename (F142)", async ({ page }) => {
