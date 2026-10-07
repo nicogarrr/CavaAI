@@ -7,3 +7,8 @@ test('empty alerts do not claim safety when missing FX excludes positions', () =
     assert.match(source, /cobertura incompleta no permite descartar alertas/);
     assert.doesNotMatch(source, /ninguna posición supera los umbrales/);
 });
+
+test('the empty-alerts coverage message follows the refreshed dashboard, not the initial server snapshot', () => {
+    assert.match(source, /\bdashboard\?\.status === 'ok'/);
+    assert.doesNotMatch(source, /initialDashboard\?\.status/);
+});

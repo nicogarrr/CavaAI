@@ -282,7 +282,7 @@ export default function RiskDashboardView({ initialDashboard }: RiskDashboardVie
                 <CardContent className="pt-4">
                     {alerts.length === 0 ? (
                         <p className="py-6 text-center text-sm text-gray-500">
-                            {initialDashboard?.status === 'ok'
+                            {dashboard?.status === 'ok'
                                 ? 'Sin alertas de concentración o liquidez en los datos calculados.'
                                 : 'No hay alertas en los datos disponibles. La cobertura incompleta no permite descartar alertas en el resto de la cartera.'}
                         </p>
