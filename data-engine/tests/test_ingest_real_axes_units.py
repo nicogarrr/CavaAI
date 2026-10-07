@@ -1,0 +1,190 @@
+"""Ejes y unidades reales de Visa y Berkshire (FIX5-5, FIX5-9)."""
+
+import io
+
+from app.services.class_filer_eps_service import pick_member
+from app.services.connectors.sec_xbrl_instance import parse_instance_dimensioned_facts
+
+_NS = (
+    'xmlns="http://www.xbrl.org/2003/instance" '
+    'xmlns:xbrldi="http://xbrl.org/2006/xbrldi" '
+    'xmlns:us-gaap="http://fasb.org/us-gaap/2024" '
+    'xmlns:iso4217="http://www.xbrl.org/2003/iso4217" '
+    'xmlns:xbrli="http://www.xbrl.org/2003/instance"'
+)
+
+
+def _instance(axis: str, member: str, eps_unit: str, share_unit: str) -> bytes:
+    return f"""<xbrl {_NS}>
+<unit id="{eps_unit}"><divide><unitNumerator><measure>iso4217:USD</measure></unitNumerator>
+<unitDenominator><measure>xbrli:shares</measure></unitDenominator></divide></unit>
+<unit id="{share_unit}"><measure>xbrli:shares</measure></unit>
+<context id="c1"><entity><identifier scheme="http://www.sec.gov/CIK">1</identifier>
+<segment><xbrldi:explicitMember dimension="{axis}">{member}</xbrldi:explicitMember></segment></entity>
+<period><startDate>2024-01-01</startDate><endDate>2024-12-31</endDate></period></context>
+<us-gaap:EarningsPerShareDiluted contextRef="c1" unitRef="{eps_unit}">8.5</us-gaap:EarningsPerShareDiluted>
+<us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding contextRef="c1" unitRef="{share_unit}">2000000</us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding>
+</xbrl>""".encode()
+
+
+def test_brk_unit_ids_resolve_through_their_measures():
+    facts = parse_instance_dimensioned_facts(
+        io.BytesIO(
+            _instance(
+                "us-gaap:StatementClassOfStockAxis",
+                "brka:CommonClassAMember",
+                "U_UnitedStatesOfAmericaDollarsShare",
+                "U_shares",
+            )
+        )
+    )
+    assert {f.tag for f in facts} == {
+        "EarningsPerShareDiluted",
+        "WeightedAverageNumberOfDilutedSharesOutstanding",
+    }
+
+
+def test_eps_unit_with_share_only_measure_is_still_rejected():
+    raw = _instance("us-gaap:StatementClassOfStockAxis", "v:CommonClassAMember", "U_a", "U_b").replace(
+        b'unitRef="U_a"', b'unitRef="U_b"'
+    )
+    facts = parse_instance_dimensioned_facts(io.BytesIO(raw))
+    assert "EarningsPerShareDiluted" not in {f.tag for f in facts}
+
+
+def test_visa_statement_class_of_stock_axis_is_a_class_axis():
+    facts = parse_instance_dimensioned_facts(
+        io.BytesIO(
+            _instance(
+                "us-gaap:StatementClassOfStockAxis",
+                "v:CommonClassAMember",
+                "U_usdPerShare",
+                "U_shares",
+            )
+        )
+    )
+    assert pick_member(facts, None) == "CommonClassAMember"
+
+
+def test_segment_axis_is_still_not_a_class_axis():
+    facts = parse_instance_dimensioned_facts(
+        io.BytesIO(
+            _instance(
+                "us-gaap:StatementBusinessSegmentsAxis",
+                "v:CommonClassAMember",
+                "U_usdPerShare",
+                "U_shares",
+            )
+        )
+    )
+    assert pick_member(facts, None) is None
+
+
+def test_norm_symbol_treats_share_class_separators_as_the_same_issuer():
+    from app.services.financial_ingestion_service import _norm_symbol
+
+    assert _norm_symbol("BRK-B") == _norm_symbol("BRK.B") == _norm_symbol("brk/b")
+    assert _norm_symbol("BRK-B") != _norm_symbol("BRK-A")
+    assert _norm_symbol("AAPL") != _norm_symbol("MSFT")
+
+
+def _bad_unit_instance(num: str, den: str | None, metric: str = "EarningsPerShareDiluted") -> bytes:
+    unit = (
+        f"<unit id=\"U_x\"><divide><unitNumerator><measure>{num}</measure></unitNumerator>"
+        f"<unitDenominator><measure>{den}</measure></unitDenominator></divide></unit>"
+        if den
+        else f"<unit id=\"U_x\"><measure>{num}</measure></unit>"
+    )
+    return f"""<xbrl {_NS}>{unit}
+<context id="c1"><entity><identifier scheme="http://www.sec.gov/CIK">1</identifier>
+<segment><xbrldi:explicitMember dimension="us-gaap:StatementClassOfStockAxis">v:CommonClassAMember</xbrldi:explicitMember></segment></entity>
+<period><startDate>2024-01-01</startDate><endDate>2024-12-31</endDate></period></context>
+<us-gaap:{metric} contextRef="c1" unitRef="U_x">8.5</us-gaap:{metric}></xbrl>""".encode()
+
+
+def _tags(raw: bytes) -> set[str]:
+    return {f.tag for f in parse_instance_dimensioned_facts(io.BytesIO(raw))}
+
+
+def test_eps_requires_currency_per_share_structure():
+    assert _tags(_bad_unit_instance("iso4217:USD", "xbrli:shares")) == {"EarningsPerShareDiluted"}
+    assert _tags(_bad_unit_instance("xbrli:shares", "iso4217:USD")) == set()
+    assert _tags(_bad_unit_instance("xbrli:shares", "xbrli:shares")) == set()
+    assert _tags(_bad_unit_instance("iso4217:USD", None)) == set()
+
+
+def test_share_count_requires_a_simple_shares_unit():
+    m = "WeightedAverageNumberOfDilutedSharesOutstanding"
+    assert _tags(_bad_unit_instance("xbrli:shares", None, m)) == {m}
+    assert _tags(_bad_unit_instance("iso4217:USD", "xbrli:shares", m)) == set()
+    assert _tags(_bad_unit_instance("xbrli:shares", "xbrli:shares", m)) == set()
+
+
+def test_undeclared_unit_fails_closed():
+    raw = _bad_unit_instance("iso4217:USD", "xbrli:shares").replace(b'unitRef="U_x"', b'unitRef="U_missing"')
+    assert _tags(raw) == set()
+
+
+def test_unprefixed_shares_in_default_namespace_is_the_xbrli_unit():
+    # Visa / BRK reales: <measure>shares</measure> con el ns por defecto.
+    m = "WeightedAverageNumberOfDilutedSharesOutstanding"
+    assert _tags(_bad_unit_instance("shares", None, m)) == {m}
+    assert _tags(_bad_unit_instance("iso4217:USD", "shares")) == {"EarningsPerShareDiluted"}
+    assert _tags(_bad_unit_instance("shares", "shares")) == set()
+    assert _tags(_bad_unit_instance("shares", "iso4217:USD")) == set()
+
+
+def test_prefix_alias_resolves_by_namespace_not_by_text():
+    m = "WeightedAverageNumberOfDilutedSharesOutstanding"
+    aliased = _bad_unit_instance("q:shares", None, m).replace(
+        b"<xbrl ", b'<xbrl xmlns:q="http://www.xbrl.org/2003/instance" ', 1
+    )
+    assert _tags(aliased) == {m}
+
+
+def test_foreign_namespace_named_shares_is_rejected():
+    m = "WeightedAverageNumberOfDilutedSharesOutstanding"
+    foreign = _bad_unit_instance("xbrli:shares", None, m).replace(
+        b'xmlns:xbrli="http://www.xbrl.org/2003/instance"', b'xmlns:xbrli="http://example.com/other"'
+    )
+    assert _tags(foreign) == set()
+    undeclared = _bad_unit_instance("zz:shares", None, m)
+    assert _tags(undeclared) == set()
+
+
+def test_visa_style_unprefixed_shares_still_yields_a_class_member():
+    raw = _instance(
+        "us-gaap:StatementClassOfStockAxis", "v:CommonClassAMember", "U_usdPerShare", "U_shares"
+    ).replace(b"<measure>xbrli:shares</measure>", b"<measure>shares</measure>")
+    assert b"xbrli:shares" not in raw.split(b"<context")[0]
+    facts = parse_instance_dimensioned_facts(io.BytesIO(raw))
+    assert len(facts) == 2
+    assert pick_member(facts, None) == "CommonClassAMember"
+
+
+def test_measure_scope_is_its_own_not_the_unit_scope():
+    # Alias declarado SOLO en el measure del denominador: valido.
+    local_alias = b"""<xbrl xmlns="http://www.xbrl.org/2003/instance" xmlns:iso4217="http://www.xbrl.org/2003/iso4217"
+ xmlns:us-gaap="http://fasb.org/us-gaap/2024" xmlns:xbrldi="http://xbrl.org/2006/xbrldi">
+<unit id="U_x"><divide><unitNumerator><measure>iso4217:USD</measure></unitNumerator>
+<unitDenominator><measure xmlns:q="http://www.xbrl.org/2003/instance">q:shares</measure></unitDenominator></divide></unit>
+<context id="c1"><entity><identifier scheme="s">1</identifier>
+<segment><xbrldi:explicitMember dimension="us-gaap:StatementClassOfStockAxis">v:CommonClassAMember</xbrldi:explicitMember></segment></entity>
+<period><startDate>2024-01-01</startDate><endDate>2024-12-31</endDate></period></context>
+<us-gaap:EarningsPerShareDiluted contextRef="c1" unitRef="U_x">8.5</us-gaap:EarningsPerShareDiluted></xbrl>"""
+    assert _tags(local_alias) == {"EarningsPerShareDiluted"}
+    # El prefijo xbrli redefinido a un ns ajeno en el measure: rechazado.
+    foreign = local_alias.replace(
+        b'<measure xmlns:q="http://www.xbrl.org/2003/instance">q:shares</measure>',
+        b'<measure xmlns:xbrli="urn:foreign">xbrli:shares</measure>',
+    )
+    assert _tags(foreign) == set()
+    # Ns por defecto redefinido dentro del denominador a un ns ajeno: rechazado.
+    default_redef = local_alias.replace(
+        b'<measure xmlns:q="http://www.xbrl.org/2003/instance">q:shares</measure>',
+        b'<measure xmlns="urn:foreign">shares</measure>',
+    )
+    assert _tags(default_redef) == set()
+    # Ns por defecto redefinido al de xbrli en el denominador: valido.
+    default_ok = default_redef.replace(b"urn:foreign", b"http://www.xbrl.org/2003/instance")
+    assert _tags(default_ok) == {"EarningsPerShareDiluted"}

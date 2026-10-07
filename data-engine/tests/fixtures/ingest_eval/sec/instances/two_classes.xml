@@ -1,15 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- origin: synthetic_fixture. Cifras y miembros inventados para el eval. -->
-<xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:us-gaap="http://fasb.org/us-gaap/2024">
+<xbrli:xbrl xmlns:iso4217="http://www.xbrl.org/2003/iso4217" xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:us-gaap="http://fasb.org/us-gaap/2024">
+ <xbrli:unit id="uUSD"><xbrli:divide><xbrli:unitNumerator><xbrli:measure>iso4217:USD</xbrli:measure></xbrli:unitNumerator><xbrli:unitDenominator><xbrli:measure>xbrli:shares</xbrli:measure></xbrli:unitDenominator></xbrli:divide></xbrli:unit>
+ <xbrli:unit id="ushares"><xbrli:measure>xbrli:shares</xbrli:measure></xbrli:unit>
  <xbrli:context id="cA">
   <xbrli:entity><xbrli:identifier scheme="http://www.sec.gov/CIK">1</xbrli:identifier></xbrli:entity>
   <xbrli:period><xbrli:startDate>2025-01-01</xbrli:startDate><xbrli:endDate>2025-12-31</xbrli:endDate></xbrli:period>
-  <xbrli:scenario><xbrldi:explicitMember xmlns:xbrldi="http://xbrl.org/2006/xbrldi">us-gaap:CommonClassAMember</xbrldi:explicitMember></xbrli:scenario>
+  <xbrli:scenario><xbrldi:explicitMember xmlns:xbrldi="http://xbrl.org/2006/xbrldi" dimension="us-gaap:CommonClassAxis">us-gaap:CommonClassAMember</xbrldi:explicitMember></xbrli:scenario>
  </xbrli:context>
  <xbrli:context id="cB">
   <xbrli:entity><xbrli:identifier scheme="http://www.sec.gov/CIK">1</xbrli:identifier></xbrli:entity>
   <xbrli:period><xbrli:startDate>2025-01-01</xbrli:startDate><xbrli:endDate>2025-12-31</xbrli:endDate></xbrli:period>
-  <xbrli:scenario><xbrldi:explicitMember xmlns:xbrldi="http://xbrl.org/2006/xbrldi">us-gaap:CommonClassBMember</xbrldi:explicitMember></xbrli:scenario>
+  <xbrli:scenario><xbrldi:explicitMember xmlns:xbrldi="http://xbrl.org/2006/xbrldi" dimension="us-gaap:CommonClassAxis">us-gaap:CommonClassBMember</xbrldi:explicitMember></xbrli:scenario>
  </xbrli:context>
  <us-gaap:EarningsPerShareDiluted contextRef="cA" unitRef="uUSD" decimals="2">4.25</us-gaap:EarningsPerShareDiluted>
  <us-gaap:EarningsPerShareDiluted contextRef="cB" unitRef="uUSD" decimals="2">0.75</us-gaap:EarningsPerShareDiluted>

@@ -265,7 +265,7 @@ def extract_xbrl_facts(content: bytes) -> list[dict[str, Any]]:
                     "start": fact.start.isoformat() if fact.start else None,
                     "end": fact.end.isoformat() if fact.end else None,
                     "instant": fact.instant.isoformat() if fact.instant else None,
-                    "members": list(fact.members),
+                    "members": [member for _axis, member in fact.members],
                 }
             )
         except Exception:  # noqa: BLE001 - un fact roto no tira el resto
