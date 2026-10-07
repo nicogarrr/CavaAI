@@ -58,6 +58,13 @@ def create_llm_provider(
         client=client,
         timeout_seconds=settings.llm_timeout_seconds,
         max_retries=settings.llm_max_retries,
+        total_timeout_seconds=settings.llm_total_timeout_seconds,
+        hidden_reasoning_models={
+            model.strip()
+            for model in settings.llm_hidden_reasoning_models.split(",")
+            if model.strip()
+        },
+        hidden_reasoning_min_tokens=settings.llm_hidden_reasoning_min_tokens,
         max_output_tokens=settings.llm_max_output_tokens,
     )
 
