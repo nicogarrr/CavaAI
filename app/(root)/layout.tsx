@@ -33,7 +33,7 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
     // las carga perezosamente al abrirse por primera vez y las reutiliza el
     // resto de la sesion; el header se monta una sola vez igualmente.
     const collapsed = await cookies().then(
-        (jar) => jar.get(SIDEBAR_COLLAPSED_COOKIE)?.value === '1',
+        (jar) => jar.get(SIDEBAR_COLLAPSED_COOKIE)?.value !== '0',
     );
 
     return (
