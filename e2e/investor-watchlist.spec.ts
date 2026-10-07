@@ -47,8 +47,9 @@ test.describe("investor watchlist flow", () => {
         "href",
         /\/research\/[^/]+$/,
       );
+      await row.locator("summary").click();
       await expect(
-        row.getByRole("button", { name: "Eliminar de Watchlist" }),
+        row.getByRole("button", { name: /^Eliminar .+ de la watchlist$/i }),
       ).toBeVisible();
     }
   });
@@ -62,7 +63,8 @@ test.describe("investor watchlist flow", () => {
       test.skip(true, "Watchlist is empty; nothing to remove.");
     }
 
-    await rows.first().getByRole("button", { name: "Eliminar de Watchlist" }).click();
+    await rows.first().locator("summary").click();
+    await rows.first().getByRole("button", { name: /^Eliminar .+ de la watchlist$/i }).click();
     if (initial === 1) {
       await expect(page.getByText("Tu Watchlist está vacía")).toBeVisible({ timeout: 15_000 });
     } else {
