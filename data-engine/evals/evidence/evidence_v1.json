@@ -2077,6 +2077,396 @@
       },
       "expected": "accept",
       "error": null
+    },
+    {
+      "id": "ambiguous_literal_30",
+      "tenant_id": 1,
+      "sources": [
+        {
+          "source_id": "filing-2025",
+          "tenant_id": 1,
+          "document_id": "filing-2025",
+          "url": "https://example.invalid/filing-2025",
+          "author": "Synthetic issuer",
+          "published_on": "2026-02-01",
+          "language": "en",
+          "rights": "synthetic_fixture",
+          "document_sha256": "33875bd674235075d19566150ee9cc5e921cec801a30dd23239241912952ebf6",
+          "version": "fixture.1",
+          "category": "filing",
+          "review_status": "verified",
+          "chunks": [
+            {
+              "chunk_id": "c0",
+              "variants": [
+                {
+                  "variant_id": "original",
+                  "language": "en",
+                  "text": "ACME reported FCF (12) USD million FY2025.",
+                  "sha256": "682333bbb2cf7016b7a7ea41d7b12b9b7687cd17fdfcb14bcee508fac6bfccb6"
+                }
+              ]
+            }
+          ],
+          "reported_observations": [
+            {
+              "fact_id": "fcf-2025",
+              "dimension": {
+                "entity": "ACME",
+                "metric": "fcf",
+                "period": "FY2025",
+                "unit": "USD_millions",
+                "currency": "USD",
+                "share_basis": "not_applicable"
+              },
+              "value": "12",
+              "citation": {
+                "source_id": "filing-2025",
+                "chunk_id": "c0",
+                "variant_id": "original",
+                "quote": "ACME reported FCF (12) USD million FY2025."
+              }
+            }
+          ]
+        }
+      ],
+      "candidate": {
+        "kind": "reported",
+        "text": "Reported FCF",
+        "scope": "factual",
+        "dimension": {
+          "entity": "ACME",
+          "metric": "fcf",
+          "period": "FY2025",
+          "unit": "USD_millions",
+          "currency": "USD",
+          "share_basis": "not_applicable"
+        },
+        "value": "12",
+        "fact_id": "fcf-2025",
+        "citations": [
+          {
+            "source_id": "filing-2025",
+            "chunk_id": "c0",
+            "variant_id": "original",
+            "quote": "ACME reported FCF (12) USD million FY2025."
+          }
+        ]
+      },
+      "expected": "reject",
+      "error": "reported_value_not_in_quote"
+    },
+    {
+      "id": "ambiguous_literal_31",
+      "tenant_id": 1,
+      "sources": [
+        {
+          "source_id": "filing-2025",
+          "tenant_id": 1,
+          "document_id": "filing-2025",
+          "url": "https://example.invalid/filing-2025",
+          "author": "Synthetic issuer",
+          "published_on": "2026-02-01",
+          "language": "en",
+          "rights": "synthetic_fixture",
+          "document_sha256": "33875bd674235075d19566150ee9cc5e921cec801a30dd23239241912952ebf6",
+          "version": "fixture.1",
+          "category": "filing",
+          "review_status": "verified",
+          "chunks": [
+            {
+              "chunk_id": "c0",
+              "variants": [
+                {
+                  "variant_id": "original",
+                  "language": "en",
+                  "text": "ACME reported FCF ( 12 ) USD million FY2025.",
+                  "sha256": "01776e840354fb8583925aa83e22f687ebc831c1a0058bbf09295014b7ce529d"
+                }
+              ]
+            }
+          ],
+          "reported_observations": [
+            {
+              "fact_id": "fcf-2025",
+              "dimension": {
+                "entity": "ACME",
+                "metric": "fcf",
+                "period": "FY2025",
+                "unit": "USD_millions",
+                "currency": "USD",
+                "share_basis": "not_applicable"
+              },
+              "value": "12",
+              "citation": {
+                "source_id": "filing-2025",
+                "chunk_id": "c0",
+                "variant_id": "original",
+                "quote": "ACME reported FCF ( 12 ) USD million FY2025."
+              }
+            }
+          ]
+        }
+      ],
+      "candidate": {
+        "kind": "reported",
+        "text": "Reported FCF",
+        "scope": "factual",
+        "dimension": {
+          "entity": "ACME",
+          "metric": "fcf",
+          "period": "FY2025",
+          "unit": "USD_millions",
+          "currency": "USD",
+          "share_basis": "not_applicable"
+        },
+        "value": "12",
+        "fact_id": "fcf-2025",
+        "citations": [
+          {
+            "source_id": "filing-2025",
+            "chunk_id": "c0",
+            "variant_id": "original",
+            "quote": "ACME reported FCF ( 12 ) USD million FY2025."
+          }
+        ]
+      },
+      "expected": "reject",
+      "error": "reported_value_not_in_quote"
+    },
+    {
+      "id": "ambiguous_literal_32",
+      "tenant_id": 1,
+      "sources": [
+        {
+          "source_id": "filing-2025",
+          "tenant_id": 1,
+          "document_id": "filing-2025",
+          "url": "https://example.invalid/filing-2025",
+          "author": "Synthetic issuer",
+          "published_on": "2026-02-01",
+          "language": "en",
+          "rights": "synthetic_fixture",
+          "document_sha256": "33875bd674235075d19566150ee9cc5e921cec801a30dd23239241912952ebf6",
+          "version": "fixture.1",
+          "category": "filing",
+          "review_status": "verified",
+          "chunks": [
+            {
+              "chunk_id": "c0",
+              "variants": [
+                {
+                  "variant_id": "original",
+                  "language": "en",
+                  "text": "ACME reported FCF \u221212 USD million FY2025.",
+                  "sha256": "cc79f2206a0292bcbd113a7f99ed1ab1d92b0b8b413280d33372bc6aec786289"
+                }
+              ]
+            }
+          ],
+          "reported_observations": [
+            {
+              "fact_id": "fcf-2025",
+              "dimension": {
+                "entity": "ACME",
+                "metric": "fcf",
+                "period": "FY2025",
+                "unit": "USD_millions",
+                "currency": "USD",
+                "share_basis": "not_applicable"
+              },
+              "value": "12",
+              "citation": {
+                "source_id": "filing-2025",
+                "chunk_id": "c0",
+                "variant_id": "original",
+                "quote": "ACME reported FCF \u221212 USD million FY2025."
+              }
+            }
+          ]
+        }
+      ],
+      "candidate": {
+        "kind": "reported",
+        "text": "Reported FCF",
+        "scope": "factual",
+        "dimension": {
+          "entity": "ACME",
+          "metric": "fcf",
+          "period": "FY2025",
+          "unit": "USD_millions",
+          "currency": "USD",
+          "share_basis": "not_applicable"
+        },
+        "value": "12",
+        "fact_id": "fcf-2025",
+        "citations": [
+          {
+            "source_id": "filing-2025",
+            "chunk_id": "c0",
+            "variant_id": "original",
+            "quote": "ACME reported FCF \u221212 USD million FY2025."
+          }
+        ]
+      },
+      "expected": "reject",
+      "error": "reported_value_not_in_quote"
+    },
+    {
+      "id": "ambiguous_literal_33",
+      "tenant_id": 1,
+      "sources": [
+        {
+          "source_id": "filing-2025",
+          "tenant_id": 1,
+          "document_id": "filing-2025",
+          "url": "https://example.invalid/filing-2025",
+          "author": "Synthetic issuer",
+          "published_on": "2026-02-01",
+          "language": "en",
+          "rights": "synthetic_fixture",
+          "document_sha256": "33875bd674235075d19566150ee9cc5e921cec801a30dd23239241912952ebf6",
+          "version": "fixture.1",
+          "category": "filing",
+          "review_status": "verified",
+          "chunks": [
+            {
+              "chunk_id": "c0",
+              "variants": [
+                {
+                  "variant_id": "original",
+                  "language": "en",
+                  "text": "ACME reported FCF 12- USD million FY2025.",
+                  "sha256": "7c48aee1e54b93fedfb0505dd6a763fb39566c923752078a8366976ff2f9b3fe"
+                }
+              ]
+            }
+          ],
+          "reported_observations": [
+            {
+              "fact_id": "fcf-2025",
+              "dimension": {
+                "entity": "ACME",
+                "metric": "fcf",
+                "period": "FY2025",
+                "unit": "USD_millions",
+                "currency": "USD",
+                "share_basis": "not_applicable"
+              },
+              "value": "12",
+              "citation": {
+                "source_id": "filing-2025",
+                "chunk_id": "c0",
+                "variant_id": "original",
+                "quote": "ACME reported FCF 12- USD million FY2025."
+              }
+            }
+          ]
+        }
+      ],
+      "candidate": {
+        "kind": "reported",
+        "text": "Reported FCF",
+        "scope": "factual",
+        "dimension": {
+          "entity": "ACME",
+          "metric": "fcf",
+          "period": "FY2025",
+          "unit": "USD_millions",
+          "currency": "USD",
+          "share_basis": "not_applicable"
+        },
+        "value": "12",
+        "fact_id": "fcf-2025",
+        "citations": [
+          {
+            "source_id": "filing-2025",
+            "chunk_id": "c0",
+            "variant_id": "original",
+            "quote": "ACME reported FCF 12- USD million FY2025."
+          }
+        ]
+      },
+      "expected": "reject",
+      "error": "reported_value_not_in_quote"
+    },
+    {
+      "id": "ambiguous_literal_34",
+      "tenant_id": 1,
+      "sources": [
+        {
+          "source_id": "filing-2025",
+          "tenant_id": 1,
+          "document_id": "filing-2025",
+          "url": "https://example.invalid/filing-2025",
+          "author": "Synthetic issuer",
+          "published_on": "2026-02-01",
+          "language": "en",
+          "rights": "synthetic_fixture",
+          "document_sha256": "33875bd674235075d19566150ee9cc5e921cec801a30dd23239241912952ebf6",
+          "version": "fixture.1",
+          "category": "filing",
+          "review_status": "verified",
+          "chunks": [
+            {
+              "chunk_id": "c0",
+              "variants": [
+                {
+                  "variant_id": "original",
+                  "language": "en",
+                  "text": "ACME reported FCF 12% USD million FY2025.",
+                  "sha256": "266bd5bd010397d67105c1515a5114d7702428dcc4e17bc181b7dc6d1acb77da"
+                }
+              ]
+            }
+          ],
+          "reported_observations": [
+            {
+              "fact_id": "fcf-2025",
+              "dimension": {
+                "entity": "ACME",
+                "metric": "fcf",
+                "period": "FY2025",
+                "unit": "USD_millions",
+                "currency": "USD",
+                "share_basis": "not_applicable"
+              },
+              "value": "12",
+              "citation": {
+                "source_id": "filing-2025",
+                "chunk_id": "c0",
+                "variant_id": "original",
+                "quote": "ACME reported FCF 12% USD million FY2025."
+              }
+            }
+          ]
+        }
+      ],
+      "candidate": {
+        "kind": "reported",
+        "text": "Reported FCF",
+        "scope": "factual",
+        "dimension": {
+          "entity": "ACME",
+          "metric": "fcf",
+          "period": "FY2025",
+          "unit": "USD_millions",
+          "currency": "USD",
+          "share_basis": "not_applicable"
+        },
+        "value": "12",
+        "fact_id": "fcf-2025",
+        "citations": [
+          {
+            "source_id": "filing-2025",
+            "chunk_id": "c0",
+            "variant_id": "original",
+            "quote": "ACME reported FCF 12% USD million FY2025."
+          }
+        ]
+      },
+      "expected": "reject",
+      "error": "reported_value_not_in_quote"
     }
   ]
 }

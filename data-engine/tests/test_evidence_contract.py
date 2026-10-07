@@ -301,3 +301,20 @@ def test_source_and_translation_reject_tenant_coercion(tenant_id):
         attach_translation(
             source, chunk_id="c0", tenant_id=tenant_id, variant_id="es", language="es", text="Hola"
         )
+
+
+@pytest.mark.parametrize("literal", ["(12)", "( 12 )", "(12.5)", "(12)-", "12-", "−12", "12%", "1e2"])
+def test_ambiguous_financial_literal_not_certified_positive(literal):
+    payload = fixture_source()
+    text = f"ACME reported FCF {literal} USD million FY2025."
+    payload["chunks"][0]["variants"][0]["text"] = text
+    payload["chunks"][0]["variants"][0]["sha256"] = hashlib.sha256(text.encode()).hexdigest()
+    payload["reported_observations"][0]["citation"]["quote"] = text
+    payload["reported_observations"][0]["value"] = "12"
+    with pytest.raises(ValidationError, match="reported_value_not_in_quote"):
+        EvidenceSource.model_validate(payload)
+
+
+def test_explicit_negative_decimal_still_valid():
+    source = EvidenceSource.model_validate(fixture_source())
+    assert source.reported_observations[0].value == -12

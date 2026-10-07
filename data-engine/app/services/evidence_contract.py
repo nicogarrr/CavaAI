@@ -82,8 +82,12 @@ class ReportedObservation(ContractModel):
     def require_literal_value(self) -> Self:
         # Contract v1 accepts explicit unscaled decimal literals only. Locale
         # conversion/scaling requires a separately verified adapter, not a guess.
-        numbers = re.findall(r"(?<![\w.,])[-+]?\d+(?:\.\d+)?(?!\w|[.,]\d)", self.citation.quote)
-        if self.value not in {Decimal(number) for number in numbers}:
+        quote = self.citation.quote
+        # Accounting parentheses, Unicode signs and trailing signs require a
+        # verified adapter. Do not certify their unsigned substring as positive.
+        ambiguous = re.search(r"\(\s*[-+]?\d[\d.,]*\s*\)|[−–—]\s*\d|\d\s*[-−–—](?!\w)|\d\s*%", quote)
+        numbers = re.findall(r"(?<![\w.,+−–—-])[-+]?\d+(?:\.\d+)?(?!\w|[.,]\d|[-+%−–—])", quote)
+        if ambiguous or self.value not in {Decimal(number) for number in numbers}:
             raise ValueError("reported_value_not_in_quote")
         return self
 
