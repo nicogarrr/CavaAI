@@ -11,7 +11,7 @@ describe('navegación compacta', () => {
     });
     it('móvil mantiene Cartera activa en sus subrutas sin alterar desktop', () => {
         const src = readFileSync('components/layout/BottomNav.tsx', 'utf8');
-        assert.match(src, /pathname === item.href \|\| pathname.startsWith\(`\$\{item.href\}\/`\)/);
+        assert.match(src, /isNavItemActive\(pathname, item.href\)/);
         const active = (path: string, href: string) => path === href || path.startsWith(`${href}/`);
         assert.equal(active('/portfolio/intelligence', '/portfolio'), true);
         assert.equal(active('/portfolio-copy', '/portfolio'), false);

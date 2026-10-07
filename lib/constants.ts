@@ -98,7 +98,19 @@ export type NavSection = {
   items: NavItem[];
 };
 
-export const NAV_SECTIONS: NavSection[] = [
+export const NAV_SECTIONS: NavSection[] = [{
+  title: '',
+  items: [
+    { href: '/inicio', label: 'Inicio', icon: Home },
+    { href: '/portfolio', label: 'Cartera', icon: Briefcase },
+    { href: '/research', label: 'Research', icon: FileSearch },
+    { href: '/discover', label: 'Descubrir', icon: Filter },
+    { href: '/watchlist', label: 'Watchlist', icon: Star },
+    { href: '/knowledge', label: 'Biblioteca', icon: BookOpen },
+  ],
+}];
+
+export const ROUTE_CATALOG: NavSection[] = [
   {
     title: 'Principal',
     items: [{ href: '/inicio', label: 'Inicio', icon: Home }],
@@ -174,14 +186,14 @@ export const NAV_SECTIONS: NavSection[] = [
  */
 export const MOBILE_TAB_ITEMS: NavItem[] = [
   { href: '/inicio', label: 'Inicio', icon: Home },
-  { href: '/movers', label: 'Mercados', icon: LineChart },
+  { href: '/discover', label: 'Descubrir', icon: Filter },
   { href: '/watchlist', label: 'Watchlist', icon: Star },
   { href: '/portfolio', label: 'Cartera', icon: Briefcase },
-  { href: '/research/assistant', label: 'IA', icon: Sparkles },
+  { href: '/research', label: 'Research', icon: FileSearch },
 ];
 
 /** Aplana el arbol a una lista de rutas, para buscar un href puntual. */
-export function flattenNavItems(sections: NavSection[] = NAV_SECTIONS): NavItem[] {
+export function flattenNavItems(sections: NavSection[] = ROUTE_CATALOG): NavItem[] {
   return sections.flatMap((section) =>
     section.items.flatMap((item) => (item.children ? [item, ...item.children] : [item])),
   );
@@ -193,21 +205,25 @@ export function flattenNavItems(sections: NavSection[] = NAV_SECTIONS): NavItem[
  * "Cartera" y "Cartera · Intelligence" a la vez.
  */
 export function isNavItemActive(pathname: string, href: string): boolean {
+  const family = sectionForRoute(pathname);
+  if (NAV_SECTIONS[0].items.some((item) => item.href === href)) return family === href;
   if (href === '/') return pathname === '/';
-  if (pathname === href) return true;
-  if (!pathname.startsWith(`${href}/`)) return false;
-  // Un ancestro no se ilumina si existe un destino mas especifico que tambien
-  // coincide: en /portfolio/intelligence solo se enciende "Inteligencia".
-  const hasMoreSpecificMatch = flattenNavItems().some(
-    (item) =>
-      item.href !== href && (pathname === item.href || pathname.startsWith(`${item.href}/`)),
-  );
-  return !hasMoreSpecificMatch;
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+export function sectionForRoute(pathname: string): string | null {
+  if (pathname === '/inicio') return '/inicio';
+  if (pathname === '/watchlist') return '/watchlist';
+  if (['/portfolio', '/risk', '/taxes', '/corporate-actions', '/plan'].some((p) => pathname === p || pathname.startsWith(`${p}/`))) return '/portfolio';
+  if (['/research'].some((p) => pathname === p || pathname.startsWith(`${p}/`))) return '/research';
+  if (['/knowledge', '/knowledge-graph', '/inversores/canales'].some((p) => pathname === p || pathname.startsWith(`${p}/`))) return '/knowledge';
+  if (['/discover', '/screeners', '/screener', '/movers', '/insider', '/ownership', '/inversores', '/propicks'].some((p) => pathname === p || pathname.startsWith(`${p}/`))) return '/discover';
+  return null;
 }
 
 /** Encabezado de seccion visible solo si la seccion aporta mas de un destino. */
 export function showsNavSectionTitle(section: NavSection): boolean {
-  return section.items.length > 1;
+  return section.title !== '' && section.items.length > 1;
 }
 
 export const POPULAR_STOCK_SYMBOLS = [
