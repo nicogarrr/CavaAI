@@ -197,6 +197,14 @@ def list_documents(
     return KnowledgeLibraryService.list_documents(db, collection_id=collection_id, limit=limit)
 
 
+@router.get("/documents/{document_id}")
+def get_document(document_id: int, db: Session = Depends(get_db)) -> dict:
+    document = KnowledgeLibraryService.get_document(db, document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Knowledge document not found")
+    return document
+
+
 @router.post("/documents/upload")
 async def upload_document(
     title: str = Form(..., min_length=2, max_length=500),
@@ -243,6 +251,7 @@ async def upload_document(
 def document_chunks(
     document_id: int,
     limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ) -> list[dict]:
     if db.get(KnowledgeDocument, document_id) is None:
@@ -263,6 +272,7 @@ def document_chunks(
             select(KnowledgeChunk)
             .where(KnowledgeChunk.knowledge_document_id == document_id)
             .order_by(KnowledgeChunk.chunk_index)
+            .offset(offset)
             .limit(limit)
         ).all()
     ]

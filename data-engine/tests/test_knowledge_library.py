@@ -155,3 +155,57 @@ def test_knowledge_library_ingestion_deduplication_and_principle_approval():
         assert revised.canonical_principle_id == approved.id
         assert approved.status == "superseded"
         assert approved.superseded_by_id == revised.id
+
+
+def test_get_document_returns_chunk_count_and_none_for_missing_and_chunks_paginate():
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    from app.api.routes import knowledge as routes
+    from app.core.database import Base
+    from app.models import Tenant
+
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        tenant = Tenant(external_id="doc-detail", name="Doc detail")
+        db.add(tenant)
+        db.flush()
+        db.info["tenant_id"] = tenant.id
+        document = KnowledgeDocument(
+            title="Carta 2020",
+            document_type="fund_letter",
+            status="ready",
+            checksum="c" * 64,
+            metadata_={},
+        )
+        db.add(document)
+        db.flush()
+        for index in range(25):
+            db.add(
+                KnowledgeChunk(
+                    knowledge_document_id=document.id,
+                    chunk_index=index,
+                    content=f"fragmento {index}",
+                    token_count=2,
+                    metadata_={},
+                )
+            )
+        db.commit()
+
+        detail = KnowledgeLibraryService.get_document(db, document.id)
+        assert detail is not None and detail["chunk_count"] == 25
+        assert detail["title"] == "Carta 2020"
+        assert KnowledgeLibraryService.get_document(db, document.id + 999) is None
+
+        page = routes.document_chunks(document.id, limit=10, offset=20, db=db)
+        assert [chunk["chunk_index"] for chunk in page] == [20, 21, 22, 23, 24]
+        first = routes.document_chunks(document.id, limit=10, offset=0, db=db)
+        assert [chunk["chunk_index"] for chunk in first] == list(range(10))
+
+        import pytest
+        from fastapi import HTTPException
+
+        with pytest.raises(HTTPException) as missing:
+            routes.get_document(document.id + 999, db=db)
+        assert missing.value.status_code == 404
