@@ -51,6 +51,10 @@ class PreRevenueScenarioEngine(ValuationEngine):
         snapshot = context.snapshot
         current_price = context.current_price
 
+        rejected = self._reported_non_positive_fcf(company, snapshot, current_price)
+        if rejected is not None:
+            return rejected
+
         # Still refuse bootstrap — speculative names need at least revenue + shares.
         if not snapshot.coherent:
             shares = snapshot.value("shares_diluted")
@@ -128,6 +132,32 @@ class PreRevenueScenarioEngine(ValuationEngine):
             else:
                 margin = fcf / revenue
 
+        if margin <= 0:
+            # Un margen FCF reportado negativo es quema de caja. Un DCF FCFF
+            # sobre ese signo da un EV y un valor por accion NEGATIVOS (ASTS:
+            # -84,70 USD/accion con un margen de -15,46) que se publicaban como
+            # bear/base/bull. El capital propio no vale menos de cero. Un margen
+            # INFERIDO solo sustituye a un FCF AUSENTE (mas arriba), nunca a uno
+            # reportado: el dato reportado gana. Se niega, como standard_dcf.
+            result = insufficient_result(
+                ticker=company.ticker,
+                model_type=company.valuation_model,
+                engine_key=self.key,
+                current_price=current_price,
+                missing_inputs=["non_negative_fcf_margin"],
+                reason=(
+                    f"El margen FCF reportado es {margin:.4f} (quema de caja): "
+                    "un DCF FCFF daria un valor por accion negativo. No se "
+                    "publica rango por accion sin un margen normalizado con "
+                    "fuente."
+                ),
+                snapshot=snapshot,
+            )
+            result["moat"] = empty_moat_framework(
+                company.company_type, company.factor_tags or [], company.special_risks or []
+            )
+            return result
+
         # Near-zero revenue speculative names: still allow but flag low confidence.
         growth = snapshot.value("revenue_growth")
         growth_source = "financial_facts" if growth is not None else "tag_default"
@@ -135,13 +165,8 @@ class PreRevenueScenarioEngine(ValuationEngine):
             growth = default_growth(company)
 
         growth = max(min(growth, 0.60), -0.15)
-        # Techo de margen, pero el suelo NO se clampa a positivo: un margen de
-        # FCF negativo significa que la empresa quema caja, y subirlo a +1%
-        # convertia una quema de 150M sobre 1.000M de ingresos (-15%) en un FCF
-        # positivo, subiendo el valor por accion de -44,03 a -18,40 (2,56bn de
-        # destruccion de valor oculta). run_dcf ya soporta el signo negativo y
-        # devuelve un EV negativo, que es lo correcto. Para las quemas, el
-        # modelo de funding-gap/dilucion es el que informa.
+        # El margen no positivo ya fue rechazado, nunca se eleva a +1%.
+        # Solo se limita el extremo alto para los escenarios especulativos.
         margin = min(margin, 0.40)
         wacc, wacc_source, terminal, terminal_source, dropped_inferred = resolve_rates(context.db, company)
         net_debt = snapshot.value("net_debt")
@@ -390,6 +415,41 @@ class PreRevenueScenarioEngine(ValuationEngine):
             }
         )
 
+    def _reported_non_positive_fcf(self, company, snapshot, current_price) -> dict | None:
+        """Un dato reportado no se sustituye por un margen inferido."""
+        rejected = {
+            metric: float(value)
+            for metric in ("fcf_margin", "free_cash_flow")
+            if (value := snapshot.value(metric)) is not None and value <= 0
+        }
+        if not rejected:
+            return None
+        result = insufficient_result(
+            ticker=company.ticker,
+            model_type=company.valuation_model,
+            engine_key=self.key,
+            current_price=current_price,
+            missing_inputs=list(snapshot.missing_inputs) + ["non_negative_fcf_margin"],
+            reason=(
+                "El FCF o margen FCF reportado es cero o negativo; un margen "
+                "inferido no puede sustituir ese dato. Sin valor por accion "
+                "hasta tener un margen normalizado con fuente."
+            ),
+            snapshot=snapshot,
+            extra_trace={
+                "rejected_reported_fcf": rejected,
+                "observed_cash_burn": {
+                    metric: float(value)
+                    for metric in ("operating_cash_flow", "free_cash_flow")
+                    if (value := snapshot.value(metric)) is not None and value < 0
+                },
+            },
+        )
+        result["moat"] = empty_moat_framework(
+            company.company_type, company.factor_tags or [], company.special_risks or []
+        )
+        return result
+
     def _indicative_partial(self, company, snapshot, current_price: float, db=None) -> dict:
         """Rango indicativo cuando hay precio + acciones sin snapshot coherente.
 
@@ -398,6 +458,10 @@ class PreRevenueScenarioEngine(ValuationEngine):
         crecimiento y WACC tag-default. El reverse DCF usa los supuestos
         base. Status ``partial`` y ``publishable=False``: orientativo, no final.
         """
+        rejected = self._reported_non_positive_fcf(company, snapshot, current_price)
+        if rejected is not None:
+            return rejected
+
         # Un margen FCF base de +15% es un SUPUESTO. Si los propios facts
         # reportan quema de caja (flujo operativo o FCF negativo), el supuesto
         # contradice el dato y el rango resultante (p. ej. ASTS: 0,80 USD/accion
@@ -414,13 +478,18 @@ class PreRevenueScenarioEngine(ValuationEngine):
         # base valida sigue fail-closed: sin numero.
         # Solo en la rama quema/sin dato de caja: con caja positiva no se
         # consulta ni se usa ningun input inferido.
-        needs_inference = bool(observed_burn) or not cash_facts
+        reported_margin = snapshot.value("fcf_margin")
+        reported_fcf = snapshot.value("free_cash_flow")
+        needs_inference = (
+            reported_margin is None and reported_fcf is None
+            and (bool(observed_burn) or not cash_facts)
+        )
         inferred = (
             InferredInputService().latest_valid(db, company.id, "fcf_margin")
             if needs_inference and db is not None and company.id is not None
             else None
         )
-        if needs_inference and inferred is None:
+        if needs_inference and (inferred is None or float(inferred.value) <= 0):
             result = insufficient_result(
                 ticker=company.ticker,
                 model_type=company.valuation_model,

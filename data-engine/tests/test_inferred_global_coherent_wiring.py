@@ -133,7 +133,11 @@ def test_reported_fcf_wins_over_inferred(engine):
         )
         values = dict(VALUES, free_cash_flow=-80_000_000.0)
         result = _value(db, company, values)
-        assert result["trace"]["inferred_inputs"] == []
+        # El FCF reportado (negativo) gana: el inferido no lo sustituye y no se
+        # publica un valor por accion negativo.
+        assert result["status"] == "insufficient_data"
+        assert result.get("trace", {}).get("inferred_inputs", []) == []
+        assert result["base_value"] is None
 
 
 def test_tenant_owned_company_data_stays_isolated_while_inputs_are_global(engine):
@@ -162,3 +166,35 @@ def test_tenant_owned_company_data_stays_isolated_while_inputs_are_global(engine
     with Session(engine) as t2b:
         t2b.info["tenant_id"] = 2
         assert len(t2b.scalars(select(Document).where(Document.company_id == cid)).all()) == 1
+
+
+@pytest.mark.parametrize("coherent", [True, False])
+@pytest.mark.parametrize("reported", [
+    {"fcf_margin": -0.6, "free_cash_flow": -80_000_000.0},
+    {"fcf_margin": 0.0, "free_cash_flow": 0.0},
+    {"free_cash_flow": -80_000_000.0},
+    {"free_cash_flow": 0.0},
+    {"fcf_margin": -0.6},
+    {"fcf_margin": 0.0},
+    {"fcf_margin": 0.25, "free_cash_flow": -80_000_000.0},
+])
+def test_reported_non_positive_fcf_blocks_both_paths(engine, coherent, reported):
+    with Session(engine) as db:
+        company = _company(db)
+        InferredInputService().create(
+            db, company, input_key="fcf_margin", value=Decimal("0.25"),
+            base=BASE, source_urls=URLS,
+        )
+        snapshot = _Snap(dict(VALUES, **reported))
+        snapshot.coherent = coherent
+        context = ValuationContext(
+            db=db, company=company, snapshot=snapshot,
+            current_price=58.0, engine_key="pre_revenue",
+        )
+        result = PreRevenueScenarioEngine().value(context)
+        assert result["status"] == "insufficient_data"
+        assert result["publishable"] is False
+        assert "non_negative_fcf_margin" in result["missing_inputs"]
+        assert result.get("trace", {}).get("inferred_inputs", []) == []
+        for key in ("bear_value", "base_value", "bull_value", "expected_value"):
+            assert result[key] is None

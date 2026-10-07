@@ -207,7 +207,9 @@ def test_provenance_binds_to_used_input_and_keeps_history(db):
         db, company, input_key="fcf_margin", value=Decimal("0.30"),
         base=BASE + " (otra)", source_urls=URLS,
     )
-    items = {i["key"]: i for i in latest_inputs_provenance(db, company.id, basis)}
+    provenance = latest_inputs_provenance(db, company.id, basis)
+    assert provenance is not None
+    items = {i["key"]: i for i in provenance}
     # La mediana historica no trae base documentada con URL: se omite (N/D).
     assert "fcf_margin" not in items
     usado = items["fcf_margin_usado_en_valoracion"]
@@ -215,7 +217,7 @@ def test_provenance_binds_to_used_input_and_keeps_history(db):
     assert usado["inferred_input_id"] == used.id
     assert usado["urls_inferencia"] == URLS and usado["base_inferencia"] == BASE
     # Sin valuation_basis (tesis anterior) no se inventa ningun input usado.
-    legacy = {i["key"] for i in latest_inputs_provenance(db, company.id, None)}
+    legacy = {i["key"] for i in (latest_inputs_provenance(db, company.id, None) or [])}
     assert "fcf_margin_usado_en_valoracion" not in legacy
 
 
@@ -226,6 +228,10 @@ def test_scenarios_are_ordered_by_construction_across_allowed_range(db, margin):
         db, company, input_key="fcf_margin", value=Decimal(margin), base=BASE, source_urls=URLS
     )
     result = _value(db, company)
+    if Decimal(margin) <= 0:
+        assert result["status"] == "insufficient_data"
+        assert result["base_value"] is None
+        return
     assert result["status"] == "partial" and result["publishable"] is False
     assert result["bear_value"] < result["base_value"] < result["bull_value"], margin
     band = result["trace"]["assumed"]["fcf_margin_band"]
@@ -241,6 +247,19 @@ def test_used_inputs_are_shown_even_without_fundamental_model(db):
 
     basis = ThesisService._valuation_basis(_value(db, company))
     items = latest_inputs_provenance(db, company.id, basis)
+    assert items is not None
     assert [i["key"] for i in items] == ["fcf_margin_usado_en_valoracion"]
     assert items[0]["origen"] == "INFERIDO"
     assert latest_inputs_provenance(db, company.id, None) is None
+
+
+@pytest.mark.parametrize("fcf", [-80_000_000.0, 0.0])
+def test_relaxation_only_fills_absent_fcf_not_reported_fcf(db, fcf):
+    company = _company(db)
+    InferredInputService().create(
+        db, company, input_key="fcf_margin", value=Decimal("0.25"), base=BASE, source_urls=URLS
+    )
+    result = _value(db, company, {**BURN, "free_cash_flow": fcf})
+    assert result["status"] == "insufficient_data"
+    assert result["base_value"] is None
+    assert result.get("trace", {}).get("inferred_inputs", []) == []
