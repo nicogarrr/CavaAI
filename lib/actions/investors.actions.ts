@@ -1,13 +1,11 @@
 'use server';
 
-import { normalizeResearchBody, researchIdentityHeaders } from '@/lib/auth/research-identity';
-import { ExternalAPIError } from '@/lib/types/errors';
+import { researchRequest } from '@/lib/research/client';
+import { AppError } from '@/lib/types/errors';
 
 import type { InvestorVideo } from '@/lib/ui/youtube-video';
 
 import type { ManagerChanges, OwnershipProvenance } from './ownership.actions';
-
-const BACKEND_URL = process.env.FMP_BACKEND_URL ?? 'http://localhost:8000';
 
 export type InvestorSummary = {
   slug: string;
@@ -77,24 +75,8 @@ export type InvestorDetail = InvestorSummary & {
 };
 
 async function requestJson<T>(path: string): Promise<T> {
-  try {
-    const normalized = await normalizeResearchBody(null);
-    const identity = await researchIdentityHeaders({
-      method: 'GET',
-      path,
-      body: normalized.body ?? null,
-    });
-    const response = await fetch(`${BACKEND_URL}${path}`, {
-      cache: 'no-store',
-      headers: { ...identity },
-    });
-    if (response.status === 404) throw new ExternalAPIError(`Not found: ${path}`, 'research-api-404');
-    if (!response.ok) throw new ExternalAPIError(`Research API ${response.status}: ${path}`, 'research-api');
-    return (await response.json()) as T;
-  } catch (error) {
-    if (error instanceof ExternalAPIError) throw error;
-    throw new ExternalAPIError(`Research API request failed: ${path}`, 'research-api', error);
-  }
+  // Preserva HTTP/identidad y aplica el mismo límite de lectura que el resto de research.
+  return researchRequest<T>(path, { fast: true });
 }
 
 export async function getInvestors(): Promise<{ investors: InvestorSummary[]; limitations: string[] }> {
@@ -106,7 +88,7 @@ export async function getInvestor(slug: string): Promise<InvestorDetail | null> 
   try {
     return await requestJson<InvestorDetail>(`/api/investors/${encodeURIComponent(slug)}`);
   } catch (error) {
-    if (error instanceof ExternalAPIError && error.message.startsWith('Not found:')) return null;
+    if (error instanceof AppError && error.code === 'RESEARCH_API_ERROR' && error.statusCode === 404) return null;
     throw error;
   }
 }
