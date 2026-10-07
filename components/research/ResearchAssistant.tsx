@@ -71,10 +71,13 @@ export default function ResearchAssistant({ initialMode = 'explore', initialTick
     setContextError(false);
     if (mode !== 'guide' || !value) return;
     let live = true;
-    getGuideContextAction(value).then((data) => {
-      if (live) setContext(data);
-    }).catch(() => { if (live) setContextError(true); });
-    return () => { live = false; };
+    // Espera a que termine de escribir: no consultar A, AA y AAP al teclear AAPL.
+    const timer = setTimeout(() => {
+      getGuideContextAction(value).then((data) => {
+        if (live) setContext(data);
+      }).catch(() => { if (live) setContextError(true); });
+    }, 350);
+    return () => { live = false; clearTimeout(timer); };
   }, [mode, ticker]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
