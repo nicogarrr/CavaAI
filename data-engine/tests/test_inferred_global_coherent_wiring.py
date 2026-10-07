@@ -133,7 +133,11 @@ def test_reported_fcf_wins_over_inferred(engine):
         )
         values = dict(VALUES, free_cash_flow=-80_000_000.0)
         result = _value(db, company, values)
-        assert result["trace"]["inferred_inputs"] == []
+        # El FCF reportado (negativo) gana: el inferido no lo sustituye y no se
+        # publica un valor por accion negativo.
+        assert result["status"] == "insufficient_data"
+        assert result.get("trace", {}).get("inferred_inputs", []) == []
+        assert result["base_value"] is None
 
 
 def test_tenant_owned_company_data_stays_isolated_while_inputs_are_global(engine):

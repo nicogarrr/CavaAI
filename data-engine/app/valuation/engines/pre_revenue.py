@@ -132,38 +132,27 @@ class PreRevenueScenarioEngine(ValuationEngine):
             # Un margen FCF reportado negativo es quema de caja. Un DCF FCFF
             # sobre ese signo da un EV y un valor por accion NEGATIVOS (ASTS:
             # -84,70 USD/accion con un margen de -15,46) que se publicaban como
-            # bear/base/bull. El capital propio no vale menos de cero. Solo un
-            # margen INFERIDO con base y URLs https (nunca publicable) permite
-            # escenarios; sin el, se niega, como hace standard_dcf.
-            if (
-                inferred_margin is None
-                and context.db is not None
-                and company.id is not None
-            ):
-                inferred_margin = InferredInputService().latest_valid(
-                    context.db, company.id, "fcf_margin"
-                )
-                if inferred_margin is not None:
-                    margin = float(inferred_margin.value)
-            if margin <= 0:
-                result = insufficient_result(
-                    ticker=company.ticker,
-                    model_type=company.valuation_model,
-                    engine_key=self.key,
-                    current_price=current_price,
-                    missing_inputs=["non_negative_fcf_margin"],
-                    reason=(
-                        f"El margen FCF reportado es {margin:.4f} (quema de caja): "
-                        "un DCF FCFF daria un valor por accion negativo. No se "
-                        "publica rango por accion sin un margen normalizado con "
-                        "fuente."
-                    ),
-                    snapshot=snapshot,
-                )
-                result["moat"] = empty_moat_framework(
-                    company.company_type, company.factor_tags or [], company.special_risks or []
-                )
-                return result
+            # bear/base/bull. El capital propio no vale menos de cero. Un margen
+            # INFERIDO solo sustituye a un FCF AUSENTE (mas arriba), nunca a uno
+            # reportado: el dato reportado gana. Se niega, como standard_dcf.
+            result = insufficient_result(
+                ticker=company.ticker,
+                model_type=company.valuation_model,
+                engine_key=self.key,
+                current_price=current_price,
+                missing_inputs=["non_negative_fcf_margin"],
+                reason=(
+                    f"El margen FCF reportado es {margin:.4f} (quema de caja): "
+                    "un DCF FCFF daria un valor por accion negativo. No se "
+                    "publica rango por accion sin un margen normalizado con "
+                    "fuente."
+                ),
+                snapshot=snapshot,
+            )
+            result["moat"] = empty_moat_framework(
+                company.company_type, company.factor_tags or [], company.special_risks or []
+            )
+            return result
 
         # Near-zero revenue speculative names: still allow but flag low confidence.
         growth = snapshot.value("revenue_growth")
