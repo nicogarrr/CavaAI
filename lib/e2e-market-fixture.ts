@@ -37,7 +37,9 @@ export function e2eMarketFixture(ticker: string): CompanyMarketSnapshot {
             open: 334.2,
             high: 337.1,
             low: 333.8,
-            previousClose: 334.22,
+            previousClose: null,
+            metricsSource: 'Fixture local',
+            metricsSession: '2026-09-09',
             priceAsOf: null, // cotización "en vivo" del fixture: sin rótulo de cierre
             priceKind: 'live' as const,
         },
