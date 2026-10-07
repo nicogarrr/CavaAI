@@ -25,4 +25,4 @@ export default async function Preview({ searchParams }: { searchParams: Promise<
 try {
  const result = spawnSync('npx', ['playwright', 'test', '--config', 'e2e/fixtures/technical-chart.config.ts'], { stdio: 'inherit', env: { ...process.env, E2E_CHART_RUN: '1' } });
  process.exitCode = result.status ?? 1;
-} finally { rmSync(directory, {recursive:true}); }
+} finally { rmSync(directory, {recursive:true}); rmSync('.next-chart/dev/types', {recursive:true, force:true}); }
