@@ -76,6 +76,7 @@ export function formatProvenanceValue(
         }).format(ratio);
     }
     if (isCurrencyCode(rawUnit)) return formatMoneyShort(parsed, rawUnit);
+    if (['pure', 'unitless', 'dimensionless'].includes(lower)) return plainNumber(parsed);
     if (rawUnit) return `${plainNumber(parsed)} ${UNIT_NAMES[lower] ?? rawUnit}`;
     return plainNumber(parsed);
 }
