@@ -98,8 +98,7 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt, ini
         return formatUserDateTime(isoString);
     };
 
-    // Estado MEDIDO de las categorías en el run visible: la caja «Sobre
-    // ProPicks IA» ya no afirma en literal qué está neutral, lo deriva de estos
+    // Estado MEDIDO de las categorías en el run visible: se deriva de estos
     // picks (categoryDisplay honra el flag de ausencia de cada categoría).
     const neutralNote = useMemo(
         () => categoryNeutralNote(CATEGORY_KEYS.filter((key) => allNeutralCategory(picks, key)), picks.length),
@@ -155,41 +154,10 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt, ini
                     )}
                 </Card>
 
-                {/* Info Card */}
-                <Card className="mt-4 p-4 border-gray-700 bg-gray-800/50">
-                    <h3 className="text-sm font-semibold text-gray-200 mb-2">
-                        Sobre ProPicks IA
-                    </h3>
-                    <p className="text-xs text-gray-400 leading-relaxed">
-                        El embudo v1 puntúa las métricas de calidad y crecimiento ya
-                        persistidas de todo el universo (SEC + ESEF) y las ordena por
-                        percentiles. Una categoría sin datos en el run no discrimina:
-                        la valoración necesita CFROI y WACC y el momentum series de
-                        precios, así que mientras el run no las traiga
-                        entran neutras (50) en el score y se muestran n/d en las
-                        tarjetas. El 50 es «sin dato», no un score: justo debajo se
-                        nombra qué entrada falta en cada categoría, medido en los
-                        picks que estás viendo.
-                    </p>
-                    <div className="mt-3 pt-3 border-t border-gray-700">
-                        <div className="text-xs text-gray-500 space-y-1">
-                            <div>✓ Análisis fundamental (calidad y crecimiento)</div>
-                            <div>✓ Análisis de salud financiera</div>
-                            <div>✓ Ranking por percentiles del universo</div>
-                            {/* Lo que se afirma aquí es lo MEDIDO en el run que se
-                                está viendo (neutralNote), no un literal fijo: si
-                                una categoría deja de estar neutra, la caja deja
-                                de decir que lo está. Sin picks no hay nada que
-                                medir y se declara el límite conocido del
-                                embudo, que es un hecho del motor y no del run. */}
-                            {neutralNote ? (
-                                <div>{neutralNote.marker} {neutralNote.text}</div>
-                            ) : (
-                                <div>~ Valoración y momentum: neutras en los picks actuales sin datos (faltan CFROI/WACC y series de precios para todo el universo)</div>
-                            )}
-                        </div>
-                    </div>
-                </Card>
+                {/* Una sola línea medida: qué categorías entran sin dato (50 = «sin dato», no un score). */}
+                {neutralNote ? (
+                    <p className="mt-4 text-xs leading-relaxed text-gray-500">{neutralNote.marker} {neutralNote.text}</p>
+                ) : null}
             </div>
 
             {/* Resultados */}

@@ -47,15 +47,10 @@ describe('propicks methodology honesty guard (F178)', () => {
         );
     });
 
-    it('la tarjeta «Sobre ProPicks IA» no lista capacidades ausentes en v1', () => {
+    it('Descubrir ya no tiene el bloque «Sobre ProPicks IA» ni lista capacidades ausentes en v1', () => {
         const card = readSource('components/proPicks/EnhancedProPicksContent.tsx');
+        assert.ok(!card.includes('Sobre ProPicks IA'), 'el bloque se eliminó a petición de Nico');
         assert.ok(!card.includes('✓ Evaluación de momentum'), 'momentum no se lista como capacidad actual');
-        assert.ok(!card.includes('✓ Comparación con sector'), 'el ranking es por percentiles del universo, no por sector');
-        assert.ok(!card.includes('compara cada acción con su sector'), 'sin comparación sectorial prometida');
-        assert.ok(
-            card.includes('~ Valoración y momentum: neutras en los picks actuales sin datos (faltan CFROI/WACC y series de precios para todo el universo)'),
-            'la tarjeta declara explícitamente que valoración y momentum entran neutras en los picks actuales sin datos (F184: no discriminan, se muestran n/d)',
-        );
-        assert.ok(card.includes('✓ Ranking por percentiles del universo'), 'capacidad real declarada');
+        assert.ok(!card.includes('✓ Comparación con sector'), 'sin comparación sectorial prometida');
     });
 });
