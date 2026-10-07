@@ -25,8 +25,8 @@ describe('risk position exposure guard (F43)', () => {
   });
 
   it('la divisa base viene del dashboard (misma regla que el resumen)', () => {
-    assert.match(view, /initialDashboard\.base_currency/, 'base_currency del dashboard');
-    assert.match(view, /\?\s*initialDashboard\.base_currency\s*:\s*'EUR'/, 'fallback EUR igual que humanizeRiskDashboard');
+    assert.match(view, /dashboard\.base_currency/, 'base_currency del dashboard');
+    assert.match(view, /\?\s*dashboard\.base_currency\s*:\s*'EUR'/, 'fallback EUR igual que humanizeRiskDashboard');
   });
 
   it('los nulos siguen siendo NA honesto (nunca «NaN €»)', () => {
