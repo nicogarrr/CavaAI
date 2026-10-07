@@ -465,16 +465,16 @@ jobs:
           python data-engine/scripts/security/gate_image_scan.py \
             --image "${{ matrix.name }}" \
             --image-ref "cavaai/${{ matrix.name }}:${{ github.sha }}" \
-            --build-result "${{ needs.build.result }}" \
+            --build-result "${{ needs.build.result || 'skipped' }}" \
             --policy scripts/security/trivy-policy.yaml \
             --vuln-report "reports/trivy-vuln-${{ matrix.name }}.json" \
-            --vuln-status "${{ steps.trivy_vuln.outcome }}" \
+            --vuln-status "${{ steps.trivy_vuln.outcome || 'skipped' }}" \
             --secret-report "reports/trivy-secret-${{ matrix.name }}.json" \
-            --secret-status "${{ steps.trivy_secret.outcome }}" \
+            --secret-status "${{ steps.trivy_secret.outcome || 'skipped' }}" \
             --misconfig-report "reports/trivy-misconfig-${{ matrix.name }}.json" \
-            --misconfig-status "${{ steps.trivy_misconfig.outcome }}" \
+            --misconfig-status "${{ steps.trivy_misconfig.outcome || 'skipped' }}" \
             --second-report "reports/anchore-${{ matrix.name }}.json" \
-            --second-status "${{ steps.engine2_result.outputs.status }}" \
+            --second-status "${{ steps.engine2_result.outputs.status || 'skipped' }}" \
             --summary "reports/summary-${{ matrix.name }}.json"
 
       - name: Subir informes
