@@ -59,14 +59,14 @@ export function CompanyHeaderQuote({ snapshot }: { snapshot: CompanyMarketSnapsh
             ) : null}
             {showPrice ? (
                 <div className="overflow-x-auto">
-                <dl className="grid grid-cols-4 divide-x divide-gray-800 border-y border-gray-800" data-testid="company-metric-strip">
+                <dl className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-gray-800 border-y border-gray-800" data-testid="company-metric-strip">
                     {[
                         ['Apertura', quote.open], ['Máximo', quote.high],
                         ['Mínimo', quote.low], ['Cierre anterior', quote.previousClose],
                     ].map(([label, value]) => (
                         <div className="min-w-0 px-2 py-3 first:pl-0 sm:px-3" key={String(label)}>
                             <dt className="text-xs text-gray-500">{label}</dt>
-                            <dd className="mt-1 break-words text-xs font-medium text-gray-200 sm:text-sm">{value == null ? NA : formatMoney(value as number, currency)}</dd>
+                            <dd className="mt-1 text-sm font-medium text-gray-200">{value == null ? NA : formatMoney(value as number, currency)}</dd>
                         </div>
                     ))}
                 </dl>
