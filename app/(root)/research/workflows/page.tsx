@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { getResearchWorkflows, runResearchWorkflow } from '@/lib/actions/research.actions';
 import { MutationForm } from '@/components/forms/MutationForm';
 import { formatNumber } from '@/lib/format';
+import { workflowSummary } from '@/lib/research/workflow-summary';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -31,7 +32,7 @@ export default async function ResearchWorkflowsPage() {
           <p className="text-sm font-semibold uppercase text-teal-300">Automatización</p>
           <h1 className="mt-1 text-3xl font-bold text-gray-100">Flujos de trabajo</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">
-            Flujos de investigación orquestados por el backend Python. Ejecuta GenerateThesisWorkflow directamente o invoca al resto vía POST.
+            Genera una tesis o consulta las tareas de investigación disponibles.
           </p>
         </div>
         <div className="rounded-lg border border-gray-800 bg-surface-1 px-4 py-3 text-sm text-gray-300">
@@ -67,33 +68,37 @@ export default async function ResearchWorkflowsPage() {
                   entrada: {workflow.input}
                 </span>
               </div>
-              {workflow.truth ? (
-                <p className="mb-3 text-xs leading-5 text-gray-500">{workflow.truth}</p>
-              ) : null}
+              <p className="mb-4 text-sm leading-6 text-gray-400">{workflowSummary(workflow.name)}</p>
+              <details className="mb-4 text-xs text-gray-500">
+                <summary className="min-h-11 cursor-pointer py-3">Detalles técnicos</summary>
+                {workflow.truth ? (
+                  <p className="mb-3 leading-5">{workflow.truth}</p>
+                ) : null}
+                <ol className="space-y-1">
+                  {workflow.steps.map((step, index) => (
+                    <li key={`${workflow.name}-${index}`} className="flex items-start gap-2">
+                      <span className="mt-0.5 font-mono text-teal-300/60">{String(index + 1).padStart(2, '0')}</span>
+                      <span className="min-w-0 break-all font-mono text-gray-400">{step}</span>
+                    </li>
+                  ))}
+                </ol>
+              </details>
 
-              <div className="mb-4 space-y-1">
-                {workflow.steps.map((step, index) => (
-                  <div key={`${workflow.name}-${index}`} className="flex items-start gap-2 text-xs">
-                    <span className="mt-0.5 font-mono text-teal-300/60">{String(index + 1).padStart(2, '0')}</span>
-                    <span className="min-w-0 break-all font-mono text-gray-400">{step}</span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex items-center justify-between gap-3 border-t border-gray-800 pt-3">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-800 pt-3">
                 <div className="flex items-center gap-1.5 text-xs text-gray-500">
                   {status === 'implemented'
-                    ? 'Ejecutable vía POST /run'
+                    ? isGenerateThesis ? 'Generación de una nueva versión' : 'Disponible mediante API'
                     : status === 'partial'
-                      ? 'Ejecución parcial vía POST /run'
-                      : 'Sin ejecución vía API (scheduler/Dramatiq)'}
+                      ? 'Ejecución parcial mediante API'
+                      : 'No se ejecuta desde esta pantalla'}
                 </div>
                 {isGenerateThesis ? (
-                  <MutationForm action={runWorkflow} className="flex items-center gap-2" successMessage="Flujo ejecutado">
+                  <MutationForm action={runWorkflow} className="flex flex-wrap items-center gap-2" successMessage="Flujo ejecutado">
                     <input name="workflow" type="hidden" value={workflow.name} />
                     {needsTicker && (
                       <Input
                         className="h-8 w-28 border-gray-700 bg-black/30 text-gray-200 text-sm"
+                        aria-label="Ticker de la empresa"
                         name="ticker"
                         placeholder="MSFT"
                         required
@@ -106,7 +111,7 @@ export default async function ResearchWorkflowsPage() {
                   </MutationForm>
                 ) : status !== 'descriptive' ? (
                   <span className="min-w-0 break-all text-right text-xs text-gray-500">
-                    POST /api/workflows/{workflow.name}/run
+                    Sin ejecución desde esta pantalla
                   </span>
                 ) : null}
               </div>
@@ -115,7 +120,7 @@ export default async function ResearchWorkflowsPage() {
         })}
         {!workflows.length ? (
           <div className="col-span-2 rounded-lg border border-gray-800 bg-surface-1 p-5 text-sm text-gray-500">
-            Sin flujos registrados. Verifica que el backend Python esté corriendo.
+            No hay flujos registrados.
           </div>
         ) : null}
       </section>
