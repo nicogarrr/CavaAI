@@ -452,6 +452,14 @@ jobs:
           severity: CRITICAL,HIGH,MEDIUM,LOW,UNKNOWN
           exit-code: "0"
 
+      - name: Debug puerta (valores resueltos, temporal)
+        if: ${{ always() }}
+        run: |
+          echo "::notice title=gate-args::build=[${{ needs.build.result }}] vuln=[${{ steps.trivy_vuln.outcome }}] secret=[${{ steps.trivy_secret.outcome }}] misconfig=[${{ steps.trivy_misconfig.outcome }}] engine2=[${{ steps.engine2_result.outputs.status }}] ref=[cavaai/${{ matrix.name }}:${{ github.sha }}]"
+          echo "::notice title=gate-files::$(ls -1 reports engine2 2>&1 | tr '\n' ' ')"
+          echo "::notice title=gate-script::$(ls -l data-engine/scripts/security/gate_image_scan.py scripts/security/trivy-policy.yaml 2>&1 | tr '\n' ' ')"
+          echo "::notice title=gate-python::$(python --version 2>&1) $(python -c 'import yaml;print(yaml.__version__)' 2>&1)"
+
       - name: Puerta (unico punto de decision, rojo/verde)
         # Sin `continue-on-error` y con `if: always()`: este paso corre siempre y
         # su exit code es el veredicto de la imagen. Los `outcome` de cada
@@ -461,6 +469,7 @@ jobs:
         if: ${{ always() }}
         run: |
           set -euo pipefail
+          trap 'echo "::error title=gate-rc::exit=$? line=$LINENO"' ERR
           mkdir -p reports
           python data-engine/scripts/security/gate_image_scan.py \
             --image "${{ matrix.name }}" \
