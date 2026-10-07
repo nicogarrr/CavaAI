@@ -95,3 +95,23 @@ def test_unknown_investor_remains_404(monkeypatch):
     with pytest.raises(HTTPException) as error:
         investors.investor("unknown", db=None)
     assert error.value.status_code == 404
+
+
+@pytest.mark.parametrize("date", [
+    "2026-10-01T10:00:00+02:60", "2026-10-01 10:00:00+02:00",
+    "2026-10-01T10:00:00+24:00", "2026-10-01T10:00:00+0200",
+])
+def test_dates_never_repaired(date):
+    assert service.parse_feed(feed(entry(published=date)), CHANNEL, "archive") == []
+
+
+@pytest.mark.parametrize("encoding", ["utf-8", "utf-16", "utf-16-be", "utf-16-le"])
+def test_dtd_entity_rejected_independent_of_encoding(encoding):
+    xml = feed(entry()).decode().replace("<title>Titulo</title>", "<title>&fabricated;</title>")
+    xml = '<!DOCTYPE feed [<!ENTITY fabricated "Fabricated title">]>' + xml
+    assert service.parse_feed(xml.encode(encoding), CHANNEL, "archive") == []
+
+
+def test_non_utf8_declaration_rejected():
+    xml = b'<?xml version="1.0" encoding="UTF-16"?>' + feed(entry())
+    assert service.parse_feed(xml, CHANNEL, "archive") == []

@@ -10,6 +10,7 @@ from threading import Lock
 import httpx
 
 _CHANNEL = re.compile(r"UC[A-Za-z0-9_-]{22}\Z")
+_DATE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)\Z")
 _VIDEO = re.compile(r"[A-Za-z0-9_-]{11}\Z")
 _ATOM = "{http://www.w3.org/2005/Atom}"
 _YT = "{http://www.youtube.com/xml/schemas/2015}"
@@ -27,10 +28,21 @@ MAX_BYTES = 256_000
 def parse_feed(content: bytes, channel_id: str, channel_kind: str) -> list[dict[str, str]]:
     if not _CHANNEL.fullmatch(channel_id) or channel_kind not in ("personal_confirmed", "archive"):
         return []
-    if len(content) > MAX_BYTES or b"<!DOCTYPE" in content.upper() or b"<!ENTITY" in content.upper():
+    if len(content) > MAX_BYTES:
+        return []
+    # Solo UTF-8: ET no recibe bytes que puedan reinterpretarse como UTF-16.
+    # Rechaza NUL y una declaracion de encoding distinta, no repara el XML.
+    try:
+        text = content.decode("utf-8-sig", errors="strict")
+    except UnicodeDecodeError:
+        return []
+    encoding = re.search(r"<\?xml\s[^?]*encoding\s*=\s*['\"]([^'\"]+)['\"]", text, re.IGNORECASE)
+    if "\x00" in text or (encoding and encoding.group(1).lower() not in ("utf-8", "utf8")):
+        return []
+    if "<!DOCTYPE" in text.upper() or "<!ENTITY" in text.upper():
         return []
     try:
-        root = ET.fromstring(content)
+        root = ET.fromstring(text)
     except ET.ParseError:
         return []
     if root.tag != _ATOM + "feed" or root.findtext(_YT + "channelId") != channel_id:
@@ -44,7 +56,7 @@ def parse_feed(content: bytes, channel_id: str, channel_kind: str) -> list[dict[
         vid = entry.findtext(_YT + "videoId") or ""
         title = (entry.findtext(_ATOM + "title") or "").strip()
         published = entry.findtext(_ATOM + "published") or ""
-        if not _VIDEO.fullmatch(vid) or not title or vid in seen:
+        if not _VIDEO.fullmatch(vid) or not title or vid in seen or not _DATE.fullmatch(published):
             continue
         if entry.findtext(_YT + "channelId") != channel_id:
             continue
