@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 FACT_KEYS = ("label", "value", "as_of", "source_url", "kind")
-KINDS = ("oficial", "inferido")
+KINDS = ("oficial", "inferido", "prensa")
 
 _WEB = "https://www.numantiapatrimonio.com/"
 _LETTER_2025 = "https://www.numantiapatrimonio.com/pdfs/Numantia2025.pdf"
@@ -21,6 +21,11 @@ _WEB_ASOF = "2026-10-06 (web consultada)"
 
 def _fact(label: str, value: str, as_of: str, source_url: str) -> dict[str, str]:
     return {"label": label, "value": value, "as_of": as_of, "source_url": source_url, "kind": "oficial"}
+
+
+def _press(label: str, value: str, as_of: str, source_url: str) -> dict[str, str]:
+    """Hecho recogido por un medio, no por un registro oficial."""
+    return {"label": label, "value": value, "as_of": as_of, "source_url": source_url, "kind": "prensa"}
 
 
 def _letter(title: str, year: str, path: str) -> dict[str, str]:
@@ -215,8 +220,92 @@ PUBLIC_PROFILES["nick-sleep"] = {
 }
 
 
+_TRUMP_13D = "https://www.sec.gov/Archives/edgar/data/947033/000114036125046424/xslSCHEDULE_13D_X01/primary_doc.xml"
+_TRUMP_13D_ORIG = "https://www.sec.gov/Archives/edgar/data/1849635/000114036124017051/ef20025668_sc13d.htm"
+_TRUMP_EDGAR = "https://www.sec.gov/cgi-bin/own-disp?CIK=0000947033&action=getowner&sortid=period-of-report-ASC"
+_TRUMP_OGE = "https://www.whitehouse.gov/wp-content/uploads/2025/06/President-Donald-J.-Trump.pdf"
+_TRUMP_OGE_INDEX = "https://projects.propublica.org/trump-team-financial-disclosures/appointees/trump-donald-j/"
+_DLNEWS = "https://www.dlnews.com/articles/defi/donald-trump-family-unveils-world-liberty-financial-defi-app/"
+
+PUBLIC_PROFILES["trump"] = {
+    "vehicle": {
+        "name": "Trump Media & Technology Group (Nasdaq: DJT) a través del Donald J. Trump Revocable Trust",
+        "type": "Participación personal declarada en la SEC; no es un fondo ni una cartera gestionada",
+        "regulator_id": "SEC CIK 0000947033 (declarante) / emisor CIK 0001849635",
+        "manager_company": "Donald J. Trump Revocable Trust (fiduciario: Donald J. Trump Jr.)",
+        "start_date": "",
+        "source_url": _TRUMP_13D,
+    },
+    "facts": [
+        _fact("Acciones de Trump Media (DJT) declaradas", "114.750.000 acciones ordinarias", "Schedule 13D/A nº 3, evento del 2025-12-18", _TRUMP_13D),
+        _fact("Porcentaje del capital de DJT", "41,5% sobre 276.497.911 acciones en circulación", "Schedule 13D/A nº 3, evento del 2025-12-18", _TRUMP_13D),
+        _fact("Titular de las acciones", "Donald J. Trump Revocable Trust (7-abr-2014); Trump es el único beneficiario y su hijo Donald J. Trump Jr. es el fiduciario con voto y poder de inversión", "Schedule 13D/A nº 3, evento del 2025-12-18", _TRUMP_13D),
+    ],
+    "letters": [
+        {"title": "Schedule 13D original sobre Trump Media (SEC, 1 abr 2024)", "date": "2024", "url": _TRUMP_13D_ORIG},
+        {"title": "Declaración financiera anual 2025 del presidente (OGE 278e, publicada por la Casa Blanca)", "date": "2025", "url": _TRUMP_OGE},
+    ],
+    "meetings": [],
+    "holdings": None,
+    "holdings_note": (
+        "Sin datos: Donald Trump no presenta 13F. Solo está incorporada su participación en Trump Media, "
+        "con fecha del último 13D/A leído (18 dic 2025); no se ha verificado ninguna posterior ni el resto de su patrimonio. "
+        "No hay cartera de acciones por posiciones con fuente pública incorporada."
+    ),
+    "links": [
+        {"label": "Filings de Trump como titular en la SEC (EDGAR)", "url": _TRUMP_EDGAR},
+        {"label": "Declaración financiera 2025 resumida por ProPublica (tercero)", "url": _TRUMP_OGE_INDEX},
+    ],
+}
+
+PUBLIC_PROFILES["barron-trump"] = {
+    "vehicle": {
+        "name": "World Liberty Financial (proyecto cripto vinculado a la familia Trump)",
+        "type": "Su nombre figura en la documentación del proyecto; no hay participación ni cartera declarada",
+        "regulator_id": "Sin registro público",
+        "manager_company": "World Liberty Financial",
+        "start_date": "",
+        "source_url": _DLNEWS,
+    },
+    "facts": [
+        _press("Rol listado en World Liberty Financial", "\"DeFi visionary\" según la documentación del proyecto; DL News señala que su papel concreto no está claro", "2024-09-16", _DLNEWS),
+    ],
+    "letters": [],
+    "meetings": [],
+    "holdings": None,
+    "holdings_note": (
+        "Sin datos públicos: Barron Trump no presenta 13F ni hay ninguna declaración con sus participaciones. "
+        "Solo consta el rol anterior, recogido por un medio (no por un registro oficial)."
+    ),
+    "links": [
+        {"label": "Artículo de DL News (tercero)", "url": _DLNEWS},
+    ],
+}
+
+
+def provenance_note(profile: dict[str, Any]) -> str:
+    """Pie de la ficha segun el origen REAL de sus hechos (nunca atribuye prensa al gestor)."""
+    kinds = {f.get("kind") for f in profile.get("facts", [])}
+    parts = []
+    if "oficial" in kinds:
+        parts.append("Los datos marcados «Oficial» los publica el propio gestor, la empresa o un regulador (CNMV, SEC)")
+    if "prensa" in kinds:
+        parts.append("los marcados «Prensa» los recoge un medio identificado y no son un registro oficial")
+    if "inferido" in kinds:
+        parts.append("los marcados «Inferido» se calculan aquí con su método")
+    if not parts:
+        return "Sin cifras publicadas incorporadas."
+    text = "; ".join(parts)
+    if "inferido" not in kinds:
+        text += "; sin estimaciones propias"
+    return text[0].upper() + text[1:] + "."
+
+
 def public_profile(slug: str) -> dict[str, Any] | None:
-    return PUBLIC_PROFILES.get(slug)
+    profile = PUBLIC_PROFILES.get(slug)
+    if profile is None:
+        return None
+    return {**profile, "provenance_note": provenance_note(profile)}
 
 
 def validate_profile(profile: dict[str, Any]) -> list[str]:
