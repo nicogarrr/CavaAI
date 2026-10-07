@@ -25,6 +25,7 @@ funcion de red lanza excepciones: degradan a ``None``.
 
 from __future__ import annotations
 
+import math
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -83,7 +84,13 @@ def parse_regsho_daily(text: str, symbol: str) -> dict | None:
         short_volume = _to_float(parts[2])
         short_exempt = _to_float(parts[3])
         total_volume = _to_float(parts[4])
-        if short_volume is None or total_volume is None:
+        if short_volume is None or total_volume is None or short_exempt is None:
+            continue
+        if any(not math.isfinite(v) or v < 0 or not v.is_integer() for v in (short_volume, total_volume)):
+            continue
+        if short_volume > total_volume:
+            continue
+        if short_exempt is not None and (not math.isfinite(short_exempt) or short_exempt < 0 or short_exempt > short_volume or not short_exempt.is_integer()):
             continue
         yyyymmdd = parts[0]
         trade_date = (
@@ -91,6 +98,10 @@ def parse_regsho_daily(text: str, symbol: str) -> dict | None:
             if len(yyyymmdd) == 8 and yyyymmdd.isdigit()
             else yyyymmdd
         )
+        try:
+            date.fromisoformat(trade_date)
+        except ValueError:
+            continue
         ratio = (short_volume / total_volume) if total_volume > 0 else None
         return {
             "symbol": wanted,
@@ -131,6 +142,8 @@ async def fetch_short_volume(
                 async with httpx.AsyncClient(timeout=30, headers=dict(_HEADERS)) as owned:
                     response = await owned.get(url)
         except httpx.HTTPError:
+            return None
+        if response.status_code in {401, 403, 429}:
             return None
         if response.status_code != 200:
             continue

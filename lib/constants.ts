@@ -135,6 +135,7 @@ export const ROUTE_CATALOG: NavSection[] = [
         children: [
           { href: '/research/news', label: 'Noticias', icon: Newspaper },
           { href: '/research/sources', label: 'Fuentes', icon: Library },
+          { href: '/research/data-health', label: 'Salud de los datos', icon: Gauge },
         ],
       },
       {

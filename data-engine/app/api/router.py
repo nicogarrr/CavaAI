@@ -9,6 +9,7 @@ from app.api.routes import (
     companies,
     company_events,
     corporate_actions,
+    data_health,
     earnings,
     export,
     insider,
@@ -47,6 +48,7 @@ from app.api.routes import (
 # en api_router lo haría heredar la auth de main.py.
 
 api_router = APIRouter()
+api_router.include_router(data_health.router, prefix="/data-health", tags=["data-health"])
 api_router.include_router(alerts.router, prefix="/alerts", tags=["alerts"])
 api_router.include_router(calendar.router, prefix="/calendar", tags=["calendar"])
 api_router.include_router(companies.router, prefix="/companies", tags=["companies"])
