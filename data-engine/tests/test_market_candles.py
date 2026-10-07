@@ -67,13 +67,13 @@ def test_candles_drop_null_closes_everywhere_aligned():
     assert out["v"] == [100.0, 300.0]
 
 
-def test_candles_null_ohlc_fall_back_to_close():
+def test_candles_null_ohlc_stays_unknown():
     payload = _payload()
     quote = payload["chart"]["result"][0]["indicators"]["quote"][0]
     quote["open"] = [None, None, None]
     out = market._fetch_yahoo_candles(_Client(resp=_Resp(200, payload)), "SAN.MC", 0, 9999, "1d")
     assert out is not None
-    assert out["o"] == out["c"]
+    assert out["o"] == [None, None]
 
 
 def test_candles_all_null_returns_none():
@@ -131,3 +131,33 @@ def test_candles_request_dashed_symbol_for_share_class():
     out = market._fetch_yahoo_candles(client, "BRK.B", 0, 9999, "1d")
     assert out is not None
     assert client.urls == [f"{market._YAHOO_CHART_URL}/BRK-B"]
+
+
+@pytest.mark.parametrize("shape", ["null", "absent", "short"])
+def test_yahoo_close_only_keeps_prices_but_never_fabricates_ohlc(shape):
+    payload = _payload()
+    quote = payload["chart"]["result"][0]["indicators"]["quote"][0]
+    for key in ("open", "high", "low", "volume"):
+        if shape == "absent":
+            quote.pop(key)
+        else:
+            quote[key] = [None, None, None] if shape == "null" else [None]
+    out = market._fetch_yahoo_candles(_Client(resp=_Resp(200, payload)), "HIMS", 0, 9999, "1d")
+    assert out is not None
+    assert out["c"] == [10, 12]
+    assert out["t"] == [1000, 3000]
+    for key in ("o", "h", "l", "v"):
+        assert out[key] == [None, None]
+
+
+def test_optional_ohlc_fields_are_independently_preserved():
+    payload = _payload()
+    quote = payload["chart"]["result"][0]["indicators"]["quote"][0]
+    quote["open"] = [None, None, 11.5]
+    quote["high"] = [10.5, None, None]
+    quote["low"] = [9, None, float("nan")]
+    out = market._fetch_yahoo_candles(_Client(resp=_Resp(200, payload)), "HIMS", 0, 9999, "1d")
+    assert out is not None
+    assert out["o"] == [None, 11.5]
+    assert out["h"] == [10.5, None]
+    assert out["l"] == [9, None]

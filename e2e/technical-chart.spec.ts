@@ -42,3 +42,13 @@ test('no quote AND no history preserves an explicit unavailable workspace', asyn
     await page.screenshot({ path: '/downloads/chart-unavailable.png', fullPage: true });
     await expect(page.getByText('Sin datos OHLC para calcular niveles.')).toBeVisible();
 });
+
+test('Yahoo close-only through real adapter and normalizer abstains in UI', async ({ page }) => {
+    await page.goto('/chart-preview?mode=yahoo');
+    await expect(page.getByTestId('technical-price-canvas').locator('canvas').first()).toBeVisible();
+    await expect(page.getByText('Sin datos OHLC para calcular niveles.')).toBeVisible();
+    await expect(page.getByText('Estructura: sin datos OHLC suficientes.')).toBeVisible();
+    await page.getByRole('tab', {name:'Fibonacci',exact:true}).click();
+    await expect(page.getByText('Sin datos OHLC para Fibonacci.')).toBeVisible();
+    await page.screenshot({path:'/downloads/yahoo-close-only-real-boundary.png',fullPage:true});
+});

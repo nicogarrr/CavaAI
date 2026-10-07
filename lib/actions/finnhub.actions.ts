@@ -21,7 +21,7 @@ import { volumeTrendStats } from '@/lib/market/volume-trend';
 
 const FINNHUB_BASE_URL = env.FINNHUB_BASE_URL;
 
-export type FinnhubCandles = { source?: string; s: 'ok' | 'no_data'; c: number[]; t: number[]; o: number[]; h: number[]; l: number[]; v: (number | null)[] };
+export type FinnhubCandles = { source?: string; s: 'ok' | 'no_data'; c: number[]; t: number[]; o: (number | null)[]; h: (number | null)[]; l: (number | null)[]; v: (number | null)[] };
 
 export async function getCandles(symbol: string, from: number, to: number, resolution: 'D' | 'W' | 'M' | '60' = 'D', revalidateSeconds = 1800): Promise<FinnhubCandles> {
     await requireAuthenticatedUser();
@@ -329,8 +329,8 @@ export async function getTechnicalAnalysis(symbol: string, days = 252): Promise<
         const recentHighs = highs.slice(-60);
         const recentLows = lows.slice(-60);
 
-        const support = Math.min(...recentLows);
-        const resistance = Math.max(...recentHighs);
+        const support = recentLows.length && recentLows.every((v) => typeof v === 'number' && Number.isFinite(v)) ? Math.min(...recentLows as number[]) : undefined;
+        const resistance = recentHighs.length && recentHighs.every((v) => typeof v === 'number' && Number.isFinite(v)) ? Math.max(...recentHighs as number[]) : undefined;
 
         // Tendencias (comparar últimos 20 días vs anteriores 20 días)
         const recentAvg = prices.slice(-20).reduce((a, b) => a + b, 0) / 20;
