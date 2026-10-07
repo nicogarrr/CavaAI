@@ -73,12 +73,6 @@ function money(
   return formatMoney(parsed, currency, { maximumFractionDigits: 2 });
 }
 
-function pct(value: number | string | null | undefined): string {
-  const parsed = typeof value === 'string' ? Number(value) : value;
-  if (parsed === null || parsed === undefined || Number.isNaN(parsed)) return NA;
-  return formatPercent(parsed);
-}
-
 function ScoreBar({ label, value }: { label: string; value: number }) {
   const clamped = Math.max(0, Math.min(100, value));
   const tone =
