@@ -1,4 +1,4 @@
-import { formatMarketDate, formatMoney, formatNumber, formatPercent, isValidCurrencyCode } from '@/lib/format';
+import { NA, formatMarketDate, formatMoney, formatNumber, formatPercent, isValidCurrencyCode } from '@/lib/format';
 import { SPARK_HEIGHT, SPARK_WIDTH, sparklinePoints } from '@/lib/sparkline';
 import type { CompanyMarketSnapshot } from '@/lib/actions/market-workspace.actions';
 
@@ -8,7 +8,7 @@ const SHORT_DATE: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' 
 /**
  * Precio + variación + sparkline de la cabecera de la ficha. Servidor puro
  * (SVG, sin JS de cliente). Reglas de honestidad:
- * - cada dato ausente se omite, nunca se fabrica;
+ * - precio ausente se omite; métricas ausentes usan N/D, nunca se fabrican;
  * - sin divisa verificada no se muestra precio (nunca se asume USD);
  * - un precio que viene del último cierre de vela se rotula con su fecha
  *   («Cierre del …») para que no parezca cotización actual;
@@ -25,11 +25,10 @@ export function CompanyHeaderQuote({ snapshot }: { snapshot: CompanyMarketSnapsh
     // Signo coherente con el dato mostrado: si falta change, manda
     // changePercent; sin ninguno, no hay linea de variacion que colorear.
     const signBase = quote.change ?? quote.changePercent ?? 0;
-    const positive = signBase >= 0;
     return (
-        <div className="sm:ml-auto sm:text-right" data-testid="company-header-quote">
+        <div className="flex w-full flex-col gap-4" data-testid="company-header-quote">
             {showPrice ? (
-                <>
+                <div>
                     {quote.priceAsOf ? (
                         <p className="text-[11px] uppercase tracking-wide text-gray-500">
                             Cierre del {formatMarketDate(quote.priceAsOf, SHORT_DATE)}
@@ -39,11 +38,11 @@ export function CompanyHeaderQuote({ snapshot }: { snapshot: CompanyMarketSnapsh
                             Precio de fecha desconocida
                         </p>
                     ) : null}
-                    <div className="text-2xl font-bold text-gray-100 sm:text-3xl">
+                    <div className="text-4xl font-semibold tracking-tight text-gray-100 sm:text-5xl">
                         {formatMoney(quote.price, currency)}
                     </div>
                     {quote.change != null || quote.changePercent != null ? (
-                        <div className={positive ? 'text-sm text-teal-300' : 'text-sm text-red-300'}>
+                        <div className={`mt-2 inline-flex w-fit items-center rounded-full px-2.5 py-1 text-sm font-medium ${signBase > 0 ? 'bg-emerald-500/10 text-emerald-300' : signBase < 0 ? 'bg-red-500/10 text-red-300' : 'bg-gray-800 text-gray-300'}`}>
                             {[
                                 quote.change != null
                                     ? formatNumber(quote.change, { signDisplay: 'always', maximumFractionDigits: 2 })
@@ -56,7 +55,22 @@ export function CompanyHeaderQuote({ snapshot }: { snapshot: CompanyMarketSnapsh
                                 .join(' · ')}
                         </div>
                     ) : null}
-                </>
+                </div>
+            ) : null}
+            {showPrice ? (
+                <div className="overflow-x-auto">
+                <dl className="grid grid-cols-4 divide-x divide-gray-800 border-y border-gray-800" data-testid="company-metric-strip">
+                    {[
+                        ['Apertura', quote.open], ['Máximo', quote.high],
+                        ['Mínimo', quote.low], ['Cierre anterior', quote.previousClose],
+                    ].map(([label, value]) => (
+                        <div className="min-w-0 px-2 py-3 first:pl-0 sm:px-3" key={String(label)}>
+                            <dt className="text-xs text-gray-500">{label}</dt>
+                            <dd className="mt-1 break-words text-xs font-medium text-gray-200 sm:text-sm">{value == null ? NA : formatMoney(value as number, currency)}</dd>
+                        </div>
+                    ))}
+                </dl>
+                </div>
             ) : null}
             {points && firstDate && lastDate ? (
                 <>
@@ -69,7 +83,7 @@ export function CompanyHeaderQuote({ snapshot }: { snapshot: CompanyMarketSnapsh
                         <polyline
                             fill="none"
                             points={points}
-                            stroke={positive ? '#5eead4' : '#f87171'}
+                            stroke="#5eead4"
                             strokeWidth="1.5"
                         />
                     </svg>

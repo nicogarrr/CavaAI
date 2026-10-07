@@ -90,7 +90,7 @@ test('la variación omite ausencias: línea entera fuera si faltan ambos', () =>
     assert.match(component, /quote\.change != null \|\| quote\.changePercent != null \? \(/);
     assert.match(component, /\.filter\(Boolean\)\s*\.join\(' · '\)/);
     assert.ok(!/\{' · '\}/.test(component), 'queda un separador incondicional');
-    assert.ok(!/N\/D/.test(component), 'la cabecera no debe pintar placeholders N/D');
+    assert.match(component, /value == null \? NA : formatMoney/, 'ausencias en la tira de métricas, nunca precio fabricado');
 });
 
 test('el color del signo sigue al dato disponible (change ?? changePercent)', () => {
