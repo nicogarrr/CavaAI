@@ -33,7 +33,7 @@ export async function getPlanDrift(): Promise<PlanRecord | null> {
     return nullIfPlanStub(await researchRequest<PlanRecord>('/api/plan/drift'));
 }
 export type PlanTargetInput = {
-    kind: 'ticker';
+    kind: 'ticker' | 'sector' | 'asset_class';
     label: string;
     target_pct: number;
     band_pct: number;
