@@ -1,0 +1,44 @@
+import { expect, test } from '@playwright/test';
+test.skip(process.env.E2E_CHART_RUN !== '1', 'Isolated chart fixture, run with scripts/test-technical-chart.mjs');
+for (const viewport of [{ width: 1440, height: 1080 }, { width: 390, height: 844 }, { width: 768, height: 1024 }]) {
+    test(`price chart and technical reading ${viewport.width}px`, async ({ page }) => {
+        await page.setViewportSize(viewport);
+        const errors: string[] = [];
+        page.on('pageerror', (error) => errors.push(error.message));
+        await page.goto('/chart-preview');
+        await expect(page.getByTestId('technical-price-canvas').locator('canvas').first()).toBeVisible();
+        await expect(page.getByRole('heading', { name: 'Lectura técnica', exact: true })).toBeVisible();
+        await expect(page.getByText('Pivotes diarios', { exact: false })).toBeVisible();
+        await page.getByRole('tab', { name: 'Fibonacci', exact: true }).click();
+        await expect(page.getByText('Retrocesos del rango 1M')).toBeVisible();
+        await page.getByRole('tab', { name: 'Fibonacci', exact: true }).press('Home');
+        await expect(page.getByRole('tab', { name: 'Completo', exact: true })).toHaveAttribute('aria-selected', 'true');
+        await page.getByRole('button', { name: '6M', exact: true }).click();
+        await expect(page.getByRole('button', { name: '6M', exact: true })).toHaveAttribute('aria-pressed', 'true');
+        const chart = await page.getByTestId('technical-price-canvas').boundingBox();
+        const reading = await page.getByTestId('technical-reading').boundingBox();
+        expect(chart).not.toBeNull(); expect(reading).not.toBeNull();
+        if (viewport.width < 1280) expect(reading!.y).toBeGreaterThan(chart!.y + chart!.height);
+        else expect(reading!.x).toBeGreaterThan(chart!.x + chart!.width);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        expect(errors).toEqual([]);
+        await page.screenshot({ path: `test-results/technical-${viewport.width}.png`, fullPage: true });
+    });
+}
+test('close-only history stays honest; missing history stays empty', async ({ page }) => {
+    await page.goto('/chart-preview?mode=close');
+    await expect(page.getByText('Sin datos OHLC para calcular niveles.')).toBeVisible();
+    await expect(page.getByTestId('technical-price-canvas').locator('canvas').first()).toBeVisible();
+    await page.goto('/chart-preview?mode=empty');
+    await expect(page.getByText('Sin datos suficientes para este rango')).toBeVisible();
+});
+
+test('no quote AND no history preserves an explicit unavailable workspace', async ({ page }) => {
+    await page.goto('/chart-preview?mode=unavailable');
+    await expect(page.getByTestId('company-header-quote')).toBeVisible();
+    await expect(page.getByTestId('company-technical-chart')).toBeVisible();
+    await expect(page.getByText('Sin datos suficientes para este rango')).toBeVisible();
+    await expect(page.getByText('336,56 US$')).not.toBeVisible();
+    await page.screenshot({ path: '/downloads/chart-unavailable.png', fullPage: true });
+    await expect(page.getByText('Sin datos OHLC para calcular niveles.')).toBeVisible();
+});

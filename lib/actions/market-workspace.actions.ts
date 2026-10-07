@@ -44,6 +44,7 @@ export type CompanyMarketSnapshot = {
         close: number;
         volume: number | null;
     }>;
+    historySource?: string | null;
     status: 'available' | 'partial' | 'unavailable';
 };
 
@@ -162,6 +163,7 @@ export async function getCompanyMarketSnapshot(ticker: string): Promise<CompanyM
             priceKind: quoteLive ? 'live' : price !== null ? 'close' : null,
         },
         history,
+        historySource: candles.source ?? null,
         // La insignia del historial describe la serie (F161): sin velas es
         // «no disponible» aunque la cotización puntual haya cargado.
         status: marketHistoryStatus(history.length),
