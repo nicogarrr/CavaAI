@@ -1,8 +1,9 @@
+import { modelConditionState } from '@/lib/research/coverage-state';
 import { formatCompact, formatNumber, formatPercent, NA } from '@/lib/format';
 import { metricLabel } from '@/lib/research/metric-labels';
 import { frameworkLabel, frameworkTerm } from '@/lib/research/framework-terms';
 import { expectationMetricLabel, reviewStatusLabel } from '@/lib/research/expectation-labels';
-import { BarChart3, BrainCircuit, CheckCircle2, GitBranch } from 'lucide-react';
+import { BarChart3, BrainCircuit, CircleHelp, GitBranch } from 'lucide-react';
 import { GlossaryTerm } from '@/components/GlossaryTerm';
 import { MutationForm } from '@/components/forms/MutationForm';
 import ScenarioAssumptions from '@/components/research/ScenarioAssumptions';
@@ -96,6 +97,7 @@ const MODEL_STATUS_LABELS: Record<string, string> = {
   // Catálogo cerrado de long_term_model_service: ok, insufficient_data,
   // missing_mandatory_drivers, preview_only.
   ok: 'completo',
+  blocked: 'bloqueado',
   insufficient_data: 'datos insuficientes',
   missing_mandatory_drivers: 'faltan drivers obligatorios',
   preview_only: 'solo vista previa',
@@ -298,8 +300,8 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
           <ul className="space-y-2 text-sm">
             {model.what_must_be_true.slice(0, 6).map((item) => (
               <li key={item.id} className="flex gap-2 text-gray-300">
-                <CheckCircle2 aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-teal-300" />
-                <span>{conditionInSpanish(item, model.market_opportunity?.constraints?.binding_constraint, waccHasSource(model.assumptions.wacc))}</span>
+                <CircleHelp aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+                <span><span className="block text-xs text-amber-300">{modelConditionState(item, waccHasSource(model.assumptions.wacc))}</span>{conditionInSpanish(item, model.market_opportunity?.constraints?.binding_constraint, waccHasSource(model.assumptions.wacc))}</span>
               </li>
             ))}
           </ul>
@@ -384,9 +386,10 @@ export function DecisionAndRealityPanel({
           </MutationForm>
         </div>
         {reviews.length === 0 ? (
-          <p className="text-sm text-gray-500">Ejecuta la comparación cuando existan forecasts persistidos.</p>
+          <p className="text-sm text-gray-500">Sin comparaciones persistidas. Solo se pueden contrastar previsiones que tengan datos esperados y reales.</p>
         ) : (
           <>
+            <p className="mb-3 text-xs leading-5 text-gray-500">N/D significa que falta el dato esperado o real: no hay una comparación verificable, ni un acierto medido.</p>
             {/* Móvil: cards sin scroll horizontal */}
             <div className="max-h-[560px] space-y-3 overflow-auto md:hidden">
               {reviews.slice(0, 40).map((review) => (
@@ -396,7 +399,7 @@ export function DecisionAndRealityPanel({
                     <div className="flex justify-between gap-2"><span>Esperado</span><span className="text-gray-200">{compactNumber(review.expected_value)}</span></div>
                     <div className="flex justify-between gap-2"><span>Real</span><span className="text-gray-200">{compactNumber(review.actual_value)}</span></div>
                   </div>
-                  <div className="mt-2"><Badge variant="outline">{reviewStatusLabel(review.status)}</Badge></div>
+                  <div className="mt-2"><Badge variant="outline">{review.expected_value == null || review.actual_value == null || !Number.isFinite(review.expected_value) || !Number.isFinite(review.actual_value) ? 'Sin comparación: falta dato' : reviewStatusLabel(review.status)}</Badge></div>
                 </div>
               ))}
             </div>
@@ -417,7 +420,7 @@ export function DecisionAndRealityPanel({
                     <th className="py-3 text-left text-sm font-normal text-gray-300" scope="row">{review.fiscal_year} · {expectationMetricLabel(review.metric)}</th>
                     <td className="py-3 text-right text-gray-400">{compactNumber(review.expected_value)}</td>
                     <td className="py-3 text-right text-gray-400">{compactNumber(review.actual_value)}</td>
-                    <td className="py-3 text-right"><Badge variant="outline">{reviewStatusLabel(review.status)}</Badge></td>
+                    <td className="py-3 text-right"><Badge variant="outline">{review.expected_value == null || review.actual_value == null || !Number.isFinite(review.expected_value) || !Number.isFinite(review.actual_value) ? 'Sin comparación: falta dato' : reviewStatusLabel(review.status)}</Badge></td>
                   </tr>
                 ))}
               </tbody>
