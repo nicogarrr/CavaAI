@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Company, Document, DocumentChunk
+from app.services.library_context import retrieve_library_context
 from app.services.rag import RAGIndex
 
 
@@ -48,4 +49,6 @@ def retrieve_thesis_context(db: Session, company: Company) -> list[dict]:
             "document_id": document.id, "chunk_id": chunk.id,
             "chunk_index": chunk.chunk_index,
         })
-    return contexts
+    return contexts + retrieve_library_context(
+        db, f"{company.ticker} investment principles capital allocation business risks"
+    )

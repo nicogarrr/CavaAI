@@ -23,6 +23,7 @@ from app.schemas import ChatResponse
 from app.services.chat_synthesis_service import ChatSynthesisService
 from app.services.claim_scope import live_claims
 from app.services.company_resolver import resolve_company
+from app.services.library_context import retrieve_library_context
 from app.services.memory_service import MemoryService
 from app.services.source_hierarchy_service import source_tier_key
 
@@ -166,12 +167,43 @@ class ChatService:
         try:
             from app.services.rag import RAGIndex
 
-            return RAGIndex().search(
+            hits = RAGIndex().search(
                 question,
                 ticker=company.ticker if company else None,
                 limit=limit,
                 tenant_id=db.info.get("tenant_id"),
             )
+            tenant_id = db.info.get("tenant_id")
+            if type(tenant_id) is not int or tenant_id <= 0:
+                return []
+            rows = []
+            seen = set()
+            for hit in hits:
+                chunk_id = hit.get("entity_id")
+                if hit.get("entity_type") != "document_chunk" or type(chunk_id) is not int or chunk_id in seen:
+                    continue
+                statement = (
+                    select(DocumentChunk, Document)
+                    .join(Document, Document.id == DocumentChunk.document_id)
+                    .where(DocumentChunk.id == chunk_id, DocumentChunk.tenant_id == tenant_id,
+                           Document.tenant_id == tenant_id)
+                )
+                if company:
+                    statement = statement.where(Document.company_id == company.id)
+                row = db.execute(statement).first()
+                if not row:
+                    continue
+                chunk, document = row
+                if not chunk.text.strip() or not chunk.qdrant_point_id or str(hit.get("point_id")) != chunk.qdrant_point_id:
+                    continue
+                seen.add(chunk_id)
+                rows.append({
+                    "point_id": chunk.qdrant_point_id, "entity_id": chunk.id,
+                    "document_id": document.id, "title": document.title,
+                    "source_type": document.source_type, "text": chunk.text,
+                    "url": document.source_url, "chunk_index": chunk.chunk_index,
+                })
+            return rows
         except Exception:
             return []
 
@@ -247,7 +279,15 @@ class ChatService:
         retrieved_memory = self.memory.retrieve(db, question, company, scope=scope, limit=6)
         recent_sessions = self._recent_sessions(db, company)
 
-        sources: list[dict] = []
+        library_context = (
+            retrieve_library_context(db, question)
+            if os.getenv("CAVAAI_ENABLE_VECTOR_CHAT") == "1" else []
+        )
+        library_lines = [
+            f"- Investment doctrine, not a company fact: {item['text']} "
+            f"[knowledge_chunk:{item['id']}]" for item in library_context
+        ]
+        sources: list[dict] = list(library_context)
         proposed_actions: list[str] = []
 
         if company:
@@ -447,7 +487,7 @@ class ChatService:
                 f"[rag_chunk:{chunk.get('point_id')}]"
                 for chunk in rag_chunks[:3]
                 if chunk.get("point_id") and chunk.get("text")
-            ]
+            ] + library_lines
             evidence_text = (
                 "\n".join(
                     [
@@ -551,6 +591,7 @@ class ChatService:
                     else thesis_text,
                     "citations": [
                         *([f"thesis_version:{thesis.id}"] if thesis else []),
+                        *[f"knowledge_chunk:{item['id']}" for item in library_context],
                         *[
                             f"rag_chunk:{chunk.get('point_id')}"
                             for chunk in rag_chunks[:3]
@@ -639,7 +680,8 @@ class ChatService:
             "USER ASSUMPTION / MEMORY\n"
             f"{chr(10).join(f'- {_short(item.content, 180)}' for item in portfolio_memories[:5]) or '- No relevant portfolio memory retrieved.'}\n\n"
             "UNVERIFIED CLAIM\n- Ask about a specific ticker to check company claims and evidence.\n\n"
-            "INFERENCE\n- For source-aware answers, provide a ticker or ingest portfolio-level evidence first."
+            "INFERENCE\n"
+            + ("\n".join(library_lines) or "- For source-aware answers, provide a ticker or ingest portfolio-level evidence first.")
         )
         return ChatResponse(
             answer=answer,
@@ -672,8 +714,8 @@ class ChatService:
                 },
                 {
                     "key": "inferences",
-                    "body": "A ticker is required for company-level inference.",
-                    "citations": [],
+                    "body": "\n".join(library_lines) or "A ticker is required for company-level inference.",
+                    "citations": [f"knowledge_chunk:{item['id']}" for item in library_context],
                 },
                 {
                     "key": "contradictions",
