@@ -318,6 +318,13 @@ class Settings(BaseSettings):
     llm_provider: str = "opencode-go"
     llm_timeout_seconds: float = Field(default=30.0, gt=0)
     llm_max_retries: int = Field(default=2, ge=0, le=5)
+    # Tope TOTAL por llamada (reintentos incluidos). Sin tope, 3 intentos de 30 s
+    # retenian la sesion de BD del llamador ~90 s y agotaban el pool (15).
+    llm_total_timeout_seconds: float = Field(default=45.0, gt=0)
+    # Modelos con razonamiento oculto: gastan tokens de salida pensando y con un
+    # max_tokens bajo devuelven "no assistant message". Suelo de salida para ellos.
+    llm_hidden_reasoning_models: str = "longcat-2.5-preview-free"
+    llm_hidden_reasoning_min_tokens: int = Field(default=1024, ge=1, le=100_000)
     llm_model_overrides: dict[str, str] = Field(default_factory=dict)
     llm_max_output_tokens: int = Field(default=16_000, ge=1, le=1_000_000)
     llm_daily_cap_eur: float = Field(default=1.50, ge=0)

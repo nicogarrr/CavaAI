@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
@@ -24,6 +25,7 @@ from app.llm.errors import (
     ProviderDisabledError,
     ProviderRequestError,
     ProviderResponseError,
+    ProviderTransportError,
 )
 from app.llm.routing import TaskModelRouter
 
@@ -173,6 +175,9 @@ class OpenAICompatibleProvider(LLMProvider):
         timeout_seconds: float = 30.0,
         max_retries: int = 2,
         max_output_tokens: int = 16_000,
+        total_timeout_seconds: float | None = None,
+        hidden_reasoning_models: frozenset[str] | set[str] | None = None,
+        hidden_reasoning_min_tokens: int = 1024,
     ) -> None:
         if not api_key:
             raise ValueError("api_key is required")
@@ -184,6 +189,9 @@ class OpenAICompatibleProvider(LLMProvider):
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
         self._max_output_tokens = max_output_tokens
+        self._total_timeout_seconds = total_timeout_seconds
+        self._hidden_reasoning_models = frozenset(hidden_reasoning_models or ())
+        self._hidden_reasoning_min_tokens = hidden_reasoning_min_tokens
         self._extra_headers = dict(extra_headers or {})
         # Cache de respuestas (Redis). None = sin cache. NUNCA es una via para
         # saltar la red y el presupuesto a la vez: si Redis cae, la cache
@@ -245,7 +253,16 @@ class OpenAICompatibleProvider(LLMProvider):
                 if cached is not None:
                     return cached
 
-        response, used_fallback = await self._complete_with_fallback(request, model)
+        try:
+            if self._total_timeout_seconds:
+                response, used_fallback = await asyncio.wait_for(
+                    self._complete_with_fallback(request, model),
+                    timeout=self._total_timeout_seconds,
+                )
+            else:
+                response, used_fallback = await self._complete_with_fallback(request, model)
+        except TimeoutError:
+            raise ProviderTransportError(self.name, "timeout", 1) from None
 
         if cache is not None and cache_key is not None:
             await cache.store(
@@ -300,8 +317,13 @@ class OpenAICompatibleProvider(LLMProvider):
         if request.temperature is not None:
             payload["temperature"] = request.temperature
         if request.max_tokens is not None:
+            requested = request.max_tokens
+            if model in self._hidden_reasoning_models:
+                # El razonamiento oculto consume parte del presupuesto: un
+                # max_tokens bajo deja la respuesta vacia.
+                requested = max(requested, self._hidden_reasoning_min_tokens)
             payload["max_tokens"] = min(
-                request.max_tokens,
+                requested,
                 self._max_output_tokens,
             )
         if request.response_format is not None:
