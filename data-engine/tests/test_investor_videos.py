@@ -1,0 +1,97 @@
+from datetime import datetime
+
+import httpx
+import pytest
+
+from app.services import investor_videos as service
+
+CHANNEL = "UCyMGOTSE13Uf9Big_Ppj8Wg"
+VIDEO = "abcdefghijk"
+
+def feed(entry="", channel=CHANNEL):
+    return f'''<feed xmlns="http://www.w3.org/2005/Atom" xmlns:yt="http://www.youtube.com/xml/schemas/2015"><yt:channelId>{channel}</yt:channelId><title>Archivo de referencia</title>{entry}</feed>'''.encode()
+
+
+def entry(video=VIDEO, published="2026-10-01T10:00:00Z", channel=CHANNEL):
+    return f'''<entry><yt:videoId>{video}</yt:videoId><yt:channelId>{channel}</yt:channelId><title>Titulo</title><published>{published}</published></entry>'''
+
+
+def test_normalizes_source_date_and_explicit_archive():
+    (video,) = service.parse_feed(feed(entry()), CHANNEL, "archive")
+    assert video["video_id"] == VIDEO
+    assert video["channel_name"] == "Archivo de referencia"
+    assert video["channel_kind"] == "archive"
+    assert video["channel_url"] == f"https://www.youtube.com/channel/{CHANNEL}"
+    assert datetime.fromisoformat(video["published_at"]).tzinfo is not None
+
+
+@pytest.mark.parametrize("bad", ["invalid", "../badvalue1", "abcdefghij!", "abcdefghijk2"])
+def test_bad_video_ids_rejected(bad):
+    assert service.parse_feed(feed(entry(video=bad)), CHANNEL, "archive") == []
+
+
+@pytest.mark.parametrize("bad", ["invalid", "2026-10-01T10:00:00", "", "2026-99-01T00:00:00Z"])
+def test_missing_invalid_or_naive_dates_rejected(bad):
+    assert service.parse_feed(feed(entry(published=bad)), CHANNEL, "archive") == []
+
+
+def test_channel_mismatch_and_xml_limits_fail_closed():
+    assert service.parse_feed(feed(entry(), channel="another"), CHANNEL, "archive") == []
+    assert service.parse_feed(feed(entry(channel="another")), CHANNEL, "archive") == []
+    for xml in (b"broken", b"<!DOCTYPE feed><feed/>", b"<!ENTITY foo 'bar'><feed/>", b"x" * (service.MAX_BYTES + 1)):
+        assert service.parse_feed(xml, CHANNEL, "archive") == []
+    assert service.parse_feed(feed(entry()), "../invalid", "archive") == []
+
+
+def test_dedupe_latest_six():
+    xml = feed("".join(entry(video=f"abcdefghij{i}", published=f"2026-10-{i+1:02d}T10:00:00Z") for i in range(8)) + entry())
+    rows = service.parse_feed(xml, CHANNEL, "archive")
+    assert len(rows) == 6
+    assert rows[0]["video_id"] == "abcdefghij7"
+
+
+def test_unmapped_investor_never_fetches(monkeypatch):
+    monkeypatch.setattr(httpx, "Client", lambda **kwargs: pytest.fail("unexpected request"))
+    assert service.investor_videos("munger") == []
+
+
+def test_failure_cached_and_no_redirects(monkeypatch):
+    service._CACHE.clear()
+    calls = []
+    class Client:
+        def __init__(self, **kwargs):
+            assert kwargs == {"timeout": 5.0, "follow_redirects": False}
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def stream(self, method, url, **kwargs):
+            calls.append(url)
+            assert kwargs["params"] == {"channel_id": CHANNEL}
+            raise httpx.ConnectTimeout("blocked")
+    monkeypatch.setattr(httpx, "Client", Client)
+    assert service.investor_videos("buffett") == []
+    assert service.investor_videos("buffett") == []
+    assert len(calls) == 1
+    service._CACHE.clear()
+
+
+def test_detail_route_adds_videos_without_changing_identity(monkeypatch):
+    from app.api.routes import investors
+    detail = {"slug": "buffett", "cik": None}
+    videos = service.parse_feed(feed(entry()), CHANNEL, "archive")
+    monkeypatch.setattr(investors, "investor_detail", lambda db, slug: dict(detail))
+    monkeypatch.setattr(investors, "investor_videos", lambda slug: videos, raising=False)
+    out = investors.investor("buffett", db=None)
+    assert out["slug"] == "buffett"
+    assert out["videos"] == videos
+
+
+def test_unknown_investor_remains_404(monkeypatch):
+    from fastapi import HTTPException
+
+    from app.api.routes import investors
+    monkeypatch.setattr(investors, "investor_detail", lambda db, slug: None)
+    with pytest.raises(HTTPException) as error:
+        investors.investor("unknown", db=None)
+    assert error.value.status_code == 404
