@@ -110,7 +110,7 @@ export default async function WatchlistPage() {
                         <Eye className="h-7 w-7 shrink-0 text-purple-400 sm:h-8 sm:w-8" aria-hidden="true" />
                         Watchlist
                     </h1>
-                    
+
                 </div>
             </div>
 
