@@ -9,7 +9,12 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.models.entities import Base, NewsEvent, Tenant
-from app.services.news_headline_translation import cached_translation, display_translation, fingerprint, translate_headline
+from app.services.news_headline_translation import (
+    cached_translation,
+    display_translation,
+    fingerprint,
+    translate_headline,
+)
 
 
 def sync_test(func):
@@ -115,8 +120,8 @@ async def test_budget_blocks_calls(db,monkeypatch):
 
 
 def test_get_reads_cache_only_no_provider_and_original_preserved(db,monkeypatch):
-    from app.api.routes.news import news_events
     import app.services.news_headline_translation as service
+    from app.api.routes.news import news_events
     row=event(db)
     row.metadata_={**row.metadata_,"headline_translation":{"fingerprint":fingerprint(row.title),"status":"translated","text":"La empresa anuncia resultados 2026","target_language":"es","machine_translation":True}}
     db.commit()

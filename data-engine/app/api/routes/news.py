@@ -7,8 +7,8 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models import Company, NewsEvent
 from app.schemas import ManualNewsRequest, ManualNewsResponse, NewsIngestRequest, NewsIngestResponse
-from app.services.news_service import NewsService
 from app.services.news_headline_translation import display_translation, original_headline, translate_headline
+from app.services.news_service import NewsService
 from app.services.second_order_news_service import analyze_second_order
 
 router = APIRouter()

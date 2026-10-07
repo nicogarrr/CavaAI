@@ -9,11 +9,11 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
+from app.core.config import get_settings
 from app.llm import LLMRequest, Message, ResponseFormat, create_llm_provider, parse_json_response
 from app.models import NewsEvent
-from app.services.budget import BudgetController
 from app.services.asts_llm_quota import QuotaNamespace, reserve_quota
-from app.core.config import get_settings
+from app.services.budget import BudgetController
 
 VERSION = "headline-es-v2"
 QUOTA = QuotaNamespace("headline-translation", "minute_limit", "day_limit", "Tenant context required")
