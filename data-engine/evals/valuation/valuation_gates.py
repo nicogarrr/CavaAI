@@ -545,6 +545,12 @@ def gate_no_sign_flip_on_negative_fcf(case: dict) -> dict:
         for key in VALUE_KEYS:
             if artifact.get(key) is not None:
                 problems.append(f"{key} publicado sobre una quema: {_fmt(artifact.get(key))}")
+    elif engine == "pre_revenue" and artifact.get("status") == "insufficient_data":
+        # Contrato actual: la quema se niega (cualquier motivo de insuficiencia
+        # vale), no se publica valor por accion.
+        for key in VALUE_KEYS:
+            if artifact.get(key) is not None:
+                problems.append(f"{key} publicado sobre una quema: {_fmt(artifact.get(key))}")
     elif engine == "pre_revenue":
         scenarios = trace.get("scenarios") or {}
         for name, data in scenarios.items():
