@@ -42,7 +42,7 @@ void test('las tarjetas pintan n/d con nota al pie y los textos declaran las neu
     assert.match(cards, /display\.kind === 'neutral'/);
     assert.match(cards, /n\/d\*/);
     assert.match(cards, /entra neutral \(50\) en el score y no discrimina entre los picks actuales/);
-    assert.match(cards, /entran neutras \(50\)/);
+    assert.ok(!cards.includes('Sobre ProPicks IA'), 'el bloque informativo se eliminó');
     assert.ok(!cards.includes('aún no (v1)'), 'la caja ya no contradice el mecanismo real');
 
     const page: string = readFileSync(new URL('../app/(root)/propicks/page.tsx', import.meta.url), 'utf8');
@@ -56,7 +56,7 @@ void test('la causalidad es la real: valoración <- CFROI/WACC, momentum <- prec
     // cfroi_approx y wacc; el flag salta si falta cualquiera).
     const page: string = readFileSync(new URL('../app/(root)/propicks/page.tsx', import.meta.url), 'utf8');
     const cards: string = readFileSync(new URL('../components/proPicks/EnhancedProPicksContent.tsx', import.meta.url), 'utf8');
-    for (const [name, text] of [['intro', page], ['caja', cards]] as const) {
+    for (const [name, text] of [['intro', page]] as const) {
         assert.match(text, /la\s+valoración necesita CFROI y WACC/, `${name}: la valoración neutral debe atribuirse a CFROI/WACC`);
     }
     // Construcción prohibida: «sin series de precios ... entran neutras»
