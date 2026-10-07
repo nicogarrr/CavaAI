@@ -374,6 +374,13 @@ def get_signals_for_ticker(
         errors: list[str] = []
         persisted_dates: list[str] = []
         persisted_count = 0
+        # Fase 1: SOLO red y parseo, sin tocar la sesion de BD. Antes cada filing
+        # se persistia justo despues de descargarse, asi que la primera escritura
+        # abria una transaccion que seguia retenida (conexion del pool fuera,
+        # "idle in transaction") durante las descargas lentas de EDGAR de los
+        # demas filings. Con varias peticiones a la vez eso agotaba el pool (5+10)
+        # y todo el backend devolvia 503.
+        fetched: list[tuple[dict, str | None, dict | None, Exception | None]] = []
         for filing in filings[:limit]:
             try:
                 if fetcher is not None:
@@ -381,6 +388,16 @@ def get_signals_for_ticker(
                 else:
                     xml_text, _cached_at = _cached_filing_xml(filing, client=client)
                 parsed = form4_connector.parse_form4_xml(xml_text)
+                fetched.append((filing, xml_text, parsed, None))
+            except Exception as exc:  # noqa: BLE001 - best-effort por filing
+                fetched.append((filing, None, None, exc))
+        # Fase 2: BD (persistencia y copia persistida), sin red.
+        for filing, xml_text, parsed, fetch_exc in fetched:
+            try:
+                if fetch_exc is not None:
+                    raise fetch_exc
+                if parsed is None or xml_text is None:
+                    raise ValueError("filing sin contenido")
                 if db is not None:
                     # Persistencia durable idempotente (PR-2). Nunca rompe la lectura.
                     try:
