@@ -1,0 +1,32 @@
+import { YouTubeEmbed } from '@/components/media/YouTubeEmbed';
+import { validInvestorVideos } from '@/lib/ui/youtube-video';
+
+const dateFormat = new Intl.DateTimeFormat('es-ES', {
+    day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
+});
+
+export function InvestorVideos({ videos }: { videos?: unknown }) {
+    const items = validInvestorVideos(videos);
+    return (
+        <section aria-labelledby="investor-videos-title" className="flex flex-col gap-4 border-t border-gray-800 pt-6">
+            <h2 className="text-xl font-semibold text-gray-100" id="investor-videos-title">Vídeos</h2>
+            {items.length === 0 ? <p className="text-sm text-gray-500">Sin datos</p> : (
+                <ul className="grid gap-6 sm:grid-cols-2">
+                    {items.map((video) => (
+                        <li className="flex min-w-0 flex-col gap-2" key={video.video_id}>
+                            <YouTubeEmbed title={video.title} videoId={video.video_id} />
+                            {video.channel_kind === 'archive' ? <p className="text-xs text-gray-400">Archivo, fuente no confirmada</p> : null}
+                            <h3 className="text-sm font-medium text-gray-200">{video.title}</h3>
+                            <p className="text-xs text-gray-500">
+                                <time dateTime={video.published_at}>{dateFormat.format(new Date(video.published_at))}</time>
+                                {' · Fuente: '}
+                                <a className="underline-offset-2 hover:underline" href={video.channel_url} rel="noreferrer" target="_blank">{video.channel_name}</a>
+                            </p>
+                            <a className="text-xs text-gray-400 underline-offset-2 hover:underline" href={`https://www.youtube.com/watch?v=${video.video_id}`} rel="noreferrer" target="_blank">Ver en YouTube</a>
+                        </li>
+                    ))}
+                </ul>
+            )}
+        </section>
+    );
+}
