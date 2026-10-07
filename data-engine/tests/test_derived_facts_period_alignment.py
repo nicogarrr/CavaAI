@@ -174,9 +174,8 @@ def test_ocf_fy2024_con_capex_fy2025_no_persiste_fcf(db):
 
 def test_deuda_fy2024_contra_caja_fy2025_no_persiste_deuda_neta(db):
     """Deuda de FY2024 (2.000) contra caja de FY2025 (1.200) fabricaba 800 de
-    deuda neta: 700 de deuda que no estan en ningun balance, y el puente de
-    equity del DCF los capitaliza como valor. FY2024 si tiene ambos componentes,
-    asi que su deuda neta si es legitima."""
+    deuda neta sin balance. FY2024 pertenece a SEC: la via FMP no deriva
+    ni reetiqueta sus componentes."""
     company = _company(db)
     _seed_sec(
         db,
@@ -201,13 +200,11 @@ def test_deuda_fy2024_contra_caja_fy2025_no_persiste_deuda_neta(db):
     _refresh(db, company, client)
 
     net_debt = _derived(db, company, "net_debt")
-    assert set(net_debt) == {2024}
-    assert net_debt[2024].value == Decimal("1500")  # 2000 - 500, no 2000 - 1200
+    assert net_debt == {}  # SEC inputs are not relabelled as FMP derivatives.
 
 
-def test_par_del_mismo_ano_se_persiste_con_el_valor_correcto(db):
-    """Los dos componentes del mismo ejercicio si se combinan: FCF, margen y
-    deuda neta de FY2024, con el periodo de ese mismo ejercicio."""
+def test_par_sec_del_mismo_ano_no_se_reetiqueta_como_fmp(db):
+    """Un par SEC coherente no pertenece al documento de FMP."""
     company = _company(db)
     _seed_sec(
         db,
@@ -228,24 +225,16 @@ def test_par_del_mismo_ano_se_persiste_con_el_valor_correcto(db):
 
     _refresh(db, company, client)
 
-    fcf = _derived(db, company, "free_cash_flow")
-    assert set(fcf) == {2024}
-    assert fcf[2024].value == Decimal("600")  # 900 - 300
-    assert fcf[2024].period == "2024-12-31:FY"
-
-    margin = _derived(db, company, "fcf_margin")
-    assert set(margin) == {2024}
-    assert abs(margin[2024].value - Decimal("600") / Decimal("9000")) < Decimal("0.000001")
-
-    net_debt = _derived(db, company, "net_debt")
-    assert set(net_debt) == {2024}
-    assert net_debt[2024].value == Decimal("1500")
+    # Even a coherent SEC annual pair belongs to SEC, not this FMP document.
+    assert _derived(db, company, "free_cash_flow") == {}
+    assert _derived(db, company, "fcf_margin") == {}
+    assert _derived(db, company, "net_debt") == {}
 
 
 def test_fcf_margin_no_mezcla_ejercicios(db):
     """El caso del informe: FCF de FY2024 (600) sobre revenue de FY2025 (11.000)
     daba 5,45% en vez del 6,67% real, y además atribuido al ano que no lo
-    soporta. El margen de FY2025 no existe: no hay FCF de FY2025."""
+    soporta. El margen de FY2025 no existe; SEC FY2024 no se deriva en FMP."""
     company = _company(db)
     _seed_sec(
         db,
@@ -262,13 +251,8 @@ def test_fcf_margin_no_mezcla_ejercicios(db):
 
     _refresh(db, company, client)
 
-    margin = _derived(db, company, "fcf_margin")
-    assert set(margin) == {2024}
-    assert abs(margin[2024].value - Decimal("600") / Decimal("9000")) < Decimal("0.000001")
-    assert margin[2024].period == "2024-12-31:FY"
-    # 600 / 11.000 = 5,45% era el valor fabricado para FY2025.
-    assert not any(abs(value.value - Decimal("600") / Decimal("11000")) < Decimal("0.000001")
-                   for value in margin.values())
+    # Neither mixing years nor borrowing the same-year SEC pair is allowed.
+    assert _derived(db, company, "fcf_margin") == {}
 
 
 def test_fcf_publicado_por_fmp_da_un_margen_por_anio(db):
