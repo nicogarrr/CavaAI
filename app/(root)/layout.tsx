@@ -1,5 +1,6 @@
 import Breadcrumbs from "@/components/layout/Breadcrumbs";
 import Header from "@/components/Header";
+import BottomNav from "@/components/layout/BottomNav";
 import Sidebar, { SIDEBAR_COLLAPSED_COOKIE } from "@/components/layout/Sidebar";
 import OnlineBanner from "@/components/OnlineBanner";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -50,13 +51,14 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
 
             <div className="flex flex-1 items-start">
                 <Sidebar collapsed={collapsed} />
-                <div className="min-w-0 flex-1 px-4 py-5 md:px-6 md:py-6 lg:px-8">
+                <div className="min-w-0 flex-1 px-4 pb-24 pt-5 md:px-6 md:pb-6 md:py-6 lg:px-8">
                     <Breadcrumbs />
                     <ErrorBoundary>
                         {children}
                     </ErrorBoundary>
                 </div>
             </div>
+            <BottomNav />
         </div>
     );
 };
