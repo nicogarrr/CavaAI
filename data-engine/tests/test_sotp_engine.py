@@ -211,8 +211,26 @@ def test_sotp_adr_price_uses_ordinary_share_basis():
 
 
 def test_sotp_adr_without_valid_ratio_refuses():
-    for tag in ("adr", "adr:0", "adr:invalid"):
+    for tag in ("adr", "adr:0", "adr:invalid", "adr:inf", "adr:Infinity", "adr:1e309", "adr:NaN"):
         result = _sotp_result({}, tags=["sotp", tag], price=80)
         assert result["status"] == "insufficient_data"
         assert result["publishable"] is False
         assert "adr_ratio" in result["missing_inputs"]
+
+
+def test_sotp_adr_conflicting_tags_refuse_in_either_order():
+    for tags in (["sotp", "adr:8", "adr:2"], ["sotp", "adr:2", "adr:8"]):
+        result = _sotp_result({}, tags=tags, price=80)
+        assert result["status"] == "insufficient_data"
+        assert "adr_ratio" in result["missing_inputs"]
+
+
+def test_shared_adr_helper_only_admits_positive_finite_unambiguous_ratios():
+    from types import SimpleNamespace
+
+    from app.valuation.engines.base import adr_ratio, is_adr_without_ratio
+    for tags in (["adr:inf"], ["adr:Infinity"], ["adr:1e309"], ["adr:NaN"], ["adr:8", "adr:2"], ["adr:2", "adr:8"], ["adr:8", "adr:inf"]):
+        company = SimpleNamespace(factor_tags=tags)
+        assert adr_ratio(company) is None
+        assert is_adr_without_ratio(company)
+    assert adr_ratio(SimpleNamespace(factor_tags=["adr:8", "adr:8.0"])) == 8

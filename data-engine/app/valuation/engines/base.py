@@ -74,6 +74,7 @@ ADR_TAG_PREFIX = "adr:"
 
 def adr_ratio(company: Company) -> float | None:
     """Ordinary shares represented by one ADR, or ``None`` if not applicable."""
+    ratios: set[float] = set()
     for tag in company.factor_tags or []:
         text = str(tag).strip().lower()
         if text.startswith(ADR_TAG_PREFIX):
@@ -81,8 +82,10 @@ def adr_ratio(company: Company) -> float | None:
                 ratio = float(text[len(ADR_TAG_PREFIX):])
             except ValueError:
                 return None
-            return ratio if ratio > 0 else None
-    return None
+            if not math.isfinite(ratio) or ratio <= 0:
+                return None
+            ratios.add(ratio)
+    return next(iter(ratios)) if len(ratios) == 1 else None
 
 
 def is_adr_without_ratio(company: Company) -> bool:
