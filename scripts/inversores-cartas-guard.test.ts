@@ -56,5 +56,9 @@ test('el lector de una carta enseña título, autor, pista de año, PDF original
     assert.match(reader, /Volver a las cartas/);
     assert.match(reader, /<Pagination/);
     assert.match(reader, /notFound\(\)/);
+    assert.match(reader, /getKnowledgeDocument\(letterId\)/);
+    assert.match(reader, /chunk_count/);
+    assert.ok(!/getKnowledgeDocuments\(/.test(reader), 'el documento se pide por id, no de una lista con tope');
+    assert.ok(!/getKnowledgeDocumentChunks\(/.test(reader), 'los fragmentos se piden por pagina, sin tope de 300');
     assert.ok(!/IntersectionObserver|infinite/i.test(reader), 'paginación, no scroll infinito');
 });

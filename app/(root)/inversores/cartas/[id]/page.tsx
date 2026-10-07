@@ -3,10 +3,10 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import BackendOffline from '@/components/system/BackendOffline';
-import { getKnowledgeDocumentChunks, getKnowledgeDocuments } from '@/lib/actions/research-tools.actions';
+import { getKnowledgeDocument, getKnowledgeDocumentChunkPage } from '@/lib/actions/research-tools.actions';
 import { isBackendUnavailableError } from '@/lib/backend-offline';
 
-import { Pagination, paginate } from '../../_components/Pagination';
+import { Pagination } from '../../_components/Pagination';
 import { authorKey, titleYear } from '../letters';
 
 export const dynamic = 'force-dynamic';
@@ -31,10 +31,17 @@ export default async function LetterReaderPage({ params, searchParams }: PagePro
     const letterId = /^\d+$/.test(id) ? Number(id) : null;
     if (!letterId) notFound();
 
-    let documents: Awaited<ReturnType<typeof getKnowledgeDocuments>>;
-    let chunks: Awaited<ReturnType<typeof getKnowledgeDocumentChunks>>;
+    let letter: Awaited<ReturnType<typeof getKnowledgeDocument>>;
+    let chunks: Awaited<ReturnType<typeof getKnowledgeDocumentChunkPage>> = [];
+    let page = 1;
+    let totalPages = 1;
     try {
-        [documents, chunks] = await Promise.all([getKnowledgeDocuments(), getKnowledgeDocumentChunks(letterId)]);
+        letter = await getKnowledgeDocument(letterId);
+        if (!letter || letter.document_type !== 'fund_letter') notFound();
+        totalPages = Math.max(1, Math.ceil(letter.chunk_count / PAGE_SIZE));
+        const parsed = Number.parseInt(pagina ?? '1', 10);
+        page = Number.isFinite(parsed) ? Math.min(Math.max(1, parsed), totalPages) : 1;
+        if (letter.chunk_count > 0) chunks = await getKnowledgeDocumentChunkPage(letterId, (page - 1) * PAGE_SIZE, PAGE_SIZE);
     } catch (error) {
         if (isBackendUnavailableError(error)) {
             return <BackendOffline feature="Carta" retryHref={`/inversores/cartas/${letterId}`} />;
@@ -42,14 +49,9 @@ export default async function LetterReaderPage({ params, searchParams }: PagePro
         throw error;
     }
 
-    const letter = documents.find((doc) => doc.id === letterId && doc.document_type === 'fund_letter');
-    if (!letter) notFound();
-
     const year = titleYear(letter.title);
     const author = letter.author?.trim() || null;
     const backHref = author ? `/inversores/cartas?autor=${authorKey(author) || 'sin-autor'}` : '/inversores/cartas?autor=sin-autor';
-    const ordered = [...chunks].sort((a, b) => Number(a.chunk_index) - Number(b.chunk_index));
-    const paged = paginate(ordered, pagina, PAGE_SIZE);
 
     return (
         <main id="content" tabIndex={-1} className="mx-auto flex w-full min-w-0 max-w-3xl flex-col gap-8 overflow-x-clip py-6">
@@ -74,11 +76,11 @@ export default async function LetterReaderPage({ params, searchParams }: PagePro
                 )}
             </header>
 
-            {paged.items.length === 0 ? (
+            {chunks.length === 0 ? (
                 <p className="text-sm text-gray-500">Esta carta no tiene texto extraído en la biblioteca. Abre el PDF original.</p>
             ) : (
                 <section aria-label="Texto de la carta" className="flex flex-col gap-4">
-                    {paged.items.map((chunk) => (
+                    {chunks.map((chunk) => (
                         <article className="rounded-2xl border border-gray-800 bg-surface-1 p-4 sm:p-5" key={chunk.id}>
                             <p className="mb-2 text-xs text-gray-500">
                                 Fragmento {Number(chunk.chunk_index) + 1}
@@ -90,7 +92,7 @@ export default async function LetterReaderPage({ params, searchParams }: PagePro
                 </section>
             )}
 
-            <Pagination basePath={`/inversores/cartas/${letterId}`} page={paged.page} total={paged.total} />
+            <Pagination basePath={`/inversores/cartas/${letterId}`} page={page} total={totalPages} />
 
             <p className="text-xs text-gray-500">
                 Fuente: biblioteca de CavaAI, texto extraído del PDF y troceado en fragmentos (puede tener errores de extracción;
