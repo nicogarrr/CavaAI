@@ -85,3 +85,49 @@ def test_failed_downloads_use_db_only_after_network_phase(monkeypatch):
     assert last_net < first_db, timeline
     assert result["status"] == "partial"
     assert result["filings_failed"] == 2
+
+
+def test_initial_tenant_lookup_connection_is_released_before_fetch(monkeypatch, tmp_path):
+    """Sesion real + lookup previo (como get_db) + pool de tamano 1 (F370).
+
+    Durante cada descarga no debe haber ninguna conexion fuera del pool, y el
+    scope de tenant de db.info se conserva.
+    """
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import QueuePool
+
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'p.db'}",
+        poolclass=QueuePool, pool_size=1, max_overflow=0, pool_timeout=1,
+        connect_args={"check_same_thread": False},
+    )
+    db = sessionmaker(bind=engine)()
+    db.info["tenant_id"] = 7
+    db.execute(text("select 1"))  # lookup de tenant de get_db: abre transaccion
+    assert engine.pool.checkedout() == 1
+
+    monkeypatch.setattr(insider_service, "_cik_for_ticker", lambda t, c: "0001234567")
+    monkeypatch.setattr(
+        insider_service.form4_connector, "recent_form4_filings",
+        lambda cik, limit=20, client=None: list(FILINGS),
+    )
+    monkeypatch.setattr(insider_persistence, "persist_filing", lambda *a, **k: None)
+    monkeypatch.setattr(
+        insider_service, "_persisted_filing_transactions", lambda *a, **k: None
+    )
+    held: list[int] = []
+
+    def fetcher(filing):
+        held.append(engine.pool.checkedout())
+        return XML
+
+    result = insider_service.get_signals_for_ticker(
+        "ACME", fetcher=fetcher, db=db, tenant_id=7
+    )
+    assert held == [0] * len(FILINGS), held
+    assert db.info["tenant_id"] == 7
+    assert result["status"] == "ok"
+    db.execute(text("select 1"))  # la sesion sigue usable
+    db.close()
+    engine.dispose()
