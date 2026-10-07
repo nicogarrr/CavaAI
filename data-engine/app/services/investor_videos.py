@@ -10,7 +10,7 @@ from threading import Lock
 import httpx
 
 _CHANNEL = re.compile(r"UC[A-Za-z0-9_-]{22}\Z")
-_DATE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)\Z")
+_DATE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)\Z")
 _VIDEO = re.compile(r"[A-Za-z0-9_-]{11}\Z")
 _ATOM = "{http://www.w3.org/2005/Atom}"
 _YT = "{http://www.youtube.com/xml/schemas/2015}"

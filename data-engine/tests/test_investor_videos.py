@@ -115,3 +115,15 @@ def test_dtd_entity_rejected_independent_of_encoding(encoding):
 def test_non_utf8_declaration_rejected():
     xml = b'<?xml version="1.0" encoding="UTF-16"?>' + feed(entry())
     assert service.parse_feed(xml, CHANNEL, "archive") == []
+
+
+def test_published_at_shared_frontend_contract_preserves_microseconds():
+    import json
+    from pathlib import Path
+    cases = json.loads((Path(__file__).resolve().parents[2] / "scripts/investor-video-timestamp-contract.json").read_text())
+    for case in cases:
+        (video,) = service.parse_feed(feed(entry(published=case["input"])), CHANNEL, "archive")
+        assert video["published_at"] == case["output"]
+        assert datetime.fromisoformat(case["output"]) == datetime.fromisoformat(case["input"].replace("Z", "+00:00"))
+    # Python datetime only supports microseconds: never silently truncate finer input.
+    assert service.parse_feed(feed(entry(published="2026-10-01T10:00:00.1234567Z")), CHANNEL, "archive") == []

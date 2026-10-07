@@ -28,7 +28,7 @@ export function isYouTubeChannelUrl(value: unknown): value is string {
 /** ISO con zona explícita y día real: Date.parse por sí solo normaliza fechas imposibles. */
 export function isVideoTimestamp(value: unknown): value is string {
     if (typeof value !== 'string') return false;
-    const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(Z|[+-]\d{2}:\d{2})$/.exec(value);
+    const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,6})?(Z|[+-]\d{2}:\d{2})$/.exec(value);
     if (!match) return false;
     const [, y, m, d, h, minute, second, zone] = match;
     const year = Number(y), month = Number(m), day = Number(d);
