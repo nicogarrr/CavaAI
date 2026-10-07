@@ -138,6 +138,17 @@ def metadata_from_source(source: KnowledgeRagSource) -> SourceMetadata:
     ).validate()
 
 
+def mark_failed(db: Session, source_id: int, message: str) -> None:
+    """Estado terminal ``failed`` con motivo (nunca se deja 'queued' eterno)."""
+    db.rollback()
+    source = db.get(KnowledgeRagSource, source_id)
+    if source is not None:
+        source.status = SOURCE_STATUS_FAILED
+        source.error = message[:2000]
+        db.commit()
+    db.rollback()
+
+
 def index_source(
     db: Session,
     source_id: int,
@@ -149,44 +160,43 @@ def index_source(
     counter: TokenCounter,
     config: ChunkConfig,
 ) -> dict[str, Any]:
-    """Reindexa una fuente registrada. Idempotente: limpia lo parcial antes."""
+    """Reindexa una fuente registrada. Idempotente: limpia lo parcial antes.
+
+    Tres fases para NO retener una conexion de BD durante Docling, embeddings ni
+    Qdrant (pool pequeno): (A) transaccion corta que lee la fuente y la marca
+    ``processing``; (B) trabajo pesado SIN sesion abierta, solo con valores
+    planos; (C) transaccion corta que guarda padres y marca ``indexed``.
+    """
     source = db.get(KnowledgeRagSource, source_id)
     if source is None:
         raise LookupError(f"knowledge source {source_id} not found")
     if source.status == SOURCE_STATUS_INDEXED:
-        return {"status": "skipped", "reason": "already_indexed", "source_id": source.id}
+        db.rollback()
+        return {"status": "skipped", "reason": "already_indexed", "source_id": source_id}
     meta = metadata_from_source(source)
+    tenant_id, sha256 = source.tenant_id, source.sha256
     source.status = SOURCE_STATUS_PROCESSING
     source.error = None
     db.commit()
+    db.rollback()  # libera la conexion al pool antes de la fase B
     try:
-        if file_sha256(path) != source.sha256:
+        # --- Fase B: sin conexion de BD ---
+        if file_sha256(path) != sha256:
             raise ValueError("file content no longer matches the registered sha256")
         extracted = extractor(path)
         parents, children = chunk_document(
-            extracted, title=meta.title, source_sha256=source.sha256, count=counter, config=config
+            extracted,
+            title=meta.title,
+            source_sha256=sha256,
+            count=counter,
+            config=config,
+            id_namespace=f"{tenant_id if tenant_id is not None else 'none'}:{source_id}:{sha256}",
         )
         if not children:
             raise ValueError("no chunks produced from the document")
         store.ensure_collection()
-        store.delete_source(source.tenant_id, source.id)
-        db.execute(delete(KnowledgeRagParent).where(KnowledgeRagParent.source_id == source.id))
+        store.delete_source(tenant_id, source_id)
         by_id = {p.id: p for p in parents}
-        for p in parents:
-            db.add(
-                KnowledgeRagParent(
-                    id=p.id,
-                    tenant_id=source.tenant_id,
-                    source_id=source.id,
-                    ordinal=p.ordinal,
-                    text=p.text,
-                    text_sha256=p.text_sha256,
-                    section_path=list(p.section_path),
-                    page_start=p.page_start,
-                    page_end=p.page_end,
-                )
-            )
-        db.flush()
         for i in range(0, len(children), EMBED_BATCH):
             batch = children[i : i + EMBED_BATCH]
             texts = [c.embed_text for c in batch]
@@ -199,36 +209,53 @@ def index_source(
                         c,
                         by_id[c.parent_id],
                         meta,
-                        tenant_id=source.tenant_id,
-                        source_id=source.id,
-                        source_sha256=source.sha256,
+                        tenant_id=tenant_id,
+                        source_id=source_id,
+                        source_sha256=sha256,
                         extractor=extracted.extractor,
                     )
                     for c in batch
                 ],
+            )
+        # --- Fase C: transaccion corta ---
+        source = db.get(KnowledgeRagSource, source_id)
+        if source is None:
+            raise LookupError(f"knowledge source {source_id} disappeared")
+        db.execute(delete(KnowledgeRagParent).where(KnowledgeRagParent.source_id == source_id))
+        for p in parents:
+            db.add(
+                KnowledgeRagParent(
+                    id=p.id,
+                    tenant_id=tenant_id,
+                    source_id=source_id,
+                    ordinal=p.ordinal,
+                    text=p.text,
+                    text_sha256=p.text_sha256,
+                    section_path=list(p.section_path),
+                    page_start=p.page_start,
+                    page_end=p.page_end,
+                )
             )
         source.status = SOURCE_STATUS_INDEXED
         source.extractor = extracted.extractor
         source.parent_count = len(parents)
         source.chunk_count = len(children)
         source.warnings = list(extracted.warnings)
+        source.error = None
         source.indexed_at = datetime.now(UTC)
         db.commit()
-        return {
+        result = {
             "status": "ok",
-            "source_id": source.id,
+            "source_id": source_id,
             "parents": len(parents),
             "chunks": len(children),
             "max_chunk_tokens": max(c.token_count for c in children),
             "warnings": list(extracted.warnings),
         }
-    except Exception as exc:
         db.rollback()
-        source = db.get(KnowledgeRagSource, source_id)
-        if source is not None:
-            source.status = SOURCE_STATUS_FAILED
-            source.error = f"{type(exc).__name__}: {exc}"[:2000]
-            db.commit()
+        return result
+    except Exception as exc:
+        mark_failed(db, source_id, f"{type(exc).__name__}: {exc}")
         raise
 
 

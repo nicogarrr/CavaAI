@@ -25,6 +25,7 @@ from app.services.knowledge_rag.ingest import (
     InboxPathError,
     InsufficientDisk,
     check_disk,
+    mark_failed,
     parent_resolver,
     register_source,
     resolve_inbox_path,
@@ -131,26 +132,39 @@ def create_source(payload: SourceCreate, db: Session = Depends(get_db)) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except InsufficientDisk as exc:
         raise HTTPException(status_code=507, detail=str(exc)) from exc
+    source = result.source
     if not result.created:
-        return {**_source(result.source), "deduplicated": True}
+        if source.status != "failed":
+            return {**_source(source), "deduplicated": True, "requeued": False}
+        # Reintento explicito y seguro: mismos bytes de una fuente fallida.
+        source.filename = payload.path
+        source.status = "queued"
+        source.error = None
+        db.commit()
+    return {**_source(_dispatch(db, source)), "deduplicated": not result.created, "requeued": not result.created}
+
+
+def _dispatch(db: Session, source: KnowledgeRagSource) -> KnowledgeRagSource:
+    source_id = source.id
     try:
         from app.workers.knowledge_rag_actors import ingest_knowledge_source
 
         ingest_knowledge_source.send(
-            result.source.id, tenant_id=db.info.get("tenant_id"), user_id=db.info.get("user_id")
+            source_id, tenant_id=db.info.get("tenant_id"), user_id=db.info.get("user_id")
         )
     except Exception as exc:
         _logger.exception("knowledge ingest dispatch failed")
-        result.source.status = "failed"
-        result.source.error = f"Queue dispatch failed: {type(exc).__name__}"
-        db.commit()
+        mark_failed(db, source_id, f"Queue dispatch failed: {type(exc).__name__}")
         raise HTTPException(status_code=503, detail="Ingestion queue is unavailable") from exc
-    return {**_source(result.source), "deduplicated": False}
+    refreshed = db.get(KnowledgeRagSource, source_id)
+    return refreshed if refreshed is not None else source
 
 
 @router.post("/query")
 async def query(payload: QueryRequest, db: Session = Depends(get_db)) -> dict:
     settings = _enabled()
+    tenant_id = db.info.get("tenant_id")
+    db.rollback()  # libera la conexion (lookup de tenant de get_db) antes de embeddings/Qdrant
     filters = SearchFilters(
         corpus=payload.corpus,
         authors=tuple(payload.authors),
@@ -166,7 +180,7 @@ async def query(payload: QueryRequest, db: Session = Depends(get_db)) -> dict:
     def run():
         return search_knowledge(
             payload.query,
-            tenant_id=db.info.get("tenant_id"),
+            tenant_id=tenant_id,
             store=runtime.make_store(settings),
             embedder=runtime.make_embedder(settings),
             resolve_parents=parent_resolver(db),

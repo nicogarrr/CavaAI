@@ -37,6 +37,8 @@ class ChunkConfig:
     def __post_init__(self) -> None:
         if self.child_overlap_tokens >= self.child_max_tokens // 2:
             raise ValueError("child_overlap_tokens must be < child_max_tokens / 2")
+        if self.parent_max_tokens < 2 * self.child_max_tokens:
+            raise ValueError("parent_max_tokens must be >= 2 * child_max_tokens")
 
 
 @dataclass
@@ -74,16 +76,44 @@ def _split_sentences(text: str, base: int) -> list[tuple[int, int]]:
     return [(s, e) for s, e in spans if e > s]
 
 
+class ChunkingError(ValueError):
+    """Un chunk no cabe en su limite de tokens: se falla alto, nunca se trunca."""
+
+
+def _split_long_word(word: str, base: int, budget: int, count: TokenCounter) -> list[tuple[int, int]]:
+    """Parte una 'palabra' sin espacios por caracteres (biseccion con el contador)."""
+    out: list[tuple[int, int]] = []
+    pos = 0
+    while pos < len(word):
+        lo, hi = 1, len(word) - pos
+        while lo < hi:  # mayor prefijo que cabe en budget
+            mid = (lo + hi + 1) // 2
+            if count(word[pos : pos + mid]) <= budget + 2:
+                lo = mid
+            else:
+                hi = mid - 1
+        if count(word[pos : pos + lo]) > budget + 2:
+            raise ChunkingError("a single character exceeds the child token budget")
+        out.append((base + pos, base + pos + lo))
+        pos += lo
+    return out
+
+
 def _hard_split(text: str, base: int, budget: int, count: TokenCounter) -> list[tuple[int, int]]:
-    """Parte una unidad enorme por palabras hasta que cada trozo quepa."""
-    words = [(m.start(), m.end()) for m in re.finditer(r"\S+", text)]
+    """Parte una unidad enorme por palabras y, si una palabra sola no cabe, por caracteres."""
+    pieces: list[tuple[int, int]] = []
+    for m in re.finditer(r"\S+", text):
+        if count(m.group()) - 2 > budget:
+            pieces.extend(_split_long_word(m.group(), base + m.start(), budget, count))
+        else:
+            pieces.append((base + m.start(), base + m.end()))
     out: list[tuple[int, int]] = []
     i = 0
-    while i < len(words):
+    while i < len(pieces):
         j = i + 1
-        while j < len(words) and count(text[words[i][0] : words[j][1]]) <= budget:
+        while j < len(pieces) and count(text[pieces[i][0] - base : pieces[j][1] - base]) - 2 <= budget:
             j += 1
-        out.append((base + words[i][0], base + words[j - 1][1]))
+        out.append((pieces[i][0], pieces[j - 1][1]))
         i = j
     return out
 
@@ -130,8 +160,12 @@ def chunk_document(
     source_sha256: str,
     count: TokenCounter,
     config: ChunkConfig | None = None,
+    id_namespace: str | None = None,
 ) -> tuple[list[ParentChunk], list[ChildChunk]]:
+    """``id_namespace`` (p. ej. ``tenant:source_id:sha``) evita que dos tenants con los
+    mismos bytes compartan ids de padres (PK SQL) y puntos de Qdrant."""
     cfg = config or ChunkConfig()
+    ns = id_namespace or source_sha256
     parents: list[ParentChunk] = []
     children: list[ChildChunk] = []
     for section in doc.sections:
@@ -147,7 +181,7 @@ def chunk_document(
             ordinal = len(parents)
             p_start, p_end = group[0][0], group[-1][1]
             p_text = text[p_start:p_end]
-            pid = stable_id(source_sha256, "p", ordinal)
+            pid = stable_id(ns, "p", ordinal)
             blocks = [section.blocks[i] for i in _block_indexes(spans, p_start, p_end)]
             pages = [b.page for b in blocks if b.page is not None]
             parents.append(
@@ -168,7 +202,7 @@ def chunk_document(
                 embed_text = prefix + c_text
                 children.append(
                     ChildChunk(
-                        id=stable_id(source_sha256, "c", ordinal, len(children)),
+                        id=stable_id(ns, "c", ordinal, len(children)),
                         parent_id=pid,
                         ordinal=len(children),
                         text=c_text,
@@ -183,6 +217,16 @@ def chunk_document(
                         token_count=count(embed_text),
                     )
                 )
+    for child in children:
+        if child.token_count > cfg.child_max_tokens:
+            raise ChunkingError(
+                f"child chunk {child.ordinal} has {child.token_count} tokens (> {cfg.child_max_tokens})"
+            )
+    for parent in parents:
+        if count(parent.text) > cfg.parent_max_tokens:
+            raise ChunkingError(
+                f"parent chunk {parent.ordinal} has {count(parent.text)} tokens (> {cfg.parent_max_tokens})"
+            )
     return parents, children
 
 

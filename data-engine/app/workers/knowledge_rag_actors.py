@@ -30,41 +30,13 @@ def ingest_knowledge_source(
 ) -> dict[str, Any]:
     """Indexa una fuente ya registrada (checksum ya deduplicado por la API)."""
     from app.core.config import get_settings
-    from app.models.knowledge_rag import KnowledgeRagSource
-    from app.services.knowledge_rag import runtime
-    from app.services.knowledge_rag.ingest import (
-        InboxPathError,
-        InsufficientDisk,
-        check_disk,
-        index_source,
-        resolve_inbox_path,
-    )
+    from app.services.knowledge_rag.jobs import run_ingest_job
 
-    settings = get_settings()
     db = _session(tenant_id, user_id)
     try:
-        runtime.require_enabled(settings)
-        source = db.get(KnowledgeRagSource, source_id)
-        if source is None:
-            return {"actor": "ingest_knowledge_source", "status": "error", "error": "source not found"}
-        check_disk(settings.knowledge_rag_inbox_dir, settings.knowledge_rag_min_free_gb)
-        path = resolve_inbox_path(
-            settings.knowledge_rag_inbox_dir, source.filename, settings.knowledge_rag_max_file_mb
-        )
-        return index_source(
-            db,
-            source_id,
-            path=path,
-            store=runtime.make_store(settings),
-            embedder=runtime.make_embedder(settings),
-            extractor=runtime.make_extractor(settings),
-            counter=runtime.make_counter(settings.rag_dense_model),
-            config=runtime.chunk_config(settings),
-        )
-    except (runtime.KnowledgeRagDisabled, InsufficientDisk, InboxPathError, ValueError) as exc:
-        # Permanentes: reintentar no cambia nada (disco, flag, ruta, contenido).
-        return {"actor": "ingest_knowledge_source", "status": "error", "error": f"{type(exc).__name__}: {exc}"}
+        return run_ingest_job(db, source_id, get_settings())
     except Exception as exc:
+        # run_ingest_job ya dejo la fuente en failed; transitorio -> dramatiq reintenta.
         return _handle_actor_error("ingest_knowledge_source", exc, source_id=source_id)
     finally:
         db.close()

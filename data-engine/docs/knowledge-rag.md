@@ -118,3 +118,13 @@ Objetivo: decidir con datos si el pipeline sirve y si hace falta reranker, antes
 - Qdrant local (`:memory:`) en los tests ignora los indices de payload; contra servidor 1.12.5 real no probado.
 - La verificacion contra el original exige conservar el fichero; no se guarda copia.
 - Embeddings multilingues: MiniLM es principalmente ingles; el recall en ES esta por medir (BM25 compensa en parte).
+
+## Notas de auditoría (PR #924)
+
+- **Citas**: verifican texto literal y hash contra el original, **no relevancia**. La calidad real (MiniLM ES/EN, abstención) la mide el piloto de 30-50 preguntas; hasta entonces no es "profesional".
+- **Derechos**: `rights=unknown/private_use` se aceptan, pero **no se deben ingerir libros con copyright sin permiso legal**; etiquetar no basta.
+- **IDs**: los ids SQL y de punto Qdrant llevan namespace `tenant:source_id:sha`; los mismos bytes en dos tenants no colisionan.
+- **Conexión BD**: `index_source` trabaja en 3 fases (txn corta, trabajo sin sesión: Docling/embeddings/Qdrant, txn corta de persistencia). `/query` hace rollback antes de embeddings/Qdrant.
+- **Chunks**: hard split por palabras y, si hace falta, por caracteres; validación final (hijo ≤200, padre ≤900 tokens) y `ChunkingError` en vez de truncar.
+- **Estado/reintento**: errores permanentes dejan `Source.status=failed` con `error`; los transitorios también se marcan y se re-lanzan para el retry de dramatiq. Volver a hacer POST de los mismos bytes sobre una fuente `failed` la re-encola (`requeued=true`).
+- **Dependency audits**: `nltk` 3.10.3 (transitiva de llama-index-core) tiene PYSEC-2026-3740 sin parche; ignorada en CI con justificación. `npm audit --omit=dev` falla por `next` (no tocado por este PR).
