@@ -82,7 +82,7 @@ export default async function ScreenersPage({ searchParams }: PageProps) {
 
   return (
     <main id="content" tabIndex={-1} className="mx-auto flex max-w-7xl flex-col gap-6">
-      <header className="border-b border-gray-800 pb-5"><p className="text-sm font-semibold uppercase text-teal-300">Descubrimiento de empresas</p><h1 className="mt-1 text-3xl font-bold text-gray-100">Screeners</h1><p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">Construye fórmulas seguras, evalúa cobertura y confianza, guarda filtros e identifica nuevas coincidencias.</p></header>
+      <header className="border-b border-gray-800 pb-5"><p className="text-sm font-semibold uppercase text-teal-300">Descubrimiento de empresas</p><h1 className="mt-1 text-3xl font-bold text-gray-100">Screeners</h1></header>
 
       {/*
         Orden por lo que el usuario viene a ver: primero los resultados, luego
