@@ -20,7 +20,7 @@ import { t } from '@/lib/i18n/t';
 import { showErrorToast } from '@/lib/toast';
 import { toast } from 'sonner';
 
-type AllocationRow = { label: string; target_pct: string };
+type AllocationRow = { kind: PlanTargetInput['kind']; label: string; target_pct: string; band_pct: string };
 
 /**
  * Alta/edición del plan de inversión (B12): el backend tenía PUT /api/plan
@@ -60,12 +60,17 @@ export default function PlanSetupDialog({
             : [];
         const parsed = allocations
             .filter((a) => a && typeof a === 'object')
-            .map((a) => ({ label: asText(a.label), target_pct: asText(a.target_pct) }))
+            .map((a): AllocationRow => ({
+                kind: a.kind === 'sector' || a.kind === 'asset_class' ? a.kind : 'ticker',
+                label: asText(a.label),
+                target_pct: asText(a.target_pct),
+                band_pct: asText(a.band_pct) || '5',
+            }))
             .filter((a) => a.label);
-        return parsed.length ? parsed : [{ label: '', target_pct: '' }];
+        return parsed.length ? parsed : [{ kind: 'ticker', label: '', target_pct: '', band_pct: '5' }];
     });
 
-    const addRow = () => setRows((prev) => [...prev, { label: '', target_pct: '' }]);
+    const addRow = () => setRows((prev) => [...prev, { kind: 'ticker', label: '', target_pct: '', band_pct: '5' }]);
     const removeRow = (index: number) => setRows((prev) => prev.filter((_, i) => i !== index));
     const updateRow = (index: number, patch: Partial<AllocationRow>) =>
         setRows((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
@@ -88,15 +93,24 @@ export default function PlanSetupDialog({
         const allocations: PlanTargetInput[] = [];
         let totalPct = 0;
         for (const row of rows) {
-            const label = row.label.trim().toUpperCase();
+            const label = row.kind === 'ticker' ? row.label.trim().toUpperCase() : row.label.trim();
             if (!label && !row.target_pct.trim()) continue;
             const pct = parseLocalizedNumber(row.target_pct);
-            if (!label || pct === null || pct <= 0 || pct > 100) {
-                setError('Cada asignación necesita un ticker y un porcentaje entre 0 y 100.');
+            if (!label || pct === null || pct < 0 || pct > 100) {
+                setError('Cada asignación necesita una etiqueta y un porcentaje entre 0 y 100.');
                 return;
             }
             totalPct += pct;
-            allocations.push({ kind: 'ticker', label, target_pct: pct, band_pct: 5 });
+            const band = parseLocalizedNumber(row.band_pct);
+            if (band === null || band < 0 || band > 50) {
+                setError('La banda debe estar entre 0 y 50 puntos porcentuales.');
+                return;
+            }
+            if (allocations.some((allocation) => allocation.kind === row.kind && allocation.label.toUpperCase() === label.toUpperCase())) {
+                setError('No repitas el mismo objetivo dentro de una categoría.');
+                return;
+            }
+            allocations.push({ kind: row.kind, label, target_pct: pct, band_pct: band });
         }
         if (totalPct > 100) {
             setError(
@@ -141,7 +155,7 @@ export default function PlanSetupDialog({
                 <DialogHeader>
                     <DialogTitle>Configurar plan de inversión</DialogTitle>
                     <DialogDescription className="text-gray-400">
-                        Aportación mensual, horizonte y asignación objetivo por ticker. La suma de
+                        Aportación mensual, horizonte y asignación objetivo. La suma de
                         porcentajes no puede superar el 100%.
                     </DialogDescription>
                 </DialogHeader>
@@ -184,14 +198,24 @@ export default function PlanSetupDialog({
                     </div>
 
                     <div className="space-y-2">
-                        <p className="text-sm font-medium text-gray-300">Asignación objetivo por ticker</p>
+                        <p className="text-sm font-medium text-gray-300">Asignación objetivo</p>
                         {rows.map((row, index) => (
-                            <div key={index} className="flex items-center gap-2">
+                            <div key={index} className="grid grid-cols-2 items-center gap-2 rounded-md border border-gray-800 p-2 sm:grid-cols-[1fr_1fr_5rem_5rem_auto]">
+                                <select
+                                    aria-label={`Categoría ${index + 1}`}
+                                    value={row.kind}
+                                    onChange={(e) => updateRow(index, { kind: e.target.value as AllocationRow['kind'] })}
+                                    className="h-9 min-w-0 rounded-md border border-gray-700 bg-gray-800 px-2 text-sm text-gray-100"
+                                >
+                                    <option value="ticker">Ticker</option>
+                                    <option value="sector">Sector</option>
+                                    <option value="asset_class">Clase de activo</option>
+                                </select>
                                 <Input
-                                    aria-label={`Ticker ${index + 1}`}
+                                    aria-label={`Objetivo ${index + 1}`}
                                     value={row.label}
                                     onChange={(e) => updateRow(index, { label: e.target.value })}
-                                    placeholder="SAN.MC"
+                                    placeholder={row.kind === 'ticker' ? 'SAN.MC' : 'Etiqueta'}
                                     className="border-gray-700 bg-gray-800 text-gray-100"
                                 />
                                 <Input
@@ -200,7 +224,15 @@ export default function PlanSetupDialog({
                                     value={row.target_pct}
                                     onChange={(e) => updateRow(index, { target_pct: e.target.value })}
                                     placeholder="%"
-                                    className="w-24 border-gray-700 bg-gray-800 text-gray-100"
+                                    className="min-w-0 border-gray-700 bg-gray-800 text-gray-100"
+                                />
+                                <Input
+                                    aria-label={`Banda en puntos porcentuales ${index + 1}`}
+                                    inputMode="decimal"
+                                    value={row.band_pct}
+                                    onChange={(e) => updateRow(index, { band_pct: e.target.value })}
+                                    placeholder="Banda"
+                                    className="min-w-0 border-gray-700 bg-gray-800 text-gray-100"
                                 />
                                 <Button
                                     type="button"
