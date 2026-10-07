@@ -306,9 +306,18 @@ def test_la_misconfiguration_se_evalua_sobre_los_dockerfiles_y_el_compose():
 def test_la_puerta_recibe_el_resultado_del_build_y_el_outcome_de_cada_escaner():
     """fail-closed: "no lo he podido comprobar" tiene que llegar al gate."""
     run = str(_gate_step()["run"])
-    assert '--build-result "${{ needs.build.result }}"' in run
-    for slot in ("vuln", "secret", "misconfig", "second"):
-        assert f"--{slot}-status" in run
+    # Un needs/outcome vacio llegaria como "" y argparse saldria con 2 (sin
+    # veredicto de escaneo). El fallback "skipped" lo convierte en gate ROJO
+    # (exit 1): vacio nunca se lee como "success".
+    assert '--build-result "${{ needs.build.result || \'skipped\' }}"' in run
+    fuentes = {
+        "vuln": "steps.trivy_vuln.outcome",
+        "secret": "steps.trivy_secret.outcome",
+        "misconfig": "steps.trivy_misconfig.outcome",
+        "second": "steps.engine2_result.outputs.status",
+    }
+    for slot, fuente in fuentes.items():
+        assert f'--{slot}-status "${{{{ {fuente} || \'skipped\' }}}}"' in run
         assert f"--{slot}-report" in run
 
 
