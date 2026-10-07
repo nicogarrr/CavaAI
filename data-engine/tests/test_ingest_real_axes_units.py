@@ -123,3 +123,40 @@ def test_share_count_requires_a_simple_shares_unit():
 def test_undeclared_unit_fails_closed():
     raw = _bad_unit_instance("iso4217:USD", "xbrli:shares").replace(b'unitRef="U_x"', b'unitRef="U_missing"')
     assert _tags(raw) == set()
+
+
+def test_unprefixed_shares_in_default_namespace_is_the_xbrli_unit():
+    # Visa / BRK reales: <measure>shares</measure> con el ns por defecto.
+    m = "WeightedAverageNumberOfDilutedSharesOutstanding"
+    assert _tags(_bad_unit_instance("shares", None, m)) == {m}
+    assert _tags(_bad_unit_instance("iso4217:USD", "shares")) == {"EarningsPerShareDiluted"}
+    assert _tags(_bad_unit_instance("shares", "shares")) == set()
+    assert _tags(_bad_unit_instance("shares", "iso4217:USD")) == set()
+
+
+def test_prefix_alias_resolves_by_namespace_not_by_text():
+    m = "WeightedAverageNumberOfDilutedSharesOutstanding"
+    aliased = _bad_unit_instance("q:shares", None, m).replace(
+        b"<xbrl ", b'<xbrl xmlns:q="http://www.xbrl.org/2003/instance" ', 1
+    )
+    assert _tags(aliased) == {m}
+
+
+def test_foreign_namespace_named_shares_is_rejected():
+    m = "WeightedAverageNumberOfDilutedSharesOutstanding"
+    foreign = _bad_unit_instance("xbrli:shares", None, m).replace(
+        b'xmlns:xbrli="http://www.xbrl.org/2003/instance"', b'xmlns:xbrli="http://example.com/other"'
+    )
+    assert _tags(foreign) == set()
+    undeclared = _bad_unit_instance("zz:shares", None, m)
+    assert _tags(undeclared) == set()
+
+
+def test_visa_style_unprefixed_shares_still_yields_a_class_member():
+    raw = _instance(
+        "us-gaap:StatementClassOfStockAxis", "v:CommonClassAMember", "U_usdPerShare", "U_shares"
+    ).replace(b"<measure>xbrli:shares</measure>", b"<measure>shares</measure>")
+    assert b"xbrli:shares" not in raw.split(b"<context")[0]
+    facts = parse_instance_dimensioned_facts(io.BytesIO(raw))
+    assert len(facts) == 2
+    assert pick_member(facts, None) == "CommonClassAMember"

@@ -42,6 +42,22 @@ ALLOWED_UNITS: dict[str, frozenset[str]] = {
 _ALL_TAGS = {tag for tags in METRIC_TAGS.values() for tag in tags}
 
 
+_XBRLI_NS = "http://www.xbrl.org/2003/instance"
+_ISO4217_NS = "http://www.xbrl.org/2003/iso4217"
+_SHARES_CLARK = "{" + _XBRLI_NS + "}shares"
+
+
+def _qname_clark(text: str, scope: dict[str, str]) -> str:
+    """Resuelve un QName `prefijo:local` (o sin prefijo = ns por defecto) a
+    `{uri}local`. Prefijo no declarado: se deja tal cual (nunca coincide)."""
+    prefix, sep, local = text.partition(":")
+    if not sep:
+        uri = scope.get("")
+        return "{" + uri + "}" + text if uri else text
+    uri = scope.get(prefix)
+    return "{" + uri + "}" + local if uri else text
+
+
 def _unit_allowed(tag: str, unit_ref: str, units: dict[str, tuple[tuple[str, ...], tuple[str, ...]]]) -> bool:
     """Valida la unidad CONTRA su estructura declarada en la instancia.
 
@@ -62,10 +78,10 @@ def _unit_allowed(tag: str, unit_ref: str, units: dict[str, tuple[tuple[str, ...
     if allowed is _EPS_UNITS:
         return (
             len(numerator) == 1
-            and numerator[0].startswith("iso4217:")
-            and denominator == ("xbrli:shares",)
+            and numerator[0].startswith("{" + _ISO4217_NS + "}")
+            and denominator == (_SHARES_CLARK,)
         )
-    return numerator == ("xbrli:shares",) and not denominator
+    return numerator == (_SHARES_CLARK,) and not denominator
 
 
 @dataclass(frozen=True)
@@ -145,12 +161,27 @@ def parse_instance_dimensioned_facts(
     contexts: dict[str, tuple[date | None, date | None, date | None, tuple[tuple[str, str], ...]]] = {}
     units: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {}
     facts: list[DimensionedFact] = []
-    for _event, el in ET.iterparse(stream):
+    # Ambito de prefijos de namespace: el `<measure>` es un QName y se resuelve
+    # con las declaraciones del documento (incluida la por defecto), no por su
+    # texto literal: Visa/BRK escriben `shares` sin prefijo.
+    scopes: list[dict[str, str]] = [{}]
+    pending_ns: list[tuple[str, str]] = []
+    for _event, el in ET.iterparse(stream, events=("start-ns", "start", "end")):
+        if _event == "start-ns":
+            pending_ns.append(el)  # type: ignore[arg-type]
+            continue
+        if _event == "start":
+            scope = dict(scopes[-1])
+            scope.update(pending_ns)
+            pending_ns = []
+            scopes.append(scope)
+            continue
+        scope = scopes.pop()
         tag = _local(el.tag)
         if tag == "unit":
-            def _measures(parent) -> tuple[str, ...]:
+            def _measures(parent, scope=scope) -> tuple[str, ...]:
                 return tuple(
-                    (node.text or "").strip()
+                    _qname_clark((node.text or "").strip(), scope)
                     for node in parent.iter()
                     if _local(node.tag) == "measure"
                 )

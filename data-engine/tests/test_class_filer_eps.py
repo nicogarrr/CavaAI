@@ -24,7 +24,7 @@ from app.services.connectors.sec_xbrl_instance import (
 )
 
 INSTANCE_XML = """<?xml version="1.0"?>
-<xbrl xmlns="http://www.xbrl.org/2003/instance"
+<xbrl xmlns="http://www.xbrl.org/2003/instance" xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:iso4217="http://www.xbrl.org/2003/iso4217"
       xmlns:us-gaap="http://fasb.org/us-gaap/2023"
       xmlns:v="http://www.example.com/v">
   <unit id="uUSD"><divide><unitNumerator><measure>iso4217:USD</measure></unitNumerator><unitDenominator><measure>xbrli:shares</measure></unitDenominator></divide></unit>
@@ -55,7 +55,7 @@ INSTANCE_XML = """<?xml version="1.0"?>
 """
 
 BRK_INSTANCE_XML = """<?xml version="1.0"?>
-<xbrl xmlns="http://www.xbrl.org/2003/instance"
+<xbrl xmlns="http://www.xbrl.org/2003/instance" xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:iso4217="http://www.xbrl.org/2003/iso4217"
       xmlns:us-gaap="http://fasb.org/us-gaap/2023"
       xmlns:brka="http://www.example.com/brka">
   <unit id="uUSD"><divide><unitNumerator><measure>iso4217:USD</measure></unitNumerator><unitDenominator><measure>xbrli:shares</measure></unitDenominator></divide></unit>
@@ -76,7 +76,7 @@ SEGMENT_INSTANCE_XML = """<?xml version="1.0"?>
 <!-- origin: synthetic_fixture. Un unico hecho dimensionado por SEGMENTO: es
      el BPA de un negocio, no el del emisor, y no puede escribirse como
      eps_diluted del consolidado (FIX5-9). -->
-<xbrl xmlns="http://www.xbrl.org/2003/instance"
+<xbrl xmlns="http://www.xbrl.org/2003/instance" xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:iso4217="http://www.xbrl.org/2003/iso4217"
       xmlns:us-gaap="http://fasb.org/us-gaap/2023">
   <unit id="uUSD"><divide><unitNumerator><measure>iso4217:USD</measure></unitNumerator><unitDenominator><measure>xbrli:shares</measure></unitDenominator></divide></unit>
   <unit id="ushares"><measure>xbrli:shares</measure></unit>
