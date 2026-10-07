@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.llm import LLMRequest, Message, ResponseFormat, create_llm_provider, parse_json_response
+from app.llm.model_aliases import VERIFIED_FREE_MODELS
 from app.services.asts_catalog_service import read_catalog
 from app.services.asts_llm_quota import reserve_llm_call
 from app.services.async_bridge import run_from_any_context
@@ -136,7 +137,7 @@ async def _analyze_with_llm(payload: str) -> tuple[AstsAnalysis, object]:
         response_format=ResponseFormat.json_schema(_SCHEMA, name="asts_catalog_analysis"),
     )
     # Pin the exact free model: task overrides and env defaults may route to paid models.
-    if provider.model_router.resolve(request) != "space-bunny-free":
+    if provider.model_router.resolve(request) not in VERIFIED_FREE_MODELS:
         raise RuntimeError("ASTS catalog model is not the verified free model")
     response = await provider.complete(request)
     return AstsAnalysis.model_validate(parse_json_response(response.text)), response

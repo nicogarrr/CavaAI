@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.llm import LLMRequest, Message, ResponseFormat, create_llm_provider, parse_json_response
+from app.llm.model_aliases import VERIFIED_FREE_MODELS
 from app.models import Company, NewsEvent
 from app.services.async_bridge import run_from_any_context
 from app.services.second_order_quota import reserve_llm_call
@@ -102,7 +103,7 @@ async def _extract_with_llm(text: str) -> tuple[Extraction, object]:
         response_format=ResponseFormat.json_schema(_SCHEMA, name="second_order_themes"),
     )
     # Pin the exact free model: task overrides and env defaults may route to paid models.
-    if provider.model_router.resolve(request) != "space-bunny-free":
+    if provider.model_router.resolve(request) not in VERIFIED_FREE_MODELS:
         raise RuntimeError("Second-order model is not the verified free model")
     response = await provider.complete(request)
     return Extraction.model_validate(parse_json_response(response.text)), response
