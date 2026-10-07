@@ -2,9 +2,9 @@ import type { Metadata } from 'next';
 import { generateEnhancedProPicksWithRun, getAvailableStrategies } from '@/lib/actions/proPicks.actions';
 import { Sparkles } from 'lucide-react';
 import ProPicksTabs from '@/components/proPicks/ProPicksTabs';
-import BackendOffline from '@/components/system/BackendOffline';
+import ProPicksLoadError from '@/components/proPicks/ProPicksLoadError';
 import { MethodologyDisclosure } from '@/components/ui/methodology-disclosure';
-import { isBackendUnavailableError } from '@/lib/backend-offline';
+import { AppError } from '@/lib/types/errors';
 
 // Dinámica (antes `revalidate = 3600`): con ISR, un fallo transitorio del motor
 // se congelaba en la caché durante una hora y el «Reintentar» no ayudaba de
@@ -36,8 +36,10 @@ export default async function ProPicksPage() {
     } catch (error) {
         // Esta página es de las más frágiles cuando el motor importa: sin catch
         // el fallo subía al ErrorBoundary global.
-        if (isBackendUnavailableError(error)) {
-            return <BackendOffline feature="ProPicks IA" retryHref="/propicks" />;
+        // Un fallo de esta lectura no prueba que el motor entero esté caído.
+        // La autenticación/navegación mantiene su ruta normal de error.
+        if (error instanceof AppError && ['EXTERNAL_API_ERROR', 'RESEARCH_API_ERROR'].includes(error.code)) {
+            return <ProPicksLoadError statusCode={error.code === 'RESEARCH_API_ERROR' ? error.statusCode : undefined} />;
         }
         throw error;
     }
