@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models import Company, NewsEvent
 from app.schemas import ManualNewsRequest, ManualNewsResponse, NewsIngestRequest, NewsIngestResponse
+from app.services.news_headline_translation import display_translation, original_headline, translate_headline
 from app.services.news_service import NewsService
 from app.services.second_order_news_service import analyze_second_order
 
@@ -53,6 +54,8 @@ def news_events(
                 "ticker": company.ticker if company else None,
                 "date": event.date.isoformat(),
                 "title": event.title,
+                "original_headline": original_headline(event),
+                "headline_translation": display_translation(event),
                 "source": event.source,
                 "url": event.url,
                 "event_type": event.event_type,
@@ -87,3 +90,13 @@ def second_order_hypotheses(
     if event is None:
         raise HTTPException(status_code=404, detail="Noticia no encontrada")
     return analyze_second_order(db, event, use_llm=use_llm)
+
+
+@router.post("/{event_id}/translation")
+async def translate_news_headline(event_id: int, db: Session = Depends(get_db)) -> dict:
+    try:
+        return await translate_headline(db, event_id)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail="Tenant context required") from exc
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="News event not found") from exc

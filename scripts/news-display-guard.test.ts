@@ -10,7 +10,7 @@ import test from 'node:test';
 // @ts-expect-error TS5097: la extensión explícita la exige node --experimental-strip-types.
 import { newsDisplayTitle, untokenizeHeadline } from '../lib/news-display.ts';
 
-const page = (readFileSync('app/(root)/research/news/page.tsx', 'utf8') + readFileSync('components/research/NewsEventsFlow.tsx', 'utf8'));
+const page = (readFileSync('app/(root)/research/news/page.tsx', 'utf8') + readFileSync('components/research/NewsEventsFlow.tsx', 'utf8') + readFileSync('components/research/NewsHeadline.tsx', 'utf8'));
 
 test('omite el prefijo solo en display generado por CavaAI', () => {
     assert.equal(newsDisplayTitle('AAPL 8-K presentado ante la SEC', 'AAPL', false), '8-K presentado ante la SEC');

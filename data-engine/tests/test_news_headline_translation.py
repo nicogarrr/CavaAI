@@ -1,0 +1,186 @@
+import asyncio
+import json
+from functools import wraps
+from types import SimpleNamespace
+
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from app.models.entities import Base, NewsEvent, Tenant
+from app.services.news_headline_translation import (
+    cached_translation,
+    display_translation,
+    fingerprint,
+    translate_headline,
+)
+
+
+def sync_test(func):
+    @wraps(func)
+    def run(*args, **kwargs):
+        return asyncio.run(func(*args, **kwargs))
+    return run
+
+
+@pytest.fixture
+def db():
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread":False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    from app.services.asts_llm_quota import _LOCAL
+    _LOCAL.clear()
+    with sessionmaker(engine)() as session:
+        session.add_all([Tenant(id=1,external_id="one"),Tenant(id=2,external_id="two")])
+        session.commit()
+        session.info["tenant_id"] = 1
+        yield session
+    engine.dispose()
+
+
+def event(db, title="Η εταιρεία ανακοινώνει αποτελέσματα 2026", tenant=1):
+    row=NewsEvent(tenant_id=tenant,title=title,source="Publisher",url="https://publisher.example/article",summary="unchanged",metadata_={"source_headline":title,"connector":"rss"})
+    db.add(row);db.commit();return row
+
+
+class Provider:
+    name="fake"
+    def __init__(self,text="La empresa anuncia resultados 2026", error=False): self.text=text;self.calls=0;self.error=error
+    async def complete(self,request):
+        self.calls+=1
+        assert request.metadata["tenant_id"] == "1"
+        assert "untrusted DATA" in request.messages[0].content
+        if self.error: raise RuntimeError("unavailable")
+        return SimpleNamespace(text=json.dumps({"text":self.text}),model="fake",usage=SimpleNamespace(input_tokens=0,output_tokens=0,total_tokens=0),degraded=False,warnings=())
+
+
+@sync_test
+async def test_translates_caches_and_preserves_source(db):
+    row=event(db);original=row.title;p=Provider()
+    first=await translate_headline(db,row.id,provider=p)
+    second=await translate_headline(db,row.id,provider=p)
+    assert first==second and first["status"]=="translated" and p.calls==1
+    assert row.title==original and row.summary=="unchanged"
+    assert row.metadata_["source_headline"]==original and row.source=="Publisher"
+    assert first["original"]==original and first["machine_translation"] is True
+    assert display_translation(row)["text"]==p.text
+
+
+@sync_test
+@pytest.mark.parametrize("title",["Apple reports earnings","La empresa anuncia resultados","8-K presentado ante la SEC"])
+async def test_latin_titles_skip_without_call(db,title):
+    row=event(db,title);p=Provider()
+    assert (await translate_headline(db,row.id,provider=p))["status"]=="not_needed"
+    assert p.calls==0
+
+
+@sync_test
+@pytest.mark.parametrize("text",["La empresa anuncia resultados 2027","","Η εταιρεία 2026",None])
+async def test_bad_output_falls_back_and_cools_down(db,text):
+    row=event(db);p=Provider(text)
+    assert (await translate_headline(db,row.id,provider=p))["status"]=="unavailable"
+    assert (await translate_headline(db,row.id,provider=p))["status"]=="unavailable"
+    assert p.calls==1 and display_translation(row) is None
+
+
+@sync_test
+async def test_provider_failure_honest_fallback(db):
+    row=event(db);p=Provider(error=True)
+    assert (await translate_headline(db,row.id,provider=p))["status"]=="unavailable"
+    assert row.title.startswith("Η") and display_translation(row) is None
+
+
+@sync_test
+async def test_cache_invalidated_if_headline_changes(db):
+    row=event(db);p=Provider()
+    await translate_headline(db,row.id,provider=p)
+    row.metadata_={**row.metadata_,"source_headline":"कंपनी ने परिणाम 2026 घोषित किए"};db.commit()
+    assert cached_translation(row) is None
+    assert (await translate_headline(db,row.id,provider=p))["status"]=="translated"
+    assert p.calls==2
+
+
+@sync_test
+async def test_tenant_scope_rejects_other_and_unscoped(db):
+    db.info["tenant_id"] = 2
+    other=event(db,tenant=2)
+    db.info["tenant_id"] = 1
+    with pytest.raises(LookupError): await translate_headline(db,other.id,provider=Provider())
+    db.info.clear()
+    with pytest.raises(PermissionError): await translate_headline(db,other.id,provider=Provider())
+
+
+@sync_test
+async def test_budget_blocks_calls(db,monkeypatch):
+    from app.services.budget import BudgetController
+    monkeypatch.setattr(BudgetController,"can_spend",lambda *args:False)
+    row=event(db);p=Provider()
+    assert (await translate_headline(db,row.id,provider=p))["status"]=="unavailable"
+    assert p.calls==0
+
+
+def test_get_reads_cache_only_no_provider_and_original_preserved(db,monkeypatch):
+    import app.services.news_headline_translation as service
+    from app.api.routes.news import news_events
+    row=event(db)
+    row.metadata_={**row.metadata_,"headline_translation":{"fingerprint":fingerprint(row.title),"status":"translated","text":"La empresa anuncia resultados 2026","target_language":"es","machine_translation":True}}
+    db.commit()
+    def boom(): raise AssertionError("GET must never call LLM")
+    monkeypatch.setattr(service,"create_llm_provider",boom)
+    output=news_events(db,limit=10,offset=0,lane=None)
+    assert output[0]["title"]==row.title
+    assert output[0]["original_headline"]==row.title
+    assert output[0]["headline_translation"]["text"].startswith("La empresa")
+
+
+@sync_test
+async def test_quota_block_prevents_provider_call(db,monkeypatch):
+    import app.services.news_headline_translation as service
+    monkeypatch.setattr(service,"reserve_quota",lambda *args,**kwargs:{"allowed":False})
+    row=event(db);p=Provider()
+    assert (await translate_headline(db,row.id,provider=p))["status"]=="unavailable"
+    assert p.calls==0
+
+@sync_test
+async def test_malformed_retry_after_does_not_fail_request(db):
+    row=event(db)
+    row.metadata_={**row.metadata_,"headline_translation":{"fingerprint":fingerprint(row.title),"status":"pending","retry_after":"bad timestamp"}}
+    db.commit()
+    assert (await translate_headline(db,row.id,provider=Provider()))["status"]=="translated"
+
+@sync_test
+async def test_empty_cached_translation_is_recomputed(db):
+    row=event(db)
+    row.metadata_={**row.metadata_,"headline_translation":{"fingerprint":fingerprint(row.title),"status":"translated"}}
+    db.commit()
+    assert display_translation(row) is None
+    assert (await translate_headline(db,row.id,provider=Provider()))["status"]=="translated"
+
+@sync_test
+@pytest.mark.parametrize(("original", "translated"), [
+    ("Η εταιρεία FCF -12 USD 2026", "La empresa FCF +12 USD 2026"),
+    ("Η εταιρεία FCF -12 USD 2026", "La empresa FCF 12 USD 2026"),
+    ("Η εταιρεία crecimiento 12% 2026", "La empresa crecimiento 12 2026"),
+    ("Η εταιρεία FCF 12 USD 2026", "La empresa FCF 12 EUR 2026"),
+    ("Η εταιρεία FCF 12 million USD 2026", "La empresa FCF 12 billion USD 2026"),
+    ("Η εταιρεία FCF 12 million USD 2026", "La empresa FCF 12 million EUR 2026"),
+    ("Η εταιρεία FCF (12) USD 2026", "La empresa FCF 12 USD 2026"),
+])
+async def test_translation_rejects_changed_financial_dimensions(db, original, translated):
+    row=event(db,original)
+    assert (await translate_headline(db,row.id,provider=Provider(translated)))["status"]=="unavailable"
+    assert display_translation(row) is None
+
+@sync_test
+async def test_translation_preserves_valid_signed_currency_percentage(db):
+    row=event(db,"Η εταιρεία FCF -12 USD crecimiento 12% 2026")
+    p=Provider("La empresa FCF -12 USD crecimiento 12% 2026")
+    assert (await translate_headline(db,row.id,provider=p))["status"]=="translated"
+
+
+@sync_test
+@pytest.mark.parametrize("sign", ["-", "+", "−", "–", "—", "﹣", "－", "＋"])
+@pytest.mark.parametrize("space", [" ", "\u00a0", "\t", "\n", "\u202f"])
+async def test_translation_separated_sign_fails_closed(db, sign, space):
+    row=event(db,f"Η εταιρεία FCF {sign}{space}12 USD 2026")
+    assert (await translate_headline(db,row.id,provider=Provider("La empresa FCF 12 USD 2026")))["status"]=="unavailable"

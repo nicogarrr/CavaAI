@@ -5,7 +5,7 @@ import { TickerContextBadges } from '@/components/common/TickerContextBadges';
 import type { ResearchNewsEvent } from '@/lib/actions/research.actions';
 import type { NewsLane } from '@/lib/news-paging';
 import { formatPercent, NA } from '@/lib/format';
-import { newsDisplayTitle } from '@/lib/news-display';
+import { NewsHeadline } from '@/components/research/NewsHeadline';
 import { etiquetaDireccionImpacto, etiquetaTemaMacro, etiquetaTierFuente, etiquetaTipoEvento } from "@/lib/labels";
 
 const CARRILES = [
@@ -109,7 +109,6 @@ export function NewsEventsFlow({
                 : event.materiality_score >= 4
                   ? 'text-amber-400'
                   : 'text-gray-500';
-            const title = newsDisplayTitle(event.title, event.ticker, event.headline_from_source);
             return (
               <li className="rounded-lg border border-gray-800 bg-black/20 p-3" key={`card-${event.id}`}>
                 <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400">
@@ -139,15 +138,7 @@ export function NewsEventsFlow({
                   ) : null}
                   <span className={`ml-auto font-semibold ${materialityColor}`}>{event.materiality_score}</span>
                 </div>
-                <p className="mt-2 break-words text-sm text-gray-200">
-                  {event.url ? (
-                    <a className="hover:text-teal-200" href={event.url} rel="noreferrer" target="_blank">
-                      {title}
-                    </a>
-                  ) : (
-                    title
-                  )}
-                </p>
+                <div className="mt-2 text-sm text-gray-200"><NewsHeadline event={event} /></div>
                 <div className="mt-2 flex items-center justify-between gap-2 text-xs text-gray-500">
                   <span className="min-w-0 break-words">{event.source || NA}</span>
                   {event.requires_update ? (
@@ -217,15 +208,7 @@ export function NewsEventsFlow({
                       ) : null}
                     </td>
                     <td className="max-w-[360px] px-3 py-3 text-gray-300">
-                      <div className="break-words">
-                        {event.url ? (
-                          <a className="hover:text-teal-200" href={event.url} rel="noreferrer" target="_blank">
-                            {newsDisplayTitle(event.title, event.ticker, event.headline_from_source)}
-                          </a>
-                        ) : (
-                          newsDisplayTitle(event.title, event.ticker, event.headline_from_source)
-                        )}
-                      </div>
+                      <NewsHeadline event={event} />
                     </td>
                     <td className="py-3 text-center">
                       <span className={`font-semibold ${materialityColor}`}>{event.materiality_score}</span>
