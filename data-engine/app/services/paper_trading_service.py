@@ -144,25 +144,45 @@ def refresh_trades(db: Session, fetch_quote=None, *, only_id: int | None = None)
     statement = select(PaperTrade).where(PaperTrade.status.in_(["pending", "open"]))
     if only_id is not None:
         statement = statement.where(PaperTrade.id == only_id)
-    # Round-robin priority by mark age avoids starving symbols after the first 50.
-    rows = list(db.scalars(statement.order_by(PaperTrade.updated_at, PaperTrade.id).with_for_update()).all())
+    # Discovery copies scalar IDs/tickers only. Release the transaction before
+    # ANY provider call: no pooled connection or row lock spans network I/O.
+    candidates = list(db.execute(
+        statement.with_only_columns(PaperTrade.id, PaperTrade.ticker)
+        .order_by(PaperTrade.updated_at, PaperTrade.id)
+    ).all())
+    db.commit()
+    selected: list[tuple[int, str]] = []
     quotes: dict[str, dict] = {}
-    changed = 0
-    unavailable = 0
-    now = datetime.now(UTC)
-    for row in rows:
-        # Bounded unique-symbol budget. No LLM invocation or universe scan.
-        if row.ticker not in quotes:
+    for proposal_id, ticker in candidates:
+        if ticker not in quotes:
             if len(quotes) >= 50:
                 continue
-            try:
-                quotes[row.ticker] = fetch_quote(row.ticker)
-            except Exception:  # noqa: BLE001 - absent upstream quote is not a fabricated mark
-                quotes[row.ticker] = {}
-        row.updated_at = now
-        if apply_quote(row, quotes[row.ticker], now):
-            changed += 1
-        else:
-            unavailable += 1
-    db.commit()
+            quotes[ticker] = {}
+        selected.append((proposal_id, ticker))
+    for ticker in quotes:
+        try:
+            quotes[ticker] = fetch_quote(ticker)
+        except Exception:  # noqa: BLE001 - upstream absence never fabricates a mark
+            quotes[ticker] = {}
+    changed = 0
+    unavailable = 0
+    for proposal_id, ticker in selected:
+        # One short application transaction per row. Reload, don't trust ORM
+        # identity-map state from discovery or a concurrent refresh/close.
+        row = db.scalar(select(PaperTrade).where(PaperTrade.id == proposal_id)
+                        .with_for_update().execution_options(populate_existing=True))
+        try:
+            if row is None or row.status not in {"pending", "open"}:
+                unavailable += 1
+            else:
+                now = datetime.now(UTC)
+                row.updated_at = now
+                if apply_quote(row, quotes[ticker], now):
+                    changed += 1
+                else:
+                    unavailable += 1
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
     return {"updated": changed, "unchanged": unavailable, "symbols_checked": len(quotes)}

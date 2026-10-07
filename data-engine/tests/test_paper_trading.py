@@ -199,3 +199,88 @@ def test_quote_at_proposal_time_is_not_forward():
 def test_conviction_bins_do_not_invent_samples():
     bins = scoreboard([])["conviction_bins"]
     assert all(b["hit_rate"] is None and b["closed"] == 0 for b in bins)
+
+
+def test_decimal_idempotency_normalizes_before_persistence(db):
+    payload = body(conviction="0.812345", proposed_entry="100.1234567", stop="90.1234567",
+                   target="120.1234567", quantity="2.1234567")
+    proposal = PaperProposal(**payload)
+    row = create_proposal(db, proposal)
+    db.expire_all()
+    assert create_proposal(db, PaperProposal(**payload)).id == row.id
+    assert row.conviction == Decimal("0.8123")
+    assert row.proposed_entry == Decimal("100.123457")
+    with pytest.raises(ValueError):
+        create_proposal(db, PaperProposal(**{**payload, "proposed_entry": "101.1234567"}))
+
+
+def test_precision_cannot_round_levels_or_quantity_to_invalid_values():
+    for overrides in ({"quantity": "0.0000001"}, {"stop": "99.9999999"},
+                      {"proposed_entry": "100000000000000"}):
+        with pytest.raises(ValidationError):
+            PaperProposal(**body(**overrides))
+
+
+def test_provider_has_zero_checkout_and_concurrent_close_is_preserved(tmp_path):
+    from sqlalchemy.pool import QueuePool
+    engine = create_engine(f"sqlite:///{tmp_path / 'pool.db'}", poolclass=QueuePool,
+                           pool_size=1, max_overflow=0, pool_timeout=0.2)
+    Base.metadata.create_all(engine)
+    with Session(engine, expire_on_commit=False) as session:
+        session.add(Tenant(id=1, external_id="pool-tenant"))
+        session.commit()
+        session.info["tenant_id"] = 1
+        row = create_proposal(session, PaperProposal(**body()))
+        row_id = row.id
+        def fetch(ticker):
+            assert engine.pool.checkedout() == 0
+            # Another session closes the position while the first is in network.
+            with Session(engine) as closer:
+                closer.info["tenant_id"] = 1
+                current = closer.get(PaperTrade, row_id)
+                current.status = "closed"
+                current.entry_price = Decimal(100)
+                current.exit_price = Decimal(110)
+                current.close_reason = "manual"
+                closer.commit()
+            return quote(98, datetime.now(UTC))
+        result = refresh_trades(session, fetch)
+        assert result["updated"] == 0
+        session.expire_all()
+        stored = session.get(PaperTrade, row_id)
+        assert stored.status == "closed"
+        assert stored.exit_price == Decimal(110)
+        assert stored.close_reason == "manual"
+    engine.dispose()
+
+
+def test_refresh_race_newer_mark_is_not_overwritten(tmp_path):
+    from sqlalchemy.pool import QueuePool
+    engine = create_engine(f"sqlite:///{tmp_path / 'race.db'}", poolclass=QueuePool,
+                           pool_size=1, max_overflow=0, pool_timeout=0.2)
+    Base.metadata.create_all(engine)
+    with Session(engine, expire_on_commit=False) as session:
+        session.add(Tenant(id=1, external_id="race-tenant"))
+        session.commit()
+        session.info["tenant_id"] = 1
+        row = create_proposal(session, PaperProposal(**body()))
+        row_id = row.id
+        latest = datetime.now(UTC)
+        older = latest - timedelta(minutes=1)
+        def fetch(ticker):
+            assert engine.pool.checkedout() == 0
+            with Session(engine) as other:
+                other.info["tenant_id"] = 1
+                current = other.get(PaperTrade, row_id)
+                current.status = "open"
+                current.entry_price, current.entry_at = Decimal(98), older
+                current.mark_price, current.mark_at = Decimal(110), latest
+                current.currency = "USD"
+                other.commit()
+            return quote(99, older)
+        assert refresh_trades(session, fetch)["updated"] == 0
+        session.expire_all()
+        stored = session.get(PaperTrade, row_id)
+        assert stored.mark_price == Decimal(110)
+        assert stored.status == "open"
+    engine.dispose()

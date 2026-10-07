@@ -43,11 +43,14 @@ def refresh(db: Session = Depends(get_db)) -> dict:
 
 @router.post("/proposals/{proposal_id}/close")
 def close(proposal_id: int, db: Session = Depends(get_db)) -> dict:
-    row = db.scalar(select(PaperTrade).where(PaperTrade.id == proposal_id).with_for_update())
+    row = db.scalar(select(PaperTrade).where(PaperTrade.id == proposal_id))
     if row is None:
         raise HTTPException(status_code=404, detail="Propuesta no encontrada")
     if row.status == "closed":
         return trade_out(row)
+    # Drop the read transaction before provider work. refresh_trades locks only
+    # during application; the final close revalidates under its own row lock.
+    db.commit()
     refresh_trades(db, only_id=proposal_id)
     db.refresh(row, with_for_update=True)
     if row.status == "closed":
