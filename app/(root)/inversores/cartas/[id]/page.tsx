@@ -81,7 +81,7 @@ export default async function LetterReaderPage({ params, searchParams }: PagePro
             ) : (
                 <section aria-label="Texto de la carta" className="flex flex-col gap-4">
                     {chunks.map((chunk) => (
-                        <article className="rounded-2xl border border-gray-800 bg-surface-1 p-4 sm:p-5" key={chunk.id}>
+                        <article className="rounded-2xl border border-gray-800 bg-surface-1 p-4 sm:p-5" id={`chunk-${chunk.id}`} key={chunk.id}>
                             <p className="mb-2 text-xs text-gray-500">
                                 Fragmento {Number(chunk.chunk_index) + 1}
                                 {chunk.page_number === null || chunk.page_number === undefined ? '' : ` · página ${chunk.page_number}`}

@@ -1,0 +1,27 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+
+const read = (path: string) => readFileSync(path, 'utf8');
+test('solape has pagination, period and partial-data labels', () => {
+  const page = read('app/(root)/inversores/solape/page.tsx');
+  for (const text of ['Pagination', 'report_date', 'filing_date', 'Datos parciales', 'unresolved_positions', '13F histórico']) assert.ok(page.includes(text), text);
+});
+test('chat sends only signed server requests and renders quotes as plain text', () => {
+  const action = read('lib/actions/knowledge-chat.actions.ts');
+  assert.ok(action.includes('researchIdentityHeaders'));
+  assert.ok(action.includes("method: 'POST'"));
+  const component = read('app/(root)/inversores/_components/LibraryChat.tsx');
+  assert.ok(component.includes('{cite.quote}'));
+  assert.ok(component.includes('Página no registrada'));
+  assert.ok(component.includes('Doctrina, no datos actuales'));
+  assert.ok(!component.includes('dangerouslySetInnerHTML'));
+  assert.ok(component.includes('chunk-${cite.chunk_id}'));
+});
+test('links from both library and letters and static route precedes slug route', () => {
+  assert.ok(read('app/(root)/knowledge/page.tsx').includes('<LibraryChat scope="library"'));
+  assert.ok(read('app/(root)/inversores/cartas/page.tsx').includes('<LibraryChat authors='));
+  assert.ok(read('app/(root)/inversores/cartas/[id]/page.tsx').includes('id={`chunk-${chunk.id}`}'));
+  const router = read('data-engine/app/api/routes/investors.py');
+  assert.ok(router.indexOf('/portfolio-overlap') < router.indexOf('/{slug}'));
+});

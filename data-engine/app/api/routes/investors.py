@@ -23,6 +23,13 @@ def most_bought_route(db: Session = Depends(get_db)) -> dict:
     return most_bought(db)
 
 
+@router.get("/portfolio-overlap")
+def overlap_route(db: Session = Depends(get_db)) -> dict:
+    from app.services.investor_overlap import portfolio_overlap
+
+    return portfolio_overlap(db)
+
+
 @router.get("/{slug}")
 def investor(slug: str, db: Session = Depends(get_db)) -> dict:
     """Ficha de un inversor: posiciones del ultimo 13F y cambios trimestrales."""

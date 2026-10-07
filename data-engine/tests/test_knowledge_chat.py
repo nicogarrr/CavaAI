@@ -1,0 +1,134 @@
+"""Doctrina: aislamiento, texto literal y degradación sin inventar páginas."""
+import asyncio
+import json
+from types import SimpleNamespace
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+
+from app.models import KnowledgeChunk, KnowledgeDocument
+from app.models.entities import Base
+from app.services.knowledge_chat import ask_library, retrieve
+
+
+def setup_library():
+    db = Session(create_engine("sqlite://"))
+    Base.metadata.create_all(db.get_bind())
+    for tenant, author, kind, text, page in [
+        (1, "Buffett", "fund_letter", "We buy wonderful businesses. Repurchases can add value at sensible prices.", 8),
+        (2, "Buffett", "fund_letter", "Repurchases SECRET for tenant two", 9),
+        (1, "Magallanes", "fund_letter", "Repurchases depend on the price and capital needs.", None),
+        (1, "Other", "book", "Repurchases appear in this book too.", 1),
+    ]:
+        doc = KnowledgeDocument(tenant_id=tenant, title=author, author=author,
+                                document_type=kind, status="ready")
+        db.add(doc)
+        db.flush()
+        db.add(KnowledgeChunk(tenant_id=tenant, knowledge_document_id=doc.id,
+                              chunk_index=0, content=text, page_number=page))
+    db.commit()
+    db.info["tenant_id"] = 1
+    return db
+
+
+class Provider:
+    def __init__(self, payload=None, fail=False):
+        self.payload = payload
+        self.fail = fail
+        self.request = None
+
+    async def complete(self, request):
+        self.request = request
+        if self.fail:
+            raise RuntimeError("unavailable")
+        sources = json.loads(request.messages[1].content)["sources"]
+        payload = self.payload if self.payload is not None else {"answers": [
+            {"text": "Las recompras se valoran según el precio.", "chunk_id": sources[0]["chunk_id"],
+             "quote": "Repurchases can add value at sensible prices."}
+        ]}
+        return SimpleNamespace(text=json.dumps(payload), degraded=False)
+
+
+def test_letters_exact_author_and_tenant_scope(monkeypatch):
+    monkeypatch.setenv("CAVAAI_ENABLE_VECTOR_SEARCH", "0")
+    db = setup_library()
+    rows, mode = retrieve(db, "repurchases", scope="letters", author="Buffett")
+    assert len(rows) == 1 and rows[0][0].page_number == 8
+    assert mode == "solo_texto"
+    rows, _ = retrieve(db, "repurchases", scope="library")
+    assert len(rows) == 3
+
+
+def test_verified_citation_comes_from_database(monkeypatch):
+    monkeypatch.setenv("CAVAAI_ENABLE_VECTOR_SEARCH", "0")
+    db = setup_library()
+    provider = Provider()
+    result = asyncio.run(ask_library(db, "repurchases", author="Buffett", provider=provider))
+    assert result["status"] == "ok" and result["kind"] == "doctrina"
+    citation = result["answers"][0]["citation"]
+    assert citation["page_number"] == 8 and citation["author"] == "Buffett"
+    assert citation["publication_date"] is None
+    assert provider.request.model == "space-bunny-free"
+
+
+def test_fabricated_quote_and_new_numbers_are_not_shown(monkeypatch):
+    monkeypatch.setenv("CAVAAI_ENABLE_VECTOR_SEARCH", "0")
+    db = setup_library()
+    chunk = retrieve(db, "repurchases", scope="letters", author="Buffett")[0][0][0]
+    for item in [
+        {"chunk_id": chunk.id, "quote": "Fabricated quote about repurchases", "text": "fake"},
+        {"chunk_id": chunk.id, "quote": "Repurchases can add value at sensible prices.", "text": "Rentabilidad del 50%"},
+        {"chunk_id": 99999, "quote": "Repurchases can add value at sensible prices.", "text": "fake"},
+    ]:
+        result = asyncio.run(ask_library(db, "repurchases", author="Buffett", provider=Provider({"answers": [item]})))
+        assert result["status"] == "fragmentos"
+        assert all(a["text"] is None for a in result["answers"])
+
+
+def test_failing_provider_preserves_exact_sources_and_unknown_page(monkeypatch):
+    monkeypatch.setenv("CAVAAI_ENABLE_VECTOR_SEARCH", "0")
+    result = asyncio.run(ask_library(setup_library(), "repurchases", author="Magallanes", provider=Provider(fail=True)))
+    assert result["status"] == "fragmentos"
+    assert result["answers"][0]["citation"]["page_number"] is None
+
+
+def test_unknown_question_and_missing_tenant_are_honest(monkeypatch):
+    monkeypatch.setenv("CAVAAI_ENABLE_VECTOR_SEARCH", "0")
+    db = setup_library()
+    provider = Provider()
+    result = asyncio.run(ask_library(db, "satellites launch", provider=provider))
+    assert result["status"] == "sin_datos" and provider.request is None
+    db.info.clear()
+    assert retrieve(db, "repurchases", scope="library")[0] == []
+
+
+def test_semantic_payload_rehydrated_and_foreign_chunk_refused(monkeypatch):
+    monkeypatch.setenv("CAVAAI_ENABLE_VECTOR_SEARCH", "1")
+    db = setup_library()
+    from app.services.rag import RAGIndex
+    monkeypatch.setattr(RAGIndex, "search", lambda *args, **kwargs: [
+        {"entity_id": 2, "text": "spoofed"}, {"entity_id": 1, "text": "spoofed"},
+    ])
+    rows, mode = retrieve(db, "¿Cómo asignar capital?", scope="letters", author="Buffett")
+    assert mode == "semantica_y_texto" and len(rows) == 1
+    assert rows[0][0].content.startswith("We buy wonderful")
+
+
+def test_paid_configuration_never_calls_provider(monkeypatch):
+    monkeypatch.setenv("CAVAAI_ENABLE_VECTOR_SEARCH", "0")
+    import app.services.knowledge_chat as chat
+    settings = chat.get_settings().model_copy(update={"opencode_go_model": "paid-model"})
+    monkeypatch.setattr(chat, "get_settings", lambda: settings)
+    monkeypatch.setattr(chat, "create_llm_provider", lambda *args: (_ for _ in ()).throw(AssertionError("paid")))
+    result = asyncio.run(ask_library(setup_library(), "repurchases"))
+    assert result["status"] == "fragmentos"
+
+
+def test_multi_page_chunk_never_attributes_quote_to_first_page(monkeypatch):
+    monkeypatch.setenv("CAVAAI_ENABLE_VECTOR_SEARCH", "0")
+    db = setup_library()
+    chunk = db.get(KnowledgeChunk, 1)
+    chunk.metadata_ = {"block_metadata": [{"page": 8}, {"page": 9}]}
+    db.commit()
+    result = asyncio.run(ask_library(db, "repurchases", author="Buffett", provider=Provider()))
+    assert result["answers"][0]["citation"]["page_number"] is None

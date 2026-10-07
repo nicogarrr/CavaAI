@@ -5,6 +5,7 @@ import BackendOffline from '@/components/system/BackendOffline';
 import { getKnowledgeDocuments } from '@/lib/actions/research-tools.actions';
 import { isBackendUnavailableError } from '@/lib/backend-offline';
 
+import { LibraryChat } from '../_components/LibraryChat';
 import { Pagination, paginate } from '../_components/Pagination';
 import { groupLetters, titleYear } from './letters';
 
@@ -49,6 +50,8 @@ export default async function LettersPage({ searchParams }: PageProps) {
                     Volver a inversores
                 </Link>
             </header>
+
+            <LibraryChat authors={groups.filter(group => group.name !== 'Sin autor').map(group => group.name)} />
 
             {groups.length === 0 || !selected || !paged ? (
                 <p className="text-sm text-gray-500">Todavía no hay cartas en la biblioteca.</p>

@@ -62,6 +62,24 @@ def validate_upload_metadata(
     return document_type, normalized_language, validated_url
 
 
+class LibraryQuestion(BaseModel):
+    question: str = Field(min_length=3, max_length=1200)
+    scope: Literal["letters", "library"] = "letters"
+    author: str | None = Field(default=None, max_length=240)
+    document_id: int | None = Field(default=None, ge=1)
+    collection_id: int | None = Field(default=None, ge=1)
+
+
+@router.post("/chat")
+async def chat_library(payload: LibraryQuestion, db: Session = Depends(get_db)) -> dict:
+    # La recuperación SQL/vector va en un hilo. La sesión solo se usa allí hasta terminar.
+    import asyncio
+
+    from app.services.knowledge_chat import ask_library
+
+    return await run_in_threadpool(lambda: asyncio.run(ask_library(db, **payload.model_dump())))
+
+
 class CollectionCreate(BaseModel):
     name: str = Field(min_length=2, max_length=240)
     description: str = Field(default="", max_length=4000)
