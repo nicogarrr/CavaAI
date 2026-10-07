@@ -1,8 +1,11 @@
 import asyncio
+
 import httpx
 import pytest
+
 from app.llm.adapters import OpenAICompatibleProvider
 from app.llm.errors import LLMError
+
 
 @pytest.mark.parametrize(("kind","expected"), [(httpx.ReadTimeout,"read_timeout"),(httpx.ConnectTimeout,"connect_timeout"),(httpx.ConnectError,"connect_error"),(httpx.RemoteProtocolError,"protocol_error")])
 def test_transport_failure_has_safe_class_and_attempt_count(kind,expected):
