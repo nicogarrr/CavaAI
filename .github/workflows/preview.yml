@@ -226,10 +226,23 @@ jobs:
               marker,
               '**Preview retirado.** El PR se cerr\u00f3, as\u00ed que este enlace ya no se actualiza.',
             ].join('\n');
+            // Un 404 aqui significa que el comentario ya no existe (borrado a
+            // mano o por una carrera con otro run): no hay nada que retirar y
+            // no es un fallo. Cualquier otro error (403, 5xx...) se propaga.
+            let marked = 0;
             for (const c of mine) {
-              await github.rest.issues.updateComment({ ...issue, comment_id: c.id, body });
+              try {
+                await github.rest.issues.updateComment({ ...issue, comment_id: c.id, body });
+                marked += 1;
+              } catch (error) {
+                if (error.status === 404) {
+                  core.info(`El comentario ${c.id} ya no existe; se omite.`);
+                  continue;
+                }
+                throw error;
+              }
             }
-            core.info(`Comentarios marcados como obsoletos: ${mine.length}`);
+            core.info(`Comentarios marcados como obsoletos: ${marked}`);
       - name: Publica o actualiza el comentario del preview
         if: ${{ github.event.action != 'closed' }}
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
