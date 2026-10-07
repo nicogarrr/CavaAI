@@ -27,9 +27,8 @@ METRIC_TAGS: dict[str, tuple[str, ...]] = {
 
 # Unidades declaradas (`unitRef`) que admiten cada metrica. Un BPA etiquetado
 # en acciones, o un saldo de acciones etiquetado en moneda, es OTRA magnitud
-# y no se lee como la metrica (FIX5-5). Sin `unitRef` no hay unidad que
-# contradecir: el hecho entra tal cual (el corpus sintetico y los fixtures de
-# test declaran hechos sin unidad, y real iXBRL siempre la declara).
+# y no se lee como la metrica (FIX5-5). Sin `unitRef` o sin declaracion
+# estructural de la unidad no hay prueba de la magnitud: fallo cerrado.
 _EPS_UNITS = frozenset({"uUSD", "usd", "USD", "EUR", "iso4217:EUR", "iso4217:USD", "usdPerShare"})
 _SHARE_UNITS = frozenset({"ushares", "shares", "xbrli:shares", "pure"})
 ALLOWED_UNITS: dict[str, frozenset[str]] = {
