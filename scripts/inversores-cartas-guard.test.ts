@@ -41,8 +41,20 @@ test('agrupa por autor, solo cartas listas, más reciente primero y sin inventar
 test('la página dice "no registrada" sin fecha y enlaza lector y PDF original', () => {
     const page = readFileSync('app/(root)/inversores/cartas/page.tsx', 'utf8');
     assert.match(page, /Fecha de publicación no registrada/);
-    assert.match(page, /\/knowledge\?document=\$\{letter\.id\}/);
+    assert.match(page, /\/inversores\/cartas\/\$\{letter\.id\}/);
+    assert.ok(!/\/knowledge\?document=/.test(page), 'Leer ya no va al explorador genérico de /knowledge');
     assert.match(page, /PDF original/);
     assert.match(page, /<Pagination/);
     assert.ok(!/IntersectionObserver|infinite/i.test(page), 'paginación, no scroll infinito');
+});
+
+test('el lector de una carta enseña título, autor, pista de año, PDF original y vuelta, paginado', () => {
+    const reader = readFileSync('app/(root)/inversores/cartas/[id]/page.tsx', 'utf8');
+    assert.match(reader, /letter\.title/);
+    assert.match(reader, /Fecha de publicación no registrada/);
+    assert.match(reader, /Abrir el PDF original/);
+    assert.match(reader, /Volver a las cartas/);
+    assert.match(reader, /<Pagination/);
+    assert.match(reader, /notFound\(\)/);
+    assert.ok(!/IntersectionObserver|infinite/i.test(reader), 'paginación, no scroll infinito');
 });
