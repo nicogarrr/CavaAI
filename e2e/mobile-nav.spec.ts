@@ -28,6 +28,7 @@ const NAV_ROUTES: { path: string; heading?: string }[] = [
   // `/` es la landing pública; el dashboard autenticado vive en `/inicio`.
   { path: "/" },
   { path: "/inicio" },
+  { path: "/discover", heading: "Descubrir" },
   { path: "/portfolio" },
   { path: "/research" },
   { path: "/knowledge" },
@@ -57,8 +58,8 @@ test.describe("navegación sin huecos de breakpoint", () => {
     await trigger.click();
     await expect(page.getByRole("dialog", { name: "Menú de navegación" })).toBeVisible();
     // El drawer lleva el árbol completo, incluidas las secciones con hijos.
-    await expect(page.getByRole("link", { name: "Inteligencia", exact: true })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Ayuda", exact: true })).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "Menú de navegación" }).getByRole("link", { name: "Descubrir", exact: true })).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "Menú de navegación" }).getByRole("link", { name: "Biblioteca", exact: true })).toBeVisible();
   });
 });
 

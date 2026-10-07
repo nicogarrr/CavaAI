@@ -16,7 +16,8 @@ test('cada destino del sidebar aparece una sola vez (árbol + pie)', () => {
     assert.ok(!sidebar.includes('FooterLink href="/plan"'), '/plan duplicado en el pie del sidebar');
     assert.ok(!sidebar.includes('FooterLink href="/help"'), '/help duplicado en el pie del sidebar');
     // /security no está en el árbol: su pie se mantiene.
-    assert.match(sidebar, /FooterLink href="\/security"/);
+    assert.ok(!sidebar.includes('FooterLink href="/security"'));
+    assert.ok(readFileSync("components/UserDropdown.tsx", "utf8").includes('router.push("/security")'));
     // En el árbol, cada href una vez.
     const tree = constants.slice(constants.indexOf('export const NAV_SECTIONS'), constants.indexOf('export function flattenNavItems'));
     for (const href of ['/plan', '/help', '/export']) {

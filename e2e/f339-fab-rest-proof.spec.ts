@@ -65,20 +65,20 @@ test("F339: el FAB queda oculto en reposo mientras la leyenda cruza su zona", as
   const fab = page.locator('button[aria-label="Abrir asistente de cartera"]');
   await expect(fab).toBeVisible();
 
-  // Coloca la leyenda dentro de la zona del FAB (banda 96px abajo-derecha).
-  await page.evaluate(() => {
-    const el = document.getElementById("portfolio-allocation-legend")!;
-    const rect = el.getBoundingClientRect();
-    const target = window.scrollY + rect.top - (window.innerHeight - 140);
-    window.scrollTo(0, Math.max(0, target));
-  });
-  // En reposo (>600 ms sin scroll): el FAB debe quedar oculto.
+  // A chart loaded dynamically can shift the legend after the first scroll.
+  // Position the real legend and require a two-sided rectangle intersection,
+  // not merely a bottom beyond the viewport (which also matches off-screen).
+  await expect.poll(async () => page.evaluate(async () => {
+    const legend = document.getElementById("portfolio-allocation-legend")!;
+    const rect = legend.getBoundingClientRect();
+    window.scrollTo(0, Math.max(0, window.scrollY + rect.top - (window.innerHeight - 140)));
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    const actual = legend.getBoundingClientRect();
+    return actual.top < window.innerHeight - 24 && actual.bottom > window.innerHeight - 88 &&
+      actual.left < window.innerWidth - 24 && actual.right > window.innerWidth - 88;
+  })).toBe(true);
+  // Rest, not the transient scroll-hiding state, is the behavior under test.
   await page.waitForTimeout(1200);
-  const overlap = await page.evaluate(() => {
-    const rect = document.getElementById("portfolio-allocation-legend")!.getBoundingClientRect();
-    return rect.bottom > window.innerHeight - 96 && rect.right > window.innerWidth - 96;
-  });
-  expect(overlap, "la leyenda debe quedar en la zona del FAB para la prueba").toBe(true);
   await expect.poll(async () => fab.evaluate((el) => getComputedStyle(el).opacity)).toBe("0");
   await page.screenshot({ path: "test-results/f339-rest-fab-hidden.png" });
 

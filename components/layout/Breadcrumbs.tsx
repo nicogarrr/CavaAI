@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ChevronRight } from 'lucide-react';
-import { flattenNavItems, NAV_SECTIONS, type NavItem } from '@/lib/constants';
+import { flattenNavItems, ROUTE_CATALOG, type NavItem } from '@/lib/constants';
 
 // href opcional: los niveles que no son una ruta real (la seccion del menu)
 // se muestran como texto plano - un enlace a `#Seccion` no navega a nada (F141).
@@ -47,7 +47,7 @@ function buildCrumbs(pathname: string): Crumb[] {
   const items = flattenNavItems();
   const parentOf = new Map<string, NavItem>();
   const sectionOf = new Map<string, string>();
-  for (const section of NAV_SECTIONS) {
+  for (const section of ROUTE_CATALOG) {
     for (const item of section.items) {
       sectionOf.set(item.href, section.title);
       for (const node of [item, ...(item.children ?? [])]) {

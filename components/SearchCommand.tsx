@@ -8,7 +8,7 @@ import { searchStocksWithStatus, getPopularStocks } from "@/lib/actions/finnhub.
 import { loadPopularStocks } from "@/lib/popular-stocks-loader";
 import { showErrorToast } from "@/lib/toast";
 import { isNextRedirectError } from "@/lib/types/errors";
-import { flattenNavItems, NAV_SECTIONS } from "@/lib/constants";
+import { flattenNavItems, ROUTE_CATALOG } from "@/lib/constants";
 import { etiquetaTipoInstrumento } from "@/lib/labels";
 
 export default function SearchCommand({ renderAs = 'button', label = 'Añadir acción', initialStocks }: SearchCommandProps) {
@@ -295,7 +295,7 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
                                 caben en el menu. */}
                             {!isSearchMode && (
                                 <>
-                                    {NAV_SECTIONS.filter((section) => section.items.length > 1).map((section) => (
+                                    {ROUTE_CATALOG.filter((section) => section.items.length > 1).map((section) => (
                                         <CommandGroup
                                             key={section.title}
                                             heading={section.title}
