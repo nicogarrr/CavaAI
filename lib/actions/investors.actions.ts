@@ -61,6 +61,8 @@ export type PublicProfile = {
   meetings: { title: string; year: string; url: string }[];
   holdings: unknown[] | null;
   holdings_note: string;
+  /** Pie de fuentes calculado por el backend según el origen real de cada hecho. */
+  provenance_note: string;
   links: { label: string; url: string }[];
 };
 

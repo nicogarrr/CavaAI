@@ -97,3 +97,15 @@ def test_trump_investors_listed_with_public_profile_and_no_numbers():
         assert by_slug[slug]["has_public_profile"] is True
         assert by_slug[slug]["has_13f"] is False
         assert by_slug[slug]["positions"] is None
+
+
+def test_provenance_note_matches_real_source_of_each_profile():
+    barron = public_profile("barron-trump")["provenance_note"]
+    assert "Prensa" in barron and "no son un registro oficial" in barron
+    # Barron solo tiene hechos de prensa: nunca se presenta como dato de gestor, regulador o CNMV
+    assert "Oficial" not in barron and "CNMV" not in barron and "propio gestor" not in barron
+    trump = public_profile("trump")["provenance_note"]
+    assert "SEC" in trump and "Oficial" in trump and "Prensa" not in trump
+    quintana = public_profile("quintana")["provenance_note"]
+    assert "Oficial" in quintana and "Prensa" not in quintana
+    assert all("provenance_note" in public_profile(slug) for slug in PUBLIC_PROFILES)

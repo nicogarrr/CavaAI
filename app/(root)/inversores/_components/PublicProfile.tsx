@@ -82,7 +82,7 @@ export function PublicProfileSection({ profile }: { profile: PublicProfile }) {
                         </a>
                     </span>
                 ))}
-                . Datos publicados por el propio gestor o por la CNMV; sin estimaciones propias.
+                . {profile.provenance_note}
             </p>
         </div>
     );

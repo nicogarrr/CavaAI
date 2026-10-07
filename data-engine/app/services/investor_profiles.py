@@ -283,8 +283,29 @@ PUBLIC_PROFILES["barron-trump"] = {
 }
 
 
+def provenance_note(profile: dict[str, Any]) -> str:
+    """Pie de la ficha segun el origen REAL de sus hechos (nunca atribuye prensa al gestor)."""
+    kinds = {f.get("kind") for f in profile.get("facts", [])}
+    parts = []
+    if "oficial" in kinds:
+        parts.append("Los datos marcados «Oficial» los publica el propio gestor, la empresa o un regulador (CNMV, SEC)")
+    if "prensa" in kinds:
+        parts.append("los marcados «Prensa» los recoge un medio identificado y no son un registro oficial")
+    if "inferido" in kinds:
+        parts.append("los marcados «Inferido» se calculan aquí con su método")
+    if not parts:
+        return "Sin cifras publicadas incorporadas."
+    text = "; ".join(parts)
+    if "inferido" not in kinds:
+        text += "; sin estimaciones propias"
+    return text[0].upper() + text[1:] + "."
+
+
 def public_profile(slug: str) -> dict[str, Any] | None:
-    return PUBLIC_PROFILES.get(slug)
+    profile = PUBLIC_PROFILES.get(slug)
+    if profile is None:
+        return None
+    return {**profile, "provenance_note": provenance_note(profile)}
 
 
 def validate_profile(profile: dict[str, Any]) -> list[str]:
