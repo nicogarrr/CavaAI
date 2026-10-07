@@ -318,3 +318,16 @@ def test_ambiguous_financial_literal_not_certified_positive(literal):
 def test_explicit_negative_decimal_still_valid():
     source = EvidenceSource.model_validate(fixture_source())
     assert source.reported_observations[0].value == -12
+
+
+@pytest.mark.parametrize("sign", ["-", "+", "−", "–", "—", "﹣", "－", "＋"])
+@pytest.mark.parametrize("space", [" ", "\u00a0", "\t", "\n", "\u202f"])
+def test_separated_sign_never_certifies_unsigned_positive(sign, space):
+    payload = fixture_source()
+    text = f"ACME reported FCF {sign}{space}12 USD million FY2025."
+    payload["chunks"][0]["variants"][0]["text"] = text
+    payload["chunks"][0]["variants"][0]["sha256"] = hashlib.sha256(text.encode()).hexdigest()
+    payload["reported_observations"][0]["citation"]["quote"] = text
+    payload["reported_observations"][0]["value"] = "12"
+    with pytest.raises(ValidationError, match="reported_value_not_in_quote"):
+        EvidenceSource.model_validate(payload)

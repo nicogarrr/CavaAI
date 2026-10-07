@@ -85,7 +85,7 @@ class ReportedObservation(ContractModel):
         quote = self.citation.quote
         # Accounting parentheses, Unicode signs and trailing signs require a
         # verified adapter. Do not certify their unsigned substring as positive.
-        ambiguous = re.search(r"\(\s*[-+]?\d[\d.,]*\s*\)|[−–—]\s*\d|\d\s*[-−–—](?!\w)|\d\s*%", quote)
+        ambiguous = re.search(r"[-+−–—﹣－＋]\s+\d|\(\s*[-+]?\d[\d.,]*\s*\)|[−–—﹣－＋]\s*\d|\d\s*[-−–—](?!\w)|\d\s*%", quote)
         numbers = re.findall(r"(?<![\w.,+−–—-])[-+]?\d+(?:\.\d+)?(?!\w|[.,]\d|[-+%−–—])", quote)
         if ambiguous or self.value not in {Decimal(number) for number in numbers}:
             raise ValueError("reported_value_not_in_quote")
