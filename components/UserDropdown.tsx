@@ -11,7 +11,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, CircleHelp, Download, LogOut, ShieldCheck, Target } from "lucide-react";
+import { ChevronDown, CircleHelp, LogOut, ShieldCheck } from "lucide-react";
 import { signOut } from "@/lib/actions/auth.actions";
 
 const UserDropdown = ({ user }: { user: User }) => {
@@ -53,22 +53,6 @@ const UserDropdown = ({ user }: { user: User }) => {
                     </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator className="bg-gray-600" />
-                {/* Destinos que antes no Tenian entrada en ningun sitio: /plan,
-                    /export y /help (este ultimo era un huerfano total). */}
-                <DropdownMenuItem
-                    onClick={() => router.push("/plan")}
-                    className="cursor-pointer text-sm font-medium text-gray-100 transition-colors focus:text-teal-300"
-                >
-                    <Target aria-hidden="true" className="mr-2 hidden h-4 w-4 sm:block" />
-                    Mi plan
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                    onClick={() => router.push("/export")}
-                    className="cursor-pointer text-sm font-medium text-gray-100 transition-colors focus:text-teal-300"
-                >
-                    <Download aria-hidden="true" className="mr-2 hidden h-4 w-4 sm:block" />
-                    Exportar
-                </DropdownMenuItem>
                 <DropdownMenuItem
                     onClick={() => router.push("/help")}
                     className="cursor-pointer text-sm font-medium text-gray-100 transition-colors focus:text-teal-300"

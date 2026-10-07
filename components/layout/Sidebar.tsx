@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ChevronsLeft, ChevronsRight, Settings, Target } from 'lucide-react';
+import { ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { isNavItemActive, NAV_SECTIONS, showsNavSectionTitle, type NavItem } from '@/lib/constants';
 
 import { SIDEBAR_COLLAPSED_COOKIE } from '@/lib/ui/sidebar-preference';
@@ -77,20 +77,6 @@ export default function Sidebar({ collapsed: initiallyCollapsed }: { collapsed: 
                 </ul>
             </nav>
 
-            {/* Pie del menu: SOLO destinos que no estan en el arbol. /plan y
-                /help salen de aqui (quick win UX 3): ya tienen entrada en
-                NAV_SECTIONS y duplicaban «Mi plan» y «Ayuda» en el mismo
-                sidebar. /security no esta en el arbol: se queda.
-                El nav lleva min-h-0: sin el, un hijo flex no encoge por
-                debajo de su contenido, el aside superaba h-dvh y este pie
-                quedaba inalcanzable bajo el fold en viewports bajos. */}
-            <div className="border-t border-gray-700/50 p-2">
-                <ul className="flex flex-col gap-1">
-                    <li>
-                        <FooterLink href="/security" icon={Settings} label="Seguridad" pathname={pathname} collapsed={collapsed} />
-                    </li>
-                </ul>
-            </div>
         </aside>
     );
 }
@@ -133,33 +119,6 @@ function NavLink({ item, pathname, collapsed }: { item: NavItem; pathname: strin
                 </ul>
             )}
         </>
-    );
-}
-
-function FooterLink({
-    href,
-    icon: Icon,
-    label,
-    pathname,
-    collapsed,
-}: {
-    href: string;
-    icon: typeof Target;
-    label: string;
-    pathname: string;
-    collapsed: boolean;
-}) {
-    return (
-        <Link
-            href={href}
-            aria-label={label}
-            title={collapsed ? label : undefined}
-            aria-current={isNavItemActive(pathname, href) ? 'page' : undefined}
-            className={linkClasses(isNavItemActive(pathname, href), collapsed, 'text-sm')}
-        >
-            <Icon aria-hidden="true" className="h-4 w-4 shrink-0" />
-            {!collapsed && <span className="truncate">{label}</span>}
-        </Link>
     );
 }
 
