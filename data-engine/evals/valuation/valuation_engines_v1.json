@@ -5178,7 +5178,7 @@
         "publishable": false,
         "missing_inputs": [
           "net_debt",
-          "normalized_fcf_or_fcf_margin"
+          "non_negative_fcf_margin"
         ],
         "publication_blockers": [],
         "trace_engine": "pre_revenue",
@@ -5199,7 +5199,7 @@
         "no_sign_flip_on_negative_fcf"
       ],
       "price": 12,
-      "hand_calculation": "Los facts reportan FCF -80: un margen FCF base supuesto de +15% contradiria el dato y daria un rango de 0.80 USD/accion con precio 58.86. Con precio y acciones la rama indicativa se intenta, pero sin input INFERIDO con base y URLs el motor falla cerrado: sin numero y con la causa en trace.observed_cash_burn."
+      "hand_calculation": "Los facts reportan FCF -80: un margen FCF base supuesto de +15% contradiria el dato y daria un rango de 0.80 USD/accion con precio 58.86. Con precio y acciones la rama indicativa se intenta, pero el FCF reportado negativo no se sustituye por un input INFERIDO: el motor falla cerrado: sin numero y con la causa en trace.observed_cash_burn."
     },
     {
       "id": "evpre09_no_shares_no_price_insufficient",
