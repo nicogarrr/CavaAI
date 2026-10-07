@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -35,6 +35,9 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt, ini
         sector: 'all',
         sortBy: 'score',
     });
+    // Los controles son un borrador; solo una respuesta válida cambia el corte visible.
+    const [appliedFilters, setAppliedFilters] = useState<ProPicksFilters>(filters);
+    const requestInFlight = useRef(false);
     const [followed, setFollowed] = useState<Record<string, boolean>>({});
     const [following, setFollowing] = useState<string | null>(null);
 
@@ -58,37 +61,29 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt, ini
         }
     };
 
-    const handleApplyFilters = async () => {
+    const loadPicks = async () => {
+        // El ref cierra también dos clics antes del siguiente render de React.
+        if (requestInFlight.current) return;
+        requestInFlight.current = true;
+        const requestedFilters = { ...filters };
         setLoading(true);
         setError(null);
         try {
-            const result = await generateEnhancedProPicksWithRun(filters);
+            const result = await generateEnhancedProPicksWithRun(requestedFilters);
             setPicks(result.picks);
             setLastGenerated(result.runAsOf);
             setPassedCount(result.passedCount);
-        } catch (error) {
-            console.error('Error applying filters:', error);
-            setError('Error al aplicar los filtros. Por favor, intenta de nuevo.');
+            setAppliedFilters(requestedFilters);
+        } catch {
+            setError('No se pudo actualizar la selección. Los resultados anteriores se conservan.');
         } finally {
+            requestInFlight.current = false;
             setLoading(false);
         }
     };
 
-    const handleRefresh = async () => {
-        setLoading(true);
-        setError(null);
-        try {
-            const result = await generateEnhancedProPicksWithRun(filters);
-            setPicks(result.picks);
-            setLastGenerated(result.runAsOf);
-            setPassedCount(result.passedCount);
-        } catch (error) {
-            console.error('Error refreshing picks:', error);
-            setError('Error al regenerar. Por favor, intenta de nuevo.');
-        } finally {
-            setLoading(false);
-        }
-    };
+    const handleApplyFilters = loadPicks;
+    const handleRefresh = loadPicks;
 
     const formatLastGenerated = (isoString: string | null) => {
         if (!isoString) return null;
@@ -123,6 +118,7 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt, ini
             <div className="min-w-0 lg:col-span-1">
                 <EnhancedProPicksFilters
                     filters={filters}
+                    disabled={loading}
                     // F184: ordenar por una categoría neutral en TODOS los
                     // picks del run es ordenar por una constante (50): la
                     // opción se deshabilita y se etiqueta n/d.
@@ -178,11 +174,11 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt, ini
                         )}
                     </div>
                     <p className="text-sm text-gray-400">
-                        Acciones seleccionadas con score mínimo de {filters.minScore} ordenadas por {
-                            filters.sortBy === 'score' ? 'score general' :
-                                filters.sortBy === 'momentum' ? 'momentum' :
-                                    filters.sortBy === 'value' ? 'valor' :
-                                        filters.sortBy === 'growth' ? 'crecimiento' :
+                        Acciones seleccionadas con score mínimo de {appliedFilters.minScore} ordenadas por {
+                            appliedFilters.sortBy === 'score' ? 'score general' :
+                                appliedFilters.sortBy === 'momentum' ? 'momentum' :
+                                    appliedFilters.sortBy === 'value' ? 'valor' :
+                                        appliedFilters.sortBy === 'growth' ? 'crecimiento' :
                                             'rentabilidad'
                         }
                     </p>
@@ -192,7 +188,7 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt, ini
                     <Card className="p-6 rounded-lg border border-red-700 bg-red-900/20 mb-4 text-center">
                         <p className="text-red-400">{error}</p>
                         <p className="text-sm text-gray-400 mt-2">
-                            No se pudieron cargar los picks. Comprueba tu conexión e inténtalo de nuevo.
+                            Reintenta para consultar el último run disponible.
                         </p>
                         <Button
                             onClick={handleRefresh}
@@ -222,7 +218,7 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt, ini
                             {lastGenerated && passedCount === 0 &&
                                 `El último run (datos del ${formatLastGenerated(lastGenerated)}) no produjo candidatos aptos en el embudo. No es cuestión de filtros: el motor no encontró oportunidades que superaran sus propios criterios.`}
                             {lastGenerated && passedCount !== 0 &&
-                                `Ningún pick del último run (datos del ${formatLastGenerated(lastGenerated)}) cumple los filtros actuales (score ≥ ${filters.minScore}${filters.sector !== 'all' ? `, sector ${filters.sector}` : ''}). Prueba a bajar el score mínimo o cambiar de sector.`}
+                                `Ningún pick del último run (datos del ${formatLastGenerated(lastGenerated)}) cumple los filtros actuales (score ≥ ${appliedFilters.minScore}${appliedFilters.sector !== 'all' ? `, sector ${etiquetaSector(appliedFilters.sector)}` : ''}). Prueba a bajar el score mínimo o cambiar de sector.`}
                         </p>
                         <Button
                             onClick={handleRefresh}
