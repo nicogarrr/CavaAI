@@ -248,7 +248,7 @@ export default async function ResearchPage({
     return (
         <main id="content" tabIndex={-1} className="mx-auto flex max-w-7xl flex-col gap-6">
             <PageHeader
-                actions={<WorkProductButton />}
+                actions={<><Link href="/research/data-health" className="text-sm text-teal-300">Salud de los datos</Link><WorkProductButton /></>}
                 kicker="Research OS"
                 title="Índice de research"
             />
