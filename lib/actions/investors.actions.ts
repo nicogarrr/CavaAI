@@ -43,7 +43,7 @@ export type PublicFact = {
   value: string;
   as_of: string;
   source_url: string;
-  kind: 'oficial' | 'inferido';
+  kind: 'oficial' | 'inferido' | 'prensa';
 };
 
 /** Ficha pública de gestores sin 13F: solo lo que publican ellos o un regulador, con fuente y fecha. */
@@ -61,6 +61,8 @@ export type PublicProfile = {
   meetings: { title: string; year: string; url: string }[];
   holdings: unknown[] | null;
   holdings_note: string;
+  /** Pie de fuentes calculado por el backend según el origen real de cada hecho. */
+  provenance_note: string;
   links: { label: string; url: string }[];
 };
 
