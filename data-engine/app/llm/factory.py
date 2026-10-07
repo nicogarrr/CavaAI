@@ -40,7 +40,12 @@ def create_llm_provider(
         base_url=settings.opencode_go_base_url,
         default_model=settings.opencode_go_model,
         provider_name="opencode-go",
-        extra_headers={"x-opencode-session": settings.opencode_go_session},
+        extra_headers={
+            # OpenCode Go documenta: user agent propio (no el generico de la
+            # libreria HTTP) + session id estable. https://opencode.ai/docs/go/
+            "User-Agent": "cavaai/1.0",
+            "x-opencode-session": settings.opencode_go_session,
+        },
         model_overrides=settings.llm_model_overrides,
         fallback_model=settings.opencode_go_fallback_model,
         reasoning_effort=settings.opencode_go_reasoning_effort,
