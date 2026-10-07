@@ -16,7 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Activity, ArrowRight, BellRing, Eye, Gem, Minus, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
 import { getPortfolioSummary, type PortfolioHolding, type PortfolioSummary } from '@/lib/actions/portfolio.actions';
-import { getWatchlist, getWatchlistEntryData } from '@/lib/actions/watchlist.actions';
+import { getWatchlistState, getWatchlistEntryData } from '@/lib/actions/watchlist.actions';
 import { sectionError } from '@/lib/section-error';
 import { getScreenerStocksReal, getFairValue } from '@/lib/actions/screener.actions';
 import {
@@ -222,7 +222,13 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
         const load = async () => {
             setWatchlistLoading(true);
             setWatchlistError(null);
-            const result = await settle(getWatchlist(), [] as Awaited<ReturnType<typeof getWatchlist>>);
+            const result = await settle(
+                getWatchlistState().then(({ items, unavailable }) => {
+                    if (unavailable) throw new Error('No se pudo cargar la watchlist');
+                    return items;
+                }),
+                [] as Awaited<ReturnType<typeof getWatchlistState>>['items'],
+            );
             if (!active) return;
             if (result.error) {
                 setWatchlistTotal(0);
