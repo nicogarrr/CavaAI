@@ -15,7 +15,13 @@ def retrieve_library_context(db: Session, question: str, limit: int = 3) -> list
     if type(tenant_id) is not int or tenant_id <= 0:
         return []
     try:
-        hits = RAGIndex().search(question, ticker=None, limit=20, tenant_id=tenant_id)
+        hits = RAGIndex().search(
+            question,
+            ticker=None,
+            limit=20,
+            tenant_id=tenant_id,
+            entity_type="knowledge_chunk",
+        )
     except Exception:
         return []
     contexts = []
