@@ -51,11 +51,14 @@ TABLE_MD = (
 
 INSTANCE_XML = """<?xml version="1.0"?>
 <xbrl xmlns="http://www.xbrl.org/2003/instance"
-      xmlns:us-gaap="http://fasb.org/us-gaap/2023">
+      xmlns:us-gaap="http://fasb.org/us-gaap/2023"
+      xmlns:iso4217="http://www.xbrl.org/2003/iso4217">
   <context id="c1"><entity><identifier scheme="s">X</identifier>
     <segment><explicitMember dimension="d">us-gaap:CommonClassAMember</explicitMember></segment></entity>
     <period><startDate>2024-10-01</startDate><endDate>2025-09-30</endDate></period></context>
-  <us-gaap:EarningsPerShareDiluted contextRef="c1">10.20</us-gaap:EarningsPerShareDiluted>
+  <unit id="usdPerShare"><divide><unitNumerator><measure>iso4217:USD</measure></unitNumerator>
+    <unitDenominator><measure>shares</measure></unitDenominator></divide></unit>
+  <us-gaap:EarningsPerShareDiluted contextRef="c1" unitRef="usdPerShare">10.20</us-gaap:EarningsPerShareDiluted>
 </xbrl>
 """
 

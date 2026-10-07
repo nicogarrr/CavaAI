@@ -37,6 +37,7 @@ import socket
 import tempfile
 import time
 from contextlib import contextmanager
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -400,16 +401,25 @@ def run_sec_companyfacts(case: dict) -> dict:
     statuses = {key: int(value) for key, value in (args.get("http_status") or {}).items()}
     ticker = args.get("ticker", "SYNQ")
     industry = args.get("industry", "Software")
+    # Mapa ticker->CIK que sirve la SEC. Por defecto, uno sintetico que casa
+    # con el ticker pedido; un caso puede declarar el mapa real de la SEC,
+    # donde el mismo ticker tiene DOS emisores (tickers reutilizados tras un
+    # delisting) y `cik_for_ticker` resuelve el primero (FIX5-6).
+    ticker_map = args.get("ticker_map") or {
+        "1": {"cik_str": 1, "ticker": ticker, "title": "Synthetic Holdings PLC"}
+    }
+    # Corte de informacion de la corrida (FIX5-1): lo que la ingesta puede
+    # saber en esa fecha. Sin declararlo, la ingesta no filtra por fecha y lo
+    # declara en su resultado.
+    as_of_arg = args.get("as_of")
+    as_of = date.fromisoformat(str(as_of_arg)[:10]) if as_of_arg else None
     requests: list[str] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         url = str(request.url)
         requests.append(url)
         if "company_tickers.json" in url:
-            return httpx.Response(
-                200,
-                json={"1": {"cik_str": 1, "ticker": ticker, "title": "Synthetic Holdings PLC"}},
-            )
+            return httpx.Response(200, json=ticker_map)
         if "companyfacts" in url:
             status = statuses.get("companyfacts", 200)
             if status != 200:
@@ -431,7 +441,9 @@ def run_sec_companyfacts(case: dict) -> dict:
             errors: list[str] = []
             try:
                 result = asyncio.run(
-                    FinancialIngestionService().refresh_from_sec(db=db, company=company)
+                    FinancialIngestionService().refresh_from_sec(
+                        db=db, company=company, as_of=as_of
+                    )
                 )
             except Exception as exc:  # degradacion honesta: no hay hechos, no hay invented
                 errors.append(f"{type(exc).__name__}: {exc}")

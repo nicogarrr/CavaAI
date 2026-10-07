@@ -18,6 +18,7 @@ from __future__ import annotations
 import gzip
 import io
 import json
+import re
 import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -42,6 +43,13 @@ CLASS_MEMBER_PREFERENCE: dict[str, str] = {
     "BRK.B": "EquivalentClassBMember",
 }
 
+# Ejes dimensionales de CLASE de acciones (no de segmento ni geografia). Un
+# hecho por segmento (StatementBusinessSegmentsAxis / DomesticMember) es el
+# BPA de un negocio, no el del emisor: no puede escribirse como eps_diluted
+# del consolidado (FIX5-9).
+CLASS_AXIS_SUFFIXES = ("ClassAxis", "ClassMemberAxis", "ClassOfStockAxis")
+CLASS_MEMBER_RE = re.compile(r"Class[A-Z]Member")
+
 _SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
 _ARCHIVES_URL = "https://www.sec.gov/Archives/edgar/data/{cik_int}/{acc_nodash}/"
 
@@ -55,13 +63,36 @@ class ClassEpsResult:
     skipped_reason: str | None = None
 
 
+def _is_class_member(axis: str, member: str, preferred: str | None) -> bool:
+    """Un miembro aceptable es de CLASE: eje de clase y nombre de clase.
+
+    El eje es lo que distingue la clase de acciones de un segmento; el nombre
+    (el preferido del mapa o `Class<A-Z>Member`) evita colar miembros de otros
+    ejes que casualmente acaben en `ClassAxis`.
+    """
+    local_axis = axis.split(":")[-1]
+    if not local_axis.endswith(CLASS_AXIS_SUFFIXES):
+        return False
+    if preferred is not None and member == preferred:
+        return True
+    return bool(CLASS_MEMBER_RE.search(member))
+
+
 def pick_member(facts: list[DimensionedFact], preferred: str | None) -> str | None:
     """Miembro dimensional a usar: el preferido si esta; si hay uno solo, ese.
 
-    Con varios miembros y sin preferido presente devuelve None (no se elige
-    a ciegas: escribir la clase equivocada seria fabricar el ratio).
+    Solo miembros de CLASE son candidatos (eje `*ClassAxis`/`*ClassMemberAxis`
+    y nombre de clase o preferido): un miembro de segmento nunca representa al
+    emisor (FIX5-9). Con varios candidatos y sin preferido presente devuelve
+    None (no se elige a ciegas: escribir la clase equivocada seria fabricar el
+    ratio).
     """
-    members = {m for f in facts for m in f.members}
+    members = {
+        member
+        for fact in facts
+        for axis, member in fact.members
+        if _is_class_member(axis, member, preferred)
+    }
     if preferred and preferred in members:
         return preferred
     if len(members) == 1:
@@ -152,8 +183,17 @@ def backfill_class_based_eps(
         return ClassEpsResult(company.ticker, 0, None, (), skipped_reason="sin hechos dimensionados")
     member = pick_member(facts, CLASS_MEMBER_PREFERENCE.get(company.ticker.upper()))
     if member is None:
+        any_class = any(
+            _is_class_member(axis, m, CLASS_MEMBER_PREFERENCE.get(company.ticker.upper()))
+            for f in facts
+            for axis, m in f.members
+        )
         return ClassEpsResult(
-            company.ticker, 0, None, (), skipped_reason="varias clases sin preferida"
+            company.ticker,
+            0,
+            None,
+            (),
+            skipped_reason="varias clases sin preferida" if any_class else "sin miembros de clase",
         )
     document = _get_or_create_document(db, company, url)
     written = 0
@@ -164,7 +204,9 @@ def backfill_class_based_eps(
     # la comprobacion en BD no basta con sesiones sin autoflush.
     seen_periods: set[tuple[str, str]] = set()
     for metric, tags in METRIC_TAGS.items():
-        metric_facts = [f for f in facts if f.tag in tags and member in f.members and f.end]
+        metric_facts = [
+            f for f in facts if f.tag in tags and member in f.member_names and f.end
+        ]
         # Solo el tag prioritario con hechos: diluido si existe, basic si no.
         for tag in tags:
             tag_facts = [f for f in metric_facts if f.tag == tag]
