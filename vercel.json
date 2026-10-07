@@ -2,6 +2,7 @@
   "framework": "nextjs",
   "installCommand": "npm ci",
   "buildCommand": "npm run build",
+  "ignoreCommand": "sh scripts/vercel-ignore.sh",
   "regions": [
     "fra1"
   ],
