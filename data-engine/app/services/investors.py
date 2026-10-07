@@ -263,7 +263,7 @@ def most_bought(db: Session) -> dict[str, Any]:
                 # Un gestor puede tener varias clases del mismo CUSIP: cuenta una vez.
                 same = next((b for b in entry["buyers"] if b["slug"] == inv.slug), None)
                 if same is None:
-                    entry["buyers"].append({"slug": inv.slug, "name": inv.name, "change": row["change"]})
+                    entry["buyers"].append({"slug": inv.slug, "name": inv.name, "change": row["change"], "report_date": result["latest_report"]})
                 elif row["change"] == "new":
                     same["change"] = "new"
                 value = _value_usd(row["value_usd_thousands_latest"], result["latest_report"])
