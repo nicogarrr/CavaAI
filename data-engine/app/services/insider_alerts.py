@@ -117,6 +117,7 @@ def _build_alerts(
                 "accession_number": tx.accession_number,
                 "form": tx.form,
                 "insider_cik": tx.insider_cik,
+                "issuer_ticker": tx.issuer_ticker,
                 "tx_fingerprint": tx.fingerprint,
                 "source_url": tx.source_url,
                 "data_quality": tx.data_quality,
@@ -200,6 +201,7 @@ def _build_alerts(
                         "metadata": {
                             "rule_version": RULE_VERSION,
                             "insider_count": len(insiders),
+                            "issuer_ticker": ticker,
                             "window_days": CLUSTER_WINDOW_DAYS,
                             "window_transactions": len(window),
                             "window_value_missing": missing_value,
