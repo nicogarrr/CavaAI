@@ -4901,7 +4901,7 @@
       },
       "facts": {
         "revenue": 40,
-        "fcf_margin": -0.1,
+        "fcf_margin": 0.1,
         "revenue_growth": 0.35,
         "shares_diluted": 100,
         "net_debt": 20
@@ -4917,19 +4917,12 @@
         "publication_blockers": [
           "traceable_wacc"
         ],
-        "trace_engine": "pre_revenue",
-        "closed_form": {
-          "bear_value": -2.54403962669,
-          "base_value": -1.50224423705,
-          "bull_value": -0.851122118525,
-          "expected_value": -1.52004643667
-        }
+        "trace_engine": "pre_revenue"
       },
       "applies_to": [
         "engine_publishable_status",
         "bear_le_base_le_bull",
         "expected_value_within_band",
-        "value_matches_closed_form",
         "probabilities_sum_to_one",
         "sensitivity_covers_base",
         "missing_inputs_declared",
@@ -4939,10 +4932,10 @@
         "gate_does_not_omit_itself"
       ],
       "price": 6,
-      "hand_calculation": "sin caja ni capex/OCF no hay base para estimar la necesidad de financiacion: la dilucion queda INCOMPLETA, no en 0. El motor marca partial y publishable=False (los numeros existen, no son finales). El margen es negativo: quemadura, y la dilucion no acerca la perdida a 0. Re-baseline: el WACC sale del tag pre_fcf (tag_default), sin base documentada, asi que main lo marca blocker traceable_wacc: status partial y publishable False. Los valores no cambian."
+      "hand_calculation": "sin caja ni capex/OCF no hay base para estimar la necesidad de financiacion: la dilucion queda INCOMPLETA, no en 0. El motor marca partial y publishable=False (los numeros existen, no son finales). Margen FCF +10% (un margen negativo ya no llega aqui: el motor se niega, ver evpre04). El WACC sale del tag pre_fcf (tag_default), sin base documentada: blocker traceable_wacc."
     },
     {
-      "id": "evpre04_cash_burn_keeps_the_sign",
+      "id": "evpre04_cash_burn_refuses_negative_value",
       "engine": "pre_revenue",
       "category": "honesty",
       "company": {
@@ -4967,36 +4960,31 @@
       },
       "expected": {
         "engine_key": "pre_revenue",
-        "status": "partial",
+        "status": "insufficient_data",
         "publishable": false,
-        "missing_inputs": [],
-        "publication_blockers": [
-          "traceable_wacc"
+        "missing_inputs": [
+          "non_negative_fcf_margin"
         ],
+        "publication_blockers": [],
         "trace_engine": "pre_revenue",
         "closed_form": {
-          "bear_value": -32.2953138176,
-          "base_value": -28.8226625188,
-          "bull_value": -26.652255457,
-          "expected_value": -29.1783023781
+          "bear_value": null,
+          "base_value": null,
+          "bull_value": null,
+          "expected_value": null
         }
       },
       "applies_to": [
         "engine_publishable_status",
-        "bear_le_base_le_bull",
-        "expected_value_within_band",
         "value_matches_closed_form",
-        "probabilities_sum_to_one",
-        "sensitivity_covers_base",
         "missing_inputs_declared",
         "no_silent_zero_net_debt",
         "routing_expected",
-        "trace_records_evidence",
         "gate_does_not_omit_itself",
         "no_sign_flip_on_negative_fcf"
       ],
       "price": 22,
-      "hand_calculation": "Margen FCF -60%: quemadura de caja declarada. funding gap = capex 400x2 + quemadura 80x2 + buffer 50 - caja 300 = 710; emision al 85% del precio (22x0.85 = 18.7) -> dilucion 0.296699 de las acciones pro-forma. Los tres escenarios son NEGATIVOS y la dilucion NO se aplica: multiplicar una perdida por (1-d) la acercaria a cero y romperia bear <= base <= bull. base = -28.822663 < 0. Re-baseline: el WACC sale del tag pre_fcf (tag_default), sin base documentada, asi que main lo marca blocker traceable_wacc: status partial y publishable False. Los valores no cambian."
+      "hand_calculation": "Margen FCF -60%: quema de caja declarada. Un DCF FCFF sobre ese signo da un valor por accion negativo (el capital propio no vale menos de cero) y la dilucion lo acercaria a cero. El motor se niega: insufficient_data, non_negative_fcf_margin, sin valores. Mismo contrato que standard_dcf."
     },
     {
       "id": "evpre05_funding_gap_dilutes_a_positive_value",
