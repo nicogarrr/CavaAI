@@ -35,9 +35,23 @@ def _start_embedder_warmup(settings) -> None:
     def _run() -> None:
         from app.services.hybrid_retrieval import warm_models
 
-        warm_models(
+        ready = warm_models(
             str(getattr(settings, "rag_dense_model", "") or "sentence-transformers/all-MiniLM-L6-v2")
         )
+        if not ready:
+            # fastembed no pudo cargar (p. ej. HF_HUB_OFFLINE=1 sin su modelo en cache):
+            # las busquedas caeran al fallback sentence-transformers, asi que se
+            # precalienta ese para que la primera consulta no pague ~9 s de carga.
+            try:
+                from app.services.rag import RAGIndex
+
+                RAGIndex.warm_fallback()
+            except Exception as exc:  # noqa: BLE001 - el warmup jamas rompe el arranque
+                import logging
+
+                logging.getLogger(__name__).warning(
+                    "fallback embedder warmup skipped (%s: %s)", type(exc).__name__, exc
+                )
 
     threading.Thread(target=_run, name="embedder-warmup", daemon=True).start()
 

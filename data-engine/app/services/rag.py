@@ -44,7 +44,11 @@ class RAGIndex:
     _st_lock = threading.Lock()
 
     def _embedder(self):
-        cls = type(self)
+        return type(self).warm_fallback()
+
+    @classmethod
+    def warm_fallback(cls):
+        """Carga (una vez por proceso) el modelo ST de fallback y lo devuelve."""
         if cls._st_model is None:
             with cls._st_lock:
                 if cls._st_model is None:

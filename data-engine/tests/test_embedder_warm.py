@@ -73,3 +73,24 @@ def test_st_fallback_builds_model_once_under_concurrency(monkeypatch):
         t.join()
     assert built["n"] == 1
     assert len({id(r) for r in results}) == 1
+
+
+def test_warm_fallback_builds_st_model_once_and_embedder_reuses_it(monkeypatch):
+    from app.services.rag import RAGIndex
+
+    built = {"n": 0}
+
+    class FakeST:
+        def __init__(self, name):
+            built["n"] += 1
+
+    module = types.ModuleType("sentence_transformers")
+    module.SentenceTransformer = FakeST
+    monkeypatch.setitem(sys.modules, "sentence_transformers", module)
+    monkeypatch.setattr(RAGIndex, "_st_model", None)
+
+    first = RAGIndex.warm_fallback()
+    second = RAGIndex.warm_fallback()
+    via_instance = RAGIndex.__new__(RAGIndex)._embedder()
+    assert first is second is via_instance
+    assert built["n"] == 1
