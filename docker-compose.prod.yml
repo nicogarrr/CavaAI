@@ -171,6 +171,7 @@ services:
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
       - MINIO_BUCKET=research
       - DUCKDB_PATH=/data/analytics.duckdb
+      - FASTEMBED_CACHE_PATH=/data/fastembed-cache
       - LANGFUSE_ENABLED=false
       - SEC_USER_AGENT=${SEC_USER_AGENT:-CavaAI/0.1 contact@example.com}
       - SEC_SNAPSHOT_DIR=${SEC_SNAPSHOT_DIR:-}

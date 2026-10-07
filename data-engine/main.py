@@ -28,6 +28,20 @@ except Exception:  # noqa: BLE001 — readiness reports the unavailable dependen
     pass
 
 
+def _start_embedder_warmup(settings) -> None:
+    """Precarga el embedder en un hilo: sin bloquear el arranque y fail-open."""
+    import threading
+
+    def _run() -> None:
+        from app.services.hybrid_retrieval import warm_models
+
+        warm_models(
+            str(getattr(settings, "rag_dense_model", "") or "sentence-transformers/all-MiniLM-L6-v2")
+        )
+
+    threading.Thread(target=_run, name="embedder-warmup", daemon=True).start()
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     settings = get_settings()
@@ -53,6 +67,9 @@ async def lifespan(_: FastAPI):
 
         scheduler = build_scheduler(background=True)
         scheduler.start()
+
+    if settings.app_env.lower() == "production":
+        _start_embedder_warmup(settings)
 
     yield
 
