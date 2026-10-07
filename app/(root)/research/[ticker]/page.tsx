@@ -1,3 +1,6 @@
+import { factDisplayAudit } from '@/lib/research/fact-display-audit';
+import { groupClaimsByVersion } from '@/lib/research/claim-groups';
+import { researchValuability } from '@/lib/research/coverage-state';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { getProfile } from '@/lib/actions/finnhub.actions';
@@ -299,13 +302,15 @@ function metricValue(value: number | string | null | undefined, unit: string) {
   return formatCompact(parsed);
 }
 
-function FactCard({ fact }: { fact: ResearchFact }) {
+function FactCard({ fact, ticker }: { fact: ResearchFact; ticker: string }) {
+  const audit = factDisplayAudit(ticker, fact);
   return (
     <div className="rounded-lg border border-gray-800 p-3">
       <div className="flex items-center justify-between gap-2">
         <span className="font-medium text-gray-200">{metricLabel(fact.metric)}</span>
-        <span className="text-sm font-semibold text-teal-300">{metricValue(fact.value, fact.unit)}</span>
+        <span className={`text-sm font-semibold ${audit ? 'text-gray-400' : 'text-teal-300'}`}>{audit ? 'N/D' : metricValue(fact.value, fact.unit)}</span>
       </div>
+      {audit ? <p className="mt-2 text-xs text-amber-300">{audit}</p> : null}
       <div className="mt-1.5 flex flex-wrap gap-2 text-xs text-gray-500">
         <span>{fact.period}</span>
         <span>·</span>
@@ -318,7 +323,7 @@ function FactCard({ fact }: { fact: ResearchFact }) {
 /** Hechos visibles en móvil antes del «ver más» */
 const FACTS_MOBILE_PAGE = 10;
 
-function FactTable({ facts, refreshLabel }: { facts: ResearchFact[]; refreshLabel: string }) {
+function FactTable({ facts, refreshLabel, ticker }: { facts: ResearchFact[]; refreshLabel: string; ticker: string }) {
   if (!facts.length) {
     return (
       <EmptyState
@@ -332,7 +337,7 @@ function FactTable({ facts, refreshLabel }: { facts: ResearchFact[]; refreshLabe
       {/* Móvil: cards paginadas con «ver más» en vez de corte silencioso */}
       <div className="space-y-3 md:hidden">
         {facts.slice(0, FACTS_MOBILE_PAGE).map((fact) => (
-          <FactCard key={fact.id} fact={fact} />
+          <FactCard key={fact.id} fact={fact} ticker={ticker} />
         ))}
         {facts.length > FACTS_MOBILE_PAGE ? (
           <details className="rounded-lg border border-gray-800 p-3">
@@ -341,7 +346,7 @@ function FactTable({ facts, refreshLabel }: { facts: ResearchFact[]; refreshLabe
             </summary>
             <div className="mt-3 space-y-3">
               {facts.slice(FACTS_MOBILE_PAGE).map((fact) => (
-                <FactCard key={fact.id} fact={fact} />
+                <FactCard key={fact.id} fact={fact} ticker={ticker} />
               ))}
             </div>
           </details>
@@ -364,7 +369,7 @@ function FactTable({ facts, refreshLabel }: { facts: ResearchFact[]; refreshLabe
             <tr key={fact.id} className="text-gray-300">
               <th className="border-b border-gray-900 py-2 text-left text-sm font-medium" scope="row">{metricLabel(fact.metric)}</th>
               <td className="border-b border-gray-900 py-2">{fact.period}</td>
-              <td className="border-b border-gray-900 py-2 text-right">{metricValue(fact.value, fact.unit)}</td>
+              <td className="border-b border-gray-900 py-2 text-right">{factDisplayAudit(ticker, fact) ? <span className="text-gray-400">N/D<span className="mt-1 block text-xs text-amber-300">{factDisplayAudit(ticker, fact)}</span></span> : metricValue(fact.value, fact.unit)}</td>
               <td className="border-b border-gray-900 py-2 text-right text-xs text-gray-500">{label(fact.source_type)}</td>
             </tr>
           ))}
@@ -824,15 +829,18 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     content = (
       <div className="space-y-6">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Stat label="Salud del research" value={`${snapshot.research_health.score}/100`} />
+          <Stat label="Cobertura" value={`${snapshot.research_health.score}/100`} />
           <Stat label="Hechos" value={snapshot.counts.facts} />
           <Stat label="Afirmaciones" value={snapshot.counts.claims} />
           <Stat label="Documentos" value={snapshot.counts.documents} />
         </div>
         <p className="text-xs leading-5 text-gray-500">
-          Salud = 20 por capa (documentos, hechos, tesis, modelo) +10 métricas
-          +10 afirmaciones. Sin tesis la nota se topa en 59; sin afirmaciones,
-          en 69. Una nota alta sin tesis ni afirmaciones sería falsa seguridad.
+          Cobertura = 20 por capa (documentos, hechos, tesis, modelo) +10 métricas
+          +10 afirmaciones. Sin tesis se limita a 59; sin afirmaciones,
+          a 69. Mide presencia de capas, no fiabilidad ni publicabilidad.
+        </p>
+        <p role="status" className="rounded-lg border border-amber-900/70 bg-amber-950/20 p-3 text-sm text-amber-200">
+          {researchValuability(snapshot)}
         </p>
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
           <Panel title="Última tesis">
@@ -1084,11 +1092,16 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
             <Button type="submit" className="min-h-[44px] sm:min-h-0">Añadir afirmación</Button>
           </MutationForm>
           <div className="space-y-3">
-            {data.claims.length ? data.claims.map((claim) => (
+            {data.claims.length ? groupClaimsByVersion(data.claims, data.history).map((group) => (
+              <details key={group.key} open={group.claims.some((claim) => claim.thesis_version_id === data.thesis?.id)} className="rounded-lg border border-gray-800 p-3">
+                <summary className="cursor-pointer text-sm font-semibold text-gray-300">{group.label} · {group.claims.length} afirmaciones</summary>
+                <div className="mt-3 space-y-3">{group.claims.map((claim) => (
               <div className="rounded-lg border border-gray-800 p-4" key={claim.id}>
                 <div className="flex flex-wrap gap-2"><Badge variant="outline">{label(claim.status)}</Badge><Badge variant="outline">materialidad {claim.materiality_score}</Badge><Badge variant="outline">{claim.evidence.length} pruebas</Badge></div>
                 <p className="mt-3 text-sm text-gray-300">{claim.statement}</p>
               </div>
+                ))}</div>
+              </details>
             )) : (
               <EmptyState
                 action={<EmptyLink href="#statement">Escribe la primera afirmación</EmptyLink>}
@@ -1147,7 +1160,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
           <MutationForm action={refreshCompanyResearchModel.bind(null, ticker)} successMessage="Métricas y modelo de research refrescados"><Button type="submit"><RefreshCcw className="mr-2 h-4 w-4" />Recalcular</Button></MutationForm>
         </div>
         <Panel title="Métricas calculadas trazables"><MetricsGrid metrics={data.calculatedMetrics} /></Panel>
-        <Panel title="Hechos financieros canónicos"><FactTable facts={data.facts} refreshLabel={
+        <Panel title="Hechos financieros canónicos"><FactTable ticker={ticker} facts={data.facts} refreshLabel={
             !ticker.includes('.')
               ? 'Refrescar financieros (FMP)'
               : isEsefIssuer(ticker)

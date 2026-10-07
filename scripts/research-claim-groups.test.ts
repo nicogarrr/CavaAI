@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { readFileSync } from 'node:fs';
+// @ts-expect-error Node strip-types requires the explicit TS extension.
+import { groupClaimsByVersion } from '../lib/research/claim-groups.ts';
+test('claims retain all entries and remain distinct by persisted thesis id', () => {
+  const groups = groupClaimsByVersion([{id: 1, thesis_version_id: 14}, {id: 2, thesis_version_id: 9}, {id: 3, thesis_version_id: 14}, {id: 4, thesis_version_id: null}], [{id: 14, version: 7}]);
+  assert.equal(groups.length, 3);
+  assert.equal(groups[0].label, 'Tesis v7');
+  assert.deepEqual(groups[0].claims.map(c => c.id), [1,3]);
+  assert.equal(groups[1].label, 'Tesis vinculada (ID 9, versión N/D)');
+  assert.equal(groups[2].label, 'Sin versión de tesis vinculada');
+  assert.equal(groups.reduce((sum, group) => sum + group.claims.length, 0), 4);
+});
+
+test('missing forecast or actual value cannot render a successful review status', () => {
+  const panel = readFileSync('components/research/FundamentalModelPanels.tsx', 'utf8');
+  assert.equal((panel.match(/Sin comparación: falta dato/g) ?? []).length, 2);
+  assert.match(panel, /N\/D significa que falta el dato esperado o real/);
+});

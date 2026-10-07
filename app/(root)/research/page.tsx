@@ -1,3 +1,4 @@
+import { researchValuability } from '@/lib/research/coverage-state';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ArrowRight, BookOpen, FileSearch, Library, Newspaper, Workflow } from 'lucide-react';
@@ -32,7 +33,7 @@ export const revalidate = 0;
 export const metadata: Metadata = {
     title: 'Índice de research',
     description:
-        'Índice de las empresas con research en CavaAI: salud de su research, rating de la última tesis y fecha de la última versión.',
+        'Índice de las empresas con research en CavaAI: cobertura de su research, rating de la última tesis y fecha de la última versión.',
 };
 
 /**
@@ -67,14 +68,14 @@ const RATING_LABELS: Record<string, string> = {
 };
 
 const HEALTH_LABELS: Record<string, string> = {
-    healthy: 'research completo',
+    healthy: 'capas presentes',
     review_required: 'requiere revisión',
     incomplete: 'incompleto',
     empty: 'sin datos',
 };
 
 const HEALTH_TONES: Record<string, string> = {
-    healthy: 'text-good',
+    healthy: 'text-gray-400',
     review_required: 'text-warn',
     incomplete: 'text-warn',
     empty: 'text-gray-400',
@@ -139,7 +140,7 @@ function ratingLabel(value: string | null | undefined): string {
     return RATING_LABELS[value] ?? value.replaceAll('_', ' ');
 }
 
-/** Una fila del índice: ticker, nombre, salud del research y última tesis. */
+/** Una fila del índice: ticker, nombre, cobertura del research y última tesis. */
 function CompanyCard({ row }: { row: CompanyRow }) {
     const { company, snapshot, unreadable } = row;
     const health = snapshot?.research_health;
@@ -170,8 +171,9 @@ function CompanyCard({ row }: { row: CompanyRow }) {
                     ) : (
                         <>
                             <span className={`text-xs font-semibold ${HEALTH_TONES[health?.status ?? 'empty'] ?? 'text-gray-400'}`}>
-                                Salud {formatNumber(health?.score)}/100
+                                Cobertura {formatNumber(health?.score)}/100
                             </span>
+                            <span className="text-xs text-warn">{researchValuability(snapshot)}</span>
                             <Badge variant="outline">{HEALTH_LABELS[health?.status ?? ''] ?? 'estado sin dato'}</Badge>
                             {health?.status === 'review_required' && openReviewsLabel(snapshot.counts) ? (
                                 <span className="text-xs text-gray-500">{openReviewsLabel(snapshot.counts)}</span>
@@ -290,7 +292,7 @@ export default async function ResearchPage({
         <main id="content" tabIndex={-1} className="mx-auto flex max-w-7xl flex-col gap-6">
             <PageHeader
                 actions={<WorkProductButton />}
-                description="Todas las empresas con research en CavaAI, con la salud de su research, el rating de la última tesis y cuándo se generó. Abre una ficha para ver la tesis, los financieros, el modelo y la evidencia."
+                description="Todas las empresas con research en CavaAI, con la cobertura de su research, el rating de la última tesis y cuándo se generó. Abre una ficha para ver la tesis, los financieros, el modelo y la evidencia."
                 kicker="Research OS"
                 title="Índice de research"
             />
