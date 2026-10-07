@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.services.investor_videos import investor_videos
 from app.services.investors import investor_detail, list_investors, most_bought
 from app.services.manager_holding_ingestion_service import ManagerHoldingIngestionService
 
@@ -30,4 +31,5 @@ def investor(slug: str, db: Session = Depends(get_db)) -> dict:
         raise HTTPException(status_code=404, detail="investor not found")
     if detail["cik"]:
         detail["changes"] = ManagerHoldingIngestionService().changes(db, cik=detail["cik"])
+    detail["videos"] = investor_videos(slug)
     return detail

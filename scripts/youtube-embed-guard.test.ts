@@ -60,3 +60,17 @@ describe('vídeos de inversores', () => {
         assert.match(readFileSync('app/(root)/inversores/[slug]/page.tsx', 'utf8'), /<InvestorVideos videos=\{investor\.videos\}/);
     });
 });
+
+
+describe('published_at backend/frontend contract', () => {
+    it('accepts the exact backend serializations without dropping valid fractions', () => {
+        const cases = JSON.parse(readFileSync('scripts/investor-video-timestamp-contract.json', 'utf8')) as { input: string; output: string }[];
+        for (const row of cases) {
+            assert.equal(isVideoTimestamp(row.input), true, row.input);
+            assert.equal(isVideoTimestamp(row.output), true, row.output);
+            assert.equal(validInvestorVideos([{ ...video, published_at: row.output }]).length, 1);
+            assert.equal(Date.parse(row.input), Date.parse(row.output));
+        }
+        assert.equal(isVideoTimestamp('2026-10-01T10:00:00.1234567Z'), false);
+    });
+});
