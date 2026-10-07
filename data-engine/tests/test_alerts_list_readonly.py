@@ -330,3 +330,77 @@ def test_filing_card_fields_come_from_linked_source_not_alert_creation(db):
     assert row.company_name == "Visa" and row.event_form == "8-K"
     assert row.event_date.date().isoformat() == "2025-10-28"
     assert row.source_url == "https://www.sec.gov/x"
+
+
+def test_orphan_insider_identity_comes_from_exact_transaction(db):
+    from app.models.entities import InsiderFiling, InsiderTransaction
+
+    filing = InsiderFiling(
+        accession_number="identity-test", form="4", issuer_cik="123",
+        issuer_ticker="ZU", issuer_name="Source issuer", parser_version="v1",
+    )
+    db.add(filing)
+    db.flush()
+    tx = InsiderTransaction(
+        fingerprint="identity-fp", filing_id=filing.id, accession_number="identity-test",
+        form="4", issuer_ticker="ZU",
+    )
+    db.add(tx)
+    alert = ResearchAlert(
+        company_id=None, alert_type="insider_big_buy", severity="high",
+        title="Not identity evidence AAPL", message="m", fingerprint="identity-alert",
+        channels=["in_app"], status="open", metadata_={"tx_fingerprint": "identity-fp"},
+    )
+    db.add(alert)
+    db.commit()
+    result = list_alerts(ticker=None, status=None, include_snoozed=True, limit=100, db=db)
+    out = next(row for row in result if row.id == alert.id)
+    assert out.ticker == "ZU"
+    assert out.company_name == "Source issuer"
+    assert out.company_id is None
+    assert not db.dirty
+
+
+def test_orphan_insider_metadata_ticker_without_invented_name(db):
+    alert = ResearchAlert(
+        company_id=None, alert_type="insider_cluster_buy", severity="high",
+        title="Unrelated text", message="m", fingerprint="metadata-identity-alert",
+        channels=["in_app"], status="open", metadata_={"issuer_ticker": "ZU"},
+    )
+    db.add(alert)
+    db.commit()
+    result = list_alerts(ticker=None, status=None, include_snoozed=True, limit=100, db=db)
+    out = next(row for row in result if row.id == alert.id)
+    assert out.ticker == "ZU"
+    assert out.company_name is None
+
+
+def test_orphan_insider_never_borrows_identity_from_another_tenant(db):
+    from app.models.entities import InsiderFiling, InsiderTransaction
+
+    filing = InsiderFiling(
+        accession_number="other-tenant", form="4", issuer_cik="999",
+        issuer_ticker="PRIVATE", issuer_name="Other tenant issuer", parser_version="v1",
+    )
+    original_tenant = db.info["tenant_id"]
+    db.info["tenant_id"] = "other-tenant"
+    db.add(filing)
+    db.flush()
+    db.add(InsiderTransaction(
+        fingerprint="shared-fp", filing_id=filing.id, accession_number="other-tenant",
+        form="4", issuer_ticker="PRIVATE",
+    ))
+    db.commit()
+    db.info["tenant_id"] = original_tenant
+    alert = ResearchAlert(
+        company_id=None, alert_type="insider_big_buy", severity="high",
+        title="PRIVATE is only text", message="m", fingerprint="own-tenant-alert",
+        channels=["in_app"], status="open", metadata_={"tx_fingerprint": "shared-fp"},
+    )
+    db.add(alert)
+    db.commit()
+    out = next(row for row in list_alerts(
+        ticker=None, status=None, include_snoozed=True, limit=100, db=db
+    ) if row.id == alert.id)
+    assert out.ticker is None
+    assert out.company_name is None
