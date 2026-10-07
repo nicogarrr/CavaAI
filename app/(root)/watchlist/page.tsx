@@ -179,7 +179,7 @@ export default async function WatchlistPage() {
                                         <dt className="text-[11px] text-gray-500">Precio</dt>
                                         <dd className="truncate font-mono text-sm font-medium text-gray-200">{formatPriceCell(stock.price, stock.currency)}</dd>
                                         {stock.priceKind === 'close' ? (
-                                            <dd className="truncate text-[10px] text-gray-500">{stock.priceAsOf ? `Cierre ${stock.priceAsOf}` : 'Fecha desconocida'}</dd>
+                                            <dd className="break-words text-[10px] leading-relaxed text-gray-500">{stock.priceAsOf ? `Cierre ${stock.priceAsOf}` : 'Fecha desconocida'}</dd>
                                         ) : null}
                                     </div>
                                     <div className="min-w-0">
