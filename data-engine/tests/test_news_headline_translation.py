@@ -171,3 +171,11 @@ async def test_translation_preserves_valid_signed_currency_percentage(db):
     row=event(db,"Η εταιρεία FCF -12 USD crecimiento 12% 2026")
     p=Provider("La empresa FCF -12 USD crecimiento 12% 2026")
     assert (await translate_headline(db,row.id,provider=p))["status"]=="translated"
+
+
+@sync_test
+@pytest.mark.parametrize("sign", ["-", "+", "−", "–", "—", "﹣", "－", "＋"])
+@pytest.mark.parametrize("space", [" ", "\u00a0", "\t", "\n", "\u202f"])
+async def test_translation_separated_sign_fails_closed(db, sign, space):
+    row=event(db,f"Η εταιρεία FCF {sign}{space}12 USD 2026")
+    assert (await translate_headline(db,row.id,provider=Provider("La empresa FCF 12 USD 2026")))["status"]=="unavailable"

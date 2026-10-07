@@ -27,6 +27,8 @@ def numeric_signature(text: str) -> list[tuple[str, str, str]]:
     # Exact numeric representation plus neighbouring dimension words. Unknown
     # translated units fail closed; never infer a conversion or strip a sign.
     pattern = r"(?<![\w])(?:\(\s*[-+−–—]?\d+(?:[.,]\d+)*\s*\)|[-+−–—]?\d+(?:[.,]\d+)*)(?:\s*[%％]|[-−–—](?!\w))?"
+    if re.search(r"[-+−–—﹣－＋]\s+\d|[﹣－＋]\s*\d|\d\s+[-−–—](?!\w)", text):
+        return [("ambiguous", text, "")]
     result = []
     for match in re.finditer(pattern, text):
         token = re.sub(r"\s+", "", match.group())
