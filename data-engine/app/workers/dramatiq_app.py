@@ -1197,6 +1197,7 @@ def refresh_sec_filings(
                                 item.published_at.isoformat() if item.published_at else None,
                                 tenant_id,
                                 user_id,
+                                filing_metadata=getattr(item, "metadata", None),
                             )
                             queued_documents += 1
                     else:
@@ -1676,6 +1677,7 @@ def process_document(
     published_at: str | None = None,
     tenant_id: int | None = None,
     user_id: str | None = None,
+    filing_metadata: dict | None = None,
 ) -> dict[str, Any]:
     actor_name = "process_document"
     try:
@@ -1696,6 +1698,7 @@ def process_document(
                     url=url,
                     source_type=source_type,
                     published_at=published,
+                    filing_metadata=filing_metadata,
                 )
             )
             return {"status": result.get("status", "ok"), "actor": actor_name, "result": result}

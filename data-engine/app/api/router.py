@@ -12,6 +12,7 @@ from app.api.routes import (
     data_health,
     earnings,
     export,
+    filing_intelligence,
     insider,
     investors,
     knowledge,
@@ -94,3 +95,5 @@ api_router.include_router(asts.router, prefix="/market/asts", tags=["market", "a
 api_router.include_router(macro.router, prefix="/macro", tags=["macro"])
 api_router.include_router(cnmv.router, prefix="/cnmv", tags=["cnmv"])
 api_router.include_router(workflows.router, prefix="/workflows", tags=["workflows"])
+
+api_router.include_router(filing_intelligence.router, prefix="/companies", tags=["companies"])
