@@ -18,6 +18,11 @@ test("cabecera de la ficha con precio, variación y sparkline (desktop)", async 
   await expect(header(page).getByText("+2,34")).toBeVisible();
   await expect(header(page).getByRole("img", { name: /Evolución del precio/ })).toBeVisible();
   await expect(header(page).getByText("11 ago – 9 sept")).toBeVisible();
+  const strip = header(page).getByTestId('company-metric-strip');
+  await expect(strip).toBeVisible();
+  await expect(strip.getByText('334,20 US$', { exact: true })).toBeVisible();
+  await expect(strip.getByText('N/D', { exact: true })).toBeVisible();
+  await expect(header(page).getByText('Fuente: Fixture local · Sesión del 9 sept')).toBeVisible();
   await page.screenshot({ path: "test-results/header-quote-desktop.png" });
 });
 
