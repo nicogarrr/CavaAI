@@ -31,6 +31,7 @@ from app.services.document_ingestion_service import (
     _extension,
 )
 from app.services.document_store import DocumentStore
+from app.services.evidence_contract import build_ingestion_evidence
 
 DEFAULT_KNOWLEDGE_COLLECTIONS = (
     "Buffett & Munger",
@@ -209,7 +210,18 @@ class KnowledgeLibraryService:
             filename,
             source_url,
         )
+        evidence = build_ingestion_evidence(
+            tenant_id=db.info.get("tenant_id"), document_id=f"knowledge:{document.id}",
+            checksum=checksum, source_type=document_type, chunks=chunks, url=source_url,
+            author=author, published_on=publication_date, language=document.language,
+        )
+        document.metadata_ = {**document.metadata_, "evidence_contract": evidence}
         for index, payload in enumerate(chunks):
+            payload["metadata"] = {
+                **payload["metadata"],
+                "evidence_source_id": evidence.get("source_id"),
+                "evidence_chunk_id": evidence.get("chunks", [{}] * len(chunks))[index].get("chunk_id"),
+            }
             block_metadata = payload["metadata"].get("block_metadata") or []
             page = next(
                 (

@@ -17,6 +17,7 @@ from app.models import Document, DocumentChunk
 from app.services.company_resolver import resolve_company
 from app.services.document_store import DocumentStore
 from app.services.document_visibility import is_immutable_archive_url
+from app.services.evidence_contract import build_ingestion_evidence
 from app.services.public_fetch import fetch_public_url
 
 MAX_DOCUMENT_BYTES = 15 * 1024 * 1024
@@ -182,7 +183,19 @@ class DocumentIngestionService:
         db.flush()
 
         chunks = self._chunk_blocks(parsed.blocks, checksum, parsed.parser, filename, source_url)
+        evidence = build_ingestion_evidence(
+            tenant_id=db.info.get("tenant_id"), document_id=f"document:{document.id}",
+            checksum=checksum, source_type=source_type, chunks=chunks, url=source_url,
+            # Do not turn the existing fetched-at fallback into a publication date.
+            published_on=published_at.date() if published_at else None,
+        )
+        document.metadata_ = {**document.metadata_, "evidence_contract": evidence}
         for index, chunk in enumerate(chunks):
+            chunk["metadata"] = {
+                **chunk["metadata"],
+                "evidence_source_id": evidence.get("source_id"),
+                "evidence_chunk_id": evidence.get("chunks", [{}] * len(chunks))[index].get("chunk_id"),
+            }
             db.add(
                 DocumentChunk(
                     document_id=document.id,
