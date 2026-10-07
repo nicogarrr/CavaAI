@@ -135,11 +135,6 @@ const ALLOWED: Array<{ file: string; snippet: string; why: string }> = [
         why: "Métricas de marketing del propio producto (coste por análisis), fijadas en USD por contrato comercial, no datos de mercado.",
     },
     {
-        file: 'components/proPicks/EnhancedProPicksContent.tsx',
-        snippet: "formatPrice(pick.currentPrice, 'USD')",
-        why: "Universo de proPicks US-only (S&P 500, factsheet del backend): precio de cotización en USD.",
-    },
-    {
         file: 'lib/actions/proPicks.actions.ts',
         snippet: '(objetivo $${round1(targetPrice)} vs $${round1(currentPrice)}',
         why: "Texto de la alerta de proPicks, mismo universo US-only: el «$» acompaña a un precio de cotización del S&P 500.",

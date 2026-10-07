@@ -54,6 +54,9 @@ export interface ProPick {
   /** Foto de métricas reales tras el pick (precio, objetivo, categorías...). */
   facts: Record<string, number | string>;
   currentPrice: number;
+  /** Precio persistido: su fecha y moneda no son las del run de scoring. */
+  priceAsOf?: string;
+  priceCurrency?: string;
   sector?: string;
   exchange?: string;
   vsSector?: {
