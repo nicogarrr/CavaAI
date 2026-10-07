@@ -81,6 +81,8 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt, pa
 
     const strategyPicks = picksByStrategy[currentStrategy];
     useEffect(() => {
+        // No enriquecer otra pestaña hasta que el usuario la abra.
+        if (activeTab !== 'estrategia') return;
         if (picksByStrategy[currentStrategy] !== undefined) return;
         let cancelled = false;
         generateProPicksForStrategy(currentStrategy)
@@ -93,7 +95,7 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt, pa
         return () => {
             cancelled = true;
         };
-    }, [currentStrategy, picksByStrategy]);
+    }, [activeTab, currentStrategy, picksByStrategy]);
 
     return (
         <Tabs value={activeTab} onValueChange={handleTabChange} className="mt-6 w-full min-w-0">
