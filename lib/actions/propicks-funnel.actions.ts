@@ -12,6 +12,7 @@
  */
 
 import { researchRequest } from '@/lib/research/client';
+import { moatChecksToScore, MOAT_V2_MAX_CHECKS } from '@/lib/propicks/moat-scale';
 import { PROPICKS_SCORING_WEIGHTS } from '@/lib/utils/propicksValidation';
 import type { ConfidenceReason, ProPick } from '@/lib/actions/proPicks.actions';
 
@@ -95,7 +96,7 @@ function gradeFor(score: number): string {
  * Mapeo honesto candidato del embudo -> ProPick.
  *
  * Escalas de categoria (0-100, deterministas, documentadas):
- *  - profitability: quality_moat_score_v2 directo (ya es 0-100).
+ *  - profitability: quality_moat_score_v2 es un recuento de criterios (0-8): se escala a 0-100 (moatChecksToScore).
  *  - value: 50 + (cfroi_approx - wacc) * 500 (spread +10% -> 100, -10% -> 0).
  *  - growth: 50 + revenue_cagr * 250 (+20% anual -> 100, -20% -> 0).
  *  - cashFlow: fcf_margin_5y * 400 (margen 25% -> 100).
@@ -128,7 +129,7 @@ function funnelCandidateToProPick(c: FunnelCandidate, runAsOf: string): ProPick 
   if (roic !== null) facts['roic'] = pct(roic);
   if (roe5y !== null) facts['roe_5y'] = pct(roe5y);
 
-  const profitability = moat !== null ? clamp(round1(moat)) : 50;
+  const profitability = moat !== null ? clamp(moatChecksToScore(moat)) : 50;
   if (moat === null) facts['moat_neutral_sin_datos'] = 'si';
   const value = cfroi !== null && wacc !== null ? clamp(round1(50 + (cfroi - wacc) * 500)) : 50;
   if (cfroi === null || wacc === null) facts['valoracion_neutral_sin_datos'] = 'si';
@@ -176,7 +177,7 @@ function funnelCandidateToProPick(c: FunnelCandidate, runAsOf: string): ProPick 
     confidenceReasons.push({
       metric: 'quality_moat_score_v2',
       value: facts['quality_moat_score_v2'],
-      text: `Marco de calidad ${facts['quality_moat_score_v2']}/100 segun fundamentales auditados`,
+      text: `Marco de calidad ${facts['quality_moat_score_v2']}/${MOAT_V2_MAX_CHECKS} criterios superados segun fundamentales auditados`,
     });
   }
   if (cfroi !== null && wacc !== null) {
