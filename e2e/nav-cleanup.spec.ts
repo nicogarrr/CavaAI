@@ -66,6 +66,8 @@ test("el sidebar de escritorio muestra el nav limpio", async ({ page }) => {
   await expect(sidebar).not.toHaveAttribute('data-collapsed', 'true');
   await expect(sidebar.getByRole('button', { name: 'Plegar menú' })).toBeVisible();
   await expect(sidebar.getByText('Mercado', { exact: true })).toBeVisible();
+  const preference = (await page.context().cookies()).find((cookie) => cookie.name === 'cavaai-sidebar-collapsed');
+  expect(preference?.value).toBe('0');
   await page.reload();
   await expect(sidebar).not.toHaveAttribute('data-collapsed', 'true');
   await page.screenshot({ path: "test-results/nav-cleanup-sidebar-desktop.png" });

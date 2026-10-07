@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import { ChevronsLeft, ChevronsRight, Settings, Target } from 'lucide-react';
 import { isNavItemActive, NAV_SECTIONS, showsNavSectionTitle, type NavItem } from '@/lib/constants';
 
-export const SIDEBAR_COLLAPSED_COOKIE = 'cavaai:sidebar-collapsed';
+export const SIDEBAR_COLLAPSED_COOKIE = 'cavaai-sidebar-collapsed';
 
 /**
  * Navegacion de escritorio. Complementa a `components/MobileNav.tsx`, que usa
