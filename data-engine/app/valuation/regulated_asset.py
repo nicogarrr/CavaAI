@@ -317,7 +317,7 @@ def reconcile_regulated_asset_model(
         cost_of_equity=cost_of_equity,
         growth=growth,
     )
-    dividend_next = book_equity * allowed_roe * equity_scale * payout_ratio * (1 + growth)
+    dividend_next = book_equity * allowed_roe * payout_ratio * (1 + growth)
     dividend_value = dividend_next / (cost_of_equity - growth)
     residual = excess["equity_value"] - dividend_value
     reconciling_payout = (
