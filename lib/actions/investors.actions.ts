@@ -3,6 +3,8 @@
 import { normalizeResearchBody, researchIdentityHeaders } from '@/lib/auth/research-identity';
 import { ExternalAPIError } from '@/lib/types/errors';
 
+import type { InvestorVideo } from '@/lib/ui/youtube-video';
+
 import type { ManagerChanges, OwnershipProvenance } from './ownership.actions';
 
 const BACKEND_URL = process.env.FMP_BACKEND_URL ?? 'http://localhost:8000';
@@ -63,6 +65,8 @@ export type PublicProfile = {
 };
 
 export type InvestorDetail = InvestorSummary & {
+  /** RSS server-side: ausente o vacío si no hay canal confirmado. */
+  videos?: InvestorVideo[];
   public_profile?: PublicProfile | null;
   holdings: InvestorHolding[];
   limitations: string[];
