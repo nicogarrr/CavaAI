@@ -7,6 +7,7 @@ import { getInvestor } from '@/lib/actions/investors.actions';
 import { isBackendUnavailableError } from '@/lib/backend-offline';
 import { formatNumber, formatPercent, NA } from '@/lib/format';
 
+import { InvestorVideos } from '../_components/InvestorVideos';
 import { InvestorAvatar } from '../_components/Avatar';
 import { INVESTOR_PHOTOS } from '../_components/photos';
 import { PublicProfileSection } from '../_components/PublicProfile';
@@ -232,6 +233,7 @@ export default async function InvestorPage({ params, searchParams }: PageProps) 
                     </p>
                 </>
             )}
+            <InvestorVideos videos={investor.videos} />
         </main>
     );
 }
