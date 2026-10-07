@@ -301,14 +301,12 @@ def test_dcf_keeps_a_negative_fcf_margin_negative():
     assert result.value_per_share < 0
 
 
-def test_pre_revenue_engine_keeps_cash_burn_scenarios_ordered(company_factory):
-    """El bear de una quema de caja no puede valer MAS que el base.
+def test_pre_revenue_engine_refuses_negative_per_share_value_on_cash_burn(company_factory):
+    """Una quema de caja no publica un valor por accion negativo.
 
-    Con margen base -15%, el suelo positivo del bear en
-    scenario_definitions invertia el orden dentro del motor:
-    bear MEJOR que base entrando en probability_weighted_value.
-    El motor completo (facts -> snapshot -> escenarios -> DCF) debe
-    dar bear <= base <= bull y los tres en negativo.
+    Con margen reportado -15% el DCF FCFF da un valor por accion negativo
+    (ASTS: -84,70 USD). El capital propio no vale menos de cero: el motor
+    se niega (insufficient_data) en vez de publicar bear/base/bull negativos.
     """
     from app.valuation.engines.base import ValuationContext
     from app.valuation.engines.pre_revenue import PreRevenueScenarioEngine
@@ -338,9 +336,11 @@ def test_pre_revenue_engine_keeps_cash_burn_scenarios_ordered(company_factory):
         )
     )
 
-    assert result["status"] in ("ok", "partial")
-    assert result["bear_value"] <= result["base_value"] <= result["bull_value"]
-    assert result["bull_value"] < 0
+    assert result["status"] == "insufficient_data"
+    assert result["publishable"] is False
+    assert "non_negative_fcf_margin" in result["missing_inputs"]
+    for field in ("bear_value", "base_value", "bull_value", "expected_value"):
+        assert result[field] is None, field
 
 
 def test_dcf_reports_terminal_value_weight():
