@@ -11,7 +11,8 @@ export default async function Preview({ searchParams }: { searchParams: Promise<
  const {mode} = await searchParams;
  const snapshot = e2eMarketFixture('MSFT');
  snapshot.historySource = 'Fixture local';
- snapshot.history = mode === 'empty' ? [] : mode === 'close' ? snapshot.history : Array.from({ length: 260 }, (_, i) => { const close = 325 + Math.sin(i / 8) * 14 + Math.cos(i / 3) * 5 + i * 0.04; return { date: new Date(Date.UTC(2026, 0, i + 1)).toISOString().slice(0,10), open: close-1, high: close+3, low: close-4, close, volume: 1000000+i*100 }; });
+ if (mode === 'unavailable') { snapshot.quote.price = null; snapshot.quote.change = null; snapshot.quote.changePercent = null; }
+ snapshot.history = mode === 'empty' || mode === 'unavailable' ? [] : mode === 'close' ? snapshot.history : Array.from({ length: 260 }, (_, i) => { const close = 325 + Math.sin(i / 8) * 14 + Math.cos(i / 3) * 5 + i * 0.04; return { date: new Date(Date.UTC(2026, 0, i + 1)).toISOString().slice(0,10), open: close-1, high: close+3, low: close-4, close, volume: 1000000+i*100 }; });
  return <main className="mx-auto max-w-[1500px] p-4 sm:p-6"><h1 className="mb-4 text-2xl text-gray-100">MSFT</h1><CompanyHeaderQuote snapshot={snapshot}/></main>;
 }`);
 try {

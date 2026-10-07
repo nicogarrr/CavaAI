@@ -6,10 +6,11 @@ const SHORT_DATE: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' 
 
 /** Quote stays separate from dated daily-bar calculations. */
 export function CompanyHeaderQuote({ snapshot }: { snapshot: CompanyMarketSnapshot }) {
-    const { quote, currency, history } = snapshot;
+    const { quote, currency } = snapshot;
     const hasDatedMetrics = !!quote.metricsSource && !!quote.metricsSession;
     const showPrice = quote.price != null && isValidCurrencyCode(currency);
-    if (!showPrice && history.length === 0) return null;
+    // Keep the workspace visible even when both market sources are unavailable.
+
     // Signo coherente con el dato mostrado: si falta change, manda
     // changePercent; sin ninguno, no hay linea de variacion que colorear.
     const signBase = quote.change ?? quote.changePercent ?? 0;

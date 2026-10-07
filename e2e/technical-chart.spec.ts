@@ -32,3 +32,13 @@ test('close-only history stays honest; missing history stays empty', async ({ pa
     await page.goto('/chart-preview?mode=empty');
     await expect(page.getByText('Sin datos suficientes para este rango')).toBeVisible();
 });
+
+test('no quote AND no history preserves an explicit unavailable workspace', async ({ page }) => {
+    await page.goto('/chart-preview?mode=unavailable');
+    await expect(page.getByTestId('company-header-quote')).toBeVisible();
+    await expect(page.getByTestId('company-technical-chart')).toBeVisible();
+    await expect(page.getByText('Sin datos suficientes para este rango')).toBeVisible();
+    await expect(page.getByText('336,56 US$')).not.toBeVisible();
+    await page.screenshot({ path: '/downloads/chart-unavailable.png', fullPage: true });
+    await expect(page.getByText('Sin datos OHLC para calcular niveles.')).toBeVisible();
+});

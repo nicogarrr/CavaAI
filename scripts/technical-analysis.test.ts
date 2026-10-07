@@ -44,3 +44,10 @@ test('company header replaces sparkline and composes technical workspace once', 
     assert.doesNotMatch(header, /<polyline/);
     assert.doesNotMatch(page, /<CompanyMarketPanel/);
 });
+
+test('total market unavailability never hides the workspace', async () => {
+    const { readFileSync } = await import('node:fs');
+    const header = readFileSync('components/research/CompanyHeaderQuote.tsx', 'utf8');
+    assert.doesNotMatch(header, /if \(!showPrice && history.length === 0\) return null/);
+    assert.match(header, /CompanyTechnicalWorkspace snapshot=\{snapshot\}/);
+});
