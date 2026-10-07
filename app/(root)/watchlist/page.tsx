@@ -39,12 +39,24 @@ interface WatchlistStock {
     addedAt: Date;
 }
 
-export default async function WatchlistPage() {
+const PAGE_SIZE = 20;
+
+export default async function WatchlistPage({
+    searchParams,
+}: {
+    searchParams: Promise<{ page?: string }>;
+}) {
     const { items: watchlistItems, unavailable } = await getWatchlistState();
 
-    // Obtener datos de cada acción
+    const { page: pageParam } = await searchParams;
+    const requestedPage = /^\d+$/.test(pageParam ?? '') ? Number(pageParam) : 1;
+    const totalPages = Math.max(1, Math.ceil(watchlistItems.length / PAGE_SIZE));
+    const page = Math.min(totalPages, Math.max(1, Number.isSafeInteger(requestedPage) ? requestedPage : 1));
+    const pageItems = watchlistItems.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+    // Cotizar solo la página visible, no toda la lista.
     const watchlistStocks: WatchlistStock[] = await Promise.all(
-        watchlistItems.map(async (item) => {
+        pageItems.map(async (item) => {
             try {
                 // Precio y divisa del LISTADO REAL (master), nunca del ticker
                 // desnudo: Finnhub free lo resuelve en la línea US (ADR en USD
@@ -140,6 +152,13 @@ export default async function WatchlistPage() {
                 </Card>
             ) : (
                 <>
+                    <nav aria-label="Páginas de watchlist" className="flex flex-wrap items-center justify-between gap-3 text-sm text-gray-400">
+                        <span>{watchlistItems.length} empresas · Página {page} de {totalPages}</span>
+                        <div className="flex gap-3">
+                            {page > 1 ? <Link className="inline-flex min-h-[44px] items-center text-teal-300" href={`/watchlist?page=${page - 1}`}>Anterior</Link> : null}
+                            {page < totalPages ? <Link className="inline-flex min-h-[44px] items-center text-teal-300" href={`/watchlist?page=${page + 1}`}>Siguiente</Link> : null}
+                        </div>
+                    </nav>
                     {/* Móvil (<md): cards apiladas con acciones táctiles ≥44px */}
                     <div className="space-y-3 md:hidden">
                         {sortedStocks.map((stock) => (
