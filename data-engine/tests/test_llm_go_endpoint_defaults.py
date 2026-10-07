@@ -2,10 +2,14 @@ from app.core.config import Settings
 from app.llm.factory import create_llm_provider
 
 
-def test_defaults_use_go_endpoint_with_free_longcat() -> None:
+def test_defaults_use_zen_endpoint_with_free_space_bunny() -> None:
+    # Medido el 2026-10-07: space-bunny-free responde 200 en zen/v1 (~2 s) y da
+    # 400 "Model is unavailable" en zen/go/v1; LongCat solo va en go/v1 y tarda
+    # 22-28 s gastando el presupuesto en razonamiento. El default sin env debe
+    # ser la combinacion que funciona.
     settings = Settings(_env_file=None, opencode_go_api_key="k")
-    assert settings.opencode_go_base_url == "https://opencode.ai/zen/go/v1"
-    assert settings.opencode_go_model == "longcat-2.5-preview-free"
+    assert settings.opencode_go_base_url == "https://opencode.ai/zen/v1"
+    assert settings.opencode_go_model == "space-bunny-free"
 
 
 def test_provider_sends_own_user_agent_and_session_header() -> None:
