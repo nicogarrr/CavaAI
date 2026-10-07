@@ -24,6 +24,7 @@ funciones de embedding lanzan ``FastembedUnavailable`` y el llamador
 from __future__ import annotations
 
 import logging
+import threading
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,31 @@ DEFAULT_DENSE_VECTOR_NAME = ""
 # Prefetch por rama para la fusion: sobremuestrea respecto al limit pedido.
 PREFETCH_MULTIPLIER = 3
 PREFETCH_MINIMUM = 30
+
+
+# Cache de modelos por proceso. La clave incluye la clase del modelo para que
+# un cambio de implementacion (p. ej. un mock en tests) no devuelva una
+# instancia vieja. Cargar el ONNX en cada llamada costaba ~13 s en frio.
+_MODEL_CACHE: dict[tuple, object] = {}
+_MODEL_LOCK = threading.Lock()
+
+
+def _cached_model(kind: str, cls: type, model: str):
+    key = (kind, cls, model)
+    cached = _MODEL_CACHE.get(key)
+    if cached is not None:
+        return cached
+    with _MODEL_LOCK:
+        cached = _MODEL_CACHE.get(key)
+        if cached is None:
+            cached = cls(model)
+            _MODEL_CACHE[key] = cached
+        return cached
+
+
+def clear_model_cache() -> None:
+    with _MODEL_LOCK:
+        _MODEL_CACHE.clear()
 
 
 class FastembedUnavailable(RuntimeError):
@@ -69,7 +95,7 @@ def embed_dense(texts: list[str], model: str = DEFAULT_DENSE_MODEL) -> list[list
             "fastembed is not installed; dense embeddings unavailable "
             f"(model={model!r}). Install fastembed to enable the ONNX backend."
         ) from exc
-    embedding = TextEmbedding(model)
+    embedding = _cached_model("dense", TextEmbedding, model)
     return [list(vector) for vector in embedding.embed(texts)]
 
 
@@ -95,7 +121,7 @@ def embed_sparse(
             "fastembed is not installed; sparse embeddings unavailable "
             f"(model={model!r}). Hybrid search degrades to dense-only."
         ) from exc
-    embedding = SparseTextEmbedding(model)
+    embedding = _cached_model("sparse", SparseTextEmbedding, model)
     return [
         SparseEmbedding(indices=list(vector.indices), values=list(vector.values))
         for vector in embedding.embed(texts)
@@ -256,3 +282,23 @@ class ScoredPayload:
     point_id: str
     payload: dict = field(default_factory=dict)
     scores: HybridScores = field(default_factory=HybridScores)
+
+
+def warm_models(
+    dense_model: str = DEFAULT_DENSE_MODEL, sparse_model: str | None = None
+) -> bool:
+    """Precarga los modelos para que la primera busqueda no pague la carga.
+
+    Fail-open: nunca lanza; devuelve True si el denso quedo listo.
+    """
+    try:
+        embed_dense(["warmup"], dense_model)
+    except Exception as exc:  # noqa: BLE001 - el warmup jamas rompe el arranque
+        logger.warning("embedder warmup skipped (%s: %s)", type(exc).__name__, exc)
+        return False
+    if sparse_model:
+        try:
+            embed_sparse(["warmup"], sparse_model)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("sparse warmup skipped (%s: %s)", type(exc).__name__, exc)
+    return True
