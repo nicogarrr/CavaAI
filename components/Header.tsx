@@ -3,6 +3,7 @@ import { CavaAIWordmark } from '@/components/CavaAIWordmark';
 import UserDropdown from '@/components/UserDropdown';
 import SearchCommand from '@/components/SearchCommand';
 import MobileNav from '@/components/MobileNav';
+import { Bell } from 'lucide-react';
 
 /**
  * Cabecera de una sola fila en TODOS los viewports. Antes el buscador ocupaba
@@ -34,6 +35,7 @@ const Header = ({ user, initialStocks }: { user: User; initialStocks?: StockWith
                             initialStocks={initialStocks}
                         />
                     </div>
+                    <Link href="/alerts" aria-label="Alertas" title="Alertas" className="flex h-11 w-11 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-800 hover:text-teal-300"><Bell aria-hidden="true" className="h-5 w-5" /></Link>
                     <UserDropdown user={user} />
                 </div>
             </div>

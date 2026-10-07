@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { MOBILE_TAB_ITEMS } from '@/lib/constants';
+import { MOBILE_TAB_ITEMS, isNavItemActive } from '@/lib/constants';
 
 /**
  * Barra inferior del movil: cinco iconos con etiqueta, el destino activo en el
@@ -18,7 +18,7 @@ export default function BottomNav() {
         >
             <ul className="mx-auto grid max-w-md grid-cols-5">
                 {MOBILE_TAB_ITEMS.map((item) => {
-                    const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+                    const active = isNavItemActive(pathname, item.href);
                     return (
                         <li key={item.href}>
                             <Link

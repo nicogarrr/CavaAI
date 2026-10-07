@@ -1,3 +1,4 @@
+import SectionNav from "@/components/layout/SectionNav";
 import Breadcrumbs from "@/components/layout/Breadcrumbs";
 import Header from "@/components/Header";
 import BottomNav from "@/components/layout/BottomNav";
@@ -54,6 +55,7 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
                 <Sidebar collapsed={collapsed} />
                 <div className="min-w-0 flex-1 px-4 pb-24 pt-5 md:px-6 md:pb-6 md:py-6 lg:px-8">
                     <Breadcrumbs />
+                    <SectionNav />
                     <ErrorBoundary>
                         {children}
                     </ErrorBoundary>
