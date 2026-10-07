@@ -106,6 +106,7 @@ function NavLink({ item, pathname, collapsed }: { item: NavItem; pathname: strin
             <Link
                 href={item.href}
                 prefetch
+                aria-label={item.label}
                 title={collapsed ? item.label : undefined}
                 aria-current={active ? 'page' : undefined}
                 className={linkClasses(active, collapsed, 'text-sm', branchActive)}
@@ -149,6 +150,7 @@ function FooterLink({
     return (
         <Link
             href={href}
+            aria-label={label}
             title={collapsed ? label : undefined}
             aria-current={isNavItemActive(pathname, href) ? 'page' : undefined}
             className={linkClasses(isNavItemActive(pathname, href), collapsed, 'text-sm')}
