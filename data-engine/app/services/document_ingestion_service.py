@@ -42,13 +42,23 @@ class _HTMLTextExtractor(HTMLParser):
         super().__init__()
         self._parts: list[str] = []
 
+    # Inline markup is not a paragraph boundary: SEC headings commonly split
+    # Item / 1A / Risk Factors across spans. Block elements are boundaries.
+    _BLOCK_TAGS = {"p", "div", "br", "tr", "td", "th", "li", "h1", "h2", "h3", "h4", "h5", "h6", "section", "table"}
+
+    def handle_starttag(self, tag: str, attrs: list) -> None:
+        if tag.lower() in self._BLOCK_TAGS:
+            self._parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() in self._BLOCK_TAGS:
+            self._parts.append("\n")
+
     def handle_data(self, data: str) -> None:
-        stripped = " ".join(data.split())
-        if stripped:
-            self._parts.append(stripped)
+        self._parts.append(re.sub(r"\s+", " ", data))
 
     def text(self) -> str:
-        return "\n".join(self._parts)
+        return "\n".join(" ".join(line.split()) for line in "".join(self._parts).splitlines())
 
 
 def _compact(text: str) -> str:
@@ -84,6 +94,7 @@ class DocumentIngestionService:
         source_url: str | None = None,
         content_type: str | None = None,
         published_at: datetime | None = None,
+        filing_metadata: dict | None = None,
     ) -> dict:
         if not content:
             raise ValueError("Document is empty")
@@ -165,6 +176,8 @@ class DocumentIngestionService:
             published_at=published_at or datetime.now(UTC),
             checksum=checksum,
             metadata_={
+                **{key: value for key, value in (filing_metadata or {}).items()
+                   if key in {"form", "report_date", "period_of_report", "accession_number", "parent_form", "fiscal_quarter"}},
                 "parser": parsed.parser,
                 "filename": filename,
                 "content_type": content_type,
@@ -208,6 +221,20 @@ class DocumentIngestionService:
 
         db.commit()
         db.refresh(document)
+
+        filing_analysis = {"status": "not_applicable"}
+        if db.info.get("tenant_id") is not None:
+            try:
+                from app.services.filing_intelligence import analyze_document, official_document
+
+                if official_document(document):
+                    filing_analysis = analyze_document(db, document)
+                    db.commit()
+            except Exception as exc:
+                db.rollback()
+                # Ingestion has already committed. A failed optional analysis
+                # must not disguise a successfully persisted source as failure.
+                filing_analysis = {"status": "failed", "error": type(exc).__name__}
 
         kpi_extraction = {"status": "not_queued"}
         if (
@@ -290,6 +317,7 @@ class DocumentIngestionService:
             "warnings": parsed.warnings,
             "rag": rag_result,
             "intelligence": intelligence_result,
+            "filing_analysis": filing_analysis,
         }
 
     def ingest_url(
@@ -453,17 +481,27 @@ class DocumentIngestionService:
                 continue
             if len(text) > max_chars:
                 flush()
-                words = text.split()
+                # Keep each short line intact, especially section headings.
+                # Split only oversized lines and retain paragraph boundaries.
+                lines = []
+                for line in text.splitlines():
+                    while len(line) > max_chars:
+                        cut = line.rfind(" ", 0, max_chars + 1)
+                        if cut <= 0:
+                            cut = max_chars
+                        lines.append(line[:cut])
+                        line = line[cut:].lstrip(" ")
+                    lines.append(line)
                 piece: list[str] = []
-                for word in words:
-                    if sum(len(item) + 1 for item in piece) + len(word) > max_chars:
-                        current_text.append(" ".join(piece))
+                for line in lines:
+                    if piece and len("\n".join([*piece, line])) > max_chars:
+                        current_text.append("\n".join(piece))
                         current_meta.append(block.metadata)
                         flush()
                         piece = []
-                    piece.append(word)
+                    piece.append(line)
                 if piece:
-                    current_text.append(" ".join(piece))
+                    current_text.append("\n".join(piece))
                     current_meta.append(block.metadata)
                 continue
             if sum(len(item) + 2 for item in current_text) + len(text) > max_chars:
