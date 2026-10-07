@@ -11,6 +11,7 @@ import {
 
 import type { SignalOverlay } from '@/lib/utils/propicksSignals';
 import { getLatestFunnelPicks } from '@/lib/actions/propicks-funnel.actions';
+import { withOptionalBudget } from '@/lib/propicks/optional-budget';
 
 /** Selección con tope de rotación (núcleo puro en proPicksStrategies, reexportada aquí para el pipeline). */
 import { selectRebalancedPicks, type RankedCandidate } from '@/lib/utils/proPicksStrategies';
@@ -177,31 +178,35 @@ function overlayFactsKey(metric: string): string {
 export async function attachSignalOverlays(picks: ProPick[], asOf?: string): Promise<ProPick[]> {
   const finalists = picks.slice(0, 20);
   if (finalists.length === 0) return finalists;
-  const mod = await loadSignalOverlaysModule();
-  const fetchOverlays = mod?.getSignalOverlays;
-  if (typeof fetchOverlays !== 'function') return finalists;
-  const settled = await Promise.allSettled(
-    finalists.map((pick) => fetchOverlays(pick.symbol, asOf ?? pick.asOf))
-  );
-  return finalists.map((pick, index) => {
-    const result = settled[index];
-    const overlays: SignalOverlay[] =
-      result.status === 'fulfilled' && Array.isArray(result.value)
-        ? (result.value as SignalOverlay[])
-        : [];
-    if (overlays.length === 0) return pick;
-    const facts: ProPick['facts'] = { ...pick.facts };
-    for (const overlay of overlays) {
-      const rec = overlay as unknown as OverlayRecord;
-      const metric = typeof rec['metric'] === 'string' ? rec['metric'] : '';
-      const value = rec['value'];
-      if (!metric || (typeof value !== 'number' && typeof value !== 'string')) continue;
-      facts[overlayFactsKey(metric)] = value;
-    }
-    const confidence = Math.max(5, Math.min(97, Math.round(pick.confidence + overlayConfidenceDelta(overlays))));
-    const confidenceLevel: ProPick['confidenceLevel'] = confidence >= 80 ? 'Alta' : confidence >= 65 ? 'Media' : 'Baja';
-    return { ...pick, overlays, facts, confidence, confidenceLevel };
-  });
+  // Presupuesto global de espera, no 4 segundos por fuente o por ticker.
+  // Las fuentes no admiten AbortSignal: al vencer no se cancela su I/O interno.
+  return withOptionalBudget(async () => {
+    const mod = await loadSignalOverlaysModule();
+    const fetchOverlays = mod?.getSignalOverlays;
+    if (typeof fetchOverlays !== 'function') return finalists;
+    const settled = await Promise.allSettled(
+      finalists.map((pick) => fetchOverlays(pick.symbol, asOf ?? pick.asOf))
+    );
+    return finalists.map((pick, index) => {
+      const result = settled[index];
+      const overlays: SignalOverlay[] =
+        result.status === 'fulfilled' && Array.isArray(result.value)
+          ? (result.value as SignalOverlay[])
+          : [];
+      if (overlays.length === 0) return pick;
+      const facts: ProPick['facts'] = { ...pick.facts };
+      for (const overlay of overlays) {
+        const rec = overlay as unknown as OverlayRecord;
+        const metric = typeof rec['metric'] === 'string' ? rec['metric'] : '';
+        const value = rec['value'];
+        if (!metric || (typeof value !== 'number' && typeof value !== 'string')) continue;
+        facts[overlayFactsKey(metric)] = value;
+      }
+      const confidence = Math.max(5, Math.min(97, Math.round(pick.confidence + overlayConfidenceDelta(overlays))));
+      const confidenceLevel: ProPick['confidenceLevel'] = confidence >= 80 ? 'Alta' : confidence >= 65 ? 'Media' : 'Baja';
+      return { ...pick, overlays, facts, confidence, confidenceLevel };
+    });
+  }, finalists, 4_000);
 }
 
 export type SectorCategoryScores = {
@@ -483,7 +488,7 @@ export interface EnhancedProPicksResult {
   passedCount: number | null;
 }
 
-export async function generateEnhancedProPicksWithRun(filters: EnhancedProPicksFilters = {}): Promise<EnhancedProPicksResult> {
+export async function generateEnhancedProPicksWithRun(filters: EnhancedProPicksFilters = {}, options: { includeSignalOverlays?: boolean } = {}): Promise<EnhancedProPicksResult> {
   await requireAuthenticatedUser();
   const { limit = 20, minScore = 70, sector = 'all', sortBy = 'score' } = filters;
   // Fuente: ultimo run del embudo (ver generateProPicks).
@@ -503,7 +508,9 @@ export async function generateEnhancedProPicksWithRun(filters: EnhancedProPicksF
   const finalists = picks.sort((left, right) => scoreFor(right) - scoreFor(left)).slice(0, Math.max(1, Math.min(limit, 100)));
   // Overlays externos SOLO sobre finalistas (máx 20); [] si el módulo aún no existe.
   return {
-    picks: await attachSignalOverlays(finalists, funnel?.runAsOf),
+    picks: options.includeSignalOverlays === false
+      ? finalists
+      : await attachSignalOverlays(finalists, funnel?.runAsOf),
     runAsOf: funnel?.runAsOf ?? null,
     passedCount: funnel?.passedCount ?? null,
   };
