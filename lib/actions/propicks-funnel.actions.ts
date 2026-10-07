@@ -224,6 +224,8 @@ function funnelCandidateToProPick(c: FunnelCandidate, runAsOf: string): ProPick 
     asOf: runAsOf,
     facts,
     currentPrice,
+    priceAsOf: c.price_as_of ?? undefined,
+    priceCurrency: c.currency || undefined,
     sector: c.sector,
     overlays: [],
   };

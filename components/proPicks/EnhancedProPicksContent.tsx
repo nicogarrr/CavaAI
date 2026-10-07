@@ -277,12 +277,12 @@ export default function EnhancedProPicksContent({ initialPicks, generatedAt, ini
                                     </div>
 
                                     <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                                        {pick.currentPrice > 0 && (
+                                        {pick.currentPrice > 0 && pick.priceAsOf && pick.priceCurrency && (
                                             <div>
                                                 <div className="text-xl font-semibold text-gray-100">
-                                                    {formatPrice(pick.currentPrice, 'USD')}
+                                                    {formatPrice(pick.currentPrice, pick.priceCurrency)}
                                                 </div>
-                                                <div className="text-xs text-gray-500">Precio actual</div>
+                                                <div className="text-xs text-gray-500">Precio registrado · {formatUserDate(pick.priceAsOf)}</div>
                                             </div>
                                         )}
                                         {pick.upsidePotential && pick.upsidePotential > 0 && (
