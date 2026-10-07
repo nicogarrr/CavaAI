@@ -150,3 +150,24 @@ async def test_empty_cached_translation_is_recomputed(db):
     db.commit()
     assert display_translation(row) is None
     assert (await translate_headline(db,row.id,provider=Provider()))["status"]=="translated"
+
+@sync_test
+@pytest.mark.parametrize(("original", "translated"), [
+    ("Η εταιρεία FCF -12 USD 2026", "La empresa FCF +12 USD 2026"),
+    ("Η εταιρεία FCF -12 USD 2026", "La empresa FCF 12 USD 2026"),
+    ("Η εταιρεία crecimiento 12% 2026", "La empresa crecimiento 12 2026"),
+    ("Η εταιρεία FCF 12 USD 2026", "La empresa FCF 12 EUR 2026"),
+    ("Η εταιρεία FCF 12 million USD 2026", "La empresa FCF 12 billion USD 2026"),
+    ("Η εταιρεία FCF 12 million USD 2026", "La empresa FCF 12 million EUR 2026"),
+    ("Η εταιρεία FCF (12) USD 2026", "La empresa FCF 12 USD 2026"),
+])
+async def test_translation_rejects_changed_financial_dimensions(db, original, translated):
+    row=event(db,original)
+    assert (await translate_headline(db,row.id,provider=Provider(translated)))["status"]=="unavailable"
+    assert display_translation(row) is None
+
+@sync_test
+async def test_translation_preserves_valid_signed_currency_percentage(db):
+    row=event(db,"Η εταιρεία FCF -12 USD crecimiento 12% 2026")
+    p=Provider("La empresa FCF -12 USD crecimiento 12% 2026")
+    assert (await translate_headline(db,row.id,provider=p))["status"]=="translated"

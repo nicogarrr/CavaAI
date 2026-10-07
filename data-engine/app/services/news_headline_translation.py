@@ -15,12 +15,33 @@ from app.services.budget import BudgetController
 from app.services.asts_llm_quota import QuotaNamespace, reserve_quota
 from app.core.config import get_settings
 
-VERSION = "headline-es-v1"
+VERSION = "headline-es-v2"
 QUOTA = QuotaNamespace("headline-translation", "minute_limit", "day_limit", "Tenant context required")
 NON_LATIN = re.compile(r"[\u0370-\u03ff\u0400-\u052f\u0600-\u06ff\u0900-\u097f\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]")
 _slots = asyncio.Semaphore(2)
 _inflight: set[tuple[int, int]] = set()
 
+
+
+def numeric_signature(text: str) -> list[tuple[str, str, str]]:
+    # Exact numeric representation plus neighbouring dimension words. Unknown
+    # translated units fail closed; never infer a conversion or strip a sign.
+    pattern = r"(?<![\w])(?:\(\s*[-+−–—]?\d+(?:[.,]\d+)*\s*\)|[-+−–—]?\d+(?:[.,]\d+)*)(?:\s*[%％]|[-−–—](?!\w))?"
+    result = []
+    for match in re.finditer(pattern, text):
+        token = re.sub(r"\s+", "", match.group())
+        # Plain four-digit calendar years carry no amount dimension.
+        if re.fullmatch(r"(?:19|20)\d{2}", token):
+            result.append((token, "", ""))
+            continue
+        before = re.search(r"([\w$€£¥₹%]+)\s*$", text[:match.start()])
+        after = re.match(r"\s*([\w$€£¥₹%]+)", text[match.end():])
+        result.append((token, before.group(1).casefold() if before else "",
+                       after.group(1).casefold() if after else ""))
+    if result:
+        dimensions = re.findall(r"(?i)\b(?:USD|EUR|GBP|JPY|CNY|INR|CAD|AUD|CHF|million|billion|trillion|thousand|millón|millones|mil|billón|billones|dollars?|euros?|percent|porcentaje|bps|basis points)\b|[$€£¥₹%％]", text)
+        result.append(("dimensions", "|".join(item.casefold() for item in dimensions), ""))
+    return result
 
 def original_headline(event: NewsEvent) -> str:
     metadata = event.metadata_ or {}
@@ -118,7 +139,7 @@ async def translate_headline(db, event_id: int, *, provider=None) -> dict:
                     candidate = payload.get("text") if isinstance(payload, dict) else None
                     if (isinstance(candidate, str) and 3 <= len(candidate.strip()) <= 500
                             and candidate.strip() != original and not NON_LATIN.search(candidate)
-                            and re.findall(r"\d+(?:[.,]\d+)*", original) == re.findall(r"\d+(?:[.,]\d+)*", candidate)
+                            and numeric_signature(original) == numeric_signature(candidate)
                             and not response.degraded and not response.warnings):
                         translated = candidate.strip()
             except Exception:
