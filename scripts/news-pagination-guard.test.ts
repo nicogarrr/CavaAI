@@ -11,7 +11,7 @@ test('el flujo de noticias pagina dentro de la pagina, sin scroll infinito', () 
   assert.doesNotMatch(flow, /IntersectionObserver/);
   assert.doesNotMatch(flow, /Cargar más/);
   assert.doesNotMatch(actions, /loadMoreResearchNews/);
-  assert.match(flow, /aria-label="Paginación"/);
+  assert.match(flow, /label="Paginación"/);
   assert.match(flow, /rel="prev"/);
   assert.match(flow, /rel="next"/);
   assert.match(flow, /'pagina'/);
@@ -29,4 +29,10 @@ test('el carril cambia de pagina conservando lane y la API acota limit/offset en
   assert.match(route, /Annotated\[int, Query\(ge=1, le=100\)\] = 100/);
   assert.match(route, /offset: Annotated\[int, Query\(ge=0\)\] = 0/);
   assert.match(route, /lane: Literal\["empresa", "macro"\]/);
+});
+
+test('el móvil alcanza la siguiente página sin bajar treinta tarjetas',()=>{
+ assert.match(readFileSync('lib/news-paging.ts','utf8'),/NEWS_PAGE_SIZE = 10/);
+ assert.ok(flow.indexOf('<NewsPager label="Paginación"')<flow.indexOf('Filtrar por carril'));
+ assert.match(flow,/label="Paginación inferior"/);
 });

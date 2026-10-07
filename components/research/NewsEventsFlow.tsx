@@ -25,6 +25,24 @@ function newsPageHref(lane: NewsLane, page: number): string {
   return text ? `/research/news?${text}` : '/research/news';
 }
 
+function NewsPager({label,lane,page,hasMore}:{label:string;lane:NewsLane;page:number;hasMore:boolean}){
+ return (
+        <nav aria-label={label} className="mt-4 flex items-center justify-between gap-4">
+          {page > 1 ? (
+            <Link className={PAGER_LINK} href={newsPageHref(lane, page - 1)} rel="prev">Anterior</Link>
+          ) : (
+            <span aria-disabled="true" className={PAGER_OFF}>Anterior</span>
+          )}
+          <span className="text-sm text-gray-500">Página {page}</span>
+          {hasMore ? (
+            <Link className={PAGER_LINK} href={newsPageHref(lane, page + 1)} rel="next">Siguiente</Link>
+          ) : (
+            <span aria-disabled="true" className={PAGER_OFF}>Siguiente</span>
+          )}
+        </nav>
+ );
+}
+
 /**
  * Flujo de eventos paginado dentro de la página (sin scroll infinito): el
  * servidor entrega la página `?pagina=N` de NEWS_PAGE_SIZE eventos y los
@@ -54,6 +72,7 @@ export function NewsEventsFlow({
           <AlertTriangle aria-hidden="true" className="h-5 w-5 text-teal-300" />
           <h2 className="text-lg font-semibold text-gray-100">Flujo de eventos</h2>
         </div>
+        <NewsPager label="Paginación" lane={lane} page={page} hasMore={hasMore} />
         <nav aria-label="Filtrar por carril" className="mb-4 flex flex-wrap items-center gap-2 text-xs">
           {CARRILES.map((option) => {
             const active = lane === option.key;
@@ -145,10 +164,10 @@ export function NewsEventsFlow({
             <thead className="text-xs uppercase text-gray-500">
               <tr>
                 <th className="border-b border-gray-800 py-2" scope="col">Ticker</th>
-                <th className="border-b border-gray-800 py-2" scope="col">Fecha</th>
-                <th className="border-b border-gray-800 py-2" scope="col">Titular</th>
-                <th className="border-b border-gray-800 py-2 text-center" scope="col">Materialidad</th>
-                <th className="border-b border-gray-800 py-2" scope="col">Estado y detalle</th>
+                <th className="border-b border-gray-800 px-3 py-2" scope="col">Fecha</th>
+                <th className="border-b border-gray-800 px-3 py-2" scope="col">Titular</th>
+                <th className="border-b border-gray-800 px-3 py-2 text-center" scope="col">Materialidad</th>
+                <th className="border-b border-gray-800 px-3 py-2" scope="col">Estado y detalle</th>
               </tr>
             </thead>
             <tbody>
@@ -188,7 +207,7 @@ export function NewsEventsFlow({
                         </div>
                       ) : null}
                     </th>
-                    <td className="py-3 text-gray-400">
+                    <td className="min-w-[150px] px-3 py-3 text-gray-400">
                       <div>{event.date.split('T')[0]}</div>
                       {event.date_source === 'ingested_at_fallback' ? (
                         <div className="mt-1 text-xs text-gray-500">fecha de ingesta · la fuente no da fecha</div>
@@ -197,7 +216,7 @@ export function NewsEventsFlow({
                         <div className="mt-1 text-xs text-gray-500" title="Fecha de primera detección en GDELT, no de publicación">vía GDELT</div>
                       ) : null}
                     </td>
-                    <td className="max-w-[360px] py-3 text-gray-300">
+                    <td className="max-w-[360px] px-3 py-3 text-gray-300">
                       <div className="break-words">
                         {event.url ? (
                           <a className="hover:text-teal-200" href={event.url} rel="noreferrer" target="_blank">
@@ -243,19 +262,7 @@ export function NewsEventsFlow({
             </tbody>
           </table>
         </div>
-        <nav aria-label="Paginación" className="mt-4 flex items-center justify-between gap-4">
-          {page > 1 ? (
-            <Link className={PAGER_LINK} href={newsPageHref(lane, page - 1)} rel="prev">Anterior</Link>
-          ) : (
-            <span aria-disabled="true" className={PAGER_OFF}>Anterior</span>
-          )}
-          <span className="text-sm text-gray-500">Página {page}</span>
-          {hasMore ? (
-            <Link className={PAGER_LINK} href={newsPageHref(lane, page + 1)} rel="next">Siguiente</Link>
-          ) : (
-            <span aria-disabled="true" className={PAGER_OFF}>Siguiente</span>
-          )}
-        </nav>
+        <NewsPager label="Paginación inferior" lane={lane} page={page} hasMore={hasMore} />
       </section>
   );
 }
