@@ -97,6 +97,7 @@ SECTION_SOURCE_TYPES: dict[str, set[str]] = {
         "claim_evidence",
         "thesis_version",
         "rag_chunk",
+        "knowledge_chunk",
         "memory_item",
         "memory_writeback",
     },
