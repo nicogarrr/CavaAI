@@ -93,14 +93,52 @@ def _tokens(text: str) -> set[str]:
     return {token for token in re.findall(r"[a-z0-9]+", normalized) if len(token) >= 3 and token not in _STOP}
 
 
+# Preguntas en espanol contra filings en ingles: sin esto "guia" nunca coincide con
+# "guidance" y la respuesta cae a "Sin datos citables" aunque haya fuentes. Solo
+# amplia COMO se puede escribir un termino; el match sigue siendo obligatorio y
+# no se cita nada que no contenga una de las formas.
+_ES_EN: dict[str, frozenset[str]] = {
+    "guia": frozenset({"guidance", "outlook"}),
+    "guias": frozenset({"guidance", "outlook"}),
+    "prevision": frozenset({"guidance", "outlook", "forecast"}),
+    "perspectivas": frozenset({"outlook"}),
+    "ingresos": frozenset({"revenue", "revenues"}),
+    "ventas": frozenset({"sales", "revenue"}),
+    "beneficio": frozenset({"earnings", "income", "profit"}),
+    "beneficios": frozenset({"earnings", "income", "profit"}),
+    "ganancias": frozenset({"earnings", "income", "profit"}),
+    "resultados": frozenset({"results", "earnings"}),
+    "perdida": frozenset({"loss"}),
+    "perdidas": frozenset({"loss", "losses"}),
+    "deuda": frozenset({"debt"}),
+    "caja": frozenset({"cash"}),
+    "efectivo": frozenset({"cash"}),
+    "margen": frozenset({"margin"}),
+    "margenes": frozenset({"margin", "margins"}),
+    "lanzamiento": frozenset({"launch"}),
+    "lanzamientos": frozenset({"launch", "launches"}),
+    "satelite": frozenset({"satellite"}),
+    "satelites": frozenset({"satellite", "satellites"}),
+    "riesgo": frozenset({"risk"}),
+    "riesgos": frozenset({"risk", "risks"}),
+    "dilucion": frozenset({"dilution"}),
+    "acciones": frozenset({"shares", "stock"}),
+    "dividendo": frozenset({"dividend"}),
+    "dividendos": frozenset({"dividend", "dividends"}),
+    "licencia": frozenset({"license", "licence"}),
+    "espectro": frozenset({"spectrum"}),
+}
+
+
 def _rank(citations: list[dict], question: str, ticker: str) -> list[dict]:
     terms = _tokens(question) - _tokens(ticker)
     if not terms:
         return []
+    groups = [frozenset({term}) | _ES_EN.get(term, frozenset()) for term in terms]
     ranked = []
     for citation in citations:
         haystack = _tokens(f"{citation.get('source') or ''} {citation.get('excerpt') or ''}") - _tokens(ticker)
-        score = len(terms & haystack)
+        score = sum(1 for group in groups if group & haystack)
         if score:
             ranked.append((score, citation))
     ranked.sort(key=lambda pair: (-pair[0], pair[1]["id"]))
