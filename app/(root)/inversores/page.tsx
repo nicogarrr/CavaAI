@@ -46,6 +46,9 @@ export default async function InvestorsPage({ searchParams }: PageProps) {
                     <Link className="text-sm text-lime-300 hover:underline" href="/inversores/carteras">
                         Ver carteras
                     </Link>
+                    <Link className="text-sm text-lime-300 hover:underline" href="/inversores/cartas">
+                        Cartas
+                    </Link>
                     <Link className="text-sm text-lime-300 hover:underline" href="/inversores/mas-compradas">
                         Más compradas
                     </Link>
