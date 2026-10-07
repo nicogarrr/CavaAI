@@ -95,7 +95,8 @@ void test('la página usa el helper y declara el contador honesto de lo visible'
     assert.match(page, /Mostrando \$\{formatNumber\(slice\.from\)\}-\$\{formatNumber\(slice\.to\)\} de \$\{formatNumber\(slice\.total\)\} coincidencias para «\$\{query\}»/, 'bajo filtro también se declara el rango visible');
     assert.match(page, /coincidencias para «\$\{query\}» \(de \$\{formatNumber\(ordered\.length\)\} empresas en el registro\)/, 'contador del filtro contra el total real');
     assert.match(page, /`0 coincidencias para «\$\{query\}»/, 'filtro sin coincidencias no pinta un rango 0-0');
-    assert.match(page, /description=\{[\s\S]*?ordered\.length\s*\?/, 'el texto de registro vacío depende del registro, no del filtro');
+    assert.match(page, /\{ordered\.length\s*\?/, 'el estado vacío depende del registro, no del filtro');
+    assert.match(page, /Todavía no hay ninguna empresa con research/, 'el estado sin empresas se conserva');
     assert.match(page, /Página \{formatNumber\(slice\.page\)\} de \{formatNumber\(slice\.pages\)\}/, 'posición de página declarada');
 });
 

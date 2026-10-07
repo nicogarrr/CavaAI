@@ -249,17 +249,11 @@ export default async function ResearchPage({
         <main id="content" tabIndex={-1} className="mx-auto flex max-w-7xl flex-col gap-6">
             <PageHeader
                 actions={<WorkProductButton />}
-                description="Todas las empresas con research en CavaAI, con la cobertura de su research, el rating de la última tesis y cuándo se generó. Abre una ficha para ver la tesis, los financieros, el modelo y la evidencia."
                 kicker="Research OS"
                 title="Índice de research"
             />
 
             <Panel
-                description={
-                    ordered.length
-                        ? 'Cada ficha agrupa su análisis en seis etapas: resumen, tesis, financieros, modelo, evidencia y seguimiento.'
-                        : 'El registro se crea al generar el primer análisis de una empresa.'
-                }
                 title="Empresas con research"
             >
                 {ordered.length ? (
@@ -299,7 +293,7 @@ export default async function ResearchPage({
                                 : `Mostrando ${formatNumber(slice.from)}-${formatNumber(slice.to)} de ${formatNumber(slice.total)} empresas`}
                         </p>
                         {rows.length ? (
-                            <ul className="grid gap-3 sm:grid-cols-2">
+                            <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                 {rows.map((row) => (
                                     <CompanyCard key={row.company.ticker} row={row} />
                                 ))}
