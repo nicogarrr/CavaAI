@@ -11,7 +11,7 @@ from typing import Any
 import httpx
 
 from app.llm.contracts import LLMRequest, LLMResponse, ResponseFormat
-from app.llm.errors import LLMError, ProviderHTTPError, ProviderResponseError
+from app.llm.errors import LLMError, ProviderHTTPError, ProviderResponseError, ProviderTransportError
 from app.llm.json import parse_json_response
 from app.llm.routing import TaskModelRouter
 
@@ -123,9 +123,16 @@ class LLMProvider(ABC):
         for attempt in range(self._max_retries + 1):
             try:
                 response = await self._send(url, headers=headers, payload=payload)
-            except httpx.HTTPError:
+            except httpx.HTTPError as exc:
                 if attempt >= self._max_retries:
-                    raise LLMError(f"{self.name} request failed") from None
+                    # Persist only a fixed category, never the exception message,
+                    # request URL, headers or body. Jobs expose this text to users.
+                    categories = ((httpx.ReadTimeout, "read_timeout"), (httpx.ConnectTimeout, "connect_timeout"),
+                                  (httpx.WriteTimeout, "write_timeout"), (httpx.PoolTimeout, "pool_timeout"),
+                                  (httpx.TimeoutException, "timeout"), (httpx.ConnectError, "connect_error"),
+                                  (httpx.ProtocolError, "protocol_error"))
+                    reason = next((label for kind, label in categories if isinstance(exc, kind)), "transport_error")
+                    raise ProviderTransportError(self.name, reason, attempt + 1) from None
                 await asyncio.sleep(0.25 * (2**attempt))
                 continue
 
