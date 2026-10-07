@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import { Briefcase, Gauge } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -232,11 +233,23 @@ function alertKey(alert: DataRecord): string {
 }
 
 export default function RiskDashboardView({ initialDashboard }: RiskDashboardViewProps) {
-    const positions = extractPositions(initialDashboard);
-    const alerts = extractAlerts(initialDashboard);
+    const [dashboard, setDashboard] = useState(initialDashboard);
+    useEffect(() => {
+        setDashboard(initialDashboard);
+    }, [initialDashboard]);
+
+    const refreshDashboard = async () => {
+        // Una única respuesta actualiza resumen, alertas, posiciones y divisa.
+        // Si falla, no sustituimos el snapshot anterior por datos vacíos.
+        const next = await getRiskDashboard();
+        setDashboard(next);
+        return humanizeRiskDashboard(headlineRecord(next));
+    };
+    const positions = extractPositions(dashboard);
+    const alerts = extractAlerts(dashboard);
     // F43: misma regla que en el resumen - la divisa base viene del dashboard.
-    const baseCurrency = initialDashboard && typeof initialDashboard.base_currency === 'string' && initialDashboard.base_currency
-        ? initialDashboard.base_currency
+    const baseCurrency = dashboard && typeof dashboard.base_currency === 'string' && dashboard.base_currency
+        ? dashboard.base_currency
         : 'EUR';
 
     return (
@@ -245,8 +258,8 @@ export default function RiskDashboardView({ initialDashboard }: RiskDashboardVie
                 title="Exposiciones de cartera"
                 description="Estructura de la cartera: pesos, concentración (top 1 y top 5) y exposición por sector y factor. La volatilidad, el drawdown y el VaR de la cartera están en Inteligencia de cartera."
                 icon={<Gauge className="h-5 w-5 text-teal-400" aria-hidden="true" />}
-                record={humanizeRiskDashboard(headlineRecord(initialDashboard))}
-                fetchRecord={async () => humanizeRiskDashboard(headlineRecord(await getRiskDashboard()))}
+                record={humanizeRiskDashboard(headlineRecord(dashboard))}
+                fetchRecord={refreshDashboard}
                 maxKeys={32}
                 hiddenKeys={['trace']}
                 emptyMessage="No hay métricas de riesgo disponibles. Comprueba que tu cartera tiene posiciones."
