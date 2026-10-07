@@ -1,8 +1,9 @@
+import { modelConditionState } from '@/lib/research/coverage-state';
 import { formatCompact, formatNumber, formatPercent, NA } from '@/lib/format';
 import { metricLabel } from '@/lib/research/metric-labels';
 import { frameworkLabel, frameworkTerm } from '@/lib/research/framework-terms';
 import { expectationMetricLabel, reviewStatusLabel } from '@/lib/research/expectation-labels';
-import { BarChart3, BrainCircuit, CheckCircle2, GitBranch } from 'lucide-react';
+import { BarChart3, BrainCircuit, CircleHelp, GitBranch } from 'lucide-react';
 import { GlossaryTerm } from '@/components/GlossaryTerm';
 import { MutationForm } from '@/components/forms/MutationForm';
 import ScenarioAssumptions from '@/components/research/ScenarioAssumptions';
@@ -96,6 +97,7 @@ const MODEL_STATUS_LABELS: Record<string, string> = {
   // Catálogo cerrado de long_term_model_service: ok, insufficient_data,
   // missing_mandatory_drivers, preview_only.
   ok: 'completo',
+  blocked: 'bloqueado',
   insufficient_data: 'datos insuficientes',
   missing_mandatory_drivers: 'faltan drivers obligatorios',
   preview_only: 'solo vista previa',
@@ -298,8 +300,8 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
           <ul className="space-y-2 text-sm">
             {model.what_must_be_true.slice(0, 6).map((item) => (
               <li key={item.id} className="flex gap-2 text-gray-300">
-                <CheckCircle2 aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-teal-300" />
-                <span>{conditionInSpanish(item, model.market_opportunity?.constraints?.binding_constraint, waccHasSource(model.assumptions.wacc))}</span>
+                <CircleHelp aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+                <span><span className="block text-xs text-amber-300">{modelConditionState(item, waccHasSource(model.assumptions.wacc))}</span>{conditionInSpanish(item, model.market_opportunity?.constraints?.binding_constraint, waccHasSource(model.assumptions.wacc))}</span>
               </li>
             ))}
           </ul>

@@ -1,3 +1,4 @@
+import { researchValuability } from '@/lib/research/coverage-state';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { getProfile } from '@/lib/actions/finnhub.actions';
@@ -824,15 +825,18 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     content = (
       <div className="space-y-6">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Stat label="Salud del research" value={`${snapshot.research_health.score}/100`} />
+          <Stat label="Cobertura" value={`${snapshot.research_health.score}/100`} />
           <Stat label="Hechos" value={snapshot.counts.facts} />
           <Stat label="Afirmaciones" value={snapshot.counts.claims} />
           <Stat label="Documentos" value={snapshot.counts.documents} />
         </div>
         <p className="text-xs leading-5 text-gray-500">
-          Salud = 20 por capa (documentos, hechos, tesis, modelo) +10 métricas
-          +10 afirmaciones. Sin tesis la nota se topa en 59; sin afirmaciones,
-          en 69. Una nota alta sin tesis ni afirmaciones sería falsa seguridad.
+          Cobertura = 20 por capa (documentos, hechos, tesis, modelo) +10 métricas
+          +10 afirmaciones. Sin tesis se limita a 59; sin afirmaciones,
+          a 69. Mide presencia de capas, no fiabilidad ni publicabilidad.
+        </p>
+        <p role="status" className="rounded-lg border border-amber-900/70 bg-amber-950/20 p-3 text-sm text-amber-200">
+          {researchValuability(snapshot)}
         </p>
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
           <Panel title="Última tesis">
