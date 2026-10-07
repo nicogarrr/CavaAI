@@ -22,7 +22,7 @@ test('cada foto tiene autor, licencia libre, fuente de Commons y archivo local',
 test('el avatar usa la foto si existe y las iniciales si no', () => {
     const avatar = readFileSync('app/(root)/inversores/_components/Avatar.tsx', 'utf8');
     assert.match(avatar, /INVESTOR_PHOTOS\[slug\]/);
-    assert.match(avatar, /charAt\(0\)/);
+    assert.match(avatar, /NameAvatar/);
 });
 
 test('las tres pantallas pasan el slug al avatar', () => {
@@ -42,7 +42,7 @@ test('la ficha muestra la atribucion de la foto', () => {
 });
 
 test('lista y carteras atribuyen las fotos (title en la miniatura y nota al pie)', () => {
-    assert.match(readFileSync('app/(root)/inversores/_components/Avatar.tsx', 'utf8'), /title=\{`Foto: \$\{photo\.author\}/);
+    assert.match(readFileSync('app/(root)/inversores/_components/Avatar.tsx', 'utf8'), /photoTitle=\{photo \? `Foto: \$\{photo\.author\}/);
     for (const file of ['app/(root)/inversores/page.tsx', 'app/(root)/inversores/carteras/page.tsx']) {
         assert.match(readFileSync(file, 'utf8'), /Fotos con licencia libre de Wikimedia Commons/, file);
     }
