@@ -18,6 +18,7 @@ export interface ProPicksFilters {
 
 interface Props {
   filters: ProPicksFilters;
+  disabled?: boolean;
   /** Categorías neutras en TODOS los picks del run (F184): ordenar por
       ellas es ordenar por una constante — la opción se deshabilita. */
   neutralSorts?: ReadonlyArray<'momentum' | 'value'>;
@@ -43,7 +44,7 @@ const sectors = [
   'Communication Services'
 ];
 
-export default function EnhancedProPicksFilters({ filters, neutralSorts = [], onFiltersChange, onApply }: Props) {
+export default function EnhancedProPicksFilters({ filters, disabled = false, neutralSorts = [], onFiltersChange, onApply }: Props) {
   const updateFilter = <K extends keyof ProPicksFilters>(key: K, value: ProPicksFilters[K]) => {
     onFiltersChange({ ...filters, [key]: value });
   };
@@ -60,107 +61,111 @@ export default function EnhancedProPicksFilters({ filters, neutralSorts = [], on
 
   return (
     <Card className="w-full min-w-0 border-gray-700 bg-gray-800/50">
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Filter className="h-5 w-5 text-teal-400" />
-            <CardTitle className="text-lg">Filtros Avanzados</CardTitle>
+      <fieldset disabled={disabled} className="contents">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Filter className="h-5 w-5 text-teal-400" />
+              <CardTitle className="text-lg">Filtros Avanzados</CardTitle>
+            </div>
+            <Button variant="ghost" size="sm" className="min-h-[44px]" onClick={resetFilters}>
+              <X className="h-4 w-4 mr-1" />
+              Limpiar
+            </Button>
           </div>
-          <Button variant="ghost" size="sm" className="min-h-[44px]" onClick={resetFilters}>
-            <X className="h-4 w-4 mr-1" />
-            Limpiar
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {/* Cantidad de Resultados */}
-        <div className="space-y-3">
-          <Label className="text-sm font-medium text-gray-200">
-            Cantidad de Acciones: {filters.limit}
-          </Label>
-          <Slider
-            value={[filters.limit]}
-            onValueChange={(value) => updateFilter('limit', value[0])}
-            min={5}
-            max={50}
-            step={5}
-            className="py-3"
-          />
-          <div className="flex justify-between text-xs text-gray-500">
-            <span>5</span>
-            <span>50</span>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Cantidad de Resultados */}
+          <div className="space-y-3">
+            <Label className="text-sm font-medium text-gray-200">
+              Cantidad de Acciones: {filters.limit}
+            </Label>
+            <Slider
+              disabled={disabled}
+              value={[filters.limit]}
+              onValueChange={(value) => updateFilter('limit', value[0])}
+              min={5}
+              max={50}
+              step={5}
+              className="py-3"
+            />
+            <div className="flex justify-between text-xs text-gray-500">
+              <span>5</span>
+              <span>50</span>
+            </div>
           </div>
-        </div>
 
-        {/* Score Mínimo */}
-        <div className="space-y-3">
-          <Label className="text-sm font-medium text-gray-200">
-            Score Mínimo: {filters.minScore}
-          </Label>
-          <Slider
-            value={[filters.minScore]}
-            onValueChange={(value) => updateFilter('minScore', value[0])}
-            min={50}
-            max={95}
-            step={5}
-            className="py-3"
-          />
-          <div className="flex justify-between text-xs text-gray-500">
-            <span>50 (Aceptable)</span>
-            <span>95 (Excelente)</span>
+          {/* Score Mínimo */}
+          <div className="space-y-3">
+            <Label className="text-sm font-medium text-gray-200">
+              Score Mínimo: {filters.minScore}
+            </Label>
+            <Slider
+              disabled={disabled}
+              value={[filters.minScore]}
+              onValueChange={(value) => updateFilter('minScore', value[0])}
+              min={50}
+              max={95}
+              step={5}
+              className="py-3"
+            />
+            <div className="flex justify-between text-xs text-gray-500">
+              <span>50 (Aceptable)</span>
+              <span>95 (Excelente)</span>
+            </div>
           </div>
-        </div>
 
-        {/* Sector */}
-        <div className="space-y-3">
-          <Label className="text-sm font-medium text-gray-200">Sector</Label>
-          <Select 
-            value={filters.sector} 
-            onValueChange={(value) => updateFilter('sector', value)}
-          >
-            <SelectTrigger className="h-11 w-full border-gray-700 bg-gray-900 text-base md:text-sm">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {sectors.map(sector => (
-                <SelectItem key={sector} value={sector}>
-                  {sector === 'all' ? 'Todos los Sectores' : etiquetaSector(sector)}
+          {/* Sector */}
+          <div className="space-y-3">
+            <Label className="text-sm font-medium text-gray-200">Sector</Label>
+            <Select disabled={disabled}
+              value={filters.sector}
+              onValueChange={(value) => updateFilter('sector', value)}
+            >
+              <SelectTrigger className="h-11 w-full border-gray-700 bg-gray-900 text-base md:text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {sectors.map(sector => (
+                  <SelectItem key={sector} value={sector}>
+                    {sector === 'all' ? 'Todos los Sectores' : etiquetaSector(sector)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Ordenar por */}
+          <div className="space-y-3">
+            <Label className="text-sm font-medium text-gray-200">Ordenar por</Label>
+            <Select disabled={disabled}
+              value={filters.sortBy}
+              onValueChange={(value: ProPicksFilters['sortBy']) => updateFilter('sortBy', value)}
+            >
+              <SelectTrigger className="h-11 w-full border-gray-700 bg-gray-900 text-base md:text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="score">Score General</SelectItem>
+                <SelectItem disabled={neutralSorts.includes('momentum')} value="momentum">
+                  Momentum{neutralSorts.includes('momentum') ? ' (n/d en estos resultados)' : ''}
                 </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+                <SelectItem disabled={neutralSorts.includes('value')} value="value">
+                  Valor{neutralSorts.includes('value') ? ' (n/d en estos resultados)' : ''}
+                </SelectItem>
+                <SelectItem value="growth">Crecimiento</SelectItem>
+                <SelectItem value="profitability">Rentabilidad</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
-        {/* Ordenar por */}
-        <div className="space-y-3">
-          <Label className="text-sm font-medium text-gray-200">Ordenar por</Label>
-          <Select 
-            value={filters.sortBy} 
-            onValueChange={(value: ProPicksFilters['sortBy']) => updateFilter('sortBy', value)}
-          >
-            <SelectTrigger className="h-11 w-full border-gray-700 bg-gray-900 text-base md:text-sm">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="score">Score General</SelectItem>
-              <SelectItem disabled={neutralSorts.includes('momentum')} value="momentum">
-                Momentum{neutralSorts.includes('momentum') ? ' (n/d en estos resultados)' : ''}
-              </SelectItem>
-              <SelectItem disabled={neutralSorts.includes('value')} value="value">
-                Valor{neutralSorts.includes('value') ? ' (n/d en estos resultados)' : ''}
-              </SelectItem>
-              <SelectItem value="growth">Crecimiento</SelectItem>
-              <SelectItem value="profitability">Rentabilidad</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Botón Aplicar */}
-        <Button onClick={onApply} className="h-11 w-full bg-teal-600 hover:bg-teal-700">
-          <Filter className="h-4 w-4 mr-2" />
-          Aplicar Filtros
-        </Button>
-      </CardContent>
+          {/* Botón Aplicar */}
+          <Button onClick={onApply} className="h-11 w-full bg-teal-600 hover:bg-teal-700">
+            <Filter className="h-4 w-4 mr-2" />
+            Aplicar Filtros
+          </Button>
+        </CardContent>
+      </fieldset>
     </Card>
   );
 }
