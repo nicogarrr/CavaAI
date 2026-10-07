@@ -73,11 +73,12 @@ class LibraryQuestion(BaseModel):
 @router.post("/chat")
 async def chat_library(payload: LibraryQuestion, db: Session = Depends(get_db)) -> dict:
     # La recuperación SQL/vector va en un hilo. La sesión solo se usa allí hasta terminar.
-    import asyncio
-
+    from app.services.async_bridge import run_from_any_context
     from app.services.knowledge_chat import ask_library
 
-    return await run_in_threadpool(lambda: asyncio.run(ask_library(db, **payload.model_dump())))
+    return await run_in_threadpool(
+        lambda: run_from_any_context(ask_library(db, **payload.model_dump()))
+    )
 
 
 class CollectionCreate(BaseModel):
