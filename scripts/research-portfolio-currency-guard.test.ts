@@ -13,13 +13,12 @@ const source = (rel: string) => readFileSync(join(here, '..', rel), 'utf8');
 void test('los importes del contexto de cartera usan la moneda base del backend', () => {
   const page = source('app/(root)/research/page.tsx');
   assert.ok(!page.includes("formatMoney(value, 'USD'"), 'moneda fija USD prohibida');
-  assert.ok(page.includes('portfolio.base_currency'), 'usa la moneda base del summary');
+  assert.ok(!page.includes('portfolio.total_value'), 'el índice no duplica las cifras de cartera');
 });
 
 void test('sin moneda base no se inventa símbolo: NA honesto', () => {
   const page = source('app/(root)/research/page.tsx');
-  const money = page.slice(page.indexOf('function money('), page.indexOf('}', page.indexOf('function money(')) + 1);
-  assert.ok(money.includes(': NA'), 'sin moneda base -> NA');
+  assert.ok(!page.includes('Contexto de cartera'), 'contexto retirado del índice');
   const type = source('lib/actions/research.actions.ts');
   assert.ok(type.includes('base_currency?: string'), 'el tipo declara base_currency');
 });

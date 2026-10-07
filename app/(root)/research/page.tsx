@@ -1,7 +1,7 @@
 import { researchValuability } from '@/lib/research/coverage-state';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { ArrowRight, BookOpen, FileSearch, Library, Newspaper, Workflow } from 'lucide-react';
+import { FileSearch } from 'lucide-react';
 
 import { getResearchCompanySnapshots, getResearchDashboard } from '@/lib/actions/research.actions';
 import { getPortfolioSummary } from '@/lib/actions/portfolio.actions';
@@ -10,12 +10,11 @@ import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 import BackendOffline from '@/components/system/BackendOffline';
 import { isBackendUnavailableError } from '@/lib/backend-offline';
 import WorkProductButton from '@/components/work-products/WorkProductButton';
-import { formatDate, formatMoney, formatNumber, formatPercent, NA } from '@/lib/format';
+import { formatDate, formatNumber } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
 import { EmptyLink, EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
 import { Panel } from '@/components/ui/panel';
-import { Stat } from '@/components/ui/stat';
 import { openReviewsLabel, sectorIndustryLine } from '@/lib/labels';
 import { sortCompaniesByRelevance } from '@/lib/research/relevance';
 import { fetchInBatches } from '@/lib/research/snapshots';
@@ -81,38 +80,6 @@ const HEALTH_TONES: Record<string, string> = {
     empty: 'text-gray-400',
 };
 
-/**
- * Las cuatro subrutas del grupo Research. Se enlazan desde el propio índice
- * para no obligar a entrar al menú lateral (o a saber la URL) para llegar a
- * la herramienta que se usa a diario.
- */
-const TOOLS = [
-    {
-        href: '/research/assistant',
-        label: 'Asistente de investigación',
-        icon: BookOpen,
-        description: 'Explora preguntas con fuentes y guía el análisis, sin modificar tickets.',
-    },
-    {
-        href: '/research/news',
-        label: 'Noticias',
-        icon: Newspaper,
-        description: 'Eventos clasificados por materialidad e impacto sobre tus posiciones.',
-    },
-    {
-        href: '/research/sources',
-        label: 'Fuentes',
-        icon: Library,
-        description: 'Documentos, transcripts y auditorías que alimentan tesis, RAG y valoraciones.',
-    },
-    {
-        href: '/research/workflows',
-        label: 'Workflows',
-        icon: Workflow,
-        description: 'Flujos de investigación del motor Python y su estado real de implementación.',
-    },
-];
-
 type Dashboard = Awaited<ReturnType<typeof getResearchDashboard>>;
 type Company = Dashboard['companies'][number];
 type CompanySnapshot = Awaited<ReturnType<typeof getResearchCompanySnapshots>>['snapshots'][string];
@@ -124,16 +91,6 @@ type CompanyRow = {
     /** true = el snapshot no se pudo leer (backend intermitente). */
     unreadable: boolean;
 };
-
-function money(value: number, currency: string | undefined) {
-    // Sin moneda base del backend, pintar un importe con símbolo inventado
-    // es peor que no pintarlo: NA honesto.
-    return currency ? formatMoney(value, currency, { maximumFractionDigits: 0 }) : NA;
-}
-
-function pct(value: number) {
-    return formatPercent(value, { fromRatio: true, digits: 1 });
-}
 
 function ratingLabel(value: string | null | undefined): string {
     if (!value) return 'Sin rating';
@@ -208,7 +165,7 @@ export default async function ResearchPage({
         }
         throw error;
     }
-    const { companies, portfolio, thesisTickers } = dashboard;
+    const { companies, thesisTickers } = dashboard;
 
     // Contexto del usuario para el orden por relevancia. Degradación
     // honesta: una lectura fallida degrada su bucket a «resto», nunca
@@ -394,68 +351,9 @@ export default async function ResearchPage({
                 )}
             </Panel>
 
-            {/*
-                Las cuatro cifras de cartera que se pintaban aquí eran un
-                mini-portfolio dentro de un índice de research, y las alertas de
-                concentración vivían aquí y en /risk. Se quedan como bloque
-                secundario con salida explícita a los dos sitios que las
-                explican de verdad: la cartera y las concentraciones.
-            */}
-            <Panel
-                actions={
-                    <div className="flex flex-wrap items-center gap-2">
-                        <Link
-                            className="inline-flex items-center gap-1 text-sm text-teal-300 hover:text-teal-200"
-                            href="/portfolio"
-                        >
-                            Ver la cartera <ArrowRight aria-hidden="true" className="h-4 w-4" />
-                        </Link>
-                        <Link
-                            className="inline-flex items-center gap-1 text-sm text-teal-300 hover:text-teal-200"
-                            href="/risk"
-                        >
-                            Ver concentraciones <ArrowRight aria-hidden="true" className="h-4 w-4" />
-                        </Link>
-                    </div>
-                }
-                description="Cuatro cifras para saber por dónde empezar. El detalle de posiciones está en la cartera y las concentraciones con sus alertas, en Exposiciones."
-                density="compact"
-                title="Contexto de cartera"
-            >
-                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                    <Stat label="Valor total" size="sm" value={money(portfolio.total_value, portfolio.base_currency)} />
-                    <Stat label="Renta variable" size="sm" value={money(portfolio.equity_value, portfolio.base_currency)} />
-                    <Stat label="Top 1" size="sm" tone="warn" value={pct(portfolio.top_1_weight)} />
-                    <Stat
-                        label="Alertas de concentración"
-                        size="sm"
-                        tone={portfolio.alerts.length ? 'bad' : 'good'}
-                        value={String(portfolio.alerts.length)}
-                    />
-                </div>
-            </Panel>
 
-            <Panel
-                description="Las herramientas de research. También están en el menú lateral, dentro del grupo Research."
-                title="Herramientas de research"
-            >
-                <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                    {TOOLS.map((tool) => (
-                        <li key={tool.href}>
-                            <Link
-                                className="flex h-full flex-col gap-2 rounded-xl border border-gray-700/50 bg-surface-1 p-4 transition hover:border-teal-700"
-                                href={tool.href}
-                            >
-                                <span className="flex items-center gap-2 text-sm font-semibold text-gray-100">
-                                    <tool.icon aria-hidden="true" className="h-4 w-4 text-teal-300" />
-                                    {tool.label}
-                                </span>
-                                <span className="text-xs leading-5 text-gray-500">{tool.description}</span>
-                            </Link>
-                        </li>
-                    ))}
-                </ul>
-            </Panel>
+
+
         </main>
     );
 }
