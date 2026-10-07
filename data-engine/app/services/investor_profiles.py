@@ -239,7 +239,7 @@ PUBLIC_PROFILES["trump"] = {
     "facts": [
         _fact("Acciones de Trump Media (DJT) declaradas", "114.750.000 acciones ordinarias", "Schedule 13D/A nº 3, evento del 2025-12-18", _TRUMP_13D),
         _fact("Porcentaje del capital de DJT", "41,5% sobre 276.497.911 acciones en circulación", "Schedule 13D/A nº 3, evento del 2025-12-18", _TRUMP_13D),
-        _fact("Titular de las acciones", "Donald J. Trump Revocable Trust (14-abr-2014); Trump es el único beneficiario y su hijo Donald J. Trump Jr. es el fiduciario con voto y poder de inversión", "Schedule 13D/A nº 3, evento del 2025-12-18", _TRUMP_13D),
+        _fact("Titular de las acciones", "Donald J. Trump Revocable Trust (7-abr-2014); Trump es el único beneficiario y su hijo Donald J. Trump Jr. es el fiduciario con voto y poder de inversión", "Schedule 13D/A nº 3, evento del 2025-12-18", _TRUMP_13D),
     ],
     "letters": [
         {"title": "Schedule 13D original sobre Trump Media (SEC, 1 abr 2024)", "date": "2024", "url": _TRUMP_13D_ORIG},
