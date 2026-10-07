@@ -76,8 +76,10 @@ test("los eventos de noticias muestran En cartera / En watchlist", async ({ page
   // del frontend (memoryTTL ~15s sobre watchlist/posiciones) no se entera
   // hasta expirar. toPass + reload cubre esa ventana (mismo patrón que la
   // caché de movers) sin depender de timing.
-  const costRow = page.getByRole("row", { name: new RegExp(`COST expands warehouses ${marker}`) });
-  const nflxRow = page.getByRole("row", { name: new RegExp(`NFLX raises prices ${marker}`) });
+  const mobile = (page.viewportSize()?.width ?? 1440) < 768;
+  const newsRows = mobile ? page.getByRole("list", { name: "Eventos de noticias" }).getByRole("listitem") : page.getByRole("row");
+  const costRow = newsRows.filter({ hasText: `COST expands warehouses ${marker}` });
+  const nflxRow = newsRows.filter({ hasText: `NFLX raises prices ${marker}` });
   await expect(async () => {
     await page.reload();
     await expect(costRow.getByText("En cartera", { exact: true })).toBeVisible();
@@ -86,7 +88,7 @@ test("los eventos de noticias muestran En cartera / En watchlist", async ({ page
     await expect(nflxRow.getByText("En cartera", { exact: true })).toHaveCount(0);
   }).toPass({ intervals: [5_000, 10_000, 15_000], timeout: 45_000 });
 
-  await page.screenshot({ path: "test-results/ticker-badges-news.png" });
+  await page.screenshot({ path: `test-results/ticker-badges-news-${page.viewportSize()?.width}.png` });
 
   // La cache de movers es de 45s en el servidor de frontend: si otro test
   // la calento antes de la semilla, recargamos hasta que expire.

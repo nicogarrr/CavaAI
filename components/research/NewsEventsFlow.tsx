@@ -99,6 +99,13 @@ export function NewsEventsFlow({
                       {event.ticker}
                     </Link>
                   ) : null}
+                  {event.ticker ? (
+                    <TickerContextBadges
+                      portfolioTickers={portfolioSet}
+                      ticker={event.ticker}
+                      watchlistTickers={watchlistSet}
+                    />
+                  ) : null}
                   {event.news_lane === 'macro' ? (
                     <span className="rounded-full bg-indigo-950/60 px-2 py-0.5 font-semibold text-indigo-300">
                       macro{event.macro_theme ? ` · ${etiquetaTemaMacro(event.macro_theme)}` : ''}
