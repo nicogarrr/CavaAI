@@ -25,6 +25,17 @@ for (const viewport of [{ width: 1440, height: 1080 }, { width: 390, height: 844
         await page.screenshot({ path: `test-results/technical-${viewport.width}.png`, fullPage: true });
     });
 }
+test('all reference ranges load without claiming daily points are intraday', async ({ page }) => {
+    await page.goto('/chart-preview');
+    for (const range of ['1D', '5D', '5A', 'Máx']) {
+        await page.getByRole('button', { name: range, exact: true }).click();
+        await expect(page.getByText(`Cargando rango ${range}`, { exact: true })).not.toBeVisible();
+        await expect(page.getByTestId('technical-price-canvas').locator('canvas').first()).toBeVisible();
+        await expect(page.getByRole('button', { name: range, exact: true })).toHaveAttribute('aria-pressed', 'true');
+        if (range === '1D' || range === '5D') await expect(page.getByText('Horario (UTC) · Fixture local', { exact: false })).toBeVisible();
+        if (range === 'Máx') await expect(page.getByText('Máximo disponible del proveedor', { exact: false })).toBeVisible();
+    }
+});
 test('close-only history stays honest; missing history stays empty', async ({ page }) => {
     await page.goto('/chart-preview?mode=close');
     await expect(page.getByText('Sin datos OHLC para calcular niveles.')).toBeVisible();
