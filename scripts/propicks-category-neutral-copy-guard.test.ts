@@ -67,13 +67,13 @@ describe('copy de categorías ProPicks derivado del run (no literal)', () => {
       /categoryNeutralNote\(CATEGORY_KEYS\.filter\(\(key\) => allNeutralCategory\(picks, key\)\), picks\.length\)/,
     );
     assert.match(cards, /\{neutralNote\.marker\} \{neutralNote\.text\}/);
-    // El literal viejo sobrevive solo como el límite conocido del motor (sin
-    // picks no hay nada que medir), nunca como afirmación sobre el run.
-    assert.match(cards, /~ Valoración y momentum: neutras en los picks actuales sin datos/);
+    // El bloque «Sobre ProPicks IA» se eliminó: queda solo la línea medida.
+    assert.ok(!cards.includes('Sobre ProPicks IA'));
+    assert.ok(!cards.includes('~ Valoración y momentum: neutras en los picks actuales sin datos'));
   });
 
-  it('la tarjeta sigue declarando el 50 como ausencia de dato', () => {
-    assert.match(cards, /entra neutral \(50\) en el score y no discrimina entre los picks actuales/);
-    assert.match(cards, /entran neutras \(50\)/);
+  it('la línea medida sigue declarando el 50 como ausencia de dato', () => {
+    const note = categoryNeutralNote(['value'], 3);
+    assert.ok(note && /el 50 es «sin dato», no un score/.test(note.text));
   });
 });
