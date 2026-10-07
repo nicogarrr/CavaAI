@@ -23,3 +23,11 @@ class ProviderResponseError(LLMError):
 
 class StructuredOutputError(LLMError):
     pass
+
+
+class ProviderTransportError(LLMError):
+    def __init__(self, provider: str, reason: str, attempts: int) -> None:
+        allowed = {"read_timeout", "connect_timeout", "write_timeout", "pool_timeout", "timeout", "connect_error", "protocol_error", "transport_error"}
+        self.reason = reason if reason in allowed else "transport_error"
+        self.attempts = attempts
+        super().__init__(f"{provider} transport failed: {self.reason} after {attempts} attempt(s)")
