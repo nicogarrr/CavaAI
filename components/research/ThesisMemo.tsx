@@ -1,5 +1,7 @@
 import { thesisScenarioDisplay } from '@/lib/research/listed-share-values';
 import { formatGeneratedDate, formatMoney, formatPercent, isValidCurrencyCode, marginOfSafetyDisplay, NA } from '@/lib/format';
+import { capitalizeLabel, formatProvenanceValue } from '@/lib/research/provenance-format';
+import { metricLabel } from '@/lib/research/metric-labels';
 import { GlossaryTerm } from '@/components/GlossaryTerm';
 import ScenarioAssumptions from '@/components/research/ScenarioAssumptions';
 import ThesisHumanInputForm from '@/components/research/ThesisHumanInputForm';
@@ -53,15 +55,6 @@ function isVerifiedOficial(item: ProvenanceItem): boolean {
     fuentes.length > 0 &&
     fuentes.every((f) => f.oficial && !!f.fecha && !!f.url && /^https:\/\//.test(f.url))
   );
-}
-
-function provenanceValue(value: number | string | null): string {
-  if (value === null || value === undefined) return NA;
-  const parsed = typeof value === 'string' ? Number(value) : value;
-  if (typeof parsed === 'number' && !Number.isNaN(parsed)) {
-    return Math.abs(parsed) < 1 && parsed !== 0 ? pct(parsed) : String(parsed);
-  }
-  return String(value);
 }
 
 /**
@@ -229,10 +222,10 @@ export default function ThesisMemo({
           <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400">
             Procedencia de los inputs
           </h3>
-          <div className="mt-2 space-y-1.5">
+          <div className="mt-2 divide-y divide-gray-800/70">
             {thesis.inputs_provenance.map((item) => {
               return (
-                <div key={item.key} className="flex flex-wrap items-baseline gap-x-2 text-sm">
+                <div key={item.key} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 py-2 text-sm">
                   {isVerifiedOficial(item) ? null : (
                     <span
                       className="rounded-full border border-amber-800 bg-amber-950/40 px-2 py-0.5 text-[11px] font-medium text-amber-300"
@@ -240,10 +233,10 @@ export default function ThesisMemo({
                       INFERIDO
                     </span>
                   )}
-                  <span className="font-medium text-gray-200">{item.key}</span>
-                  <span className="text-gray-400">{provenanceValue(item.value)}</span>
+                  <span className="order-1 text-gray-300">{capitalizeLabel(metricLabel(item.key))}</span>
+                  <span className="order-2 ml-auto font-medium tabular-nums text-gray-100">{formatProvenanceValue(item.key, item.value)}</span>
                   {isVerifiedOficial(item) ? (
-                    <span className="text-xs text-gray-500">
+                    <span className="order-3 basis-full text-xs text-gray-500">
                       ·{' '}
                       {(item.fuentes ?? []).map((fuente, index) => (
                         <span key={fuente.fact_id}>
@@ -265,7 +258,7 @@ export default function ThesisMemo({
                       ))}
                     </span>
                   ) : (
-                    <span className="text-xs text-amber-400/90">
+                    <span className="order-3 basis-full text-xs text-amber-400/90">
                       · INFERIDO:{' '}
                       {item.base_documentada !== true || !item.base_inferencia
                         ? 'base no documentada'
