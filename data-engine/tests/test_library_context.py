@@ -107,3 +107,23 @@ def test_failure_is_empty(db, monkeypatch):
         raise RuntimeError("unavailable")
     monkeypatch.setattr(RAGIndex, "search", unavailable)
     assert retrieve_library_context(db[0], "q") == []
+
+
+def test_library_search_filters_to_knowledge_chunks(db, monkeypatch):
+    session, _document, _chunk, _ = db
+    seen = {}
+
+    def search(self, query, **kwargs):
+        seen.update(kwargs)
+        return []
+
+    monkeypatch.setattr(RAGIndex, "search", search)
+    retrieve_library_context(session, "gestion de capital y recompra")
+    assert seen["entity_type"] == "knowledge_chunk"
+
+
+def test_query_filter_adds_entity_type_condition():
+    flt = RAGIndex()._query_filter(None, 2, "knowledge_chunk")
+    keys = {c.key: c.match.value for c in flt.must}
+    assert keys == {"tenant_id": 2, "entity_type": "knowledge_chunk"}
+    assert "entity_type" not in {c.key for c in RAGIndex()._query_filter(None, 2).must}
