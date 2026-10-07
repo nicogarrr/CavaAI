@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,6 +16,8 @@ import { createAlert, type AlertType } from '@/lib/actions/alerts.actions';
 import { toast } from 'sonner';
 import { showErrorToast } from '@/lib/toast';
 import { formatMoney, parseLocalizedNumber } from '@/lib/format';
+
+const subscribeHydration = () => () => undefined;
 
 const ALERT_TYPES: Array<{ value: AlertType; label: string; needsValue: boolean; valuePlaceholder: string }> = [
   { value: 'price_above', label: 'Precio por encima de', needsValue: true, valuePlaceholder: 'Precio objetivo' },
@@ -51,6 +53,7 @@ const CURRENCY_SYMBOL: Record<string, string> = {
  * pre-rellenado para tipos más complejos.
  */
 export default function QuickAlertButton({ ticker, currency = 'USD' }: { ticker: string; currency?: string }) {
+  const hydrated = useSyncExternalStore(subscribeHydration, () => true, () => false);
   const symbol = CURRENCY_SYMBOL[currency] ?? `${currency} `;
   const [type, setType] = useState<AlertType>('price_above');
   const [price, setPrice] = useState('');
@@ -131,7 +134,7 @@ export default function QuickAlertButton({ ticker, currency = 'USD' }: { ticker:
         />
       ) : null}
       <div className="flex w-full gap-2 sm:w-auto">
-        <Button size="sm" variant="outline" onClick={onCreate} disabled={busy} aria-busy={busy} className="min-h-[44px] flex-1 gap-1.5 px-4 text-sm sm:min-h-0 sm:h-8 sm:flex-none sm:text-xs">
+        <Button size="sm" variant="outline" onClick={onCreate} disabled={busy || !hydrated} aria-busy={busy} className="min-h-[44px] flex-1 gap-1.5 px-4 text-sm sm:min-h-0 sm:h-8 sm:flex-none sm:text-xs">
           {busy ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin sm:h-3.5 sm:w-3.5" /> : <BellPlus aria-hidden="true" className="h-4 w-4 sm:h-3.5 sm:w-3.5" />}
           + Alerta
         </Button>
