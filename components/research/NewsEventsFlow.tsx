@@ -164,10 +164,10 @@ export function NewsEventsFlow({
             <thead className="text-xs uppercase text-gray-500">
               <tr>
                 <th className="border-b border-gray-800 py-2" scope="col">Ticker</th>
-                <th className="border-b border-gray-800 py-2" scope="col">Fecha</th>
-                <th className="border-b border-gray-800 py-2" scope="col">Titular</th>
-                <th className="border-b border-gray-800 py-2 text-center" scope="col">Materialidad</th>
-                <th className="border-b border-gray-800 py-2" scope="col">Estado y detalle</th>
+                <th className="border-b border-gray-800 px-3 py-2" scope="col">Fecha</th>
+                <th className="border-b border-gray-800 px-3 py-2" scope="col">Titular</th>
+                <th className="border-b border-gray-800 px-3 py-2 text-center" scope="col">Materialidad</th>
+                <th className="border-b border-gray-800 px-3 py-2" scope="col">Estado y detalle</th>
               </tr>
             </thead>
             <tbody>
@@ -207,7 +207,7 @@ export function NewsEventsFlow({
                         </div>
                       ) : null}
                     </th>
-                    <td className="py-3 text-gray-400">
+                    <td className="min-w-[150px] px-3 py-3 text-gray-400">
                       <div>{event.date.split('T')[0]}</div>
                       {event.date_source === 'ingested_at_fallback' ? (
                         <div className="mt-1 text-xs text-gray-500">fecha de ingesta · la fuente no da fecha</div>
@@ -216,7 +216,7 @@ export function NewsEventsFlow({
                         <div className="mt-1 text-xs text-gray-500" title="Fecha de primera detección en GDELT, no de publicación">vía GDELT</div>
                       ) : null}
                     </td>
-                    <td className="max-w-[360px] py-3 text-gray-300">
+                    <td className="max-w-[360px] px-3 py-3 text-gray-300">
                       <div className="break-words">
                         {event.url ? (
                           <a className="hover:text-teal-200" href={event.url} rel="noreferrer" target="_blank">
