@@ -124,6 +124,7 @@ export function sessionDateEt(tSeconds: number): string {
 
 /** Cotizacion saneada: shape Finnhub {c,d,dp,h,l,o,pc} + frescura validada. */
 export type SanitizedQuote = {
+    source?: 'Finnhub' | 'Yahoo Finance';
     c: number; d: number; dp: number; h: number; l: number; o: number; pc: number;
     /** Timestamp (epoch s) del proveedor; null en el fallback Yahoo (sin fecha). */
     t: number | null;
@@ -143,7 +144,7 @@ export function sanitizeFinnhubQuote(data: any, nowMs: number = Date.now()): San
     const t = typeof data.t === 'number' && Number.isFinite(data.t) ? data.t : 0;
     const kind = classifyQuoteKind(t, nowMs);
     if (kind === 'stale') return null;
-    return { c: data.c, d: data.d, dp: data.dp, h: data.h, l: data.l, o: data.o, pc: data.pc, t, kind };
+    return { source: 'Finnhub', c: data.c, d: data.d, dp: data.dp, h: data.h, l: data.l, o: data.o, pc: data.pc, t, kind };
 }
 
 /**
@@ -160,6 +161,6 @@ export function mapBackendYahooQuote(data: any): SanitizedQuote | null {
     return {
         c: num(data.c), d: num(data.d), dp: num(data.dp),
         h: num(data.h), l: num(data.l), o: num(data.o), pc: num(data.pc),
-        t: null, kind: 'close',
+        source: 'Yahoo Finance', t: null, kind: 'close',
     };
 }
