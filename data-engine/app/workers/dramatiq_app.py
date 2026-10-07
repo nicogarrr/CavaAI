@@ -1197,7 +1197,7 @@ def refresh_sec_filings(
                                 item.published_at.isoformat() if item.published_at else None,
                                 tenant_id,
                                 user_id,
-                                filing_metadata=item.metadata,
+                                filing_metadata=getattr(item, "metadata", None),
                             )
                             queued_documents += 1
                     else:

@@ -105,7 +105,15 @@ def ingest_filings(db, company: Company, entries: list[dict], base_dir: Path, *,
         db.commit()
         from app.services.filing_intelligence import analyze_document
 
-        analysis = analyze_document(db, document)
+        # The CLI establishes a tenant before calling this helper, but
+        # legacy/test callers can deliberately ingest without one. Company
+        # is global, so it cannot authorize deriving a tenant for analysis.
+        # Preserve that ingestion contract without running unscoped analysis.
+        analysis = (
+            analyze_document(db, document)
+            if tenant_id is not None and document.tenant_id == tenant_id
+            else {"status": "not_queued", "reason": "tenant_context_required"}
+        )
         db.commit()
         results.append({"url": filing.url, "status": "ingested", "document_id": document.id, "chunks": len(chunks), "filing_analysis": analysis})
     return results

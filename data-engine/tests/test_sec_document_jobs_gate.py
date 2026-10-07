@@ -76,3 +76,19 @@ def test_sec_document_jobs_emitted_when_enabled(monkeypatch):
     assert sends[0][0][3] == "SEC"
     assert result["documents_queued"] == 1
     assert result["documents_skipped_sec_blocked"] == 0
+
+
+def test_sec_document_jobs_preserve_optional_filing_metadata(monkeypatch):
+    item = _sec_item()
+    item.metadata = {"form": "8-K", "cik": "0000320193", "report_date": "2026-09-30"}
+    result, sends = _run_actor(monkeypatch, enabled=True, items=[item])
+    assert len(sends) == 1
+    assert result["documents_queued"] == 1
+    assert sends[0][1]["filing_metadata"] == item.metadata
+
+
+def test_sec_document_jobs_without_metadata_keep_legacy_contract(monkeypatch):
+    result, sends = _run_actor(monkeypatch, enabled=True, items=[_sec_item()])
+    assert result["documents_queued"] == 1
+    assert len(sends) == 1
+    assert sends[0][1]["filing_metadata"] is None
