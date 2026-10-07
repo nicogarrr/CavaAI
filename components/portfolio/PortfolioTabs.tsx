@@ -118,7 +118,7 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
                         </div>
                         <div className="min-w-0">
                             <h1 className="text-xl font-bold text-gray-100 sm:text-2xl">Mi Cartera</h1>
-                            <p className="text-sm text-gray-500">Seguimiento de tus inversiones</p>
+                            
                             <p className="mt-0.5 text-xs text-gray-500">Precios con ~15 min de retardo durante el horario de mercado (Yahoo Finance)</p>
                         </div>
                     </div>
