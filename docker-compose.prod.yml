@@ -161,6 +161,7 @@ services:
       - OPENCODE_GO_API_KEY=${OPENCODE_GO_API_KEY:-}
       - OPENCODE_GO_BASE_URL=${OPENCODE_GO_BASE_URL:-https://opencode.ai/zen/v1}
       - OPENCODE_GO_MODEL=${OPENCODE_GO_MODEL:-space-bunny-free}
+      - LLM_MODEL_OVERRIDES=${LLM_MODEL_OVERRIDES:-{}}
       - OPENCODE_GO_FALLBACK_MODEL=${OPENCODE_GO_FALLBACK_MODEL:-}
       - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-portfolio}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cavaai_research}
       - REDIS_URL=redis://redis:6379/0
@@ -233,6 +234,7 @@ services:
       - OPENCODE_GO_API_KEY=${OPENCODE_GO_API_KEY:-}
       - OPENCODE_GO_BASE_URL=${OPENCODE_GO_BASE_URL:-https://opencode.ai/zen/v1}
       - OPENCODE_GO_MODEL=${OPENCODE_GO_MODEL:-space-bunny-free}
+      - LLM_MODEL_OVERRIDES=${LLM_MODEL_OVERRIDES:-{}}
       - OPENCODE_GO_FALLBACK_MODEL=${OPENCODE_GO_FALLBACK_MODEL:-}
       - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-portfolio}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cavaai_research}
       - REDIS_URL=redis://redis:6379/0
@@ -289,6 +291,7 @@ services:
       - OPENCODE_GO_API_KEY=${OPENCODE_GO_API_KEY:-}
       - OPENCODE_GO_BASE_URL=${OPENCODE_GO_BASE_URL:-https://opencode.ai/zen/v1}
       - OPENCODE_GO_MODEL=${OPENCODE_GO_MODEL:-space-bunny-free}
+      - LLM_MODEL_OVERRIDES=${LLM_MODEL_OVERRIDES:-{}}
       - OPENCODE_GO_FALLBACK_MODEL=${OPENCODE_GO_FALLBACK_MODEL:-}
       - THESIS_NARRATIVE_LLM_ENABLED=${THESIS_NARRATIVE_LLM_ENABLED:-0}
       - CAVAAI_ENABLE_VECTOR_INGEST=${CAVAAI_ENABLE_VECTOR_INGEST:-0}
@@ -358,6 +361,7 @@ services:
       - OPENCODE_GO_API_KEY=${OPENCODE_GO_API_KEY:-}
       - OPENCODE_GO_BASE_URL=${OPENCODE_GO_BASE_URL:-https://opencode.ai/zen/v1}
       - OPENCODE_GO_MODEL=${OPENCODE_GO_MODEL:-space-bunny-free}
+      - LLM_MODEL_OVERRIDES=${LLM_MODEL_OVERRIDES:-{}}
       - OPENCODE_GO_FALLBACK_MODEL=${OPENCODE_GO_FALLBACK_MODEL:-}
       - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-portfolio}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cavaai_research}
       - REDIS_URL=redis://redis:6379/0
