@@ -1,3 +1,4 @@
+import { groupClaimsByVersion } from '@/lib/research/claim-groups';
 import { researchValuability } from '@/lib/research/coverage-state';
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -1088,11 +1089,16 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
             <Button type="submit" className="min-h-[44px] sm:min-h-0">Añadir afirmación</Button>
           </MutationForm>
           <div className="space-y-3">
-            {data.claims.length ? data.claims.map((claim) => (
+            {data.claims.length ? groupClaimsByVersion(data.claims, data.history).map((group) => (
+              <details key={group.key} open={group.claims.some((claim) => claim.thesis_version_id === data.thesis?.id)} className="rounded-lg border border-gray-800 p-3">
+                <summary className="cursor-pointer text-sm font-semibold text-gray-300">{group.label} · {group.claims.length} afirmaciones</summary>
+                <div className="mt-3 space-y-3">{group.claims.map((claim) => (
               <div className="rounded-lg border border-gray-800 p-4" key={claim.id}>
                 <div className="flex flex-wrap gap-2"><Badge variant="outline">{label(claim.status)}</Badge><Badge variant="outline">materialidad {claim.materiality_score}</Badge><Badge variant="outline">{claim.evidence.length} pruebas</Badge></div>
                 <p className="mt-3 text-sm text-gray-300">{claim.statement}</p>
               </div>
+                ))}</div>
+              </details>
             )) : (
               <EmptyState
                 action={<EmptyLink href="#statement">Escribe la primera afirmación</EmptyLink>}

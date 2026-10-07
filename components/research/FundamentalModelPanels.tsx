@@ -386,9 +386,10 @@ export function DecisionAndRealityPanel({
           </MutationForm>
         </div>
         {reviews.length === 0 ? (
-          <p className="text-sm text-gray-500">Ejecuta la comparación cuando existan forecasts persistidos.</p>
+          <p className="text-sm text-gray-500">Sin comparaciones persistidas. Solo se pueden contrastar previsiones que tengan datos esperados y reales.</p>
         ) : (
           <>
+            <p className="mb-3 text-xs leading-5 text-gray-500">N/D significa que falta el dato esperado o real: no hay una comparación verificable, ni un acierto medido.</p>
             {/* Móvil: cards sin scroll horizontal */}
             <div className="max-h-[560px] space-y-3 overflow-auto md:hidden">
               {reviews.slice(0, 40).map((review) => (
@@ -398,7 +399,7 @@ export function DecisionAndRealityPanel({
                     <div className="flex justify-between gap-2"><span>Esperado</span><span className="text-gray-200">{compactNumber(review.expected_value)}</span></div>
                     <div className="flex justify-between gap-2"><span>Real</span><span className="text-gray-200">{compactNumber(review.actual_value)}</span></div>
                   </div>
-                  <div className="mt-2"><Badge variant="outline">{reviewStatusLabel(review.status)}</Badge></div>
+                  <div className="mt-2"><Badge variant="outline">{review.expected_value == null || review.actual_value == null || !Number.isFinite(review.expected_value) || !Number.isFinite(review.actual_value) ? 'Sin comparación: falta dato' : reviewStatusLabel(review.status)}</Badge></div>
                 </div>
               ))}
             </div>
@@ -419,7 +420,7 @@ export function DecisionAndRealityPanel({
                     <th className="py-3 text-left text-sm font-normal text-gray-300" scope="row">{review.fiscal_year} · {expectationMetricLabel(review.metric)}</th>
                     <td className="py-3 text-right text-gray-400">{compactNumber(review.expected_value)}</td>
                     <td className="py-3 text-right text-gray-400">{compactNumber(review.actual_value)}</td>
-                    <td className="py-3 text-right"><Badge variant="outline">{reviewStatusLabel(review.status)}</Badge></td>
+                    <td className="py-3 text-right"><Badge variant="outline">{review.expected_value == null || review.actual_value == null || !Number.isFinite(review.expected_value) || !Number.isFinite(review.actual_value) ? 'Sin comparación: falta dato' : reviewStatusLabel(review.status)}</Badge></td>
                   </tr>
                 ))}
               </tbody>
