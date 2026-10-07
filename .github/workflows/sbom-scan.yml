@@ -457,7 +457,7 @@ jobs:
         run: |
           echo "::notice title=gate-args::build=[${{ needs.build.result }}] vuln=[${{ steps.trivy_vuln.outcome }}] secret=[${{ steps.trivy_secret.outcome }}] misconfig=[${{ steps.trivy_misconfig.outcome }}] engine2=[${{ steps.engine2_result.outputs.status }}] ref=[cavaai/${{ matrix.name }}:${{ github.sha }}]"
           echo "::notice title=gate-files::$(ls -1 reports engine2 2>&1 | tr '\n' ' ')"
-          echo "::notice title=gate-script::$(ls -l data-engine/scripts/security/gate_image_scan.py scripts/security/trivy-policy.yaml 2>&1 | tr '\n' ' ')"
+          echo "::notice title=gate-script::$(ls -l data-engine/scripts/security/ scripts/security/ 2>&1 | tr '\n' ' ')"
           echo "::notice title=gate-python::$(python --version 2>&1) $(python -c 'import yaml;print(yaml.__version__)' 2>&1)"
 
       - name: Puerta (unico punto de decision, rojo/verde)
