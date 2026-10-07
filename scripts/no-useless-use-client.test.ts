@@ -309,7 +309,7 @@ describe('el escaner y el guard cuentan lo mismo', () => {
   });
 
   it('el numero de directivas client del repo no crece sin explicacion', () => {
-    // 77 = 72 justificadas (A, incluye KnowledgeGraphCanvas: eventos de puntero, pan/zoom) + 5 heredadas del padre (C). Si sube, alguien
+    // 78 = 73 justificadas (A, incluye KnowledgeGraphCanvas: eventos de puntero, pan/zoom y BottomNav: usePathname) + 5 heredadas del padre (C). Si sube, alguien
     // ha anadido un modulo cliente: que lo justifique en la revision.
     const total = audit.filter((r) => r.hasUseClient).length;
     const justified = audit.filter((r) => r.hasUseClient && r.justified).length;
@@ -317,7 +317,7 @@ describe('el escaner y el guard cuentan lo mismo', () => {
     assert.equal(inherited, 5, 'cambian las excepciones: revisa COMPONENTS_EXCEPTIONS y su motivo');
     assert.equal(
       total,
-      77,
+      78,
       `han aparecido directivas 'use client' sin revisar (total ${total}, justificadas ${justified}, heredadas ${inherited})`,
     );
   });
