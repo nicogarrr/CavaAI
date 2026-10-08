@@ -24,6 +24,7 @@ import { MoatTerm } from '@/components/GlossaryTerm';
 import { MutationForm } from '@/components/forms/MutationForm';
 import { FileUploadInput } from '@/components/forms/FileUploadInput';
 import { CompanyHeaderQuote } from '@/components/research/CompanyHeaderQuote';
+import { NextStepLink } from '@/components/research/NextStepLink';
 import { missingLayerAction, missingLayerLabel } from '@/lib/research/missing-layer-guidance';
 import { metricLabel } from '@/lib/research/metric-labels';
 import { MoatPanel } from '@/components/research/MoatPanel';
@@ -981,13 +982,9 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
               ['Comparables', 'peers'],
               ['Documentos y fuentes', 'documents'],
             ].map(([nextLabel, nextView]) => (
-              <Link
-                className="rounded-lg border border-gray-800 p-3 text-sm text-gray-200 transition hover:border-teal-700 hover:text-teal-200"
-                href={`/research/${encodeURIComponent(ticker)}?view=${nextView}`}
-                key={nextView}
-              >
+              <NextStepLink href={`/research/${encodeURIComponent(ticker)}?view=${nextView}`} key={nextView}>
                 {nextLabel}
-              </Link>
+              </NextStepLink>
             ))}
           </div>
         </Panel>
