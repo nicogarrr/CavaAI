@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.models.entities import Base, Company, NewsEvent
@@ -228,3 +228,105 @@ def test_prefilter_folds_uppercase_accents_sqlite():
         assert {c.ticker for c in service._matching_companies(db, "area")} == {"AREA"}
     finally:
         db.close()
+
+
+def _llm_event(db):
+    event = NewsEvent(title="Electric trucks", summary="Electrification", source="manual",
+                      metadata_={"date_source": "source"})
+    db.add(event)
+    db.commit()
+    return event
+
+
+def _scripted_provider(monkeypatch, *texts):
+    from types import SimpleNamespace
+
+    calls = []
+
+    class Provider:
+        name = "opencode-go"
+        model_router = SimpleNamespace(resolve=lambda request: request.model)
+
+        async def complete(self, request):
+            calls.append(request)
+            return SimpleNamespace(text=texts[len(calls) - 1])
+
+    monkeypatch.setattr(service, "create_llm_provider", lambda: Provider())
+    return calls
+
+
+GOOD = ('{"themes": [{"exposure": "Copper", "direction": "beneficiada", '
+        '"chain": [{"cause": "Mas camiones electricos", "effect": "Mas demanda de cobre"}]}]}')
+CJK = ('{"themes": [{"exposure": "Copper", "direction": "beneficiada", '
+       '"chain": [{"cause": "\u4e2d\u6587\u6a21\u578b", "effect": "demanda"}]}]}')
+
+
+def test_cjk_output_retries_once_reserving_a_second_quota_call(monkeypatch):
+    reservations = []
+    monkeypatch.setenv("SECOND_ORDER_LLM_ENABLED", "1")
+    monkeypatch.setattr(service, "reserve_llm_call", lambda *_a: reservations.append(1) or {
+        "allowed": True, "minute_used": len(reservations), "minute_limit": 4,
+        "day_used": len(reservations), "day_limit": 100})
+    calls = _scripted_provider(monkeypatch, CJK, GOOD)
+    with _company_db() as db:
+        result = service.analyze_second_order(db, _llm_event(db), use_llm=True)
+    assert result["mode"] == "llm" and len(calls) == 2 and len(reservations) == 2
+    assert result["llm_quota"]["minute_used"] == 2
+    assert result["themes"][0]["chain"][0]["cause"].startswith("Mas camiones")
+
+
+def test_retry_without_quota_degrades_to_deterministic(monkeypatch):
+    seen = []
+
+    def reserve(*_a):
+        seen.append(1)
+        return {"allowed": len(seen) == 1, "minute_used": len(seen), "minute_limit": 1,
+                "day_used": len(seen), "day_limit": 100}
+
+    monkeypatch.setenv("SECOND_ORDER_LLM_ENABLED", "1")
+    monkeypatch.setattr(service, "reserve_llm_call", reserve)
+    calls = _scripted_provider(monkeypatch, CJK, GOOD)
+    with _company_db() as db:
+        result = service.analyze_second_order(db, _llm_event(db), use_llm=True)
+    assert result["mode"] == "determinista" and len(calls) == 1
+    assert "se usa el camino determinista" in result["note"]
+
+
+def test_double_cjk_output_degrades_to_deterministic(monkeypatch):
+    monkeypatch.setenv("SECOND_ORDER_LLM_ENABLED", "1")
+    monkeypatch.setattr(service, "reserve_llm_call", lambda *_a: {
+        "allowed": True, "minute_used": 1, "minute_limit": 4, "day_used": 1, "day_limit": 100})
+    calls = _scripted_provider(monkeypatch, CJK, CJK)
+    with _company_db() as db:
+        result = service.analyze_second_order(db, _llm_event(db), use_llm=True)
+    assert result["mode"] == "determinista" and len(calls) == 2
+
+
+def test_no_transaction_is_held_during_either_llm_call(monkeypatch):
+    from types import SimpleNamespace as NS
+
+    monkeypatch.setenv("SECOND_ORDER_LLM_ENABLED", "1")
+    monkeypatch.setattr(service, "reserve_llm_call", lambda *_a: {
+        "allowed": True, "minute_used": 1, "minute_limit": 4, "day_used": 1, "day_limit": 100})
+    with _company_db(_mk_company("CPR", sector="Copper")) as db:
+        _llm_event(db)
+        # Como en la ruta: el evento llega cargado por un SELECT que abre transaccion.
+        event = db.scalars(select(NewsEvent)).one()
+        event_id = event.id
+        assert db.in_transaction()
+        seen = []
+        texts = [CJK, GOOD]
+
+        class Provider:
+            name = "opencode-go"
+            model_router = NS(resolve=lambda request: request.model)
+
+            async def complete(self, request):
+                seen.append(db.in_transaction())
+                return NS(text=texts[len(seen) - 1])
+
+        monkeypatch.setattr(service, "create_llm_provider", lambda: Provider())
+        result = service.analyze_second_order(db, event, use_llm=True)
+    assert seen == [False, False]
+    assert result["mode"] == "llm" and result["source"]["name"] == "manual"
+    assert result["news_event_id"] == event_id
