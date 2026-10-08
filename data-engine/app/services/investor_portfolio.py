@@ -16,6 +16,7 @@ fuente; sin eso es SIN_DATOS.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -69,16 +70,25 @@ def datum(value: Any, label: str, as_of: date | str | None, source_url: str | No
     """Dato etiquetado. Sin valor => SIN_DATOS, sea cual sea la etiqueta pedida."""
     if label not in LABELS:
         raise ValueError(f"label must be one of {LABELS}")
+    empty = {"value": None, "label": SIN_DATOS, "as_of": None, "source_url": None}
     if value is None:
-        return {"value": None, "label": SIN_DATOS, "as_of": None, "source_url": None}
+        return empty
     if isinstance(value, Decimal):
         value = float(value)
     if label == SIN_DATOS:
         raise ValueError("SIN_DATOS cannot carry a value")
+    as_of_text = as_of.isoformat() if isinstance(as_of, date) else (as_of or None)
+    # Fail closed: sin cifra finita o sin fecha no hay dato; OFICIAL ademas exige fuente.
+    if isinstance(value, float) and not math.isfinite(value):
+        return empty
+    if not as_of_text:
+        return empty
+    if label == OFICIAL and not source_url:
+        return empty
     return {
         "value": value,
         "label": label,
-        "as_of": as_of.isoformat() if isinstance(as_of, date) else as_of,
+        "as_of": as_of_text,
         "source_url": source_url or None,
     }
 
@@ -219,7 +229,10 @@ def _position_item(
     source_form: str,
     source_url: str,
     note: str,
+    weight_label: str | None = None,
 ) -> dict[str, Any]:
+    # Sin formulario de origen no hay procedencia: la URL no cuenta.
+    source_url = source_url if source_form else ""
     return {
         "issuer": issuer,
         "ticker": ticker or None,
@@ -228,7 +241,7 @@ def _position_item(
         "shares": datum(shares, label, as_of, source_url),
         "ownership_pct": datum(ownership_pct, label, as_of, source_url),
         "value_usd": datum(value_usd, value_label, as_of, source_url),
-        "weight_pct": datum(weight_pct, value_label, as_of, source_url),
+        "weight_pct": datum(weight_pct, weight_label or value_label, as_of, source_url),
         "source_form": source_form,
         "note": note or None,
     }
@@ -258,6 +271,7 @@ def _movement_item(
     source_url: str,
     note: str,
 ) -> dict[str, Any]:
+    source_url = source_url if source_form else ""
     return {
         "date": movement_date.isoformat() if movement_date else None,
         "filing_date": filing_date.isoformat() if filing_date else None,
@@ -321,19 +335,30 @@ def _portfolio_13f(db: Session, slug: str) -> dict[str, Any]:
         interesting.sort(key=lambda c: -(c.get("value_usd_thousands_latest") or 0))
         for c in interesting[:MOVEMENTS_LIMIT]:
             before, now = c.get("shares_previous"), c.get("shares_latest")
-            delta = (now or 0.0) - (before or 0.0)
+            change = c["change"]
+            # Ausencia de valor NO es posicion cero: delta solo con las cifras necesarias
+            # presentes. Nueva/cerrada solo se afirma con cobertura completa del gestor.
+            if change == "new":
+                delta = now if manager.coverage == "ok" else None  # type: ignore[union-attr]
+                action = "nueva"
+            elif change == "closed":
+                delta = -before if (before is not None and manager.coverage == "ok") else None  # type: ignore[union-attr]
+                action = "cerrada"
+            elif now is not None and before is not None:
+                delta = now - before
+                action = "aumento" if change == "increased" else "reduccion"
+            else:
+                delta = None
+                action = "sin_datos"
+            if delta is None:
+                action = "sin_datos"
             movements.append(
                 _movement_item(
                     movement_date=latest,
                     filing_date=None,
                     issuer=c["name_of_issuer"],
                     ticker=None,
-                    action={
-                        "new": "nueva",
-                        "closed": "cerrada",
-                        "increased": "aumento",
-                        "decreased": "reduccion",
-                    }[c["change"]],
+                    action=action,
                     code="",
                     shares=delta,
                     price=None,
@@ -349,7 +374,12 @@ def _portfolio_13f(db: Session, slug: str) -> dict[str, Any]:
         "movements": movements,
         "as_of": report.isoformat(),
         "source_kinds": ["13F-HR"],
-        "total_value_usd": datum(_value_usd(total, report.isoformat()) if total else None, OFICIAL, report),
+        "total_value_usd": datum(
+            _value_usd(total, report.isoformat()) if total else None,
+            OFICIAL,
+            report,
+            next((r.filing_url for r in rows if r.filing_url), ""),
+        ),
         "coverage": "ok" if complete else "partial",
         "note": None
         if complete
@@ -411,7 +441,13 @@ def _portfolio_other(db: Session, slug: str) -> dict[str, Any]:
             latest[key] = e
     ordered = list(latest.values())
     weights = _weights([e["value_usd"] for e in ordered])
-    positions = [_position_item(weight_pct=w, **e) for e, w in zip(ordered, weights, strict=True)]
+    # Peso OFICIAL solo si numerador y denominador son OFICIAL y comparten fecha;
+    # con cualquier valor INFERIDO (o fechas distintas) el peso es INFERIDO.
+    mixed = any(e["value_label"] != OFICIAL for e in ordered) or len({str(e["as_of"]) for e in ordered}) > 1
+    positions = [
+        _position_item(weight_pct=w, weight_label=INFERIDO if mixed else OFICIAL, **e)
+        for e, w in zip(ordered, weights, strict=True)
+    ]
     movements = [
         _movement_item(
             movement_date=m.movement_date,

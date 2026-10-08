@@ -105,6 +105,7 @@ def test_db_position_overrides_curated_and_weights_need_every_value():
             as_of=date(2025, 12, 18),
             label="OFICIAL",
             source_form="X",
+            source_url="https://www.sec.gov/x",
         )
     )
     db.add(
@@ -250,3 +251,121 @@ def test_sync_form4_fetches_outside_any_open_transaction():
 
     assert sync_form4(db, "trump", fetch=fetch, filings=[FILING, second]) == 2
     assert seen == [False, False]
+
+
+def test_position_without_source_cannot_be_official():
+    db = _db()
+    db.add(
+        InvestorPosition(
+            investor_slug="barron-trump",
+            issuer_name="X",
+            issuer_cik="0000000009",
+            security_title="C",
+            shares=Decimal("1"),
+            as_of=date(2026, 1, 1),
+            label="OFICIAL",
+            source_form="",
+            source_url="",
+        )
+    )
+    db.commit()
+    out = investor_portfolio(db, "barron-trump")
+    assert out is not None
+    (pos,) = out["positions"]
+    assert pos["shares"]["value"] is None and pos["shares"]["label"] == "SIN_DATOS"
+
+
+def test_datum_official_needs_source_date_and_finite_value():
+    assert datum(1, "OFICIAL", date(2026, 1, 1), "")["label"] == "SIN_DATOS"
+    assert datum(1, "OFICIAL", None, "http://x")["label"] == "SIN_DATOS"
+    assert datum(float("nan"), "OFICIAL", date(2026, 1, 1), "http://x")["value"] is None
+    assert datum(float("inf"), "OFICIAL", date(2026, 1, 1), "http://x")["label"] == "SIN_DATOS"
+    assert datum(1, "OFICIAL", date(2026, 1, 1), "http://x")["label"] == "OFICIAL"
+
+
+def test_weight_with_inferred_denominator_is_inferido():
+    db = _db()
+    for cik, label, val in (("0000000001", "OFICIAL", "100"), ("0000000002", "INFERIDO", "300")):
+        db.add(
+            InvestorPosition(
+                investor_slug="barron-trump",
+                issuer_name=f"E{cik}",
+                issuer_cik=cik,
+                security_title="C",
+                shares=Decimal("1"),
+                value_usd=Decimal(val),
+                value_label=label,
+                as_of=date(2026, 1, 1),
+                label="OFICIAL",
+                source_form="13D",
+                source_url="https://www.sec.gov/x",
+            )
+        )
+    db.commit()
+    out = investor_portfolio(db, "barron-trump")
+    assert out is not None
+    assert {p["weight_pct"]["label"] for p in out["positions"]} == {"INFERIDO"}
+
+
+def test_13f_missing_latest_shares_is_not_a_zero_position():
+    db = _db()
+    _seed_13f(db)
+    mgr = db.scalars(select(FundManager)).one()
+    # trimestre anterior: ALFA tenia 30 acciones; ahora la fila existe pero sin acciones
+    for cusip, shares in (("AAA", 30), ("BBB", 10)):
+        db.add(
+            ManagerHolding(
+                manager_id=mgr.id,
+                accession_number="0000000000-26-000000",
+                report_date=date(2026, 3, 31),
+                filing_date=date(2026, 5, 15),
+                name_of_issuer=cusip,
+                title_of_class="COM",
+                cusip=cusip,
+                value_usd_thousands=Decimal(1),
+                shares=Decimal(shares),
+                filing_url="https://www.sec.gov/p",
+            )
+        )
+    alfa = db.scalars(
+        select(ManagerHolding).where(
+            ManagerHolding.cusip == "AAA", ManagerHolding.report_date == date(2026, 6, 30)
+        )
+    ).one()
+    alfa.shares = None
+    db.commit()
+    out = investor_portfolio(db, "buffett")
+    assert out is not None
+    moves = {m["issuer"]: m for m in out["movements"]}
+    assert "ALFA" in moves
+    assert moves["ALFA"]["shares"]["label"] == "SIN_DATOS" and moves["ALFA"]["shares"]["value"] is None
+    assert moves["ALFA"]["action"] == "sin_datos"
+
+
+def test_13f_closed_position_only_with_complete_coverage():
+    db = _db()
+    _seed_13f(db)
+    mgr = db.scalars(select(FundManager)).one()
+    db.add(
+        ManagerHolding(
+            manager_id=mgr.id,
+            accession_number="0000000000-26-000000",
+            report_date=date(2026, 3, 31),
+            filing_date=date(2026, 5, 15),
+            name_of_issuer="GAMMA",
+            title_of_class="COM",
+            cusip="CCC",
+            value_usd_thousands=Decimal(5),
+            shares=Decimal(7),
+            filing_url="https://www.sec.gov/p",
+        )
+    )
+    db.commit()
+    out = investor_portfolio(db, "buffett")
+    gamma = next(m for m in out["movements"] if m["issuer"] == "GAMMA")
+    assert gamma["action"] == "cerrada" and gamma["shares"]["value"] == -7.0
+    mgr.coverage = "partial"
+    db.commit()
+    out = investor_portfolio(db, "buffett")
+    gamma = next(m for m in out["movements"] if m["issuer"] == "GAMMA")
+    assert gamma["action"] == "sin_datos" and gamma["shares"]["label"] == "SIN_DATOS"
