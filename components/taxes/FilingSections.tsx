@@ -1,5 +1,9 @@
 'use client';
 
+import { useState } from 'react';
+import { RecordList } from '@/components/data/RecordViews';
+import TmePreviewForm from '@/components/taxes/TmePreviewForm';
+import { formatUserDate } from '@/lib/format';
 import { Landmark, FileDown, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatMoney, NA } from '@/lib/format';
@@ -109,8 +113,18 @@ function WarningList({ items }: { items: string[] }) {
     );
 }
 
-export function FilingSection({ filing }: { filing: DataRecord | null }) {
-    if (!filing) return null;
+export function FilingSection({ filing, year, onPreview, onReset }: {
+    filing: DataRecord | null;
+    year: number;
+    onPreview: (report: DataRecord) => void;
+    onReset: () => void;
+}) {
+    if (!filing) return (
+        <Section title="Declaración (Modelo 100)" description="Ayuda de cálculo del IRPF."
+            icon={<Landmark className="h-5 w-5 text-teal-400" />}>
+            <p className="text-sm text-gray-400">SIN_DATOS: genera el informe fiscal para consultar las casillas.</p>
+        </Section>
+    );
     if (filing.available === false) {
         return (
             <Section
@@ -145,6 +159,12 @@ export function FilingSection({ filing }: { filing: DataRecord | null }) {
             </Section>
         );
     }
+    if (filing.available !== true || casillas.available !== true) return (
+        <Section title="Declaración (Modelo 100)" description="Ayuda de cálculo del IRPF."
+            icon={<Landmark className="h-5 w-5 text-teal-400" />}>
+            <p className="text-sm text-gray-400">SIN_DATOS: el motor no ha confirmado el mapeo de este ejercicio.</p>
+        </Section>
+    );
     const acciones = (casillas.acciones_negociadas ?? {}) as DataRecord;
     const dividendos = (casillas.dividendos ?? {}) as DataRecord;
     const dt = (filing.double_taxation ?? {}) as DataRecord;
@@ -171,11 +191,16 @@ export function FilingSection({ filing }: { filing: DataRecord | null }) {
                 <Row label="0339 · Suma de ganancias" value={money(acciones['0339_suma_ganancias'])} />
                 <Row label="0340 · Suma de pérdidas" value={money(acciones['0340_suma_perdidas'])} />
                 <Row label="0029 · Dividendos íntegros" value={money(dividendos['0029_ingresos_integros'])} />
+                <Row label="0597 · Retenciones españolas" value={
+                    (dt.spanish_withholding_base as DataRecord | undefined)?.amount == null
+                        ? 'Sin datos: retenciones españolas incompletas'
+                        : money((dt.spanish_withholding_base as DataRecord | undefined)?.amount)
+                } />
                 <Row
                     label="0588 · Deducción por doble imposición"
                     value={
                         dt.status === 'pendiente_tme'
-                            ? 'Falta el tipo medio efectivo: introduce el de tu borrador para calcular la deducción'
+                            ? 'Falta el tipo medio efectivo: introduce el TME de la base liquidable del ahorro de tu borrador para calcular la deducción'
                             : money(dt.total_deduction_base)
                     }
                 />
@@ -190,9 +215,33 @@ export function FilingSection({ filing }: { filing: DataRecord | null }) {
                     />
                 )}
             </div>
+            {dt.partial === true && <p className="mt-2 text-xs text-amber-300">SIN_DATOS en la deducción total: hay pagos que requieren revisión manual.</p>}
+            {typeof filing.tme_percent_manual === 'number' && <Row label="TME manual aplicado (%)" value={String(filing.tme_percent_manual)} />}
+            <TmePreviewForm key={year} year={year} onPreview={onPreview} onReset={onReset} />
+            <SaleCasillas key={year} rows={Array.isArray(acciones.rows) ? acciones.rows as DataRecord[] : []} />
             <WarningList items={warnings} />
         </Section>
     );
+}
+
+function SaleCasillas({ rows }: { rows: DataRecord[] }) {
+    const [page, setPage] = useState(0);
+    const pages = Math.max(1, Math.ceil(rows.length / 10));
+    const current = Math.min(page, pages - 1);
+    return <div className="mt-4 space-y-2">
+        <RecordList key={current} title="Casillas por venta" records={rows.slice(current * 10, (current + 1) * 10)}
+            fetchRecords={async () => rows.slice(current * 10, (current + 1) * 10)}
+            columns={['ticker', 'date', 'transmission_base', 'acquisition_base', 'gain_base']}
+            columnLabels={{ ticker: 'Valor', date: 'Fecha', transmission_base: 'Transmisión (€)', acquisition_base: 'Adquisición (€)', gain_base: 'Resultado computable (€)' }}
+            formatColumns={{ date: (value) => typeof value === 'string' ? formatUserDate(value) : NA,
+                transmission_base: money, acquisition_base: money, gain_base: money }}
+            emptyMessage="No hay ventas con casillas para este ejercicio." />
+        {pages > 1 && <nav aria-label="Páginas de casillas por venta" className="flex items-center justify-between gap-2">
+            <Button type="button" size="sm" variant="outline" disabled={current === 0} onClick={() => setPage(current - 1)}>Anterior</Button>
+            <span className="text-xs text-gray-400">{current + 1} / {pages} · {rows.length} ventas</span>
+            <Button type="button" size="sm" variant="outline" disabled={current + 1 >= pages} onClick={() => setPage(current + 1)}>Siguiente</Button>
+        </nav>}
+    </div>;
 }
 
 export function Modelo720Section({ thresholds, file720, unavailable }: {

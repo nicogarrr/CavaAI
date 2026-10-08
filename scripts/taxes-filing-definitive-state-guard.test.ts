@@ -52,7 +52,7 @@ describe('Impuestos: casillas y fichero 720 sin estados intermedios', () => {
   });
 
   it('el 0588 sin tipo medio efectivo es una acción del usuario, no una cola', () => {
-    assert.match(src, /Falta el tipo medio efectivo: introduce el de tu borrador/);
+    assert.match(src, /Falta el tipo medio efectivo: introduce el TME de la base liquidable del ahorro de tu borrador/);
     assert.match(src, /dt\.status === 'pendiente_tme'/);
   });
 
