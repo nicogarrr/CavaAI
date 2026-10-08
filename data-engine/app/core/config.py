@@ -159,6 +159,27 @@ class Settings(BaseSettings):
     rag_rrf_k: int = Field(default=60, ge=1, le=1000)
     rag_dense_weight: float = Field(default=1.0, ge=0.0, le=100.0)
     rag_sparse_weight: float = Field(default=1.0, ge=0.0, le=100.0)
+    # RAG de conocimiento profesional (app/services/knowledge_rag/). Coleccion
+    # PROPIA, separada de portfolio_research_documents. Apagado por defecto:
+    # sin el flag la API responde 503 y el actor rechaza el trabajo.
+    knowledge_rag_enabled: bool = False
+    knowledge_rag_collection: str = "knowledge_rag_v1"
+    # Directorio (montado) del que el actor puede leer ficheros. La API NUNCA
+    # acepta rutas absolutas ni sube bytes: solo nombres relativos a este dir.
+    knowledge_rag_inbox_dir: Path = Path("./storage/knowledge_inbox")
+    knowledge_rag_max_file_mb: int = Field(default=60, ge=1, le=500)
+    # Guarda de disco: el VM va justo. Ingesta rechazada si queda menos libre.
+    knowledge_rag_min_free_gb: float = Field(default=3.0, ge=0.0, le=1000.0)
+    # Chunks: all-MiniLM-L6-v2 trunca a 256 wordpieces (incluye [CLS]/[SEP]).
+    knowledge_rag_child_max_tokens: int = Field(default=200, ge=32, le=250)
+    knowledge_rag_child_overlap_tokens: int = Field(default=30, ge=0, le=100)
+    knowledge_rag_parent_max_tokens: int = Field(default=900, ge=200, le=4000)
+    # Docling minimo: sin OCR, sin VLM, sin ASR. Tablas: "fast" (~145 MB) o
+    # "accurate" (~213 MB).
+    knowledge_rag_docling_ocr: bool = False
+    knowledge_rag_docling_table_mode: str = "fast"
+    # Reranker CPU opcional (vacio = desactivado). Ver docs/knowledge-rag.md.
+    knowledge_rag_reranker_model: str = ""
     minio_endpoint: str = "localhost:9002"
     minio_access_key: str = "portfolio"
     minio_secret_key: str = "portfoliosecret"
