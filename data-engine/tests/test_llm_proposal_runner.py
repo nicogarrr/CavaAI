@@ -188,3 +188,80 @@ def test_retry_budget_denial_releases_the_transaction(db, monkeypatch):
     with pytest.raises(ProposalRejected, match="presupuesto_agotado"):
         run(db, Spy(cjk, good()))
     assert seen == [False] and db.in_transaction() is False
+
+
+def test_quota_is_atomic_under_concurrent_saves(tmp_path):
+    import threading
+
+    from app.schemas.paper_trading import PaperProposal
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'q.db'}", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(engine)
+    with Session(engine) as s:
+        s.add_all([Tenant(id=1, external_id="q-1"), Tenant(id=2, external_id="q-2")])
+        s.commit()
+
+    def make(i, tenant=1):
+        return PaperProposal(
+            proposal_key=f"llm:AAPL:20261008:{tenant}{i}", ticker="AAPL", direction="long", horizon="short",
+            thesis="El contrato nuevo mejora la visibilidad de ingresos del trimestre.", conviction=0.5,
+            proposed_entry=99, stop=92, target=115, quantity=10,
+            inference_basis="Inferencia propia sobre el titular.", currency="USD",
+        )
+
+    def save(i, tenant, out):
+        with Session(engine, expire_on_commit=False) as s:
+            s.info["tenant_id"] = tenant
+            try:
+                runner.save_within_quota(s, make(i, tenant), NOW)
+                out.append("ok")
+            except runner.QuotaExceeded:
+                out.append("quota")
+
+    first = []
+    for i in range(runner.DAILY_QUOTA - 1):
+        save(i, 1, first)
+    assert first == ["ok"] * (runner.DAILY_QUOTA - 1)
+    out = []
+    threads = [threading.Thread(target=save, args=(100 + i, 1, out)) for i in range(6)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert sorted(out) == ["ok"] + ["quota"] * 5
+    other = []
+    save(0, 2, other)  # otro tenant no comparte cuota
+    assert other == ["ok"]
+    with Session(engine) as s:
+        s.info["tenant_id"] = 1
+        assert runner.todays_llm_proposals(s, NOW) == runner.DAILY_QUOTA
+    engine.dispose()
+
+
+def test_retry_budget_denial_keeps_first_cost_and_endpoint_returns_503(db, monkeypatch):
+    from app.api.routes.paper_trading import router
+    from app.core.database import get_db
+
+    n = {"i": 0}
+    real = runner.BudgetController.can_spend
+
+    def deny_retry(self, session, cost):
+        n["i"] += 1
+        return real(self, session, cost) if n["i"] == 1 else False
+
+    monkeypatch.setattr(runner.BudgetController, "can_spend", deny_retry)
+    cjk = good(thesis="El contrato \u4e2d\u6587\u6a21\u578b mejora la visibilidad de ingresos del trimestre.")
+    provider = Provider(cjk, good())
+    app = FastAPI()
+    app.include_router(router, prefix="/paper-trading")
+    app.dependency_overrides[get_db] = lambda: db
+    db.get(NewsEvent, 1).date = datetime.now(UTC) - timedelta(days=1)
+    db.commit()
+    monkeypatch.setattr(runner, "create_llm_provider", lambda: provider)
+    monkeypatch.setattr(
+        "app.api.routes.market.market_quote",
+        lambda t: {"live_c": 100.0, "live_t": datetime.now(UTC).timestamp() - 60, "currency": "USD"},
+    )
+    res = TestClient(app).post("/paper-trading/llm-proposals", json={"ticker": "AAPL"})
+    assert res.status_code == 503 and "presupuesto_agotado" in res.text
+    assert provider.calls == 1
+    assert db.scalar(select(func.count(BudgetUsage.id)).where(BudgetUsage.workflow == "llm_proposal")) == 1
+    assert db.scalar(select(func.count(PaperTrade.id))) == 0

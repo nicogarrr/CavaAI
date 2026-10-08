@@ -8,15 +8,18 @@ con la cuota diaria agotada no se llama al modelo o no se guarda nada.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import re
+import threading
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.llm import create_llm_provider
 from app.models.entities import Company, NewsEvent
 from app.models.paper_trading import PaperTrade
+from app.schemas.paper_trading import PaperProposal
 from app.services.budget import BudgetController, BudgetExceededError
 from app.services.llm_proposal_service import ProposalRejected, propose
 from app.services.paper_trading_service import create_proposal
@@ -47,6 +50,38 @@ def todays_llm_proposals(db: Session, now: datetime) -> int:
         )
         or 0
     )
+
+
+_quota_guard = threading.Lock()
+_quota_locks: dict[tuple, threading.Lock] = {}
+
+
+def _quota_lock(db: Session, now: datetime) -> threading.Lock:
+    key = (db.info.get("tenant_id"), _utc(now).date())
+    with _quota_guard:
+        return _quota_locks.setdefault(key, threading.Lock())
+
+
+def save_within_quota(db: Session, proposal: PaperProposal, now: datetime) -> PaperTrade:
+    """Cuenta y guarda en una transaccion corta serializada por tenant y dia.
+
+    Candado de proceso mas pg_advisory_xact_lock (varios workers). Se toma DESPUES
+    del LLM y se suelta con el commit de create_proposal: nunca cubre cotizacion ni modelo.
+    """
+    db.commit()  # sin instantanea vieja: el count ve lo ya confirmado
+    with _quota_lock(db, now):
+        if db.get_bind().dialect.name == "postgresql":
+            raw = f"llm-quota:{db.info.get('tenant_id')}:{_utc(now).date()}".encode()
+            key = int.from_bytes(hashlib.sha256(raw).digest()[:8], "big") >> 1
+            db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": key})
+        if todays_llm_proposals(db, now) >= DAILY_QUOTA:
+            db.rollback()
+            raise QuotaExceeded(DAILY_QUOTA)
+        try:
+            return create_proposal(db, proposal)
+        except Exception:
+            db.rollback()
+            raise
 
 
 def load_headlines(db: Session, ticker: str, now: datetime) -> list[dict]:
@@ -117,6 +152,4 @@ async def generate_proposal(
         )
     except BudgetExceededError as exc:
         raise ProposalRejected("presupuesto_agotado") from exc
-    if todays_llm_proposals(db, now) >= DAILY_QUOTA:  # revalida tras la espera del modelo
-        raise QuotaExceeded(DAILY_QUOTA)
-    return create_proposal(db, proposal)
+    return save_within_quota(db, proposal, now)
