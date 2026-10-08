@@ -395,3 +395,16 @@ def test_sync_form4_refuses_to_discard_pending_changes():
     db.add(InvestorMovement(investor_slug="trump", accession_number="x", issuer_name="X"))
     with pytest.raises(ValueError):
         sync_form4(db, "trump", fetch=lambda u: FORM4, filings=[FILING])
+
+
+def test_partial_manager_with_all_row_values_still_has_no_total_or_weights():
+    db = _db()
+    _seed_13f(db)
+    manager = db.scalars(select(FundManager)).one()
+    manager.coverage = "partial"
+    db.commit()
+    out = investor_portfolio(db, "buffett")
+    assert out is not None and out["coverage"] == "partial"
+    assert out["total_value_usd"]["label"] == "SIN_DATOS"
+    assert all(p["weight_pct"]["label"] == "SIN_DATOS" for p in out["positions"])
+    assert all(p["value_usd"]["label"] == "OFICIAL" for p in out["positions"])

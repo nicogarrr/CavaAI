@@ -43,9 +43,6 @@ export default async function LettersPage({ searchParams }: PageProps) {
         <main id="content" tabIndex={-1} className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-10 overflow-x-clip py-6">
             <header className="flex flex-col gap-3">
                 <h1 className="text-3xl font-semibold text-gray-100">Cartas</h1>
-                <p className="text-base text-gray-400">
-                    Las cartas a inversores que tiene la biblioteca, por autor. Lee cada carta en su propia página o abre el PDF original.
-                </p>
                 <Link className={LINK} href="/inversores">
                     Volver a inversores
                 </Link>

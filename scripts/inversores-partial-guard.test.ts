@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const ficha = readFileSync('app/(root)/inversores/[slug]/page.tsx', 'utf8');
+const ficha = readFileSync('app/(root)/inversores/_components/Portfolio.tsx', 'utf8');
 const carteras = readFileSync('app/(root)/inversores/carteras/page.tsx', 'utf8');
 const actions = readFileSync('lib/actions/investors.actions.ts', 'utf8');
 
@@ -12,8 +12,8 @@ test('el tipo de inversor lleva coverage', () => {
 });
 
 test('la ficha avisa de datos parciales cuando coverage es partial', () => {
-    assert.match(ficha, /investor\.coverage === 'partial'/);
-    assert.match(ficha, /la sincronización no se completó o no cuadra/);
+    assert.match(ficha, /portfolio\.coverage === "partial"/);
+    assert.match(ficha, /Datos parciales/);
 });
 
 test('las carteras marcan "Datos parciales" en la tarjeta', () => {
