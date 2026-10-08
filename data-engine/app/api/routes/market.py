@@ -174,6 +174,10 @@ def _fetch_yahoo_quote(client: httpx.Client, symbol: str) -> dict | None:
                 candle_date = datetime.fromtimestamp(candle_ts, tz).date().isoformat()
         return {
             "c": last,
+            # Preserve the daily candle contract; paper fills use timestamped spot only.
+            "live_c": meta.get("regularMarketPrice"),
+            "live_t": meta.get("regularMarketTime"),
+            "currency": meta.get("currency"),
             "d": change,
             "dp": (change / previous * 100) if previous else 0.0,
             "h": float(highs[-1]) if highs else last,

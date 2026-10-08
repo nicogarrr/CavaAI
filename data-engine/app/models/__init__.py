@@ -212,3 +212,7 @@ __all__ = [
     "ValuationOutput",
     "WatchItem",
 ]
+
+from app.models.paper_trading import PaperTrade as PaperTrade  # noqa: E402
+
+__all__.append("PaperTrade")
