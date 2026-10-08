@@ -19,7 +19,7 @@ import logging
 import re
 import threading
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
@@ -44,7 +44,112 @@ _CONTROL_RE = re.compile("[\ufffd\x00-\x08\x0b\x0c\x0e-\x1f]")
 # Palabras funcionales que NO existen en espanol. Se excluyen a proposito las
 # que coinciden con una palabra espanola (a, he, me, son, es, no, he, come...).
 _EN_WORDS = frozenset(
-    ["the", "and", "of", "is", "are", "was", "were", "be", "been", "being", "which", "that", "this", "these", "those", "therefore", "however", "provided", "because", "with", "without", "from", "has", "have", "had", "will", "would", "should", "could", "can", "may", "might", "their", "its", "than", "into", "over", "under", "between", "while", "although", "whereas", "thus", "hence", "moreover", "furthermore", "given", "since", "also", "not", "but", "for", "your", "our", "they", "them", "then", "there", "where", "when", "what", "who", "whom", "whose", "why", "how", "each", "every", "both", "either", "neither", "more", "most", "less", "least", "very", "much", "many", "such", "only", "just", "still", "already", "based", "due", "per", "about", "above", "below", "after", "before", "during", "if", "or", "as", "at", "by", "on", "it", "we", "you", "he", "she", "an"]
+    [
+        "the",
+        "and",
+        "of",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "which",
+        "that",
+        "this",
+        "these",
+        "those",
+        "therefore",
+        "however",
+        "provided",
+        "because",
+        "with",
+        "without",
+        "from",
+        "has",
+        "have",
+        "had",
+        "will",
+        "would",
+        "should",
+        "could",
+        "can",
+        "may",
+        "might",
+        "their",
+        "its",
+        "than",
+        "into",
+        "over",
+        "under",
+        "between",
+        "while",
+        "although",
+        "whereas",
+        "thus",
+        "hence",
+        "moreover",
+        "furthermore",
+        "given",
+        "since",
+        "also",
+        "not",
+        "but",
+        "for",
+        "your",
+        "our",
+        "they",
+        "them",
+        "then",
+        "there",
+        "where",
+        "when",
+        "what",
+        "who",
+        "whom",
+        "whose",
+        "why",
+        "how",
+        "each",
+        "every",
+        "both",
+        "either",
+        "neither",
+        "more",
+        "most",
+        "less",
+        "least",
+        "very",
+        "much",
+        "many",
+        "such",
+        "only",
+        "just",
+        "still",
+        "already",
+        "based",
+        "due",
+        "per",
+        "about",
+        "above",
+        "below",
+        "after",
+        "before",
+        "during",
+        "if",
+        "or",
+        "as",
+        "at",
+        "by",
+        "on",
+        "it",
+        "we",
+        "you",
+        "he",
+        "she",
+        "an",
+    ]
 )
 # Se quitan las ambiguas con el espanol o demasiado comunes en terminos
 # financieros ("per" de P/E, "as"/"on"/"he"/"or"/"it"/"an"/"at"/"by"/"if").
@@ -90,7 +195,9 @@ _EN_WORDS = _EN_WORDS - {
     "would",
     "be",
 }
-_EN_MARKERS = frozenset(["therefore", "however", "provided", "thus", "hence", "moreover", "furthermore", "whereas", "although"])
+_EN_MARKERS = frozenset(
+    ["therefore", "however", "provided", "thus", "hence", "moreover", "furthermore", "whereas", "although"]
+)
 
 _WORD_RE = re.compile(r"[A-Za-z\u00c0-\u024f]+(?:[\u2019\x27][A-Za-z]+)?")
 _QUOTED_RE = re.compile(r"\"[^\"\n]{0,600}\"|\u201c[^\u201d\n]{0,600}\u201d|\u00ab[^\u00bb\n]{0,600}\u00bb")
@@ -103,7 +210,7 @@ _GLUED_EN_RE = re.compile(
     re.IGNORECASE,
 )
 _HYPHEN_Q_RE = re.compile(r"\b[\w\u00c0-\u024f]+-[a-z]{3,}\?(?=\s|$)")
-_LONG_WORD_RE = re.compile(r"[A-Za-z\u00c0-\u024f]{22,}")
+_LONG_WORD_RE = re.compile(r"[A-Za-z\u00c0-\u024f]{28,}")
 _MID_Q_RE = re.compile(
     r"[a-z\u00e1\u00e9\u00ed\u00f3\u00fa\u00f1]{3,}\?[a-z\u00e1\u00e9\u00ed\u00f3\u00fa\u00f1]{2,}"
 )
@@ -112,6 +219,10 @@ _LONG_OK = frozenset({"electroencefalografista"})
 
 ENGLISH_MIN_HITS = 4
 ENGLISH_MIN_RATIO = 0.08
+# Frase corta claramente inglesa ("The company is profitable."): pocas palabras
+# pero casi todas funcionales inglesas.
+ENGLISH_SHORT_HITS = 2
+ENGLISH_SHORT_RATIO = 0.3
 
 
 def _strip_quoted(text: str) -> str:
@@ -146,7 +257,12 @@ def inspect_text(text: str, *, english: EnglishMode = "strict") -> list[str]:
         hits, total = _english_hits(text)
         starters = {m.group(1).lower() for m in _SENTENCE_START_RE.finditer(_strip_quoted(text))}
         marker_start = bool(starters & _EN_MARKERS) and hits >= 2
-        if marker_start or (hits >= ENGLISH_MIN_HITS and hits / max(total, 1) >= ENGLISH_MIN_RATIO):
+        ratio = hits / max(total, 1)
+        if (
+            marker_start
+            or (hits >= ENGLISH_MIN_HITS and ratio >= ENGLISH_MIN_RATIO)
+            or (hits >= ENGLISH_SHORT_HITS and ratio >= ENGLISH_SHORT_RATIO)
+        ):
             reasons.append(REASON_ENGLISH)
     return reasons
 
@@ -162,9 +278,17 @@ def _walk_strings(value: Any) -> Iterable[str]:
             yield from _walk_strings(item)
 
 
+def _is_free_text(value: str) -> bool:
+    """Los ids, enums y claves cortas (``facts``, ``financial_fact:12``) no son
+    prosa: sin espacios no hay texto libre que juzgar."""
+    return bool(value.strip()) and " " in value.strip()
+
+
 def inspect_response_text(text: str, *, english: EnglishMode = "strict") -> list[str]:
-    """Como ``inspect_text`` pero, si la respuesta es JSON, solo mira los
-    VALORES (las claves en ingles del esquema no cuentan)."""
+    """Como ``inspect_text`` pero, si la respuesta es JSON, evalua el CONJUNTO de
+    los valores de texto libre (no cada uno por separado, o varias frases
+    cortas en ingles sumarian por debajo del umbral) y no mira las claves ni los
+    ids/enums sin espacios."""
     if not isinstance(text, str):
         return []
     stripped = text.strip()
@@ -173,9 +297,16 @@ def inspect_response_text(text: str, *, english: EnglishMode = "strict") -> list
             parsed = json.loads(stripped)
         except ValueError:
             return inspect_text(text, english=english)
+        values = list(_walk_strings(parsed))
         reasons: list[str] = []
-        for chunk in _walk_strings(parsed):
-            for reason in inspect_text(chunk, english=english):
+        # CJK, control y tokens corruptos: tambien en valores de una palabra.
+        for chunk in values:
+            for reason in inspect_text(chunk, english="off"):
+                if reason not in reasons:
+                    reasons.append(reason)
+        if english == "strict":
+            prose = " . ".join(v for v in values if _is_free_text(v))
+            for reason in inspect_text(prose, english="strict"):
                 if reason not in reasons:
                     reasons.append(reason)
         return reasons
@@ -194,10 +325,11 @@ class LLMOutputRejected(Exception):
 @dataclass
 class GuardedResponse:
     response: Any
-    #: Respuestas descartadas por el validador (consumieron tokens: el llamador
-    #: las registra en su presupuesto).
+    #: Respuestas descartadas por el validador (ya pasaron por ``on_response``).
     discarded: list = field(default_factory=list)
     retried: bool = False
+    #: Llamadas reales al proveedor (1 o 2).
+    calls: int = 1
 
 
 _stats_lock = threading.Lock()
@@ -246,15 +378,22 @@ async def complete_guarded(
     *,
     source: str,
     english: EnglishMode = "strict",
+    on_response: Callable[[Any], None] | None = None,
+    before_retry: Callable[[], None] | None = None,
 ) -> GuardedResponse:
     """``provider.complete`` con validacion y UN reintento.
 
-    Devuelve la primera respuesta limpia. Si las dos fallan levanta
-    ``LLMOutputRejected``; el llamador debe caer a su salida determinista.
-    Los errores del proveedor se propagan sin tocar (no son fugas de idioma).
+    ``on_response`` se llama con CADA respuesta del proveedor (tambien las
+    descartadas) para que el llamador registre su coste. ``before_retry`` se
+    llama antes del segundo intento y puede levantar (p. ej. presupuesto
+    agotado) para cancelarlo; la excepcion se propaga y el llamador degrada.
+    Si las dos respuestas fallan levanta ``LLMOutputRejected`` con ``calls``.
+    Los errores del proveedor se propagan sin tocar.
     """
     _count(source, "calls")
     first = await provider.complete(request)
+    if on_response is not None:
+        on_response(first)
     reasons = inspect_response_text(getattr(first, "text", "") or "", english=english)
     if not reasons:
         return GuardedResponse(first)
@@ -262,15 +401,20 @@ async def complete_guarded(
     for reason in reasons:
         _count(source, f"reason.{reason}")
     logger.warning("llm_output_guard[%s]: salida rechazada (%s), reintento unico", source, ",".join(reasons))
+    if before_retry is not None:
+        before_retry()
     second = await provider.complete(_with_retry_hint(request))
+    if on_response is not None:
+        on_response(second)
     retry_reasons = inspect_response_text(getattr(second, "text", "") or "", english=english)
     if not retry_reasons:
         _count(source, "recovered")
-        return GuardedResponse(second, discarded=[first], retried=True)
+        return GuardedResponse(second, discarded=[first], retried=True, calls=2)
     _count(source, "rejected")
     logger.warning(
         "llm_output_guard[%s]: reintento tambien rechazado (%s), degradando", source, ",".join(retry_reasons)
     )
     exc = LLMOutputRejected(source, retry_reasons)
     exc.discarded = [first, second]  # type: ignore[attr-defined]
+    exc.calls = 2  # type: ignore[attr-defined]
     raise exc

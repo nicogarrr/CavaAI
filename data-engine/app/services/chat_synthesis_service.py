@@ -208,23 +208,39 @@ class ChatSynthesisService:
                         **get_prompt("chat_source_synthesis").trace_metadata(),
                     },
                 )
+                spent = {"cost": 0.0}
+
+                def _record(resp: Any) -> None:
+                    # CADA respuesta del proveedor consume presupuesto, tambien
+                    # la que el validador descarta.
+                    resp_cost = budget.estimate_cost_eur(
+                        resp.model,
+                        resp.usage.input_tokens,
+                        resp.usage.output_tokens,
+                    )
+                    spent["cost"] += resp_cost
+                    if db is not None:
+                        budget.record(
+                            db,
+                            resp.model,
+                            "chat_source_aware_synthesis",
+                            resp_cost,
+                            resp.usage.total_tokens,
+                        )
+
+                def _can_retry() -> None:
+                    if db is not None and not budget.can_spend(db, 0.02):
+                        raise BudgetExceededError("LLM budget exhausted")
+
                 guarded = await complete_guarded(
-                    self.provider, request, source="chat_synthesis"
+                    self.provider,
+                    request,
+                    source="chat_synthesis",
+                    on_response=_record,
+                    before_retry=_can_retry,
                 )
                 response = guarded.response
-                cost = budget.estimate_cost_eur(
-                    response.model,
-                    response.usage.input_tokens,
-                    response.usage.output_tokens,
-                )
-                if db is not None:
-                    budget.record(
-                        db,
-                        response.model,
-                        "chat_source_aware_synthesis",
-                        cost,
-                        response.usage.total_tokens,
-                    )
+                cost = spent["cost"]
                 payload = parse_json_response(response.text)
                 sections = self._verified_sections(payload, baseline, set(retrieval_ids))
                 declared_confidence = max(0.0, min(1.0, float(payload["confidence"])))
