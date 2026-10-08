@@ -1,0 +1,160 @@
+"""Hermetic Yahoo extended-hours contracts: no database, no invented dates."""
+import asyncio
+from copy import deepcopy
+from unittest.mock import AsyncMock
+
+import httpx
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from app.services.connectors.yahoo import YahooFinanceClient
+from app.services.extended_quote_service import ExtendedQuoteService, parse_extended_chart
+
+START = 1791466200  # 2026-10-08 13:30 UTC, regular US open.
+
+
+def chart():
+    return {
+        "meta": {
+            "currency": "USD", "exchangeTimezoneName": "America/New_York",
+            "previousClose": 100, "regularMarketPrice": 102, "regularMarketTime": START + 23340,
+            "currentTradingPeriod": {
+                "pre": {"start": START - 19800, "end": START},
+                "regular": {"start": START, "end": START + 23400},
+                "post": {"start": START + 23400, "end": START + 37800},
+            },
+        },
+        "timestamp": [START - 60, START, START + 23340, START + 23400],
+        "indicators": {"quote": [{"close": [101, 101, 102, 103], "open": [100, 100, 101, 102],
+                                   "high": [102, 102, 104, 104], "low": [99, 99, 100, 101]}]},
+    }
+
+
+@pytest.mark.parametrize(('now', 'session', 'price'), [
+    (START - 30, 'pre', 101), (START + 60, 'regular', 101),
+    (START + 23430, 'post', 103), (START + 37800, 'cerrado', 103),
+])
+def test_sessions(now, session, price):
+    q = parse_extended_chart('MSFT', chart(), now)
+    assert q.session == session and q.price == price
+    assert q.timestamp is not None and q.source.startswith('Yahoo Finance (no oficial)')
+    assert q.trading_date == '2026-10-08'
+    if session == 'cerrado':
+        assert q.change is None and q.change_percent is None
+    else:
+        assert q.change == price - 100
+    if session == 'regular':
+        assert q.regular_close is None  # Current intraday price is not a close.
+
+
+def test_stale_boundary_and_future_points():
+    node = chart()
+    q = parse_extended_chart('MSFT', node, START + 1200)
+    assert q.status == 'available' and q.timestamp == START
+    q = parse_extended_chart('MSFT', node, START + 1201)
+    assert q.status == 'retrasado' and q.timestamp == START
+    assert q.price == 101  # Still a dated delayed quote, never promoted to live.
+
+
+def test_ohlc_regular_only_and_previous_close_without_date():
+    q = parse_extended_chart('MSFT', chart(), START + 24000)
+    assert (q.open, q.high, q.low) == (100, 104, 99)
+    assert q.metrics_session == '2026-10-08' and q.metrics_timestamp == START + 23340
+    assert q.previous_close == 100 and q.previous_close_timestamp is None
+    assert q.regular_close == 102 and q.regular_close_timestamp == START + 23340
+    node = chart()
+    node['meta']['previousCloseTime'] = START - 86400
+    q = parse_extended_chart('MSFT', node, START + 24000)
+    assert q.previous_close_timestamp == START - 86400
+
+
+def test_no_timestamp_is_unavailable_not_old_meta_price():
+    node = chart()
+    node['timestamp'] = []
+    node['meta'].pop('regularMarketTime')
+    q = parse_extended_chart('MSFT', node, START + 40000)
+    assert q.status == 'unavailable' and q.price is None and q.timestamp is None
+    q = parse_extended_chart('MSFT', node, START + 60)
+    assert q.price is None  # No dated minute candle in an open session.
+
+
+def test_weekend_dated_meta_fallback_and_missing_bounds():
+    node = chart()
+    node['timestamp'] = []
+    q = parse_extended_chart('MSFT', node, START + 172800)
+    assert q.session == 'cerrado' and q.price == 102 and q.timestamp == START + 23340
+    assert q.change is None and q.trading_date == '2026-10-08'
+    node['meta'].pop('currentTradingPeriod')
+    assert parse_extended_chart('MSFT', node, START + 172800).price is None
+
+
+def test_null_nan_and_missing_ohlc_fail_honestly():
+    node = chart()
+    node['indicators']['quote'][0]['close'] = [None, float('nan'), -1, None]
+    assert parse_extended_chart('MSFT', node, START + 60).price is None
+    node = chart()
+    node['indicators']['quote'][0]['high'][1] = None
+    assert parse_extended_chart('MSFT', node, START + 24000).high is None
+
+
+def test_cache_60_seconds_reclassifies_and_failure_drops_old_price(monkeypatch):
+    clock = {'wall': START + 60, 'mono': 100.0}
+    monkeypatch.setattr('app.services.extended_quote_service.time.time', lambda: clock['wall'])
+    monkeypatch.setattr('app.services.extended_quote_service.time.monotonic', lambda: clock['mono'])
+    service = ExtendedQuoteService()
+    service.client.extended_chart = AsyncMock(return_value=deepcopy(chart()))
+    first = asyncio.run(service.get('msft'))
+    clock['wall'] += 1201
+    second = asyncio.run(service.get('MSFT'))
+    assert service.client.extended_chart.call_count == 1
+    assert second.status == 'retrasado' and second.fetched_at == first.fetched_at
+    clock['mono'] += 60
+    service.client.extended_chart.side_effect = RuntimeError('Yahoo down')
+    failed = asyncio.run(service.get('MSFT'))
+    assert failed.status == 'unavailable' and failed.price is None
+    assert not service.cache
+
+
+def test_yahoo_query_contract(monkeypatch):
+    seen = []
+    def handle(request):
+        seen.append(request)
+        return httpx.Response(200, json={'chart': {'result': [chart()]}})
+    client_type = httpx.AsyncClient
+    monkeypatch.setattr('app.services.connectors.yahoo.httpx.AsyncClient',
+                        lambda **kwargs: client_type(transport=httpx.MockTransport(handle), **kwargs))
+    asyncio.run(YahooFinanceClient().extended_chart('MSFT'))
+    assert dict(seen[0].url.params) == {'includePrePost': 'true', 'interval': '1m', 'range': '1d'}
+
+
+def test_endpoint_read_only_no_db(monkeypatch):
+    from app.api.routes.companies import router
+    app = FastAPI()
+    app.include_router(router, prefix='/companies')
+    fake = AsyncMock(return_value=parse_extended_chart('MSFT', chart(), START + 60))
+    monkeypatch.setattr('app.api.routes.companies.extended_quote_service.get', fake)
+    response = TestClient(app).get('/companies/MSFT/extended-quote')
+    assert response.status_code == 200 and response.json()['session'] == 'regular'
+    route = next(r for r in router.routes if r.path == '/{ticker}/extended-quote')
+    assert not route.dependant.dependencies
+
+
+def test_incomplete_open_and_unknown_timezone_never_invented():
+    node = chart()
+    node['timestamp'][1] += 60
+    assert parse_extended_chart('MSFT', node, START + 24000).open is None
+    node['meta'].pop('exchangeTimezoneName')
+    assert parse_extended_chart('MSFT', node, START + 24000).price is None
+
+
+def test_weekend_upcoming_bounds_preserve_dated_post_candle():
+    node = chart()
+    original = deepcopy(node['meta']['currentTradingPeriod'])
+    node['meta']['tradingPeriods'] = {k: [[v]] for k, v in original.items()}
+    for period in node['meta']['currentTradingPeriod'].values():
+        period['start'] += 4 * 86400
+        period['end'] += 4 * 86400
+    q = parse_extended_chart('MSFT', node, START + 2 * 86400)
+    assert q.session == 'cerrado' and q.price_session == 'post'
+    assert q.price == 103 and q.trading_date == '2026-10-08'
