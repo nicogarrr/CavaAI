@@ -7,11 +7,13 @@ menos una URL https. Sin base o sin URL no hay numero (fail closed).
 
 from __future__ import annotations
 
+import hashlib
 import re
+import threading
 from decimal import Decimal
 from urllib.parse import urlparse
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, select, text
 from sqlalchemy.orm import Session
 
 from app.models import Company, InferredInput
@@ -92,6 +94,32 @@ def validate(key: str, value: float | Decimal | None, base: str | None, urls: li
     return problems
 
 
+_company_locks_guard = threading.Lock()
+_company_locks: dict[int, threading.Lock] = {}
+
+
+def validate_rate_spread(db: Session, company: Company, input_key: str, value: Decimal) -> None:
+    """Validate the proposed rate against current global company inputs, without fallback."""
+    if input_key not in {"wacc", "terminal_growth"}:
+        return
+    from app.valuation.engines.base import default_terminal_growth, default_wacc, traceable_wacc
+
+    service = InferredInputService()
+    if input_key == "wacc":
+        other = service.latest_valid(db, company.id, "terminal_growth")
+        wacc = float(value)  # Check the proposed WACC even if a calculated WACC exists.
+        terminal = float(other.value) if other is not None else default_terminal_growth(company)
+    else:
+        calculated = traceable_wacc(db, company)
+        other = service.latest_valid(db, company.id, "wacc") if calculated is None else None
+        wacc = calculated if calculated is not None else (
+            float(other.value) if other is not None else default_wacc(company)
+        )
+        terminal = float(value)
+    if wacc - terminal < MIN_WACC_TERMINAL_SPREAD - 1e-9:
+        raise InferredInputError("spread_wacc_terminal_insuficiente")
+
+
 class InferredInputService:
     def create(
         self,
@@ -120,6 +148,47 @@ class InferredInputService:
         db.commit()
         db.refresh(row)
         return row
+
+    def create_guarded(
+        self,
+        db: Session,
+        company_id: int,
+        *,
+        input_key: str,
+        value: Decimal,
+        base: str,
+        source_urls: list[str],
+        origin: str = "llm",
+    ) -> InferredInput:
+        """Serialize global rate validation and save for both HTTP write paths.
+
+        Callers commit their read transaction BEFORE entering their write locks.
+        LLM callers take the tenant/day quota lock first, then this company lock;
+        manual callers take only this company lock. Neither path reverses the order.
+        PostgreSQL lock lasts until create commits (or the error rollback).
+        Legacy create remains available for historical/imported rows; HTTP writes
+        always use this guarded path.
+        """
+        with _company_locks_guard:
+            lock = _company_locks.setdefault(company_id, threading.Lock())
+        with lock:
+            try:
+                if db.get_bind().dialect.name == "postgresql":
+                    raw = f"inferred-rate-pair:company:{company_id}".encode()
+                    key = int.from_bytes(hashlib.sha256(raw).digest()[:8], "big") >> 1
+                    db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": key})
+                company = db.get(Company, company_id, populate_existing=True)
+                if company is None:
+                    raise InferredInputError("empresa_no_encontrada")
+                problems = validate(input_key, value, base, source_urls)
+                if problems:
+                    raise InferredInputError("; ".join(problems))
+                validate_rate_spread(db, company, input_key, value)
+                return self.create(db, company, input_key=input_key, value=value, base=base,
+                                   source_urls=source_urls, origin=origin)
+            except Exception:
+                db.rollback()
+                raise
 
     def latest_valid(self, db: Session, company_id: int, input_key: str) -> InferredInput | None:
         """Ultimo input vigente que sigue siendo valido; el resto se ignora."""

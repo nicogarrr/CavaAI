@@ -716,7 +716,7 @@ export interface paths {
         put?: never;
         /**
          * Create Inferred Input Llm
-         * @description Estima el margen FCF con el LLM solo desde extractos ya ingeridos. Guarda INFERIDO.
+         * @description Estima FCF, WACC o crecimiento terminal desde extractos ingeridos. Guarda INFERIDO.
          */
         post: operations["create_inferred_input_llm_api_companies__ticker__inferred_inputs_llm_post"];
         delete?: never;
@@ -5206,9 +5206,9 @@ export interface components {
             /**
              * Input Key
              * @default fcf_margin
-             * @constant
+             * @enum {string}
              */
-            input_key: "fcf_margin";
+            input_key: "fcf_margin" | "wacc" | "terminal_growth";
         };
         /** KPIExtractionAction */
         KPIExtractionAction: {
