@@ -66,6 +66,9 @@ def test_fetch_yahoo_quote_builds_finnhub_shape():
         "l": 101.0,
         "o": 101.0,
         "pc": 101.0,
+        "live_c": None,
+        "live_t": None,
+        "currency": None,
         "ct": None,  # sin timestamps en el payload: null honesto, no inventado
         "cd": None,
     }
@@ -202,3 +205,14 @@ def test_fetch_yahoo_quote_cd_fail_closed_sin_zona_valida():
         assert out["c"] == 200.0
         assert out["ct"] == 1790724600
         assert out["cd"] is None
+
+
+def test_spot_metadata_is_not_replaced_by_daily_candle():
+    payload = _payload()
+    result = payload["chart"]["result"][0]
+    result["meta"].update({"regularMarketPrice": 103.25, "regularMarketTime": 1791460800, "currency": "USD"})
+    quote = market._fetch_yahoo_quote(_Client(resp=_Resp(200, payload)), "AAPL")
+    assert quote["c"] == 102.5
+    assert quote["live_c"] == 103.25
+    assert quote["live_t"] == 1791460800
+    assert quote["currency"] == "USD"

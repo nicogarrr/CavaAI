@@ -20,6 +20,7 @@ from app.workers.dramatiq_app import (
     refresh_macro_news,
     refresh_market_pipeline,
     refresh_news,
+    refresh_paper_trades,
     refresh_portfolio_moves,
     refresh_portfolio_prices_intraday,
     refresh_propicks_prices,
@@ -270,6 +271,11 @@ def build_scheduler(*, background: bool = False) -> BlockingScheduler | Backgrou
     )
     _register(scheduler, partial(enqueue_for_all_tenants, dispatch_tracked_news_alerts),
               "interval", job_id="tracked_news_in_app", minutes=15)
+    _register(
+        scheduler,
+        partial(enqueue_for_all_tenants, refresh_paper_trades),
+        "interval", job_id="paper_trading_quotes", minutes=30, jitter=60,
+    )
     # F17: precios intradia de la cartera (Yahoo, retardo ~15 min declarado
     # en la UI) durante la sesion US. Ventana 13-21 UTC cubre EDT y EST.
     _register(
