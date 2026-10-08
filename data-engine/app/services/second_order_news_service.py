@@ -11,7 +11,8 @@ import os
 import re
 import unicodedata
 from datetime import UTC, datetime
-from typing import Literal
+from types import SimpleNamespace
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 from sqlalchemy import String, cast, func, or_, select
@@ -22,6 +23,7 @@ from app.llm import LLMRequest, Message, ResponseFormat, create_llm_provider, pa
 from app.llm.model_aliases import VERIFIED_FREE_MODELS
 from app.models import Company, NewsEvent
 from app.services.async_bridge import run_from_any_context
+from app.services.llm_output_guard import complete_guarded
 from app.services.second_order_quota import reserve_llm_call
 
 
@@ -79,7 +81,7 @@ def _fallback(text: str) -> Extraction:
 _SCHEMA = Extraction.model_json_schema()
 
 
-async def _extract_with_llm(text: str) -> tuple[Extraction, object]:
+async def _extract_with_llm(text: str, before_retry=None) -> tuple[Extraction, object]:
     provider = create_llm_provider()
     if provider.name == "disabled":
         raise RuntimeError("LLM not configured")
@@ -105,7 +107,11 @@ async def _extract_with_llm(text: str) -> tuple[Extraction, object]:
     # Pin the exact free model: task overrides and env defaults may route to paid models.
     if provider.model_router.resolve(request) not in VERIFIED_FREE_MODELS:
         raise RuntimeError("Second-order model is not the verified free model")
-    response = await provider.complete(request)
+    # Salida con CJK, ingles mezclado o tokens corruptos: un reintento y, si falla, el
+    # llamador degrada al camino determinista. before_retry reserva cuota para el 2o intento.
+    response = (
+        await complete_guarded(provider, request, source="second_order", before_retry=before_retry)
+    ).response
     return Extraction.model_validate(parse_json_response(response.text)), response
 
 
@@ -121,7 +127,7 @@ def _company_exposures(company: Company) -> list[tuple[str, str]]:
     return values
 
 
-def _source_date(event: NewsEvent) -> str | None:
+def _source_date(event: Any) -> str | None:
     if (event.metadata_ or {}).get("date_source") != "source":
         return None
     date = event.date
@@ -157,7 +163,7 @@ def _jev_marker(theme: Theme) -> dict:
 
 
 def _candidate(company: Company, theme: Theme, field: str, value: str,
-               event: NewsEvent, marker: dict) -> dict:
+               event: Any, marker: dict) -> dict:
     source = {"news_event_id": event.id, "url": event.url, "published_at": _source_date(event)}
     return {
         "ticker": company.ticker, "company_name": company.name,
@@ -248,7 +254,16 @@ def _matching_companies(db: Session, exposure: str) -> list[Company]:
 
 def analyze_second_order(db: Session, event: NewsEvent, *, use_llm: bool = False) -> dict:
     """No thesis/score/alert changes or ingestion filtering; reserves LLM quota."""
-    text = " ".join(part for part in (event.title, event.summary) if part)[:3500]
+    # Copia escalares y suelta la transaccion antes de cualquier LLM: sin conexion
+    # retenida durante la espera ni en el reintento (pool 5+10).
+    tenant_id = db.info.get("tenant_id")
+    snap: Any = SimpleNamespace(
+        id=event.id, url=event.url, source=event.source, date=event.date,
+        metadata_=dict(event.metadata_ or {}), title=event.title, summary=event.summary,
+    )
+    if use_llm:
+        db.commit()
+    text = " ".join(part for part in (snap.title, snap.summary) if part)[:3500]
     mode = "determinista"
     llm_note = None
     llm_quota = None
@@ -258,11 +273,20 @@ def analyze_second_order(db: Session, event: NewsEvent, *, use_llm: bool = False
             llm_note = "Análisis LLM desactivado por configuración."
         else:
             try:
-                llm_quota = reserve_llm_call(db.info.get("tenant_id"), get_settings())
+                llm_quota = reserve_llm_call(tenant_id, get_settings())
                 if not llm_quota["allowed"]:
                     llm_note = "Análisis LLM no disponible: tope alcanzado."
                 else:
-                    extraction, _response = run_from_any_context(_extract_with_llm(text))
+                    def _reserve_retry() -> None:
+                        nonlocal llm_quota
+                        retry = reserve_llm_call(tenant_id, get_settings())
+                        llm_quota = retry
+                        if not retry["allowed"]:
+                            raise RuntimeError("second-order LLM quota exhausted before retry")
+
+                    extraction, _response = run_from_any_context(
+                        _extract_with_llm(text, before_retry=_reserve_retry)
+                    )
                     mode = "llm"
             except Exception:  # noqa: BLE001 - never claim a failed call worked
                 llm_note = "Análisis LLM no disponible; se usa el camino determinista."
@@ -283,15 +307,15 @@ def analyze_second_order(db: Session, event: NewsEvent, *, use_llm: bool = False
         if matches:
             marker = _jev_marker(theme)
             candidates.extend(
-                _candidate(company, theme, field, value, event, marker)
+                _candidate(company, theme, field, value, snap, marker)
                 for company, field, value in matches
             )
         if len(candidates) >= 100:
             break
     return {
-        "news_event_id": event.id, "status": "hipótesis_no_verificadas" if candidates else "sin_datos",
+        "news_event_id": snap.id, "status": "hipótesis_no_verificadas" if candidates else "sin_datos",
         "generated_at": datetime.now(UTC).isoformat(), "mode": mode,
-        "source": {"url": event.url, "published_at": _source_date(event), "name": event.source},
+        "source": {"url": snap.url, "published_at": _source_date(snap), "name": snap.source},
         "source_claim": text, "source_verified": False,
         "themes": [theme.model_dump() for theme in extraction.themes],
         "candidates": candidates, "limited_to": 100, "note": llm_note,
