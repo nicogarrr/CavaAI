@@ -564,8 +564,9 @@ def test_manual_tme_preview_is_read_only_and_not_reused(db):
     company = _company(db, 'TME', 'US')
     _tx(db, company, date(2025, 5, 15), 'dividend', 0, 100, currency='EUR')
     _tx(db, company, date(2025, 5, 15), 'withholding', 0, 15, currency='EUR')
-    from app.models.entities import TaxReport
     from sqlalchemy import select
+
+    from app.models.entities import TaxReport
     service = TaxReportService()
     preview = service.get_report(db, 2025, tme=Decimal('0.10'))
     assert preview['filing']['tme_percent_manual'] == 10
@@ -579,15 +580,17 @@ def test_manual_tme_preview_is_read_only_and_not_reused(db):
 
 @pytest.mark.parametrize('value', ['-0.01', '100.01', 'NaN', 'Infinity', '19.123'])
 def test_preview_rejects_invalid_tme(value):
-    from app.api.routes.taxes import FilingPreviewInput
     from pydantic import ValidationError
+
+    from app.api.routes.taxes import FilingPreviewInput
     with pytest.raises(ValidationError):
         FilingPreviewInput(tme_percent=value)
 
 
 def test_preview_endpoint_accepts_zero_and_validates_year(db):
-    from app.api.routes.taxes import FilingPreviewInput, preview_tax_filing
     from fastapi import HTTPException
+
+    from app.api.routes.taxes import FilingPreviewInput, preview_tax_filing
     _eur_portfolio(db)
     result = preview_tax_filing(2025, FilingPreviewInput(tme_percent='0'), db)
     assert result['filing']['tme_percent_manual'] == 0
