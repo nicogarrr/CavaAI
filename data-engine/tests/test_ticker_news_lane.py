@@ -8,6 +8,8 @@ from app.services.connectors.rss import RSSConnector
 from app.services.news_service import _ticker_evidence_level
 from app.services.ticker_news_lane import (
     PRIORITY_TICKERS,
+    Deadline,
+    finalize_status,
     google_feed_url,
     is_us_listed,
     label_google,
@@ -71,3 +73,52 @@ def test_google_keeps_publisher_and_drops_items_without_company_evidence():
     out = label_google(result, SPCX, _ticker_evidence_level)
     assert [i.source for i in out.items] == ["TradingView"]
     assert out.items[0].title == "SpaceX adquirira el espectro para Starlink Mobile"
+
+
+def test_spacex_headline_without_ticker_is_accepted_for_spcx():
+    result = ConnectorResult(source="rss", items=[
+        _item("SpaceX Buys Wireless Spectrum For Starlink Mobile - TradingView"),
+        _item("SpaceX busca 40.000 millones de dolares de deuda - La Vanguardia"),
+    ])
+    out = label_google(result, SPCX, _ticker_evidence_level)
+    assert [i.source for i in out.items] == ["TradingView", "La Vanguardia"]
+
+
+def test_ast_spacemobile_name_only_is_accepted_for_asts_but_not_for_spcx():
+    headline = "AST SpaceMobile launches BlueBird 7 satellite - Reuters"
+    kept = label_google(ConnectorResult(source="rss", items=[_item(headline)]), ASTS, _ticker_evidence_level)
+    assert len(kept.items) == 1
+    other = label_google(ConnectorResult(source="rss", items=[_item(headline)]), SPCX, _ticker_evidence_level)
+    assert other.items == []
+
+
+def test_competitor_and_generic_terms_are_rejected():
+    items = [
+        _item("Rocket Lab drops 4% as Planet Labs falls 5% - 247WallSt"),
+        _item("Satellite broadband market grows - Telecom Weekly"),
+        _item("Apple pie recipe - Cocina"),
+    ]
+    apple = SimpleNamespace(ticker="AAPL", name="Apple Inc", exchange="NASDAQ")
+    assert label_google(ConnectorResult(source="rss", items=list(items)), ASTS, _ticker_evidence_level).items == []
+    assert label_google(ConnectorResult(source="rss", items=list(items)), SPCX, _ticker_evidence_level).items == []
+    # Una sola palabra generica de nombre no basta ("Apple" sin ticker).
+    assert label_google(ConnectorResult(source="rss", items=list(items)), apple, _ticker_evidence_level).items == []
+
+
+def test_deadline_is_checked_before_and_after_each_unit_and_marks_truncated():
+    now = [0.0]
+    deadline = Deadline(100, clock=lambda: now[0])
+    assert deadline.expired() is False and deadline.truncated is False
+    now[0] = 99.0
+    assert deadline.expired() is False
+    now[0] = 101.0  # la unidad en curso paso el limite
+    assert deadline.expired() is True
+    now[0] = 0.0  # una vez truncado no se "des-trunca"
+    assert deadline.expired() is True and deadline.truncated is True
+
+
+def test_truncated_sweep_is_never_ok_so_the_coalescer_does_not_mark_it_fresh():
+    assert finalize_status("ok", True) == "partial"
+    assert finalize_status("ok", False) == "ok"
+    assert finalize_status("error", True) == "error"
+    assert finalize_status("partial", True) == "partial"

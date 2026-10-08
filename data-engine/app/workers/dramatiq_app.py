@@ -1529,16 +1529,20 @@ def refresh_news(
             # no es Exception): con 429 y pacing de ~5 s el barrido alfabetico
             # moria antes de llegar a ASTS. Prioritarias primero y corte limpio
             # con resultado parcial bajo el limite.
-            from app.services.ticker_news_lane import PRIORITY_TICKERS
+            from app.services.ticker_news_lane import (
+                PRIORITY_TICKERS,
+                Deadline,
+                finalize_status,
+            )
 
             companies = sorted(
                 companies, key=lambda c: (c.ticker.upper() not in PRIORITY_TICKERS, c.ticker)
             )
-            deadline = time.monotonic() + 510
-            truncated = False
+            # 300 s: el ultimo query puede entrar con 429+reintentos y 30 items;
+            # el margen real hasta los 600 s del TimeLimit es de 5 min.
+            deadline = Deadline(300)
             for company in companies:
-                if time.monotonic() > deadline:
-                    truncated = True
+                if deadline.expired():
                     break
                 try:
                     query = _gdelt_company_query(company)
@@ -1573,12 +1577,12 @@ def refresh_news(
                         }
                     )
             return {
-                "status": _batch_status(processed, errors),
+                "status": finalize_status(_batch_status(processed, errors), deadline.truncated),
                 "actor": actor_name,
                 "scope": scope,
                 "companies_processed": processed,
                 "news_ingested": ingested,
-                "truncated": truncated,
+                "truncated": deadline.truncated,
                 "errors": errors,
             }
         finally:
@@ -1617,6 +1621,8 @@ def refresh_ticker_news(
         from app.services.news_service import _ticker_evidence_level
         from app.services.ticker_news_lane import (
             PRIORITY_TICKERS,
+            Deadline,
+            finalize_status,
             google_feed_url,
             is_us_listed,
             label_google,
@@ -1643,11 +1649,9 @@ def refresh_ticker_news(
                 )
             else:
                 companies = [c for c in _companies(db) if is_us_listed(c)]
-            deadline = time.monotonic() + 6900  # margen bajo time_limit de 2 h
-            truncated = False
+            deadline = Deadline(6600)  # margen de 10 min bajo el time_limit de 2 h
             for company in companies:
-                if time.monotonic() > deadline:
-                    truncated = True
+                if deadline.expired():
                     break
                 lanes = [("yahoo", yahoo_feed_url(company.ticker))] if is_us_listed(company) else []
                 if scope == "tracked" or ticker:
@@ -1655,6 +1659,8 @@ def refresh_ticker_news(
                     if company.ticker.upper() in PRIORITY_TICKERS:
                         lanes.append(("google-es", google_feed_url(company, lang="es")))
                 for lane, url in lanes:
+                    if deadline.expired():
+                        break
                     try:
                         result = _run(service.poll_rss(url, ticker=company.ticker, max_items=30))
                         result = (
@@ -1683,12 +1689,12 @@ def refresh_ticker_news(
                         )
                     time.sleep(1.5)
             return {
-                "status": _batch_status(processed, errors),
+                "status": finalize_status(_batch_status(processed, errors), deadline.truncated),
                 "actor": actor_name,
                 "scope": scope,
                 "feeds_processed": processed,
                 "news_ingested": ingested,
-                "truncated": truncated,
+                "truncated": deadline.truncated,
                 "errors": errors,
             }
         finally:
