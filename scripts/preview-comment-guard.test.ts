@@ -87,3 +87,15 @@ test("paso de publicar usa el array de paginate (sin {data})", async () => {
   await run(PUBLISH, { list: [] });
   await run(PUBLISH, { list: [{ id: 3, body: MARKER }] });
 });
+
+test("ningun camino del workflow activa el deploy de previews por CLI", () => {
+  const text = yml.join("\n");
+  // El gate nunca puede dejar deploy=true, haya o no secrets.
+  assert.doesNotMatch(text, /deploy=true/);
+  assert.match(text, /deploy=false/);
+  // Sin deploy no hay comentario que publicar en el PR.
+  assert.match(text, /Previews de rama\/PR desactivados: solo main despliega/);
+  // vercel.json: solo main despliega por Git.
+  const vercel = JSON.parse(readFileSync(new URL("../vercel.json", import.meta.url), "utf8"));
+  assert.deepEqual(vercel.git.deploymentEnabled, { main: true, "**": false });
+});

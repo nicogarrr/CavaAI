@@ -87,8 +87,11 @@ jobs:
             can_comment=false
             reason="VERCEL_TOKEN existe pero faltan VERCEL_ORG_ID o VERCEL_PROJECT_ID, y .vercel/ no esta versionado (esta en .gitignore), asi que el proyecto de Vercel no se puede enlazar."
           else
-            deploy=true
-            reason="Vercel configurado: preview + comentario."
+            # Decision de Nico (8 oct): no se despliega ninguna rama ni PR hasta que
+            # llegue a main. Aunque existan los secrets, el deploy por CLI queda
+            # apagado: git.deploymentEnabled (vercel.json) no cubre `vercel deploy`.
+            can_comment=false
+            reason="Previews de rama/PR desactivados: solo main despliega (produccion)."
           fi
           {
             echo "deploy=$deploy"
