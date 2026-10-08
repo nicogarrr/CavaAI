@@ -6,6 +6,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.schedulers.blocking import BlockingScheduler
 
 from app.metrics.precompute import refresh_backend_metrics
+from app.services.thesis_job_service import reconcile_thesis_dispatches
 from app.workers.dramatiq_app import (
     backfill_document_kpis,
     consolidate_memory,
@@ -90,6 +91,10 @@ def enqueue_for_all_tenants(actor, **kwargs) -> dict:
 def build_scheduler(*, background: bool = False) -> BlockingScheduler | BackgroundScheduler:
     scheduler_cls = BackgroundScheduler if background else BlockingScheduler
     scheduler = scheduler_cls(timezone="UTC")
+    # Direct, short outbox check: must not wait behind ingestion on default.
+    _register(scheduler, reconcile_thesis_dispatches, "interval",
+              job_id="thesis_dispatch_recovery", minutes=1)
+
     # Precios a dos velocidades, mismo criterio que news (decision de Nico
     # 2026-09-25): cartera+watchlist cada hora; universo completo cada 6 h en
     # background. El screener sirve quotes en vivo por su propia via de
