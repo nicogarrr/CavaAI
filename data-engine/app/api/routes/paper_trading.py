@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -8,6 +9,8 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.paper_trading import PaperTrade
 from app.schemas.paper_trading import PaperProposal
+from app.services.llm_proposal_runner import QuotaExceeded, generate_proposal
+from app.services.llm_proposal_service import ProposalRejected
 from app.services.paper_trading_service import create_proposal, refresh_trades, scoreboard, trade_out
 
 router = APIRouter()
@@ -17,6 +20,28 @@ router = APIRouter()
 def propose(body: PaperProposal, db: Session = Depends(get_db)) -> dict:
     try:
         return trade_out(create_proposal(db, body))
+    except (ValueError, IntegrityError) as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Clave de propuesta duplicada o en conflicto") from exc
+
+
+class LLMProposalRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ticker: str = Field(min_length=1, max_length=20)
+
+
+@router.post("/llm-proposals", status_code=201)
+async def llm_propose(body: LLMProposalRequest, db: Session = Depends(get_db)) -> dict:
+    """Genera UNA propuesta simulada con el LLM, validada y con cuota diaria. No ejecuta nada."""
+    try:
+        return trade_out(await generate_proposal(db, body.ticker))
+    except QuotaExceeded as exc:
+        db.rollback()
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
+    except ProposalRejected as exc:
+        db.rollback()
+        status = 503 if exc.reason in {"llm_deshabilitado", "presupuesto_agotado"} else 422
+        raise HTTPException(status_code=status, detail=f"Propuesta rechazada: {exc.reason}") from exc
     except (ValueError, IntegrityError) as exc:
         db.rollback()
         raise HTTPException(status_code=409, detail="Clave de propuesta duplicada o en conflicto") from exc

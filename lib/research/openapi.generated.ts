@@ -2329,6 +2329,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/paper-trading/llm-proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Llm Propose
+         * @description Genera UNA propuesta simulada con el LLM, validada y con cuota diaria. No ejecuta nada.
+         */
+        post: operations["llm_propose_api_paper_trading_llm_proposals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/paper-trading/proposals": {
         parameters: {
             query?: never;
@@ -5233,6 +5253,11 @@ export interface components {
             trace: {
                 [key: string]: unknown;
             };
+        };
+        /** LLMProposalRequest */
+        LLMProposalRequest: {
+            /** Ticker */
+            ticker: string;
         };
         /** LibraryQuestion */
         LibraryQuestion: {
@@ -12594,6 +12619,50 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    llm_propose_api_paper_trading_llm_proposals_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LLMProposalRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
