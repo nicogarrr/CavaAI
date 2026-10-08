@@ -2312,3 +2312,66 @@ class InstrumentReference(Base, TimestampMixin):
     currency: Mapped[str | None] = mapped_column(String(10), nullable=True)
     as_of: Mapped[_DateT] = mapped_column(Date, default=date.today)
     source: Mapped[str] = mapped_column(String(80), default="financedatabase")
+
+
+class InvestorPosition(TenantOwnedMixin, Base, TimestampMixin):
+    """Posicion de un inversor publico con fuente y fecha (no 13F: 13D, Form 3/4...).
+
+    Cada dato lleva etiqueta OFICIAL / INFERIDO / SIN DATOS y su fecha. Los
+    campos sin fuente quedan en NULL (= SIN DATOS); nunca se rellenan.
+    """
+
+    __tablename__ = "investor_positions"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "investor_slug", "issuer_cik", "security_title", "as_of",
+            name="uq_investor_position",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    investor_slug: Mapped[str] = mapped_column(String(60), index=True)
+    issuer_name: Mapped[str] = mapped_column(String(200))
+    issuer_cik: Mapped[str] = mapped_column(String(10), default="")
+    ticker: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    security_title: Mapped[str] = mapped_column(String(150), default="")
+    shares: Mapped[Decimal | None] = mapped_column(Numeric(24, 4), nullable=True)
+    ownership_pct: Mapped[Decimal | None] = mapped_column(Numeric(9, 4), nullable=True)
+    value_usd: Mapped[Decimal | None] = mapped_column(Numeric(24, 2), nullable=True)
+    label: Mapped[str] = mapped_column(String(12), default="OFICIAL")
+    value_label: Mapped[str] = mapped_column(String(12), default="SIN_DATOS")
+    as_of: Mapped[date] = mapped_column(Date)
+    source_form: Mapped[str] = mapped_column(String(20), default="")
+    accession_number: Mapped[str] = mapped_column(String(25), default="")
+    source_url: Mapped[str] = mapped_column(String(500), default="")
+    note: Mapped[str] = mapped_column(Text, default="")
+
+
+class InvestorMovement(TenantOwnedMixin, Base, TimestampMixin):
+    """Movimiento declarado (Form 4 / Form 3 / 13D) de un inversor publico."""
+
+    __tablename__ = "investor_movements"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "investor_slug", "accession_number", "line_no",
+            name="uq_investor_movement",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    investor_slug: Mapped[str] = mapped_column(String(60), index=True)
+    accession_number: Mapped[str] = mapped_column(String(25))
+    line_no: Mapped[int] = mapped_column(default=0)
+    issuer_name: Mapped[str] = mapped_column(String(200))
+    ticker: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    movement_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    filing_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    action: Mapped[str] = mapped_column(String(20), default="otro")
+    transaction_code: Mapped[str] = mapped_column(String(4), default="")
+    shares: Mapped[Decimal | None] = mapped_column(Numeric(24, 4), nullable=True)
+    price_usd: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
+    shares_after: Mapped[Decimal | None] = mapped_column(Numeric(24, 4), nullable=True)
+    label: Mapped[str] = mapped_column(String(12), default="OFICIAL")
+    source_form: Mapped[str] = mapped_column(String(20), default="")
+    source_url: Mapped[str] = mapped_column(String(500), default="")
+    note: Mapped[str] = mapped_column(Text, default="")
