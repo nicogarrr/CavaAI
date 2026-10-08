@@ -1,8 +1,9 @@
 """Atomic per-tenant rate and daily request budget for the ASTS catalog LLM.
 
 A reservation counts attempted calls, including upstream failures. In production,
-Redis failure blocks the LLM path. No expense or money is recorded for a free
-provider model. Exact counts are shown in the endpoint response.
+Redis failure blocks the LLM path. This module only counts calls; the service
+records token usage and planning cost through the output guard. Exact request
+counts are shown in the endpoint response.
 
 This module also hosts the generic implementation shared with the second-order
 budget: both paths differ only in the ``QuotaNamespace`` they pass, so
