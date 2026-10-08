@@ -67,6 +67,12 @@ dependencies = [
     # convierte PDFs. Ambos con import perezoso y fallback a pypdf.
     "docling>=2.132.0,<3",
     "markitdown[pdf]>=0.1.8,<1",
+    # RAG de conocimiento profesional (app/services/knowledge_rag/). SOLO
+    # llama-index-core como caja de herramientas de retrieval (TextNode,
+    # NodeWithScore, QueryBundle, postprocesadores). Sin llama-index-vector-
+    # stores-qdrant (exige qdrant-client>=1.16; prod pinea <1.15 y su Qdrant
+    # server es 1.12.5), sin LlamaParse/LlamaCloud ni integraciones OpenAI.
+    "llama-index-core>=0.14.25,<0.15",
     # Export EPUB 100% Python sin binario externo (ver
     # app/services/thesis_epub_service.py). AGPL-3.0 = misma licencia que la app.
     "EbookLib>=0.20,<1",
