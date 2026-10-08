@@ -3499,6 +3499,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/taxes/report/{fiscal_year}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Tax Filing
+         * @description Vista previa IRPF con TME manual. Solo cálculo, sin guardar datos.
+         */
+        post: operations["preview_tax_filing_api_taxes_report__fiscal_year__preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/taxes/report/{fiscal_year}/regenerate": {
         parameters: {
             query?: never;
@@ -5009,6 +5029,11 @@ export interface components {
             source: string;
             /** Url */
             url: string;
+        };
+        /** FilingPreviewInput */
+        FilingPreviewInput: {
+            /** Tme Percent */
+            tme_percent: number | string;
         };
         /** FinancialFactOut */
         FinancialFactOut: {
@@ -15655,6 +15680,52 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_tax_filing_api_taxes_report__fiscal_year__preview_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path: {
+                fiscal_year: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FilingPreviewInput"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

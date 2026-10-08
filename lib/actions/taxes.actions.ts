@@ -37,3 +37,15 @@ export async function getModelo720File(fiscalYear: number): Promise<TaxRecord> {
     await requireAuthenticatedUser();
     return researchRequest<TaxRecord>(`/api/taxes/modelo720/${assertYear(fiscalYear, 'fiscalYear')}/file`);
 }
+
+/** Vista previa del Modelo 100 con TME manual, sin guardar datos fiscales. */
+export async function previewTaxFiling(fiscalYear: number, tmePercent: number): Promise<TaxRecord> {
+    await requireAuthenticatedUser();
+    if (!Number.isFinite(tmePercent) || tmePercent < 0 || tmePercent > 100) {
+        throw new Error('El tipo medio efectivo debe estar entre 0 y 100 %.');
+    }
+    return researchRequest<TaxRecord>(`/api/taxes/report/${assertYear(fiscalYear, 'fiscalYear')}/preview`, {
+        method: 'POST',
+        body: JSON.stringify({ tme_percent: tmePercent }),
+    });
+}

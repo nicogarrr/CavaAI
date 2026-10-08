@@ -210,11 +210,15 @@ export default function TaxesView({ initialHoldings, initialReport, initialThres
     // override de «Regenerar», etiquetado con su ejercicio.
     const [override, setOverride] = useState<ReportOverride | null>(null);
     const [reportKey, setReportKey] = useState(0);
+    const [holdingPage, setHoldingPage] = useState(0);
+    const holdingPages = Math.max(1, Math.ceil(initialHoldings.length / 10));
+    const currentHoldingPage = Math.min(holdingPage, holdingPages - 1);
     const report = reportForYear(override, initialReport, year);
 
     const handleYearChange = (next: string) => {
         const parsed = Number.parseInt(next, 10);
         if (!Number.isInteger(parsed)) return;
+        setHoldingPage(0);
         router.push(`/taxes?year=${parsed}`);
     };
 
@@ -294,16 +298,19 @@ export default function TaxesView({ initialHoldings, initialReport, initialThres
                 }
             />
 
-            <FilingSection filing={(report?.filing as DataRecord | undefined) ?? null} />
+            <FilingSection key={`${year}-${reportKey}`} filing={(report?.filing as DataRecord | undefined) ?? null}
+                year={year} onPreview={(fresh) => setOverride({ year, report: fresh })}
+                onReset={() => setOverride(null)} />
 
             <Modelo720Section thresholds={initialThresholds720} file720={initialFile720} unavailable={initialThresholds720Unavailable} />
 
             <RecordList
+                key={`holdings-${year}-${currentHoldingPage}`}
                 title="Posiciones Fiscales"
                 description="Posiciones con base de coste y plusvalías latentes. La divisa base del informe es EUR; cada importe usa la divisa de su fila si consta."
                 icon={<Receipt className="h-5 w-5 text-teal-400" />}
-                records={initialHoldings}
-                fetchRecords={getTaxHoldings}
+                records={initialHoldings.slice(currentHoldingPage * 10, (currentHoldingPage + 1) * 10)}
+                fetchRecords={async () => (await getTaxHoldings()).slice(currentHoldingPage * 10, (currentHoldingPage + 1) * 10)}
                 columns={['ticker', 'quantity', 'cost_basis', 'market_value', 'unrealized_pnl']}
                 columnLabels={{
                     ticker: 'Ticker',
@@ -326,10 +333,10 @@ export default function TaxesView({ initialHoldings, initialReport, initialThres
                         size="sm"
                         variant="outline"
                         onClick={() => {
-                            downloadTaxSummary(initialHoldings, initialReport, year);
+                            downloadTaxSummary(initialHoldings, report, year);
                             toast.success(`Resumen fiscal ${year} exportado`);
                         }}
-                        disabled={initialHoldings.length === 0 && !initialReport}
+                        disabled={initialHoldings.length === 0 && !report}
                         className="gap-2 border-gray-600 text-gray-300 hover:text-teal-400"
                     >
                         <Download className="h-4 w-4" />
@@ -337,6 +344,11 @@ export default function TaxesView({ initialHoldings, initialReport, initialThres
                     </Button>
                 }
             />
+            {holdingPages > 1 && <nav aria-label="Páginas de posiciones fiscales" className="flex items-center justify-between gap-2">
+                <Button size="sm" variant="outline" disabled={currentHoldingPage === 0} onClick={() => setHoldingPage(currentHoldingPage - 1)}>Anterior</Button>
+                <span className="text-xs text-gray-400">{currentHoldingPage + 1} / {holdingPages} · {initialHoldings.length} posiciones</span>
+                <Button size="sm" variant="outline" disabled={currentHoldingPage + 1 >= holdingPages} onClick={() => setHoldingPage(currentHoldingPage + 1)}>Siguiente</Button>
+            </nav>}
         </div>
     );
 }

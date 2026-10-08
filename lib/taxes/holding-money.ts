@@ -15,6 +15,12 @@ export function formatHoldingMoney(value: unknown, currency: unknown): string {
     const cur = typeof currency === 'string' && /^[A-Za-z]{3}$/.test(currency.trim())
         ? currency.trim().toUpperCase()
         : 'EUR';
+    if (cur === 'USD') {
+        const parsed = typeof value === 'number' ? value : Number(value);
+        return Number.isFinite(parsed)
+            ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(parsed)
+            : NA;
+    }
     return formatMoney(value as number | string, cur);
 }
 

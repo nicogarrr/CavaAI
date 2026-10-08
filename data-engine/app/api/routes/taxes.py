@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
+
+from pydantic import BaseModel, Field
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -75,3 +79,25 @@ def modelo720_file(fiscal_year: int, db: Session = Depends(get_db)) -> dict:
     """
     _validate_year(fiscal_year)
     return Modelo720FileService().generate(db, fiscal_year)
+
+
+class FilingPreviewInput(BaseModel):
+    # TME copiado del borrador del usuario, en porcentaje (19,00 -> 0,19).
+    # No se persiste ni se aplica a otro ejercicio/tenant.
+    tme_percent: Decimal = Field(ge=0, le=100, max_digits=5, decimal_places=2)
+
+
+@router.post("/report/{fiscal_year}/preview")
+def preview_tax_filing(
+    fiscal_year: int,
+    inputs: FilingPreviewInput,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Vista previa IRPF con TME manual. Solo cálculo, sin guardar datos."""
+    _validate_year(fiscal_year)
+    try:
+        return TaxReportService().get_report(
+            db, fiscal_year, tme=inputs.tme_percent / Decimal("100")
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
