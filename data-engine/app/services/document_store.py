@@ -20,6 +20,9 @@ class DocumentStore:
             access_key=self.settings.minio_access_key,
             secret_key=self.settings.minio_secret_key,
             secure=secure,
+            # Con region explicita el SDK no consulta GetBucketLocation: Garage
+            # (compatible S3) la fija en su config.
+            region=self.settings.minio_region or None,
         )
 
     def put_bytes_local(
