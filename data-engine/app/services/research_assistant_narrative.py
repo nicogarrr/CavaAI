@@ -5,6 +5,7 @@ import json
 
 from app.llm import LLMRequest, Message, ResponseFormat, create_llm_provider, parse_json_response
 from app.services.budget import BudgetController
+from app.services.llm_output_guard import complete_guarded
 
 _OUTPUT_SCHEMA = {
     "type": "object", "additionalProperties": False,
@@ -74,7 +75,11 @@ async def synthesize(db, payload, baseline: dict, *, provider=None) -> dict:
         response_format=ResponseFormat.json_schema(_OUTPUT_SCHEMA, name="research_assistant_narrative"),
     )
     try:
-        response = await provider.complete(request)
+        # Las frases copian extractos literales (pueden ser en ingles): solo CJK y
+        # tokens corruptos cuentan aqui.
+        response = (await complete_guarded(
+            provider, request, source="research_assistant_narrative", english="off"
+        )).response
         sentences = _validated_sentences(parse_json_response(response.text), citations)
     except Exception:  # provider failure cannot remove the safe deterministic answer
         return baseline

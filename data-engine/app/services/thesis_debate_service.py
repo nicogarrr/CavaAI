@@ -25,6 +25,7 @@ from app.services.jev_gates import (
     DEBATE_WORTHWHILE_THRESHOLD,
     jev_choice_or_none,
 )
+from app.services.llm_output_guard import complete_guarded
 from app.services.prompt_registry import get_prompt
 
 # Coste fijo por operacion (techo, solo si el LLM responde a todo).
@@ -100,7 +101,11 @@ async def _complete_text(
         temperature=temperature,
         max_tokens=max_tokens,
     )
-    response = await provider.complete(request)
+    # Un texto con CJK, ingles mezclado o tokens corruptos se reintenta una vez;
+    # si falla otra vez levanta LLMOutputRejected y el llamador degrada a la
+    # salida determinista (nunca se publica el texto roto).
+    guarded = await complete_guarded(provider, request, source=f"thesis_debate.{task}")
+    response = guarded.response
     text = (response.text or "").strip()
     if not text:
         raise ValueError("empty LLM response")

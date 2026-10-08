@@ -15,6 +15,7 @@ from app.llm.base import LLMProvider
 from app.schemas import ChatResponse, SynthesisSection
 from app.services.budget import BudgetController, BudgetExceededError
 from app.services.langfuse_client import LangfuseTracer
+from app.services.llm_output_guard import complete_guarded
 from app.services.prompt_registry import get_prompt
 
 PROMPT_VERSION = get_prompt("chat_source_synthesis", allow_remote=False).version
@@ -207,7 +208,10 @@ class ChatSynthesisService:
                         **get_prompt("chat_source_synthesis").trace_metadata(),
                     },
                 )
-                response = await self.provider.complete(request)
+                guarded = await complete_guarded(
+                    self.provider, request, source="chat_synthesis"
+                )
+                response = guarded.response
                 cost = budget.estimate_cost_eur(
                     response.model,
                     response.usage.input_tokens,
