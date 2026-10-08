@@ -64,7 +64,7 @@ Los errores persistidos omiten token, URL del bot, contenido y respuesta cruda.
 
 ## Despliegue
 
-Aplicar Alembic hasta `0051_alert_subscriptions`, reconstruir backend/worker/
+Aplicar Alembic hasta `0054_alert_subscriptions`, reconstruir backend/worker/
 scheduler con `docker-compose.prod.yml`. Las variables de entorno de Telegram
 ya existen. No se activa nada con la migración y no se toca `wake.ts`.
 Comprobar primero con un chat privado de prueba y consentimiento explícito;
