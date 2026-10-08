@@ -66,8 +66,8 @@ def test_in_app_delivers_and_unconfigured_channels_say_so(db):
 def test_telegram_not_configured_without_credentials(db):
     alert = _alert(db, ["telegram"])
     deliveries = NotificationService().dispatch(db, alert)
-    assert deliveries["telegram"]["status"] == "not_configured"
-    assert "TELEGRAM_ENABLED" in deliveries["telegram"]["error"]
+    assert deliveries["telegram"]["status"] == "skipped"
+    assert "consentimiento" in deliveries["telegram"]["error"]
 
 
 def test_configured_telegram_failure_does_not_leak_token_or_url(monkeypatch, db):
@@ -100,10 +100,12 @@ def test_configured_telegram_failure_does_not_leak_token_or_url(monkeypatch, db)
         ),
     )
 
-    deliveries = NotificationService().dispatch(db, _alert(db, ["telegram"]))
+    result = NotificationService()._dispatch_telegram(notification_service.get_settings(),
+        {"severity": "high", "title": "Alerta", "message": "Fuente", "company_id": 1,
+         "alert_id": 1, "chat_id": "12345"})
 
-    assert deliveries["telegram"]["status"] == "unknown"
-    error = deliveries["telegram"]["error"]
+    assert result["status"] == "unknown"
+    error = result["error"]
     assert "RuntimeError" in error
     assert token not in error
     assert endpoint not in error

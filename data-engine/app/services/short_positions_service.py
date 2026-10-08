@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.models import Company, ConnectorState
 from app.services.cnmv_mapping import resolve_issuer
 from app.services.connectors.cnmv_shorts import fetch_positions
-from app.services.connectors.short_interest import fetch_short_volume
+from app.services.connectors.short_interest import fetch_short_interest, fetch_short_volume
 from app.services.data_health_service import utc
 
 CONNECTOR = "public_shorts"
@@ -53,6 +53,7 @@ async def refresh_shorts(db: Session, company: Company) -> dict:
         state = ConnectorState(tenant_id=db.info["tenant_id"], company_id=company.id,
                                connector=CONNECTOR, feed_url="public-shorts")
         db.add(state)
+    previous = dict(state.metadata_ or {})
     ticker, exchange = company.ticker, company.exchange.upper()
     issuer = resolve_issuer(ticker)
     state_id = state.id
@@ -67,11 +68,12 @@ async def refresh_shorts(db: Session, company: Company) -> dict:
         elif exchange in {"NASDAQ", "NYSE", "AMEX", "NYSEARCA", "NYSE ARCA", "US"} and "." not in ticker:
             async with httpx.AsyncClient(timeout=5) as client:
                 row = await fetch_short_volume(ticker, client=client, lookback_days=4)
+                interest = await fetch_short_interest(ticker, client=client)
             if row is None:
                 raise ValueError("No FINRA row")
             if date.fromisoformat(row["date"]) > now.date():
                 raise ValueError("Future FINRA trade date")
-            payload = {**row, "source": "FINRA", "kind": "OFICIAL", "ratio_kind": "DERIVADO",
+            payload = {**row, "short_interest": interest, "source": "FINRA", "kind": "OFICIAL", "ratio_kind": "DERIVADO",
                        "note": "Volumen corto diario fuera de bolsa, no posiciones abiertas ni porcentaje total del mercado. No implica sentimiento bajista por sí solo."}
         else:
             state.last_error = "UnsupportedMarket"
@@ -83,9 +85,78 @@ async def refresh_shorts(db: Session, company: Company) -> dict:
         state.last_success_at = now
         state.consecutive_errors = 0
         state.last_error = None
+        emit_shorts_increase(db, company, previous, payload, now)
     except Exception as exc:  # noqa: BLE001 - never expose upstream strings/secrets
         state = db.get(ConnectorState, state_id)
         state.consecutive_errors = (state.consecutive_errors or 0) + 1
         state.last_error = type(exc).__name__
     db.commit()
     return read_shorts(db, company)
+
+
+
+def emit_shorts_increase(db: Session, company: Company, previous: dict, current: dict, now: datetime) -> None:
+    """Open positions only. Daily FINRA short volume is never a position signal."""
+    from app.services.review_alert_service import ReviewAlertService
+
+    parts = None
+    message = None
+    source_url = None
+    if current.get("source") == "CNMV" and previous.get("source") == "CNMV":
+        # Same set of public holders avoids treating disclosure-threshold entry
+        # as a real increase in the market's total open short interest.
+        old = {r["holder"]: r for r in previous.get("positions", [])}
+        new = {r["holder"]: r for r in current.get("positions", [])}
+        valid_dates = bool(old and old.keys() == new.keys())
+        advanced = False
+        observation_dates = []
+        if valid_dates:
+            for holder in old:
+                try:
+                    before_date = date.fromisoformat(old[holder]["position_date"])
+                    after_date = date.fromisoformat(new[holder]["position_date"])
+                except (ValueError, TypeError, KeyError):
+                    valid_dates = False
+                    break
+                # Conservative alert policy: never infer a fresh increase from
+                # future, stale or backward holder disclosures. Public CNMV
+                # positions can remain legally current for longer; we keep
+                # them in the panel but do not call them a fresh increase.
+                if not (before_date <= after_date <= now.date()
+                        and now.date() - after_date <= timedelta(days=35)):
+                    valid_dates = False
+                    break
+                if new[holder]["percent"] != old[holder]["percent"] and after_date <= before_date:
+                    valid_dates = False
+                    break
+                advanced = advanced or after_date > before_date
+                observation_dates.append(after_date.isoformat())
+        if valid_dates and advanced:
+            before = previous.get("public_total_percent")
+            after = current.get("public_total_percent")
+            if before is not None and after is not None and after > before:
+                message = (f"{company.ticker}: suma de posiciones cortas públicas CNMV "
+                           f"{before:g}% → {after:g}% (fechas de posición {min(observation_dates)} a {max(observation_dates)}). Mismos titulares; solo posiciones públicas >=0,5%, no el total del mercado.")
+                parts = ["CNMV", *[f"{k}:{v['position_date']}:{v['percent']}" for k, v in sorted(new.items())]]
+                source_url = current.get("source_url")
+    interest = current.get("short_interest")
+    if isinstance(interest, dict):
+        stamp = interest.get("settlement_date")
+        try:
+            settled = date.fromisoformat(str(stamp)[:10])
+        except ValueError:
+            settled = None
+        before, after = interest.get("previous_short_interest"), interest.get("short_interest")
+        if (settled and timedelta(0) <= now.date() - settled <= timedelta(days=35)
+                and before is not None and before > 0 and after is not None and after > before):
+            message = (f"{company.ticker}: posiciones cortas FINRA {before:,} → {after:,} acciones "
+                       f"a {stamp}. No es volumen corto diario ni porcentaje del capital.")
+            parts = ["FINRA", str(stamp), str(after), str(before)]
+            source_url = interest.get("source_url")
+    if parts and message and source_url:
+        ReviewAlertService().emit_alert(
+            db, company_id=company.id, alert_type="shorts_rising", severity="medium",
+            title=f"Posiciones cortas en aumento: {company.ticker}", message=message,
+            fingerprint_parts=["shorts_rising", str(company.id), *parts],
+            metadata={"source_url": source_url, "observed_at": now.isoformat(), "kind": "DERIVADO"},
+        )

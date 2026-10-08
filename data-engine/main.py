@@ -172,6 +172,10 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 # para que orquestación/monitoreo pueda consultarlo sin identidad.
 app.include_router(health_router, prefix="/api")
 
+from app.api.routes.telegram_link import relay_router  # noqa: E402
+
+app.include_router(relay_router)
+
 app.include_router(
     research_api_router,
     prefix="/api",
