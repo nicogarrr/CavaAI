@@ -151,3 +151,40 @@ def test_endpoint_creates_and_maps_rejections(db, monkeypatch):
     created = client.post("/paper-trading/llm-proposals", json={"ticker": "aapl"})
     assert created.status_code == 201, created.text
     assert created.json()["status"] == "pending" and created.json()["currency"] == "USD"
+
+
+def test_no_transaction_is_held_during_either_llm_call_including_retry(db):
+    seen = []
+
+    class Spy(Provider):
+        async def complete(self, request):
+            seen.append(db.in_transaction())
+            return await super().complete(request)
+
+    cjk = good(thesis="El contrato \u4e2d\u6587\u6a21\u578b mejora la visibilidad de ingresos del trimestre.")
+    row = run(db, Spy(cjk, good()))
+    assert row.status == "pending"
+    assert seen == [False, False]
+
+
+def test_retry_budget_denial_releases_the_transaction(db, monkeypatch):
+    seen = []
+    calls = {"n": 0}
+    real = runner.BudgetController.can_spend
+
+    def deny_second(self, session, cost):
+        calls["n"] += 1
+        ok = real(self, session, cost) if calls["n"] == 1 else (real(self, session, cost) and False)
+        return ok
+
+    monkeypatch.setattr(runner.BudgetController, "can_spend", deny_second)
+
+    class Spy(Provider):
+        async def complete(self, request):
+            seen.append(db.in_transaction())
+            return await super().complete(request)
+
+    cjk = good(thesis="El contrato \u4e2d\u6587\u6a21\u578b mejora la visibilidad de ingresos del trimestre.")
+    with pytest.raises(ProposalRejected, match="presupuesto_agotado"):
+        run(db, Spy(cjk, good()))
+    assert seen == [False] and db.in_transaction() is False

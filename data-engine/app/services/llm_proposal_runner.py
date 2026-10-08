@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from app.llm import create_llm_provider
 from app.models.entities import Company, NewsEvent
 from app.models.paper_trading import PaperTrade
-from app.services.budget import BudgetController
+from app.services.budget import BudgetController, BudgetExceededError
 from app.services.llm_proposal_service import ProposalRejected, propose
 from app.services.paper_trading_service import create_proposal
 
@@ -103,13 +103,20 @@ async def generate_proposal(
         budget.record(db, resp.model, "llm_proposal", cost, resp.usage.total_tokens)
 
     def _can_retry() -> None:
-        if not budget.can_spend(db, 0.02):
-            raise RuntimeError("LLM budget exhausted")
+        try:
+            allowed = budget.can_spend(db, 0.02)
+        finally:
+            db.commit()  # el SELECT del tope abre transaccion: se libera antes del 2o LLM
+        if not allowed:
+            raise BudgetExceededError("LLM budget exhausted")
 
-    proposal = await propose(
-        provider, ticker, quote=quote, headlines=headlines, now=now,
-        on_response=_record, before_retry=_can_retry,
-    )
+    try:
+        proposal = await propose(
+            provider, ticker, quote=quote, headlines=headlines, now=now,
+            on_response=_record, before_retry=_can_retry,
+        )
+    except BudgetExceededError as exc:
+        raise ProposalRejected("presupuesto_agotado") from exc
     if todays_llm_proposals(db, now) >= DAILY_QUOTA:  # revalida tras la espera del modelo
         raise QuotaExceeded(DAILY_QUOTA)
     return create_proposal(db, proposal)
