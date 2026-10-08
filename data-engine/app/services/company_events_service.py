@@ -252,12 +252,21 @@ class CompanyEventsService:
         filings: list[dict[str, Any]] = []
         sec_status = "unavailable"
         note: str | None = None
+        partial_source: str | None = None
 
         if cik:
             payload = await self._submissions_fetcher(str(cik).zfill(10))
             if payload is not None:
-                sec_status = "ok"
+                fallback = payload.get("_fallback")
+                # Origen y estado honestos: una respuesta reconstruida desde
+                # EDGAR full-text search es PARCIAL, no "ok" de data.sec.gov.
+                sec_status = "partial" if fallback else "ok"
                 filings = self._map_submissions(str(cik), payload, company.ticker, limit)
+                if fallback:
+                    partial_source = "SEC EDGAR full-text search (efts.sec.gov), cobertura parcial"
+                    for entry in filings:
+                        entry["source"] = "SEC EDGAR (efts.sec.gov)"
+                    note = payload.get("_fallback_note") or partial_source
             else:
                 note = "SEC EDGAR no accesible desde el servidor en este momento."
         if not filings:
@@ -271,7 +280,7 @@ class CompanyEventsService:
             "sec_status": sec_status,
             "filings": filings,
             "documents": self._db_documents(company, limit),
-            "source": "SEC EDGAR (data.sec.gov)" if filings else None,
+            "source": (partial_source or "SEC EDGAR (data.sec.gov)") if filings else None,
             "note": note
             or (None if filings else "Sin filings SEC para este ticker (¿compañía no estadounidense?). Documentos ESEF/CNMV llegan en Fase 2."),
         }

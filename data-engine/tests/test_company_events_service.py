@@ -191,3 +191,19 @@ def test_filings_sec_down_but_db_docs_listed(db):
     assert out["filings"] == []
     assert out["sec_status"] == "unavailable"
     assert out["documents"] and out["documents"][0]["source_type"] == "ESEF"
+
+
+def test_filings_efts_fallback_is_reported_as_partial_not_ok(db):
+    """F351: el listado reconstruido desde EFTS no se anuncia como data.sec.gov ok."""
+    company = _company(db)
+    payload = _submissions()
+    payload["_fallback"] = "efts-full-text-search"
+    payload["_fallback_note"] = "Cobertura parcial: listado reconstruido desde EDGAR full-text search."
+    service = CompanyEventsService(
+        db, submissions_fetcher=lambda c: asyncio.sleep(0, payload),
+    )
+    out = _run(service.get_filings(company))
+    assert out["sec_status"] == "partial"
+    assert "efts.sec.gov" in out["source"] and "parcial" in out["source"]
+    assert "parcial" in out["note"].lower()
+    assert out["filings"][0]["source"] == "SEC EDGAR (efts.sec.gov)"

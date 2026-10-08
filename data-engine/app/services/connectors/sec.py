@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import copy
+import logging
+import re
+import threading
 import time
 from datetime import UTC, datetime
 from pathlib import PurePosixPath
@@ -10,11 +14,100 @@ import httpx
 
 from app.core.config import get_settings
 from app.services.connectors import sec_edgar
-from app.services.connectors.base import ConnectorItem, ConnectorResult
+from app.services.connectors.base import ConnectorItem, ConnectorResult, retry_after_seconds
+
+logger = logging.getLogger(__name__)
 
 # Filings que declaran un cierre de ejercicio anual. Las enmiendas (10-K/A)
 # re-declaran el mismo cierre y sirven de ancla para valores re-expresados.
 ANNUAL_REPORT_FORMS = {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
+
+
+# ---- Estado compartido de proceso (la SEC limita por IP, no por instancia) ----
+
+_CACHE_MAX_ENTRIES = 256
+_RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+_BACKOFF_BASE_SECONDS = 1.0
+_BACKOFF_CAP_SECONDS = 60.0
+
+_pacing_lock = threading.Lock()
+_next_slot_at = 0.0
+_cache_lock = threading.Lock()
+# url -> (expira_monotonic, payload). Solo respuestas JSON correctas.
+_json_cache: dict[str, tuple[float, dict]] = {}
+
+
+EFTS_FALLBACK_SOURCE = "efts-full-text-search"
+EFTS_PARTIAL_NOTE = (
+    "Cobertura parcial: listado reconstruido desde EDGAR full-text search "
+    "(solo los documentos mas recientes, sin historico completo ni isInlineXBRL)."
+)
+_TRAILING_PAREN = re.compile(r"\s*\([^()]*\)\s*$")
+
+
+class AnchorMap(dict):
+    """{accession: reportDate} con la procedencia del listado.
+
+    Se comporta como un dict normal; ``partial``/``source`` dicen si vino del
+    fallback EFTS (cobertura parcial) para que el consumidor no lo trate como
+    el historico completo.
+    """
+
+    partial: bool = False
+    source: str = "sec-submissions"
+
+
+def _efts_company_name(source: dict, cik: str) -> str | None:
+    """Nombre del CIK consultado: por POSICION en ``ciks``, nunca el primero.
+
+    Un hit EFTS puede listar varios CIKs (p. ej. el filer y un insider);
+    ``display_names`` va alineado con ``ciks``.
+    """
+    ciks = [str(c).zfill(10) for c in (source.get("ciks") or [])]
+    names = source.get("display_names") or []
+    if cik not in ciks:
+        return None
+    index = ciks.index(cik)
+    if index >= len(names):
+        return None
+    name = str(names[index]).strip()
+    while True:
+        stripped = _TRAILING_PAREN.sub("", name)
+        if stripped == name:
+            break
+        name = stripped
+    return name.strip() or None
+
+
+def reset_sec_client_state() -> None:
+    """Solo para tests: vacia cache y reloj compartido."""
+    global _next_slot_at
+    with _pacing_lock:
+        _next_slot_at = 0.0
+    with _cache_lock:
+        _json_cache.clear()
+
+
+def _cache_get(url: str) -> dict | None:
+    with _cache_lock:
+        hit = _json_cache.get(url)
+        if hit is None:
+            return None
+        if hit[0] <= time.monotonic():
+            _json_cache.pop(url, None)
+            return None
+        # Copia: el llamador puede mutar el dict (p. ej. al normalizar) y eso
+        # no debe contaminar a los siguientes lectores de la misma URL.
+        return copy.deepcopy(hit[1])
+
+
+def _cache_put(url: str, payload: dict, ttl: float) -> None:
+    if ttl <= 0:
+        return
+    with _cache_lock:
+        if len(_json_cache) >= _CACHE_MAX_ENTRIES:
+            _json_cache.pop(next(iter(_json_cache)), None)
+        _json_cache[url] = (time.monotonic() + ttl, copy.deepcopy(payload))
 
 
 class SECClient:
@@ -22,6 +115,7 @@ class SECClient:
     companyfacts_url = "https://data.sec.gov/api/xbrl/companyfacts"
     ticker_map_url = "https://www.sec.gov/files/company_tickers.json"
     archives_url = "https://www.sec.gov/Archives/edgar/data"
+    efts_url = "https://efts.sec.gov/LATEST/search-index"
 
     def __init__(
         self,
@@ -29,13 +123,21 @@ class SECClient:
         *,
         user_agent: str | None = None,
         requests_per_second: float = 8,
+        use_cache: bool | None = None,
+        max_retries: int | None = None,
     ) -> None:
         self.settings = get_settings()
         self.client = client
         self.user_agent = user_agent or self.settings.sec_user_agent
+        # Cache solo contra la SEC real: un cliente httpx inyectado (tests,
+        # harness de evals con MockTransport) sirve fixtures distintos para la
+        # MISMA URL y compartirlos entre casos los contaminaria. Se puede
+        # forzar con use_cache=True/False.
+        self.use_cache = (client is None) if use_cache is None else use_cache
+        self.max_retries = (
+            int(self.settings.sec_max_retries) if max_retries is None else max(0, max_retries)
+        )
         self._minimum_interval = 1 / max(0.1, min(requests_per_second, 10))
-        self._last_request_at = 0.0
-        self._rate_lock = asyncio.Lock()
 
     @property
     def headers(self) -> dict[str, str]:
@@ -46,33 +148,72 @@ class SECClient:
         }
 
     async def _throttle(self) -> None:
-        async with self._rate_lock:
-            elapsed = time.monotonic() - self._last_request_at
-            delay = self._minimum_interval - elapsed
-            if delay > 0:
-                await asyncio.sleep(delay)
-            self._last_request_at = time.monotonic()
+        """Reserva un hueco en el reloj COMPARTIDO del proceso.
+
+        El hueco se reserva bajo lock y se espera fuera de el: asi N tareas
+        (o N instancias de SECClient, o varios event loops) salen separadas
+        por el intervalo y ninguna bloquea el loop.
+        """
+        global _next_slot_at
+        with _pacing_lock:
+            now = time.monotonic()
+            slot = max(now, _next_slot_at)
+            _next_slot_at = slot + self._minimum_interval
+        delay = slot - now
+        if delay > 0:
+            await asyncio.sleep(delay)
 
     async def _get(self, url: str) -> httpx.Response:
-        await self._throttle()
-        if self.client is not None:
-            response = await self.client.get(url, headers=self.headers)
-        else:
-            async with httpx.AsyncClient(
-                timeout=30,
-                headers=self.headers,
-                follow_redirects=True,
-            ) as client:
-                response = await client.get(url)
-        response.raise_for_status()
-        return response
+        """GET con ritmo compartido y reintentos con backoff exponencial.
+
+        Reintenta 429/5xx y errores de red/timeout respetando Retry-After
+        (con tope). 401/403/404 no se reintentan: un 403 es un bloqueo de IP
+        que reintentar solo empeora; lo gestiona el fallback (mirror/EFTS).
+        """
+        max_retries = self.max_retries
+        delay = _BACKOFF_BASE_SECONDS
+        for attempt in range(max_retries + 1):
+            await self._throttle()
+            response: httpx.Response | None = None
+            try:
+                if self.client is not None:
+                    response = await self.client.get(url, headers=self.headers)
+                else:
+                    async with httpx.AsyncClient(
+                        timeout=30,
+                        headers=self.headers,
+                        follow_redirects=True,
+                    ) as client:
+                        response = await client.get(url)
+            except httpx.TransportError as exc:  # incluye timeouts
+                if attempt >= max_retries:
+                    raise
+                logger.warning("SEC red/timeout (%s), reintento %d", type(exc).__name__, attempt + 1)
+                await asyncio.sleep(min(delay, _BACKOFF_CAP_SECONDS))
+                delay *= 2
+                continue
+            if response.status_code in _RETRYABLE_STATUS and attempt < max_retries:
+                wait = retry_after_seconds(response, cap=_BACKOFF_CAP_SECONDS) or delay
+                logger.warning("SEC %s en %s, reintento %d en %.1fs", response.status_code, url, attempt + 1, wait)
+                await asyncio.sleep(min(wait, _BACKOFF_CAP_SECONDS))
+                delay *= 2
+                continue
+            response.raise_for_status()
+            return response
+        raise RuntimeError("unreachable")  # pragma: no cover
 
     async def _get_json(self, url: str) -> dict:
         snapshot = sec_edgar.read_snapshot_for(url)
         if snapshot is not None:
             return snapshot
+        cached = _cache_get(url) if self.use_cache else None
+        if cached is not None:
+            return cached
         try:
-            return (await self._get(url)).json()
+            payload = (await self._get(url)).json()
+            if self.use_cache:
+                _cache_put(url, payload, float(self.settings.sec_cache_ttl_seconds))
+            return payload
         except httpx.HTTPStatusError as exc:
             # La SEC bloquea IPs de datacenter con 403: el mirror HF sirve el
             # mismo JSON oficial. Un 404 de la SEC es un fallo de DATO y
@@ -97,9 +238,82 @@ class SECClient:
 
     async def submissions(self, cik: str) -> dict:
         padded = str(cik).zfill(10)
-        return await self._get_json(f"{self.submissions_url}/CIK{padded}.json")
+        try:
+            return await self._get_json(f"{self.submissions_url}/CIK{padded}.json")
+        except httpx.HTTPStatusError as exc:
+            # 404 = dato inexistente: nunca se enmascara con otra fuente.
+            if exc.response is not None and exc.response.status_code == 404:
+                raise
+            direct_error: Exception = exc
+        except Exception as exc:  # noqa: BLE001 - mirror caido/sin config, red, etc.
+            direct_error = exc
+        if not getattr(self.settings, "sec_efts_fallback_enabled", True):
+            raise direct_error
+        try:
+            return await self.efts_submissions(padded)
+        except Exception as efts_exc:  # noqa: BLE001
+            logger.warning("Fallback EFTS fallo para CIK%s: %s", padded, efts_exc)
+            raise direct_error from efts_exc
 
-    async def annual_report_anchors(self, cik: str) -> dict[str, str]:
+    async def efts_submissions(self, cik: str, *, max_pages: int = 3) -> dict:
+        """Reconstruye un ``submissions`` minimo desde EDGAR full-text search.
+
+        Fallback cuando data.sec.gov/submissions falla. Es dato oficial de la
+        SEC pero PARCIAL: solo los ultimos ~``max_pages * 100`` documentos, sin
+        ``isInlineXBRL`` ni ficheros historicos. El payload lo declara en
+        ``_fallback`` para que nadie lo trate como el historico completo.
+        """
+        padded = str(cik).zfill(10)
+        filings: dict[str, dict] = {}
+        name: str | None = None
+        for page in range(max_pages):
+            url = f"{self.efts_url}?ciks={padded}&size=100&from={page * 100}"
+            payload = await self._get_json(url)
+            hits = (payload.get("hits") or {}).get("hits") or []
+            for hit in hits:
+                source = hit.get("_source") or {}
+                accession = source.get("adsh")
+                if not accession:
+                    continue
+                doc_id = str(hit.get("_id") or "")
+                document = doc_id.split(":", 1)[1] if ":" in doc_id else ""
+                sequence = source.get("sequence") or 99
+                current = filings.get(accession)
+                if current is not None and current["sequence"] <= sequence:
+                    continue
+                if name is None:
+                    name = _efts_company_name(source, padded)
+                filings[accession] = {
+                    "sequence": sequence,
+                    "form": source.get("form") or source.get("file_type"),
+                    "filingDate": source.get("file_date"),
+                    "reportDate": source.get("period_ending"),
+                    "primaryDocument": document,
+                }
+            if len(hits) < 100:
+                break
+        if not filings:
+            raise RuntimeError(f"EFTS sin filings para CIK{padded}")
+        ordered = sorted(
+            filings.items(), key=lambda kv: kv[1].get("filingDate") or "", reverse=True
+        )
+        recent = {
+            "accessionNumber": [a for a, _ in ordered],
+            "form": [v["form"] for _, v in ordered],
+            "filingDate": [v["filingDate"] for _, v in ordered],
+            "reportDate": [v["reportDate"] or "" for _, v in ordered],
+            "primaryDocument": [v["primaryDocument"] for _, v in ordered],
+            "isInlineXBRL": [None for _ in ordered],
+        }
+        return {
+            "cik": padded,
+            "name": name,
+            "filings": {"recent": recent, "files": []},
+            "_fallback": EFTS_FALLBACK_SOURCE,
+            "_fallback_note": EFTS_PARTIAL_NOTE,
+        }
+
+    async def annual_report_anchors(self, cik: str) -> AnchorMap:
         """{accessionNumber: reportDate} de los filings anuales del emisor.
 
         Es la evidencia de calendario fiscal a nivel de filing: cada 10-K
@@ -113,7 +327,10 @@ class SECClient:
         """
         payload = await self.submissions(cik)
         filings = payload.get("filings", {})
-        anchors: dict[str, str] = {}
+        anchors = AnchorMap()
+        if payload.get("_fallback"):
+            anchors.partial = True
+            anchors.source = str(payload["_fallback"])
 
         def _absorb(recent: dict) -> None:
             forms = recent.get("form", [])
@@ -180,6 +397,11 @@ class SECClient:
         try:
             payload = await self.submissions(cik)
             recent = payload.get("filings", {}).get("recent", {})
+            fallback = payload.get("_fallback")
+            if fallback:
+                metadata["source_fallback"] = fallback
+                metadata["partial_coverage"] = True
+                metadata["coverage_note"] = payload.get("_fallback_note") or EFTS_PARTIAL_NOTE
             allowed_forms = {form.upper() for form in forms} if forms else None
             accessions = recent.get("accessionNumber", [])
             items: list[ConnectorItem] = []
@@ -224,6 +446,11 @@ class SECClient:
                             "report_date": report_date,
                             "primary_document": primary_document,
                             "is_inline_xbrl": self._column(recent, "isInlineXBRL", index),
+                            **(
+                                {"source_fallback": fallback, "partial_coverage": True}
+                                if fallback
+                                else {}
+                            ),
                         },
                     )
                 )
