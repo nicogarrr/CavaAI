@@ -98,6 +98,19 @@ def _fresh_quote(quote: dict | None, now: datetime) -> tuple[Decimal, str]:
     return price, currency
 
 
+def _finite(value: Any) -> Decimal:
+    """Numero finito o rechazo: bool, texto no numerico, NaN e inf no son niveles."""
+    if isinstance(value, bool) or not isinstance(value, (int, float, str, Decimal)):
+        raise ProposalRejected("niveles_invalidos")
+    try:
+        number = Decimal(str(value))
+    except InvalidOperation as exc:
+        raise ProposalRejected("niveles_invalidos") from exc
+    if not number.is_finite():
+        raise ProposalRejected("niveles_invalidos")
+    return number
+
+
 def build_request(
     ticker: str, price: Decimal, currency: str, headlines: list[dict], momentum: dict | None
 ) -> LLMRequest:
@@ -123,41 +136,51 @@ def build_request(
 
 
 def validate_output(
-    raw: dict, *, ticker: str, price: Decimal, headline_ids: set[str], now: datetime
+    raw: dict, *, ticker: str, price: Decimal, headline_ids: set[str], now: datetime, currency: str
 ) -> PaperProposal:
     if not isinstance(raw, dict):
         raise ProposalRejected("json_invalido")
     evidence = raw.get("evidence_ids")
-    if not isinstance(evidence, list) or not evidence or any(e not in headline_ids for e in evidence):
+    if (
+        not isinstance(evidence, list)
+        or not evidence
+        or any(not isinstance(e, str) or e not in headline_ids for e in evidence)
+    ):
         raise ProposalRejected("evidencia_no_recibida")
-    try:
-        conviction = Decimal(str(raw["conviction"]))
-        entry = Decimal(str(raw["entry"]))
-    except (KeyError, InvalidOperation) as exc:
-        raise ProposalRejected("niveles_invalidos") from exc
+    inference = raw.get("inference_basis")
+    if not isinstance(inference, str) or len(inference.strip()) < 10:
+        raise ProposalRejected("sin_base_de_inferencia")
+    thesis = raw.get("thesis")
+    if not isinstance(thesis, str) or not thesis.strip():
+        raise ProposalRejected("tesis_invalida")
+    conviction = _finite(raw.get("conviction"))
+    entry = _finite(raw.get("entry"))
+    stop = _finite(raw.get("stop"))
+    target = _finite(raw.get("target"))
     if conviction <= 0:
         raise ProposalRejected("sin_conviccion")
+    if entry <= 0:
+        raise ProposalRejected("niveles_invalidos")
     if abs(entry - price) / price > MAX_ENTRY_DEVIATION:
         raise ProposalRejected("entrada_lejos_de_cotizacion")
-    basis = f"{str(raw.get('inference_basis') or '').strip()} Evidencia: {', '.join(evidence)}."
-    digest = hashlib.sha256(
-        f"{raw.get('thesis')}|{entry}|{raw.get('stop')}|{raw.get('target')}".encode()
-    ).hexdigest()[:10]
+    basis = f"{inference.strip()} Evidencia: {', '.join(evidence)}."
+    digest = hashlib.sha256(f"{thesis}|{entry}|{stop}|{target}".encode()).hexdigest()[:10]
     try:
         return PaperProposal(
             proposal_key=f"llm:{ticker.upper()}:{_utc(now):%Y%m%d}:{digest}",
             ticker=ticker,
             direction=raw.get("direction"),
             horizon=raw.get("horizon"),
-            thesis=str(raw.get("thesis") or ""),
+            thesis=thesis,
             conviction=conviction,
             proposed_entry=entry,
-            stop=raw.get("stop"),
-            target=raw.get("target"),
+            stop=stop,
+            target=target,
             quantity=(NOTIONAL / entry),
             inference_basis=basis,
+            currency=currency,
         )
-    except (ValidationError, ValueError, InvalidOperation) as exc:
+    except (ValidationError, ValueError, InvalidOperation, TypeError) as exc:
         raise ProposalRejected("niveles_invalidos") from exc
 
 
@@ -189,5 +212,6 @@ async def propose(
     except Exception as exc:  # noqa: BLE001 - JSON roto = rechazo, no excepcion al llamador
         raise ProposalRejected("json_invalido") from exc
     return validate_output(
-        raw, ticker=ticker, price=price, headline_ids={h["id"] for h in headlines}, now=now
+        raw, ticker=ticker, price=price, headline_ids={h["id"] for h in headlines}, now=now,
+        currency=currency,
     )

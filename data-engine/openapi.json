@@ -4221,6 +4221,18 @@
             ],
             "title": "Conviction"
           },
+          "currency": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z]{1,8}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
           "direction": {
             "enum": [
               "long",

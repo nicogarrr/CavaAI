@@ -151,3 +151,56 @@ def test_proposal_is_accepted_by_the_paper_ledger():
     db = DB()
     row = create_proposal(db, run(P(_good())))
     assert db.added and row.ticker == "AAPL" and row.status in {None, "pending"}
+
+
+@pytest.mark.parametrize(
+    "over",
+    [
+        {"inference_basis": ""},
+        {"inference_basis": "   "},
+        {"inference_basis": None},
+        {"entry": "NaN"},
+        {"conviction": "NaN"},
+        {"stop": "Infinity"},
+        {"target": "NaN"},
+        {"entry": True},
+        {"evidence_ids": [{}]},
+        {"evidence_ids": [["news:1"]]},
+        {"thesis": None},
+    ],
+)
+def test_malformed_fields_are_rejected_not_raised(over):
+    with pytest.raises(svc.ProposalRejected):
+        run(P(_good(**over)))
+
+
+def test_missing_inference_basis_key_is_rejected():
+    raw = _good()
+    del raw["inference_basis"]
+    with pytest.raises(svc.ProposalRejected, match="sin_base_de_inferencia"):
+        run(P(raw))
+
+
+def test_proposal_keeps_quote_currency_and_ledger_rejects_other_currency():
+    from decimal import Decimal
+    from types import SimpleNamespace
+
+    from app.services import paper_trading_service as ledger
+
+    proposal = run(P(_good()))
+    assert proposal.currency == "USD"
+    created = NOW.replace(minute=15)
+
+    def row():
+        return SimpleNamespace(
+            **{**proposal.model_dump(), "ticker": "AAPL", "status": "pending", "created_at": NOW,
+               "mark_at": None, "entry_price": None, "entry_at": None, "mark_price": None,
+               "exit_price": None, "exit_at": None, "close_reason": None, "price_source": None}
+        )
+
+    later = NOW.timestamp() + 600
+    eur, usd = row(), row()
+    assert ledger.apply_quote(eur, {"live_c": 98.0, "live_t": later, "currency": "EUR"}, created) is False
+    assert eur.status == "pending" and eur.entry_price is None
+    assert ledger.apply_quote(usd, {"live_c": 98.0, "live_t": later, "currency": "USD"}, created) is True
+    assert usd.status == "open" and usd.entry_price == Decimal("98.0") and usd.currency == "USD"
