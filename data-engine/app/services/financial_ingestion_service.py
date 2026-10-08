@@ -1375,6 +1375,17 @@ class FinancialIngestionService:
             "free_data": free_data,
             "fy_periods": fy_periods,
             "annual_anchored_filings": len(annual_anchors),
+            # Procedencia del listado de filings que ancla los FY: si vino del
+            # fallback EFTS es PARCIAL (sin historico completo) y el consumidor
+            # lo ve aqui. No cambia ningun valor financiero.
+            "annual_anchor_source": getattr(annual_anchors, "source", "sec-submissions"),
+            "annual_anchor_partial": bool(getattr(annual_anchors, "partial", False)),
+            "annual_anchor_note": (
+                "Anclas anuales desde EDGAR full-text search: cobertura parcial, "
+                "sin historico completo de filings."
+                if getattr(annual_anchors, "partial", False)
+                else None
+            ),
             # None cuando no hubo fallback: el consumidor ve la fuente real.
             "mirror": mirror_info,
         }

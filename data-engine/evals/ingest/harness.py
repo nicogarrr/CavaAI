@@ -35,7 +35,6 @@ import json
 import os
 import socket
 import tempfile
-import time
 from contextlib import contextmanager
 from datetime import date
 from decimal import Decimal
@@ -381,10 +380,14 @@ class _OfflineSEC:
                     client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
                     user_agent=user_agent,
                     requests_per_second=10,
+                    # El contrato del eval es 1 peticion por URL con el fixture
+                    # del caso: ni cache entre casos ni reintentos con backoff.
+                    use_cache=False,
+                    max_retries=0,
                 )
 
             async def _throttle(self):
-                self._last_request_at = time.monotonic()
+                return None
 
         return _Client()
 

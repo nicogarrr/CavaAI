@@ -176,7 +176,7 @@ services:
       - DUCKDB_PATH=/data/analytics.duckdb
       - FASTEMBED_CACHE_PATH=/data/fastembed-cache
       - LANGFUSE_ENABLED=false
-      - SEC_USER_AGENT=${SEC_USER_AGENT:-CavaAI/0.1 contact@example.com}
+      - SEC_USER_AGENT=${SEC_USER_AGENT:-CavaAI research contact@cavaai.local}
       - SEC_SNAPSHOT_DIR=${SEC_SNAPSHOT_DIR:-}
       - SEC_HF_MIRROR_DATASET=${SEC_HF_MIRROR_DATASET:-}
       - ESEF_SNAPSHOT_DIR=${ESEF_SNAPSHOT_DIR:-/data/esef-snapshots}
@@ -248,7 +248,7 @@ services:
       - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
       - MINIO_BUCKET=research
-      - SEC_USER_AGENT=${SEC_USER_AGENT:-CavaAI/0.1 contact@example.com}
+      - SEC_USER_AGENT=${SEC_USER_AGENT:-CavaAI research contact@cavaai.local}
       - SEC_SNAPSHOT_DIR=${SEC_SNAPSHOT_DIR:-}
       - SEC_HF_MIRROR_DATASET=${SEC_HF_MIRROR_DATASET:-}
       - ESEF_SNAPSHOT_DIR=${ESEF_SNAPSHOT_DIR:-/data/esef-snapshots}
@@ -311,7 +311,7 @@ services:
       - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
       - MINIO_BUCKET=research
-      - SEC_USER_AGENT=${SEC_USER_AGENT:-CavaAI/0.1 contact@example.com}
+      - SEC_USER_AGENT=${SEC_USER_AGENT:-CavaAI research contact@cavaai.local}
       - SEC_SNAPSHOT_DIR=${SEC_SNAPSHOT_DIR:-}
       - SEC_HF_MIRROR_DATASET=${SEC_HF_MIRROR_DATASET:-}
       - ESEF_SNAPSHOT_DIR=${ESEF_SNAPSHOT_DIR:-/data/esef-snapshots}
@@ -382,7 +382,7 @@ services:
       - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
       - MINIO_BUCKET=research
-      - SEC_USER_AGENT=${SEC_USER_AGENT:-CavaAI/0.1 contact@example.com}
+      - SEC_USER_AGENT=${SEC_USER_AGENT:-CavaAI research contact@cavaai.local}
       - SEC_SNAPSHOT_DIR=${SEC_SNAPSHOT_DIR:-}
       - SEC_HF_MIRROR_DATASET=${SEC_HF_MIRROR_DATASET:-}
       - ESEF_SNAPSHOT_DIR=${ESEF_SNAPSHOT_DIR:-/data/esef-snapshots}
@@ -488,7 +488,7 @@ services:
       - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
       - MINIO_BUCKET=research
-      - SEC_USER_AGENT=${SEC_USER_AGENT:-CavaAI/0.1 contact@example.com}
+      - SEC_USER_AGENT=${SEC_USER_AGENT:-CavaAI research contact@cavaai.local}
       - SEC_HF_MIRROR_DATASET=${SEC_HF_MIRROR_DATASET:-}
     volumes:
       - duckdb_data:/data
