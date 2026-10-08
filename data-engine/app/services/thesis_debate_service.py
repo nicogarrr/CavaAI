@@ -25,6 +25,7 @@ from app.services.jev_gates import (
     DEBATE_WORTHWHILE_THRESHOLD,
     jev_choice_or_none,
 )
+from app.services.llm_output_guard import complete_guarded
 from app.services.prompt_registry import get_prompt
 
 # Coste fijo por operacion (techo, solo si el LLM responde a todo).
@@ -93,6 +94,7 @@ async def _complete_text(
     task: str,
     max_tokens: int,
     temperature: float,
+    calls: list[int] | None = None,
 ) -> tuple[str, LLMResponse | None]:
     request = LLMRequest(
         messages=[Message("system", system), Message("user", user)],
@@ -100,7 +102,18 @@ async def _complete_text(
         temperature=temperature,
         max_tokens=max_tokens,
     )
-    response = await provider.complete(request)
+    # Un texto con CJK, ingles mezclado o tokens corruptos se reintenta una vez;
+    # si falla otra vez levanta LLMOutputRejected y el llamador degrada a la
+    # salida determinista (nunca se publica el texto roto).
+    def _tally(_resp: LLMResponse) -> None:
+        # llm_calls cuenta TODAS las llamadas reales, tambien reintento y rechazo.
+        if calls is not None:
+            calls[0] += 1
+
+    guarded = await complete_guarded(
+        provider, request, source=f"thesis_debate.{task}", on_response=_tally
+    )
+    response = guarded.response
     text = (response.text or "").strip()
     if not text:
         raise ValueError("empty LLM response")
@@ -177,7 +190,7 @@ async def debate_thesis(
     llm = _resolve_provider(provider)
     ticker = (ticker or "UNKNOWN").strip().upper() or "UNKNOWN"
     thesis = (thesis or "").strip()
-    llm_calls = 0
+    calls_box = [0]
     degraded = False
     model: str | None = None
     jev_gate: dict[str, Any] | None = None
@@ -225,8 +238,8 @@ async def debate_thesis(
             task="red_team",
             max_tokens=4000,
             temperature=0.3,
+            calls=calls_box,
         )
-        llm_calls += 1
         model = model or resp.model
     except Exception:
         degraded = True
@@ -243,8 +256,8 @@ async def debate_thesis(
             task="red_team",
             max_tokens=4000,
             temperature=0.3,
+            calls=calls_box,
         )
-        llm_calls += 1
         model = model or resp.model
     except Exception:
         degraded = True
@@ -282,8 +295,8 @@ async def debate_thesis(
                 task="red_team",
                 max_tokens=2000,
                 temperature=0.1,
+                calls=calls_box,
             )
-            llm_calls += 1
             model = model or resp.model
             match = re.search(r"(bullish|bearish|neutral)", judge_text.lower())
             verdict = match.group(1) if match else None
@@ -304,7 +317,7 @@ async def debate_thesis(
         "bear_case": bear_case,
         "verdict": verdict,
         "verdict_rationale": verdict_rationale,
-        "llm_calls": llm_calls,
+        "llm_calls": calls_box[0],
         "degraded": degraded,
         "model": model or "deterministic",
         "materiality_score": materiality_score,

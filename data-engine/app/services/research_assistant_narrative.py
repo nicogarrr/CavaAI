@@ -5,6 +5,7 @@ import json
 
 from app.llm import LLMRequest, Message, ResponseFormat, create_llm_provider, parse_json_response
 from app.services.budget import BudgetController
+from app.services.llm_output_guard import complete_guarded
 
 _OUTPUT_SCHEMA = {
     "type": "object", "additionalProperties": False,
@@ -73,13 +74,32 @@ async def synthesize(db, payload, baseline: dict, *, provider=None) -> dict:
         task="main_financial_analysis", temperature=0.1, max_tokens=650,
         response_format=ResponseFormat.json_schema(_OUTPUT_SCHEMA, name="research_assistant_narrative"),
     )
+    def _record(resp) -> None:
+        # CADA respuesta del proveedor consume presupuesto, tambien la que el
+        # validador descarta o la que no produce frases.
+        cost = budget.estimate_cost_eur(resp.model, resp.usage.input_tokens, resp.usage.output_tokens)
+        budget.record(db, resp.model, "research_assistant_narrative", cost, resp.usage.total_tokens)
+
+    def _can_retry() -> None:
+        if not budget.can_spend(db, 0.02):
+            raise RuntimeError("LLM budget exhausted")
+
     try:
-        response = await provider.complete(request)
+        # Las frases copian extractos literales (pueden ser en ingles): solo CJK y
+        # tokens corruptos cuentan aqui.
+        response = (
+            await complete_guarded(
+                provider,
+                request,
+                source="research_assistant_narrative",
+                english="off",
+                on_response=_record,
+                before_retry=_can_retry,
+            )
+        ).response
         sentences = _validated_sentences(parse_json_response(response.text), citations)
     except Exception:  # provider failure cannot remove the safe deterministic answer
         return baseline
-    cost = budget.estimate_cost_eur(response.model, response.usage.input_tokens, response.usage.output_tokens)
-    budget.record(db, response.model, "research_assistant_narrative", cost, response.usage.total_tokens)
     if not sentences:
         return baseline
     bodies = [f"{item['body']} [{', '.join(item['citation_ids'])}]" for item in sentences]
