@@ -17,6 +17,13 @@ class PaperProposal(BaseModel):
     target: Decimal = Field(gt=0, allow_inf_nan=False)
     quantity: Decimal = Field(gt=0, le=1000000, allow_inf_nan=False)
     inference_basis: str = Field(min_length=10, max_length=10000)
+    # Moneda del ancla de los niveles. Si viene, solo se acepta un quote en esa moneda.
+    currency: str | None = Field(default=None, pattern=r"^[A-Za-z]{1,8}$")
+
+    @field_validator("currency")
+    @classmethod
+    def upper_currency(cls, value):
+        return value.upper() if value else value
 
     @field_validator("conviction", "proposed_entry", "stop", "target", "quantity", mode="before")
     @classmethod
