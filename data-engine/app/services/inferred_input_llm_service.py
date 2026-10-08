@@ -43,6 +43,7 @@ _RELEVANT = re.compile(
     r"free cash flow|fcf|cash flow|flujo de caja|margen|margin|capex|inversi[oó]n en capital|burn|quema",
     re.IGNORECASE,
 )
+_URL_LIKE = re.compile(r"(?:https?://|www\.)[^\s<>\"')\]]+", re.IGNORECASE)
 _SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -126,6 +127,11 @@ def validate_output(raw: Any, sources: list[dict]) -> tuple[Decimal, str, list[s
         number = Decimal(str(value))
     except InvalidOperation as exc:
         raise InferenceRejected("valor_invalido") from exc
+    allowed = {by_id[i]["url"] for i in ids}
+    for found in _URL_LIKE.findall(base):
+        if found.rstrip(".,;:") not in allowed:
+            # Una URL escrita por el modelo no puede quedar en la explicacion visible.
+            raise InferenceRejected("base_con_url_no_entregada")
     low, high = ALLOWED_KEYS[INPUT_KEY]
     if not number.is_finite() or not (Decimal(str(low)) < number <= Decimal(str(high))):
         raise InferenceRejected("valor_fuera_de_rango")

@@ -74,9 +74,21 @@ def test_infers_from_ingested_sources_with_service_urls_and_label(db):
     assert db.scalar(select(func.count(BudgetUsage.id)).where(BudgetUsage.workflow == "inferred_input")) == 1
 
 
-def test_model_written_urls_are_ignored(db):
-    row = run(db, Provider(good(base=good()["base"] + " Fuente: https://evil.example/x", urls=["https://evil.example/x"])))
-    assert row.source_urls == ["https://www.sec.gov/Archives/edgar/data/1/10k.htm"]
+@pytest.mark.parametrize("fake", ["https://evil.example/x", "http://evil.example", "www.evil.example/a", "https://evil.example/x."])
+def test_url_written_by_the_model_in_the_base_is_rejected_and_never_stored(db, fake):
+    with pytest.raises(svc.InferenceRejected, match="base_con_url_no_entregada"):
+        run(db, Provider(good(base=good()["base"] + f" Fuente: {fake}", urls=[fake])))
+    assert db.scalar(select(func.count(InferredInput.id))) == 0
+
+
+def test_delivered_url_in_the_base_is_allowed_and_payload_has_no_foreign_url(db):
+    from app.services.inferred_input_service import payload
+
+    url = "https://www.sec.gov/Archives/edgar/data/1/10k.htm"
+    row = run(db, Provider(good(base=good()["base"] + f" Fuente: {url}.", urls=["https://evil.example/x"])))
+    out = payload(row)
+    assert out["source_urls"] == [url]
+    assert "evil.example" not in out["base"] and "evil.example" not in json.dumps(out)
 
 
 def test_no_sources_is_nd_and_never_calls_the_model(db):
