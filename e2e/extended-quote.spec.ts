@@ -27,12 +27,13 @@ for (const width of [1440, 390]) {
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
         await page.screenshot({ path: `/downloads/extended-quote-${width}.png`, fullPage: true });
         const initialCalls = calls;
-        response = { ...quote, session: 'pre', status: 'retrasado' };
+        response = { ...quote, session: 'pre', price_session: 'pre', status: 'retrasado' };
         await page.clock.fastForward(60000);
         await expect(header.getByText('Premercado · 00:05 · Retrasado', { exact: true })).toBeVisible();
         response = { ...quote, session: 'cerrado', change: null, change_percent: null };
         await page.clock.fastForward(60000);
-        await expect(header.getByText('Cierre del 8 oct · 00:05', { exact: true })).toBeVisible();
+        await expect(header.getByText('Último post-cierre del 8 oct · 00:05', { exact: true })).toBeVisible();
+        await page.screenshot({ path: `/downloads/extended-quote-closed-${width}.png`, fullPage: true });
         await expect(header.getByText('-1,28%', { exact: true })).not.toBeVisible();
         response = { status: 'unavailable' };
         await page.clock.fastForward(60000);

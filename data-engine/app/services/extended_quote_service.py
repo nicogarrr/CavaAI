@@ -100,18 +100,24 @@ def parse_extended_chart(ticker: str, node: dict[str, Any], now: int) -> Extende
         (ts, i) for i, raw in enumerate(timestamps)
         if (ts := _epoch(raw)) is not None and ts <= now and session_at(ts) == "regular"
     ]
+    regular_intervals = [bounds["regular"]] + historical["regular"]
+
+    def is_regular_close(ts: int) -> bool:
+        # The last 1m candle or the timestamped closing print, never an
+        # arbitrary intraday meta price presented as a session close.
+        return any(now >= end and end - 60 <= ts <= end + 60 for _, end in regular_intervals)
+
+    close_candidates = [(ts, price) for ts, price, _ in regular if is_regular_close(ts)]
     regular_time = _epoch(meta.get("regularMarketTime"))
     regular_price = _number(meta.get("regularMarketPrice"))
-    # Dated meta price is a safe closed-market fallback even when the 1d
-    # candles are absent (weekends/holidays). Never date a price with now.
-    if regular_time and regular_time <= now and regular_price is not None:
-        result.regular_close, result.regular_close_timestamp = regular_price, regular_time
-    elif regular:
-        result.regular_close, result.regular_close_timestamp = regular[-1][1], regular[-1][0]
+    if regular_time and regular_time <= now and regular_price is not None and is_regular_close(regular_time):
+        close_candidates.append((regular_time, regular_price))
+    if close_candidates:
+        result.regular_close_timestamp, result.regular_close = max(close_candidates)
     if session != "cerrado":
         selected = points[-1] if points else None
     else:
-        closed_points = [p for p in points if session_at(p[0]) in ("regular", "post")]
+        closed_points = [p for p in points if session_at(p[0]) == "post" or (session_at(p[0]) == "regular" and is_regular_close(p[0]))]
         selected = closed_points[-1] if closed_points else None
         if result.regular_close_timestamp and (
             selected is None or result.regular_close_timestamp > selected[0]
@@ -125,7 +131,7 @@ def parse_extended_chart(ticker: str, node: dict[str, Any], now: int) -> Extende
         return result
     result.timestamp, result.price = selected[0], selected[1]
     result.price_session = session_at(selected[0])
-    if result.price_session == "cerrado" and selected[0] == result.regular_close_timestamp:
+    if selected[2] == -1 and selected[0] == result.regular_close_timestamp:
         result.price_session = "regular"
     timezone = meta.get("exchangeTimezoneName")
     if not timezone:
@@ -143,6 +149,24 @@ def parse_extended_chart(ticker: str, node: dict[str, Any], now: int) -> Extende
         result.change = result.price - result.previous_close
         result.change_percent = result.change / result.previous_close * 100
     if regular_indices:
+        regular_indices.sort()
+        last_ts = regular_indices[-1][0]
+        covered_period = next((
+            (start, end) for start, end in regular_intervals if start <= last_ts < end
+        ), None)
+        # A complete list of the bars that happen to exist is not complete
+        # session coverage. Reject missing opening minutes, internal gaps,
+        # and missing tail minutes rather than claim daily extrema.
+        covered = False
+        if covered_period:
+            start, end = covered_period
+            expected_last = min(end - 60, max(start, (now // 60) * 60 - 60))
+            covered = (
+                regular_indices[0][0] == start
+                and last_ts >= expected_last
+                and all(b[0] - a[0] == 60 for a, b in zip(regular_indices, regular_indices[1:], strict=False))
+            )
+
         def values(key: str) -> list[float]:
             series = candles.get(key) or []
             return [v for _, i in regular_indices if i < len(series) and (v := _number(series[i])) is not None]
@@ -156,8 +180,8 @@ def parse_extended_chart(ticker: str, node: dict[str, Any], now: int) -> Extende
             if first_i < len(open_series) and any(regular_indices[0][0] == start for start, _ in [bounds["regular"]] + historical["regular"])
             else None
         )
-        result.high = max(highs) if len(highs) == len(regular_indices) else None
-        result.low = min(lows) if len(lows) == len(regular_indices) else None
+        result.high = max(highs) if covered and len(highs) == len(regular_indices) else None
+        result.low = min(lows) if covered and len(lows) == len(regular_indices) else None
         result.metrics_timestamp = regular_indices[-1][0]
         result.metrics_session = datetime.fromtimestamp(regular_indices[-1][0], tz).date().isoformat()
     return result

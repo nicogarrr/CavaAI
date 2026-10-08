@@ -59,7 +59,7 @@ def test_stale_boundary_and_future_points():
 
 def test_ohlc_regular_only_and_previous_close_without_date():
     q = parse_extended_chart('MSFT', chart(), START + 24000)
-    assert (q.open, q.high, q.low) == (100, 104, 99)
+    assert (q.open, q.high, q.low) == (100, None, None)  # Sparse fixture is not complete daily OHLC.
     assert q.metrics_session == '2026-10-08' and q.metrics_timestamp == START + 23340
     assert q.previous_close == 100 and q.previous_close_timestamp is None
     assert q.regular_close == 102 and q.regular_close_timestamp == START + 23340
@@ -158,3 +158,59 @@ def test_weekend_upcoming_bounds_preserve_dated_post_candle():
     q = parse_extended_chart('MSFT', node, START + 2 * 86400)
     assert q.session == 'cerrado' and q.price_session == 'post'
     assert q.price == 103 and q.trading_date == '2026-10-08'
+
+
+def test_exact_audit_missing_first_hour_and_internal_gap():
+    node = chart()
+    node['timestamp'] = [START + 3600, START + 23340]
+    node['indicators']['quote'] = [{'close': [102, 102], 'open': [101, 101], 'high': [103, 104], 'low': [100, 101]}]
+    q = parse_extended_chart('MSFT', node, START + 24000)
+    assert q.open is None and q.high is None and q.low is None
+    # Complete timestamp coverage except one internal minute.
+    node = full_regular_chart()
+    for series in [node['timestamp'], *node['indicators']['quote'][0].values()]:
+        series.pop(30)
+    q = parse_extended_chart('MSFT', node, START + 24000)
+    assert q.open == 100 and q.high is None and q.low is None
+
+
+def full_regular_chart():
+    node = chart()
+    node['timestamp'] = list(range(START, START + 23400, 60))
+    node['indicators']['quote'] = [{
+        'close': [102] * 390, 'open': [100] * 390,
+        'high': [104] * 390, 'low': [99] * 390,
+    }]
+    return node
+
+
+def test_complete_coverage_publishes_extrema_and_last_minute_close():
+    q = parse_extended_chart('MSFT', full_regular_chart(), START + 24000)
+    assert (q.open, q.high, q.low) == (100, 104, 99)
+    assert q.regular_close == 102 and q.regular_close_timestamp == START + 23340
+
+
+def test_exact_audit_old_meta_does_not_override_last_closing_candle():
+    node = chart()
+    node['meta']['regularMarketTime'] = START + 18000
+    node['meta']['regularMarketPrice'] = 101.5
+    q = parse_extended_chart('MSFT', node, START + 24000)
+    assert q.regular_close == 102 and q.regular_close_timestamp == START + 23340
+    node['timestamp'] = []
+    q = parse_extended_chart('MSFT', node, START + 40000)
+    assert q.regular_close is None and q.price is None
+
+
+def test_exact_audit_closed_post_not_regular_close():
+    q = parse_extended_chart('MSFT', chart(), START + 40000)
+    assert q.price == 103 and q.price_session == 'post'
+    assert q.regular_close == 102 and q.session == 'cerrado'
+
+
+def test_timestamped_regular_closing_print_not_classified_as_post():
+    node = chart()
+    node['timestamp'] = []
+    node['meta']['regularMarketTime'] = START + 23401
+    q = parse_extended_chart('MSFT', node, START + 40000)
+    assert q.price == 102 and q.price_session == 'regular'
+    assert q.regular_close_timestamp == q.timestamp == START + 23401

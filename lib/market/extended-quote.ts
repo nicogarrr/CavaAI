@@ -11,10 +11,21 @@ const day = (date: string) => new Intl.DateTimeFormat('es-ES', {
 export function extendedQuoteLabel(quote: ExtendedQuote | null): string {
     if (!quote?.source || !quote.timestamp || quote.price == null || quote.status === 'unavailable') return 'N/D';
     const time = clock(quote.timestamp);
-    const label = quote.session === 'cerrado'
-        ? quote.trading_date ? `Cierre del ${day(quote.trading_date)} · ${time}` : 'N/D'
-        : quote.session === 'pre' ? `Premercado · ${time}`
-        : quote.session === 'post' ? `Post-cierre · ${time}` : `Mercado abierto · ${time}`;
+    const priceSession = quote.price_session;
+    if (!priceSession || priceSession === 'cerrado') return 'N/D';
+    const sameSession = quote.session === priceSession;
+    const sessionLabel = priceSession === 'pre' ? 'Premercado'
+        : priceSession === 'post' ? 'Post-cierre' : 'Mercado abierto';
+    let label: string;
+    if (sameSession) {
+        label = `${sessionLabel} · ${time}`;
+    } else {
+        if (!quote.trading_date) return 'N/D';
+        const datedLabel = priceSession === 'post' ? 'Último post-cierre del'
+            : priceSession === 'pre' ? 'Último premercado del'
+            : quote.regular_close_timestamp === quote.timestamp ? 'Cierre del' : 'Último precio regular del';
+        label = `${datedLabel} ${day(quote.trading_date)} · ${time}`;
+    }
     return quote.status === 'retrasado' ? `${label} · Retrasado` : label;
 }
 
