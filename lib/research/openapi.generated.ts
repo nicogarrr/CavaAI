@@ -5551,6 +5551,8 @@ export interface components {
         PaperProposal: {
             /** Conviction */
             conviction: number | string;
+            /** Currency */
+            currency?: string | null;
             /**
              * Direction
              * @enum {string}
