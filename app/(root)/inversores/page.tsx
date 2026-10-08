@@ -41,27 +41,11 @@ export default async function InvestorsPage({ searchParams }: PageProps) {
         <main id="content" tabIndex={-1} className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-12 overflow-x-clip py-6">
             <header className="flex flex-col gap-3">
                 <h1 className="text-3xl font-semibold text-gray-100">Inversores</h1>
-                <p className="text-base text-gray-400">Quienes mejor invierten y lo que tienen en cartera.</p>
-                <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-                    <Link className="text-sm text-lime-300 hover:underline" href="/inversores/carteras">
-                        Ver carteras
-                    </Link>
-                    <Link className="text-sm text-lime-300 hover:underline" href="/inversores/cartas">
-                        Cartas
-                    </Link>
-                    <Link className="text-sm text-lime-300 hover:underline" href="/inversores/mas-compradas">
-                        Más compradas
-                    </Link>
-                    <Link className="text-sm text-lime-300 hover:underline" href="/inversores/solape">Solape con mi cartera</Link>
-                    <Link className="text-sm text-lime-300 hover:underline" href="/inversores/canales">
-                        Canales de YouTube
-                    </Link>
-                </div>
             </header>
 
-            <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <ul className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {paged.items.map((investor) => (
-                    <li key={investor.slug}>
+                    <li className="min-w-0" key={investor.slug}>
                         <Link
                             className="flex h-full items-center gap-4 rounded-2xl border border-gray-800 bg-surface-1 p-5 transition-colors hover:border-gray-700"
                             href={`/inversores/${investor.slug}`}
@@ -76,8 +60,8 @@ export default async function InvestorsPage({ searchParams }: PageProps) {
                                             ? `Cartera a ${periodLabel(investor.report_date)}`
                                             : 'Cartera sin sincronizar todavía'
                                         : investor.has_public_profile
-                                          ? 'Ficha pública, sin 13F'
-                                          : 'Sin datos: no presenta 13F'}
+                                          ? 'Participaciones públicas · ver ficha'
+                                          : 'Sin 13F · ver ficha'}
                                 </span>
                             </span>
                         </Link>
@@ -87,12 +71,8 @@ export default async function InvestorsPage({ searchParams }: PageProps) {
 
             <Pagination basePath="/inversores" page={paged.page} total={paged.total} />
 
-            <p className="text-xs text-gray-500">
-                Fuente: SEC, Form 13F (EDGAR). Trimestral, con hasta 45 días de retardo; solo posiciones largas en EE. UU.
-            </p>
-            <p className="text-xs text-gray-500">
-                Fotos con licencia libre de Wikimedia Commons; autor y licencia en cada ficha. Sin foto libre, inicial.
-            </p>
+            <p className="text-xs text-gray-500">Fotos con licencia libre de Wikimedia Commons; autor y licencia en cada ficha.</p>
+            <p className="text-xs text-gray-500">Fuente: SEC, Form 13F (EDGAR). Posiciones declaradas en EE. UU.; hasta 45 días de retardo. Otras participaciones: fuente y fecha en cada ficha.</p>
         </main>
     );
 }

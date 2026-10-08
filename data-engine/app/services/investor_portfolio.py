@@ -301,7 +301,7 @@ def _portfolio_13f(db: Session, slug: str) -> dict[str, Any]:
             "note": "Sin datos: no hay 13F ingerido para este gestor.",
         }
     rows.sort(key=lambda r: r.value_usd_thousands or Decimal(0), reverse=True)
-    complete = all(r.value_usd_thousands is not None for r in rows)
+    complete = manager.coverage == "ok" and all(r.value_usd_thousands is not None for r in rows)
     # Peso y total solo si TODAS las filas tienen valor: un denominador parcial
     # daria porcentajes "oficiales" no verificables.
     total = _total(rows) if complete else None
@@ -383,7 +383,7 @@ def _portfolio_13f(db: Session, slug: str) -> dict[str, Any]:
         "coverage": "ok" if complete else "partial",
         "note": None
         if complete
-        else "Cobertura parcial: faltan valores en algunas filas del 13F; pesos y total son SIN_DATOS.",
+        else "Cobertura parcial: el 13F no esta verificado como completo; pesos y total son SIN_DATOS.",
     }
 
 

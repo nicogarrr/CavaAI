@@ -7,7 +7,7 @@ import test from 'node:test';
 import { INVESTOR_CHANNELS } from '../app/(root)/inversores/canales/channels.ts';
 
 const page = readFileSync('app/(root)/inversores/canales/page.tsx', 'utf8');
-const list = readFileSync('app/(root)/inversores/page.tsx', 'utf8');
+const list = readFileSync('app/(root)/inversores/_components/HubNav.tsx', 'utf8');
 
 test('cada canal lleva URL de YouTube, fuente y fecha', () => {
     assert.ok(INVESTOR_CHANNELS.length >= 25);
@@ -32,7 +32,7 @@ test('las empresas van aparte y la pagina no copia avatares', () => {
 });
 
 test('el listado enlaza a los canales', () => {
-    assert.match(list, /href="\/inversores\/canales"/);
+    assert.match(list, /\/inversores\/canales/);
 });
 
 test('los canales generalistas van en negocio, no en inversion', () => {

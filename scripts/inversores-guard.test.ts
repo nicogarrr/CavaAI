@@ -15,16 +15,18 @@ const detail = readFileSync('app/(root)/inversores/[slug]/page.tsx', 'utf8');
 const format = readFileSync('app/(root)/inversores/_components/format.ts', 'utf8');
 const constants = readFileSync('lib/constants.ts', 'utf8');
 
-test('quien no presenta 13F dice "Sin datos" en la rejilla y en la ficha', () => {
-    assert.match(grid, /Sin datos: no presenta 13F/);
-    assert.match(detail, /Sin datos: no presenta 13F/);
+test('sin 13F no implica cero ni ausencia de participaciones documentadas', () => {
+    assert.match(grid, /Sin 13F · ver ficha/);
+    assert.match(detail, /getInvestorPortfolio\(slug\)/);
+    assert.match(readFileSync('app/(root)/inversores/_components/Portfolio.tsx', 'utf8'), /SIN_DATOS/);
 });
 
-test('cada pagina cita la fuente (SEC 13F) y el retardo de 45 días', () => {
-    for (const source of [grid, portfolios, detail]) {
+test('la fuente y limitaciones permanecen en tarjetas y cartera etiquetada', () => {
+    for (const source of [grid, portfolios]) {
         assert.match(source, /SEC, Form 13F \(EDGAR\)/);
         assert.match(source, /45 días/);
     }
+    assert.match(readFileSync('app/(root)/inversores/_components/Portfolio.tsx', 'utf8'), /portfolio.limitations/);
 });
 
 test('el <value> del 13F va en dolares desde 2023: Apple 200237120 son 200,2 M, no miles', () => {

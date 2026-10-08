@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const page = readFileSync('app/(root)/inversores/mas-compradas/page.tsx', 'utf8');
-const grid = readFileSync('app/(root)/inversores/page.tsx', 'utf8');
+const grid = readFileSync('app/(root)/inversores/_components/HubNav.tsx', 'utf8');
 
 test('Más compradas dice "Sin datos todavía" cuando no hay dos trimestres', () => {
     assert.match(page, /Sin datos todavía/);
@@ -22,5 +22,5 @@ test('no muestra tickers ni multiplica por mil a ciegas', () => {
 });
 
 test('la rejilla enlaza a Más compradas', () => {
-    assert.match(grid, /href="\/inversores\/mas-compradas"/);
+    assert.match(grid, /\/inversores\/mas-compradas/);
 });
