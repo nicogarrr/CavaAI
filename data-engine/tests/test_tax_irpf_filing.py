@@ -608,3 +608,39 @@ def test_manual_tme_does_not_publish_partial_total(db):
     result = TaxReportService().get_report(db, 2025, tme=Decimal('0.19'))
     assert result['filing']['double_taxation']['partial'] is True
     assert result['filing']['double_taxation']['total_deduction_base'] is None
+
+
+def _es_bucket(**over):
+    base = {
+        "ticker": "SAN",
+        "dividends_base": Decimal("100"),
+        "withholding_base": Decimal("19"),
+        "missing_fx": False,
+        "ambiguous_cash": False,
+        "payments": [],
+    }
+    base.update(over)
+    return base
+
+
+def test_0597_is_null_when_spanish_withholding_is_incomplete():
+    for bucket in (
+        _es_bucket(withholding_base=None, missing_fx=True),
+        _es_bucket(dividends_base=None, missing_fx=True),
+        _es_bucket(withholding_base=None),
+    ):
+        out = build_double_taxation([bucket], {"SAN": "ES"}, 2025)
+        base = out["spanish_withholding_base"]
+        assert base["amount"] is None and base["status"] == "SIN_DATOS"
+
+
+def test_0597_is_published_when_spanish_withholding_is_complete():
+    out = build_double_taxation([_es_bucket()], {"SAN": "ES"}, 2025)
+    base = out["spanish_withholding_base"]
+    assert base["amount"] == 19.0 and base["status"] == "calculada"
+
+
+def test_0597_ignores_incomplete_foreign_buckets():
+    foreign = _es_bucket(ticker="NESN", withholding_base=None, missing_fx=True)
+    out = build_double_taxation([_es_bucket(), foreign], {"SAN": "ES", "NESN": "CH"}, 2025)
+    assert out["spanish_withholding_base"]["amount"] == 19.0

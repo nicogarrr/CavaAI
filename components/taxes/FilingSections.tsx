@@ -191,12 +191,16 @@ export function FilingSection({ filing, year, onPreview, onReset }: {
                 <Row label="0339 · Suma de ganancias" value={money(acciones['0339_suma_ganancias'])} />
                 <Row label="0340 · Suma de pérdidas" value={money(acciones['0340_suma_perdidas'])} />
                 <Row label="0029 · Dividendos íntegros" value={money(dividendos['0029_ingresos_integros'])} />
-                <Row label="0597 · Retenciones españolas" value={money((dt.spanish_withholding_base as DataRecord | undefined)?.amount)} />
+                <Row label="0597 · Retenciones españolas" value={
+                    (dt.spanish_withholding_base as DataRecord | undefined)?.amount == null
+                        ? 'Sin datos: retenciones españolas incompletas'
+                        : money((dt.spanish_withholding_base as DataRecord | undefined)?.amount)
+                } />
                 <Row
                     label="0588 · Deducción por doble imposición"
                     value={
                         dt.status === 'pendiente_tme'
-                            ? 'Falta el tipo medio efectivo: introduce el de tu borrador para calcular la deducción'
+                            ? 'Falta el tipo medio efectivo: introduce el TME de la base liquidable del ahorro de tu borrador para calcular la deducción'
                             : money(dt.total_deduction_base)
                     }
                 />

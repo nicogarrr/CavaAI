@@ -37,7 +37,7 @@ export default function TmePreviewForm({ year, onPreview, onReset }: {
 
     return (
         <form onSubmit={submit} className="mt-4 space-y-2 border-t border-gray-800 pt-4">
-            <label htmlFor="tax-tme" className="block text-sm text-gray-300">Tipo medio efectivo del borrador (%)</label>
+            <label htmlFor="tax-tme" className="block text-sm text-gray-300">TME de la base liquidable del ahorro (%)</label>
             <div className="flex flex-wrap items-center gap-2">
                 <input id="tax-tme" value={input} onChange={(event) => { setInput(event.target.value); setError(null); }}
                     inputMode="decimal" placeholder="Ej. 19,00" disabled={busy}
@@ -48,7 +48,9 @@ export default function TmePreviewForm({ year, onPreview, onReset }: {
                     onReset(); setApplied(false); setInput('');
                 }}>Quitar TME</Button>}
             </div>
-            <p id="tax-tme-note" className="text-xs text-gray-500">Solo para {year}. No se guarda ni sustituye tu declaración.</p>
+            <p id="tax-tme-note" className="text-xs text-gray-500">
+                Solo para {year}. No se guarda ni sustituye tu declaración. Usa el tipo medio efectivo de la base liquidable del ahorro (cuota líquida total del ahorro entre base liquidable del ahorro, por 100, con dos decimales), no el de la base general ni el de toda la declaración. Fuente: Agencia Tributaria, Manual Renta 2025, capítulo 18, deducción por doble imposición internacional.
+            </p>
             {error && <p id="tax-tme-error" role="alert" className="text-xs text-amber-300">{error}</p>}
         </form>
     );
