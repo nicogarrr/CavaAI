@@ -30,6 +30,17 @@ def overlap_route(db: Session = Depends(get_db)) -> dict:
     return portfolio_overlap(db)
 
 
+@router.get("/{slug}/portfolio")
+def investor_portfolio_route(slug: str, db: Session = Depends(get_db)) -> dict:
+    """Posiciones, pesos y ultimos movimientos, cada dato con etiqueta y fecha."""
+    from app.services.investor_portfolio import investor_portfolio
+
+    portfolio = investor_portfolio(db, slug)
+    if portfolio is None:
+        raise HTTPException(status_code=404, detail="investor not found")
+    return portfolio
+
+
 @router.get("/{slug}")
 def investor(slug: str, db: Session = Depends(get_db)) -> dict:
     """Ficha de un inversor: posiciones del ultimo 13F y cambios trimestrales."""
