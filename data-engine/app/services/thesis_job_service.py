@@ -15,9 +15,10 @@ Contract:
 
 from __future__ import annotations
 
+import hashlib
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -58,17 +59,34 @@ def _find_by_key(db: Session, key: str, tenant_id: int | None = None) -> Workflo
     )
     if tenant_id is not None:
         statement = statement.where(WorkflowRun.tenant_id == tenant_id)
-    return db.scalar(
-        statement
-        .order_by(desc(WorkflowRun.id))
-        .limit(1)
-    )
+    return db.scalar(statement.order_by(desc(WorkflowRun.id)).limit(1))
 
 
 def _dispatch_run(run: WorkflowRun) -> None:
     from app.workers.dramatiq_app import generate_thesis_job
 
     generate_thesis_job.send(run.id)
+
+
+def _lock_generation(db: Session, tenant_id: int | None, ticker: str, force: bool) -> None:
+    if db.get_bind().dialect.name != "postgresql":
+        return
+    raw = f"thesis-enqueue:{tenant_id}:{ticker.upper()}:{bool(force)}".encode()
+    key = int.from_bytes(hashlib.sha256(raw).digest()[:8], "big", signed=True)
+    db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": key})
+
+
+def _earlier_active_run(db: Session, run: WorkflowRun, ticker: str, force: bool) -> WorkflowRun | None:
+    statement = select(WorkflowRun).where(
+        WorkflowRun.workflow_name == WORKFLOW_NAME,
+        WorkflowRun.id < run.id,
+        WorkflowRun.status.in_(ACTIVE_STATUSES),
+        WorkflowRun.input_payload["ticker"].as_string() == ticker.upper(),
+        WorkflowRun.input_payload["force"].as_boolean() == bool(force),
+    )
+    if run.tenant_id is not None:
+        statement = statement.where(WorkflowRun.tenant_id == run.tenant_id)
+    return db.scalar(statement.order_by(WorkflowRun.id).limit(1))
 
 
 def enqueue_generation(
@@ -93,6 +111,11 @@ def enqueue_generation(
 
     # A UUID is a request replay key, not permission to start another active
     # generation after the user navigates away and comes back.
+    # Dos POST concurrentes (pestanas, dispositivos) con click IDs distintos
+    # llegan aqui a la vez: sin serializar, ambos ven "no hay activo" e insertan.
+    # En Postgres un lock transaccional por tenant+ticker+force los ordena; el
+    # lock se libera con el commit/rollback de la sesion.
+    _lock_generation(db, tenant_id, ticker, force)
     active = latest_generation(db, ticker, active_only=True, force=force)
     existing = _find_by_key(db, key, tenant_id) or active
     # Idempotencia: un run que ya termino bien se devuelve tal cual (replay),
@@ -102,9 +125,10 @@ def enqueue_generation(
         return existing, False
     if existing is not None:
         retrying_failed = existing.status == "failed"
-        needs_dispatch = retrying_failed or existing.status == "dispatch_failed" or (
-            existing.status == "queued"
-            and not (existing.input_payload or {}).get("dispatch_sent_at")
+        needs_dispatch = (
+            retrying_failed
+            or existing.status == "dispatch_failed"
+            or (existing.status == "queued" and not (existing.input_payload or {}).get("dispatch_sent_at"))
         )
         if needs_dispatch:
             if retrying_failed:
@@ -125,6 +149,14 @@ def enqueue_generation(
     )
     db.add(run)
     try:
+        db.flush()
+        # Red de seguridad sin lock (SQLite en tests/dev): si otra sesion ya
+        # dejo un run activo de este ticker+force con id menor, gana ese y el
+        # nuestro (aun sin publicar) se descarta.
+        rival = _earlier_active_run(db, run, ticker, force)
+        if rival is not None:
+            db.rollback()
+            return rival, False
         db.commit()
     except IntegrityError:
         db.rollback()
@@ -191,11 +223,14 @@ def reconcile_thesis_dispatches() -> dict:
     stats = {"redispatched": 0, "dispatch_failed": 0}
     with SessionLocal() as db:
         runs = db.scalars(
-            select(WorkflowRun).where(
+            select(WorkflowRun)
+            .where(
                 WorkflowRun.workflow_name == WORKFLOW_NAME,
                 WorkflowRun.status.in_(("queued", "dispatch_failed")),
                 WorkflowRun.updated_at < datetime.now(UTC) - DISPATCH_RECHECK,
-            ).order_by(WorkflowRun.id).limit(100)
+            )
+            .order_by(WorkflowRun.id)
+            .limit(100)
         ).all()
         for run in runs:
             success = dispatch_generation(db, run)
@@ -221,9 +256,7 @@ def job_payload(run: WorkflowRun) -> dict:
             }
             for s in steps
         ],
-        "current_phase": next(
-            (s.step_name for s in reversed(steps) if s.status == "running"), None
-        ),
+        "current_phase": next((s.step_name for s in reversed(steps) if s.status == "running"), None),
         "result": run.result_payload,
         "error_class": run.error_class,
         "error_message": run.error_message,
@@ -271,7 +304,9 @@ def run_thesis_job(run_id: int) -> None:
     db = SessionLocal()
     try:
         run = db.scalar(
-            select(WorkflowRun).where(WorkflowRun.id == run_id).with_for_update()
+            select(WorkflowRun)
+            .where(WorkflowRun.id == run_id)
+            .with_for_update()
             .execution_options(include_all_tenants=True)
         )
         if run is None or run.status in TERMINAL_STATUSES or run.status == "dispatch_failed":
@@ -299,9 +334,7 @@ def run_thesis_job(run_id: int) -> None:
         if tenant_id_int is not None and user_id:
             from app.models import Tenant
 
-            tenant = db.get(
-                Tenant, tenant_id_int, execution_options={"include_all_tenants": True}
-            )
+            tenant = db.get(Tenant, tenant_id_int, execution_options={"include_all_tenants": True})
         if tenant_id is not None and (tenant is None or tenant.status != "active"):
             run.status = "failed"
             run.error_class = "TenantAccessError"
@@ -309,9 +342,9 @@ def run_thesis_job(run_id: int) -> None:
             run.finished_at = now
             db.commit()
             raise ValueError(run.error_message)
-        if (
-            settings.research_auth_required or settings.is_production
-        ) and (tenant_id_int is None or not user_id):
+        if (settings.research_auth_required or settings.is_production) and (
+            tenant_id_int is None or not user_id
+        ):
             run.status = "failed"
             run.error_class = "MissingTenantContext"
             run.error_message = "Thesis job is missing tenant/user context"
@@ -397,13 +430,9 @@ def run_thesis_job(run_id: int) -> None:
             # survives a rolled-back attempt would describe work that was
             # undone. Capture the step NAME before the rollback so the failure
             # handler can re-create the step it was running.
-            open_step_name = (
-                state["open_step_name"] if state.get("open_step") is not None else None
-            )
+            open_step_name = state["open_step_name"] if state.get("open_step") is not None else None
             db.rollback()
-            run = db.get(
-                WorkflowRun, run_id, execution_options={"include_all_tenants": True}
-            )
+            run = db.get(WorkflowRun, run_id, execution_options={"include_all_tenants": True})
             retryable = _is_retryable_error(exc)
             if run is not None:
                 if open_step_name is not None:
@@ -421,9 +450,7 @@ def run_thesis_job(run_id: int) -> None:
                     db.add(step)
                 run.error_class = type(exc).__name__
                 run.error_message = (
-                    "Transient failure; delivery will be retried"
-                    if retryable
-                    else "Thesis generation failed"
+                    "Transient failure; delivery will be retried" if retryable else "Thesis generation failed"
                 )
                 if retryable and int(run.attempt or 1) < MAX_ATTEMPTS:
                     run.status = "retrying"

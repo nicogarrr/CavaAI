@@ -44,8 +44,14 @@ def _fake_generate(thesis_id=7):
 
 
 def _enqueue_without_dispatch(
-    monkeypatch, ticker="AAPL", force=False, *, tenant_id=None, user_id=None,
-    send=None, request_id=None,
+    monkeypatch,
+    ticker="AAPL",
+    force=False,
+    *,
+    tenant_id=None,
+    user_id=None,
+    send=None,
+    request_id=None,
 ):
     import app.workers.dramatiq_app as workers
 
@@ -146,9 +152,7 @@ def test_run_job_failure_marks_failed_and_reraises(monkeypatch):
     assert stored.status == "failed"
     assert stored.error_class == "RuntimeError"
     assert stored.error_message == "Thesis generation failed"
-    failed_step = db.scalars(
-        select(WorkflowStepRun).where(WorkflowStepRun.run_id == run.id)
-    ).first()
+    failed_step = db.scalars(select(WorkflowStepRun).where(WorkflowStepRun.run_id == run.id)).first()
     assert failed_step.status == "failed"
     assert failed_step.error_class == "RuntimeError"
     db.close()
@@ -268,9 +272,7 @@ def test_failed_dispatch_is_recoverable(monkeypatch):
         raise ConnectionError("redis unavailable")
 
     monkeypatch.setattr(workers.generate_thesis_job, "send", fail_send)
-    run, created = _enqueue_without_dispatch(
-        monkeypatch, ticker="DISPATCH", send=fail_send
-    )
+    run, created = _enqueue_without_dispatch(monkeypatch, ticker="DISPATCH", send=fail_send)
     assert created is True
     assert run.status == "dispatch_failed"
 
@@ -353,7 +355,9 @@ def test_same_ticker_key_is_scoped_by_tenant(monkeypatch):
         assert run_a.id != run_b.id
     finally:
         db = SessionLocal()
-        db.query(WorkflowRun).filter(WorkflowRun.id.in_([run_a.id, run_b.id])).delete(synchronize_session=False)
+        db.query(WorkflowRun).filter(WorkflowRun.id.in_([run_a.id, run_b.id])).delete(
+            synchronize_session=False
+        )
         db.query(Tenant).filter(Tenant.id.in_(ids)).delete(synchronize_session=False)
         db.commit()
         db.close()
@@ -363,24 +367,18 @@ def test_request_id_permite_nueva_generacion_real_tras_exito(monkeypatch):
     """El boton de la UI manda un request_id nuevo por click: cada click debe
     crear un run real, no replayar el exitoso anterior. Sin request_id se
     conserva el replay (compat)."""
-    run1, created1 = _enqueue_without_dispatch(
-        monkeypatch, ticker="FRESH", request_id="click-0001"
-    )
+    run1, created1 = _enqueue_without_dispatch(monkeypatch, ticker="FRESH", request_id="click-0001")
     db = SessionLocal()
     stored = db.get(WorkflowRun, run1.id)
     stored.status = "succeeded"
     db.commit()
     db.close()
 
-    run2, created2 = _enqueue_without_dispatch(
-        monkeypatch, ticker="FRESH", request_id="click-0002"
-    )
+    run2, created2 = _enqueue_without_dispatch(monkeypatch, ticker="FRESH", request_id="click-0002")
     assert created2 is True
     assert run2.id != run1.id
 
-    replay, created3 = _enqueue_without_dispatch(
-        monkeypatch, ticker="FRESH", request_id="click-0001"
-    )
+    replay, created3 = _enqueue_without_dispatch(monkeypatch, ticker="FRESH", request_id="click-0001")
     assert created3 is False
     assert replay.id == run1.id
 
@@ -477,8 +475,10 @@ def test_worker_enriches_unknown_company_before_generation(monkeypatch):
     from app.models import Company
 
     run, _ = _enqueue_without_dispatch(monkeypatch, ticker="ZZWORKER")
-    monkeypatch.setattr("app.services.company_enrichment_service.CompanyEnrichmentService.enrich",
-                        lambda *args, **kwargs: False)
+    monkeypatch.setattr(
+        "app.services.company_enrichment_service.CompanyEnrichmentService.enrich",
+        lambda *args, **kwargs: False,
+    )
 
     def generate(self, db, ticker, **kwargs):
         assert db.scalar(select(Company).where(Company.ticker == ticker)) is not None
@@ -514,3 +514,40 @@ def test_queued_publish_gap_is_recovered_without_post(monkeypatch):
     monkeypatch.setattr(workers.generate_thesis_job, "send", lambda run_id: sent.append(run_id))
     assert jobs.reconcile_thesis_dispatches()["redispatched"] == 1
     assert sent == [run.id]
+
+
+def test_concurrent_enqueue_with_distinct_click_ids_creates_one_active_run(monkeypatch):
+    """Dos sesiones pasan la comprobacion de activo a la vez (carrera): solo un
+    run activo y una sola publicacion."""
+    sent = []
+    monkeypatch.setattr(jobs, "_dispatch_run", lambda run: sent.append(run.id))
+    db1, db2 = SessionLocal(), SessionLocal()
+    try:
+        real_latest = jobs.latest_generation
+        calls = {"n": 0}
+
+        def racing_latest(db, ticker, **kwargs):
+            result = real_latest(db, ticker, **kwargs)
+            calls["n"] += 1
+            if calls["n"] == 1 and kwargs.get("active_only"):
+                # La otra sesion inserta y confirma justo despues de esta comprobacion.
+                other, created = jobs.enqueue_generation(db2, "AAPL", False, "click2")
+                assert created
+            return result
+
+        monkeypatch.setattr(jobs, "latest_generation", racing_latest)
+        run1, created1 = jobs.enqueue_generation(db1, "AAPL", False, "click1")
+        run1_id = run1.id
+    finally:
+        db1.close()
+        db2.close()
+    check = SessionLocal()
+    try:
+        active = check.scalars(
+            select(WorkflowRun).where(WorkflowRun.workflow_name == jobs.WORKFLOW_NAME)
+        ).all()
+        assert len(active) == 1
+        assert created1 is False and run1_id == active[0].id
+        assert len(sent) == 1
+    finally:
+        check.close()
