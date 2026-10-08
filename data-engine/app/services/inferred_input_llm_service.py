@@ -28,7 +28,6 @@ from app.services.budget import BudgetController, BudgetExceededError
 from app.services.inferred_input_service import (
     ALLOWED_KEYS,
     MIN_BASE_CHARS,
-    MIN_WACC_TERMINAL_SPREAD,
     InferredInputError,
     InferredInputService,
     is_valid_https_url,
@@ -163,33 +162,6 @@ def validate_output(raw: Any, sources: list[dict], input_key: InputKey = "fcf_ma
     urls = list(dict.fromkeys(by_id[i]["url"] for i in ids))  # URLs del servicio, no del modelo
     return number, base.strip(), urls
 
-
-def validate_rate_spread(db: Session, company: Company, input_key: InputKey, value: Decimal) -> None:
-    """Rechaza el par propuesto, sin descartes/fallback silenciosos al guardar.
-
-    Misma prioridad del motor: WACC calculado trazable, inferido, politica.
-    Se revalida dentro de la transaccion de cuota, despues de la llamada LLM.
-    """
-    if input_key == "fcf_margin":
-        return
-    from app.valuation.engines.base import default_terminal_growth, default_wacc, traceable_wacc
-
-    service = InferredInputService()
-    if input_key == "wacc":
-        other = service.latest_valid(db, company.id, "terminal_growth")
-        wacc = float(value)
-        terminal = float(other.value) if other is not None else default_terminal_growth(company)
-    else:
-        calculated = traceable_wacc(db, company)
-        other = service.latest_valid(db, company.id, "wacc") if calculated is None else None
-        wacc = calculated if calculated is not None else (
-            float(other.value) if other is not None else default_wacc(company)
-        )
-        terminal = float(value)
-    if wacc - terminal < MIN_WACC_TERMINAL_SPREAD - 1e-9:
-        raise InferenceRejected("spread_wacc_terminal_insuficiente")
-
-
 _locks_guard = threading.Lock()
 _locks: dict[tuple, threading.Lock] = {}
 
@@ -220,12 +192,8 @@ def save_within_quota(db: Session, company: Any, value: Decimal, base: str, urls
             db.rollback()
             raise QuotaExceeded(DAILY_QUOTA)
         try:
-            current_company = db.get(Company, company.id)
-            if current_company is None:
-                raise InferenceRejected("empresa_no_encontrada")
-            validate_rate_spread(db, current_company, input_key, value)
-            return InferredInputService().create(
-                db, current_company, input_key=input_key, value=value, base=base, source_urls=urls, origin="llm"
+            return InferredInputService().create_guarded(
+                db, company.id, input_key=input_key, value=value, base=base, source_urls=urls, origin="llm"
             )
         except Exception:
             db.rollback()

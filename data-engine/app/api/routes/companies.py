@@ -543,10 +543,12 @@ def create_inferred_input(
     company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
+    company_id = company.id
+    db.commit()  # Close reads before acquiring the global company-pair write lock.
     try:
-        row = InferredInputService().create(
+        row = InferredInputService().create_guarded(
             db,
-            company,
+            company_id,
             input_key=payload.input_key,
             value=payload.value,
             base=payload.base,
