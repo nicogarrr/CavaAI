@@ -44,8 +44,14 @@ def _fake_generate(thesis_id=7):
 
 
 def _enqueue_without_dispatch(
-    monkeypatch, ticker="AAPL", force=False, *, tenant_id=None, user_id=None,
-    send=None, request_id=None,
+    monkeypatch,
+    ticker="AAPL",
+    force=False,
+    *,
+    tenant_id=None,
+    user_id=None,
+    send=None,
+    request_id=None,
 ):
     import app.workers.dramatiq_app as workers
 
@@ -146,9 +152,7 @@ def test_run_job_failure_marks_failed_and_reraises(monkeypatch):
     assert stored.status == "failed"
     assert stored.error_class == "RuntimeError"
     assert stored.error_message == "Thesis generation failed"
-    failed_step = db.scalars(
-        select(WorkflowStepRun).where(WorkflowStepRun.run_id == run.id)
-    ).first()
+    failed_step = db.scalars(select(WorkflowStepRun).where(WorkflowStepRun.run_id == run.id)).first()
     assert failed_step.status == "failed"
     assert failed_step.error_class == "RuntimeError"
     db.close()
@@ -240,34 +244,25 @@ def test_failed_run_is_redispatched_on_retry(monkeypatch):
     assert (replay.input_payload or {}).get("attempt") == 2
 
 
-def test_generate_async_ensures_company_stub(monkeypatch):
-    """El buscador resuelve tickers via Finnhub sin ficha en BD; generate-async
-    debe crear la ficha para que la generacion no muera con Unknown ticker."""
+def test_generate_async_defers_company_enrichment_to_worker(monkeypatch):
+    """Enqueue must persist before any slow provider request."""
     import app.workers.dramatiq_app as workers
 
     monkeypatch.setattr(workers.generate_thesis_job, "send", lambda run_id: None)
 
-    def fail_enrich(self, db, company):
-        raise ConnectionError("sin red en el test")
+    def no_enrichment_on_request(*args, **kwargs):
+        raise AssertionError("Network enrichment must not run in the request")
 
     monkeypatch.setattr(
-        "app.services.company_enrichment_service.CompanyEnrichmentService.enrich",
-        fail_enrich,
+        "app.services.company_enrichment_service.ensure_company_stub",
+        no_enrichment_on_request,
     )
-    client = TestClient(main.app)
-    response = client.post(
+    response = TestClient(main.app).post(
         "/api/thesis/generate-async",
         json={"ticker": "ZZTEST", "force_new_version": False},
     )
     assert response.status_code == 202
-    db = SessionLocal()
-    from app.models import Company
-
-    company = db.scalar(select(Company).where(Company.ticker == "ZZTEST"))
-    assert company is not None
-    db.delete(company)
-    db.commit()
-    db.close()
+    assert response.json()["status"] == "queued"
 
 
 def test_failed_dispatch_is_recoverable(monkeypatch):
@@ -277,9 +272,7 @@ def test_failed_dispatch_is_recoverable(monkeypatch):
         raise ConnectionError("redis unavailable")
 
     monkeypatch.setattr(workers.generate_thesis_job, "send", fail_send)
-    run, created = _enqueue_without_dispatch(
-        monkeypatch, ticker="DISPATCH", send=fail_send
-    )
+    run, created = _enqueue_without_dispatch(monkeypatch, ticker="DISPATCH", send=fail_send)
     assert created is True
     assert run.status == "dispatch_failed"
 
@@ -362,7 +355,9 @@ def test_same_ticker_key_is_scoped_by_tenant(monkeypatch):
         assert run_a.id != run_b.id
     finally:
         db = SessionLocal()
-        db.query(WorkflowRun).filter(WorkflowRun.id.in_([run_a.id, run_b.id])).delete(synchronize_session=False)
+        db.query(WorkflowRun).filter(WorkflowRun.id.in_([run_a.id, run_b.id])).delete(
+            synchronize_session=False
+        )
         db.query(Tenant).filter(Tenant.id.in_(ids)).delete(synchronize_session=False)
         db.commit()
         db.close()
@@ -372,23 +367,187 @@ def test_request_id_permite_nueva_generacion_real_tras_exito(monkeypatch):
     """El boton de la UI manda un request_id nuevo por click: cada click debe
     crear un run real, no replayar el exitoso anterior. Sin request_id se
     conserva el replay (compat)."""
-    run1, created1 = _enqueue_without_dispatch(
-        monkeypatch, ticker="FRESH", request_id="click-0001"
-    )
+    run1, created1 = _enqueue_without_dispatch(monkeypatch, ticker="FRESH", request_id="click-0001")
     db = SessionLocal()
     stored = db.get(WorkflowRun, run1.id)
     stored.status = "succeeded"
     db.commit()
     db.close()
 
-    run2, created2 = _enqueue_without_dispatch(
-        monkeypatch, ticker="FRESH", request_id="click-0002"
-    )
+    run2, created2 = _enqueue_without_dispatch(monkeypatch, ticker="FRESH", request_id="click-0002")
     assert created2 is True
     assert run2.id != run1.id
 
-    replay, created3 = _enqueue_without_dispatch(
-        monkeypatch, ticker="FRESH", request_id="click-0001"
-    )
+    replay, created3 = _enqueue_without_dispatch(monkeypatch, ticker="FRESH", request_id="click-0001")
     assert created3 is False
     assert replay.id == run1.id
+
+
+def test_different_click_ids_recover_same_active_generation(monkeypatch):
+    first, _ = _enqueue_without_dispatch(monkeypatch, request_id="tab-1")
+    second, created = _enqueue_without_dispatch(monkeypatch, request_id="tab-2")
+    assert not created
+    assert first.id == second.id
+
+
+def test_latest_endpoint_recovers_after_request_session_is_closed(monkeypatch):
+    run, _ = _enqueue_without_dispatch(monkeypatch, request_id="leaving-page")
+    client = TestClient(main.app)
+    response = client.get("/api/thesis/jobs", params={"ticker": "aapl"})
+    assert response.status_code == 200
+    assert response.json()["job"]["id"] == run.id
+    # No browser polls/start action between enqueue and worker execution.
+    monkeypatch.setattr(ThesisService, "generate", _fake_generate())
+    jobs.run_thesis_job(run.id)
+    recovered = client.get("/api/thesis/jobs", params={"ticker": "AAPL"}).json()["job"]
+    assert recovered["id"] == run.id
+    assert recovered["status"] == "succeeded"
+    assert client.get("/api/thesis/jobs", params={"ticker": "NOJOB"}).json() == {"job": None}
+
+
+def test_dispatch_failed_recovery_needs_no_browser(monkeypatch):
+    def unavailable(_run_id):
+        raise ConnectionError("redis unavailable")
+
+    run, _ = _enqueue_without_dispatch(monkeypatch, send=unavailable)
+    with SessionLocal() as db:
+        stored = db.get(WorkflowRun, run.id)
+        stored.updated_at = stored.created_at - jobs.DISPATCH_RECHECK - timedelta(minutes=1)
+        db.commit()
+
+    sent = []
+    import app.workers.dramatiq_app as workers
+
+    def deliver(run_id):
+        # A fresh connection must see QUEUED before delivery can start.
+        with SessionLocal() as db:
+            assert db.get(WorkflowRun, run_id).status == "queued"
+        sent.append(run_id)
+
+    monkeypatch.setattr(workers.generate_thesis_job, "send", deliver)
+    assert jobs.reconcile_thesis_dispatches() == {"redispatched": 1, "dispatch_failed": 0}
+    assert sent == [run.id]
+    assert jobs.reconcile_thesis_dispatches() == {"redispatched": 0, "dispatch_failed": 0}
+
+
+def test_reconciler_does_not_restart_running_or_terminal_runs(monkeypatch):
+    sent = []
+    for status in ("running", "succeeded", "failed", "retrying"):
+        run, _ = _enqueue_without_dispatch(monkeypatch, ticker=status.upper())
+        with SessionLocal() as db:
+            stored = db.get(WorkflowRun, run.id)
+            stored.status = status
+            stored.updated_at = stored.created_at - timedelta(days=1)
+            db.commit()
+    import app.workers.dramatiq_app as workers
+
+    monkeypatch.setattr(workers.generate_thesis_job, "send", lambda run_id: sent.append(run_id))
+    assert jobs.reconcile_thesis_dispatches() == {"redispatched": 0, "dispatch_failed": 0}
+    assert sent == []
+
+
+def test_latest_generation_is_tenant_scoped(monkeypatch):
+    from uuid import uuid4
+
+    from app.models import Tenant
+
+    with SessionLocal() as db:
+        tenant = Tenant(external_id=f"recovery-{uuid4().hex}", name="Recovery tenant")
+        db.add(tenant)
+        db.commit()
+        tenant_id = tenant.id
+    run, _ = _enqueue_without_dispatch(monkeypatch, tenant_id=tenant_id, user_id="user")
+    try:
+        with SessionLocal() as db:
+            db.info["tenant_id"] = tenant_id
+            assert jobs.latest_generation(db, "AAPL").id == run.id
+        with SessionLocal() as db:
+            db.info["tenant_id"] = tenant_id + 100000
+            assert jobs.latest_generation(db, "AAPL") is None
+    finally:
+        with SessionLocal() as db:
+            db.query(WorkflowRun).filter_by(id=run.id).delete()
+            db.query(Tenant).filter_by(id=tenant_id).delete()
+            db.commit()
+
+
+def test_worker_enriches_unknown_company_before_generation(monkeypatch):
+    from app.models import Company
+
+    run, _ = _enqueue_without_dispatch(monkeypatch, ticker="ZZWORKER")
+    monkeypatch.setattr(
+        "app.services.company_enrichment_service.CompanyEnrichmentService.enrich",
+        lambda *args, **kwargs: False,
+    )
+
+    def generate(self, db, ticker, **kwargs):
+        assert db.scalar(select(Company).where(Company.ticker == ticker)) is not None
+        return _fake_generate()(self, db, ticker, **kwargs)
+
+    monkeypatch.setattr(ThesisService, "generate", generate)
+    jobs.run_thesis_job(run.id)
+    with SessionLocal() as db:
+        assert db.get(WorkflowRun, run.id).status == "succeeded"
+        db.query(Company).filter_by(ticker="ZZWORKER").delete()
+        db.commit()
+
+
+def test_scheduler_recovers_jobs_without_browser():
+    from app.workers.scheduler import build_scheduler
+
+    scheduler = build_scheduler(background=True)
+    job = scheduler.get_job("thesis_dispatch_recovery")
+    assert job is not None
+    assert job.func is jobs.reconcile_thesis_dispatches
+    assert job.trigger.interval == timedelta(minutes=1)
+
+
+def test_queued_publish_gap_is_recovered_without_post(monkeypatch):
+    run, _ = _enqueue_without_dispatch(monkeypatch, ticker="LOST")
+    with SessionLocal() as db:
+        stored = db.get(WorkflowRun, run.id)
+        stored.updated_at = stored.created_at - jobs.DISPATCH_RECHECK - timedelta(minutes=1)
+        db.commit()
+    sent = []
+    import app.workers.dramatiq_app as workers
+
+    monkeypatch.setattr(workers.generate_thesis_job, "send", lambda run_id: sent.append(run_id))
+    assert jobs.reconcile_thesis_dispatches()["redispatched"] == 1
+    assert sent == [run.id]
+
+
+def test_concurrent_enqueue_with_distinct_click_ids_creates_one_active_run(monkeypatch):
+    """Dos sesiones pasan la comprobacion de activo a la vez (carrera): solo un
+    run activo y una sola publicacion."""
+    sent = []
+    monkeypatch.setattr(jobs, "_dispatch_run", lambda run: sent.append(run.id))
+    db1, db2 = SessionLocal(), SessionLocal()
+    try:
+        real_latest = jobs.latest_generation
+        calls = {"n": 0}
+
+        def racing_latest(db, ticker, **kwargs):
+            result = real_latest(db, ticker, **kwargs)
+            calls["n"] += 1
+            if calls["n"] == 1 and kwargs.get("active_only"):
+                # La otra sesion inserta y confirma justo despues de esta comprobacion.
+                other, created = jobs.enqueue_generation(db2, "AAPL", False, "click2")
+                assert created
+            return result
+
+        monkeypatch.setattr(jobs, "latest_generation", racing_latest)
+        run1, created1 = jobs.enqueue_generation(db1, "AAPL", False, "click1")
+        run1_id = run1.id
+    finally:
+        db1.close()
+        db2.close()
+    check = SessionLocal()
+    try:
+        active = check.scalars(
+            select(WorkflowRun).where(WorkflowRun.workflow_name == jobs.WORKFLOW_NAME)
+        ).all()
+        assert len(active) == 1
+        assert created1 is False and run1_id == active[0].id
+        assert len(sent) == 1
+    finally:
+        check.close()
