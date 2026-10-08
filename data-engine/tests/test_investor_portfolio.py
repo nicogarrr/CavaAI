@@ -369,3 +369,29 @@ def test_13f_closed_position_only_with_complete_coverage():
     out = investor_portfolio(db, "buffett")
     gamma = next(m for m in out["movements"] if m["issuer"] == "GAMMA")
     assert gamma["action"] == "sin_datos" and gamma["shares"]["label"] == "SIN_DATOS"
+
+
+def test_sync_form4_releases_a_preexisting_transaction_before_fetching():
+    db = _db()
+    db.scalars(select(InvestorMovement)).all()  # el llamador ya abrio transaccion
+    assert db.in_transaction()
+    seen: list[bool] = []
+
+    def fetch(url: str) -> str:
+        seen.append(db.in_transaction())
+        return FORM4
+
+    second = {
+        **FILING,
+        "accession_number": "0009999999-24-000002",
+        "document_url": FILING["document_url"] + "2",
+    }
+    assert sync_form4(db, "trump", fetch=fetch, filings=[FILING, second]) == 2
+    assert seen == [False, False]
+
+
+def test_sync_form4_refuses_to_discard_pending_changes():
+    db = _db()
+    db.add(InvestorMovement(investor_slug="trump", accession_number="x", issuer_name="X"))
+    with pytest.raises(ValueError):
+        sync_form4(db, "trump", fetch=lambda u: FORM4, filings=[FILING])

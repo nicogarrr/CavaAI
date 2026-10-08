@@ -543,6 +543,13 @@ def sync_form4(db: Session, slug: str, *, limit: int = 20, fetch=None, filings=N
     cik = FORM4_FILER_CIK.get(slug)
     if cik is None:
         raise ValueError(f"no Form 4 filer CIK reviewed for {slug!r}")
+    # Libera cualquier transaccion que ya traiga el llamador (p. ej. un SELECT previo) antes
+    # de salir a la red: no se retiene conexion del pool durante los fetch. Solo rollback
+    # (nunca commit de cambios ajenos); con cambios pendientes se aborta en vez de descartarlos.
+    if db.new or db.dirty or db.deleted:
+        raise ValueError("sync_form4 needs a session without pending changes")
+    if db.in_transaction():
+        db.rollback()
     listing = filings if filings is not None else form4.recent_form4_filings(cik, limit=limit)
     fetch = fetch or form4.fetch_filing_xml
     expected = int(cik)
