@@ -11,6 +11,7 @@ import os
 import re
 import unicodedata
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -253,6 +254,15 @@ def _matching_companies(db: Session, exposure: str) -> list[Company]:
 
 def analyze_second_order(db: Session, event: NewsEvent, *, use_llm: bool = False) -> dict:
     """No thesis/score/alert changes or ingestion filtering; reserves LLM quota."""
+    # Copia escalares y suelta la transaccion antes de cualquier LLM: sin conexion
+    # retenida durante la espera ni en el reintento (pool 5+10).
+    tenant_id = db.info.get("tenant_id")
+    event = SimpleNamespace(
+        id=event.id, url=event.url, source=event.source, date=event.date,
+        metadata_=dict(event.metadata_ or {}), title=event.title, summary=event.summary,
+    )
+    if use_llm:
+        db.commit()
     text = " ".join(part for part in (event.title, event.summary) if part)[:3500]
     mode = "determinista"
     llm_note = None
@@ -263,12 +273,10 @@ def analyze_second_order(db: Session, event: NewsEvent, *, use_llm: bool = False
             llm_note = "Análisis LLM desactivado por configuración."
         else:
             try:
-                llm_quota = reserve_llm_call(db.info.get("tenant_id"), get_settings())
+                llm_quota = reserve_llm_call(tenant_id, get_settings())
                 if not llm_quota["allowed"]:
                     llm_note = "Análisis LLM no disponible: tope alcanzado."
                 else:
-                    tenant_id = db.info.get("tenant_id")
-
                     def _reserve_retry() -> None:
                         nonlocal llm_quota
                         retry = reserve_llm_call(tenant_id, get_settings())

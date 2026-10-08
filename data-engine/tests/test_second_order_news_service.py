@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.models.entities import Base, Company, NewsEvent
@@ -300,3 +300,33 @@ def test_double_cjk_output_degrades_to_deterministic(monkeypatch):
     with _company_db() as db:
         result = service.analyze_second_order(db, _llm_event(db), use_llm=True)
     assert result["mode"] == "determinista" and len(calls) == 2
+
+
+def test_no_transaction_is_held_during_either_llm_call(monkeypatch):
+    from types import SimpleNamespace as NS
+
+    monkeypatch.setenv("SECOND_ORDER_LLM_ENABLED", "1")
+    monkeypatch.setattr(service, "reserve_llm_call", lambda *_a: {
+        "allowed": True, "minute_used": 1, "minute_limit": 4, "day_used": 1, "day_limit": 100})
+    with _company_db(_mk_company("CPR", sector="Copper")) as db:
+        _llm_event(db)
+        # Como en la ruta: el evento llega cargado por un SELECT que abre transaccion.
+        event = db.scalars(select(NewsEvent)).one()
+        event_id = event.id
+        assert db.in_transaction()
+        seen = []
+        texts = [CJK, GOOD]
+
+        class Provider:
+            name = "opencode-go"
+            model_router = NS(resolve=lambda request: request.model)
+
+            async def complete(self, request):
+                seen.append(db.in_transaction())
+                return NS(text=texts[len(seen) - 1])
+
+        monkeypatch.setattr(service, "create_llm_provider", lambda: Provider())
+        result = service.analyze_second_order(db, event, use_llm=True)
+    assert seen == [False, False]
+    assert result["mode"] == "llm" and result["source"]["name"] == "manual"
+    assert result["news_event_id"] == event_id
