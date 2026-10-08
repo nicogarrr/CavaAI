@@ -15,9 +15,10 @@ Contract:
 
 from __future__ import annotations
 
+import hashlib
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -30,6 +31,7 @@ ACTIVE_STATUSES = ("queued", "running", "retrying", "dispatch_failed")
 TERMINAL_STATUSES = ("succeeded", "failed")
 MAX_ATTEMPTS = 3
 RUNNING_LEASE = timedelta(hours=6)
+DISPATCH_RECHECK = timedelta(minutes=5)
 
 # Real phases instrumented inside ThesisService._generate_atomic. Order matters.
 THESIS_PHASES: tuple[str, ...] = (
@@ -57,17 +59,34 @@ def _find_by_key(db: Session, key: str, tenant_id: int | None = None) -> Workflo
     )
     if tenant_id is not None:
         statement = statement.where(WorkflowRun.tenant_id == tenant_id)
-    return db.scalar(
-        statement
-        .order_by(desc(WorkflowRun.id))
-        .limit(1)
-    )
+    return db.scalar(statement.order_by(desc(WorkflowRun.id)).limit(1))
 
 
 def _dispatch_run(run: WorkflowRun) -> None:
     from app.workers.dramatiq_app import generate_thesis_job
 
     generate_thesis_job.send(run.id)
+
+
+def _lock_generation(db: Session, tenant_id: int | None, ticker: str, force: bool) -> None:
+    if db.get_bind().dialect.name != "postgresql":
+        return
+    raw = f"thesis-enqueue:{tenant_id}:{ticker.upper()}:{bool(force)}".encode()
+    key = int.from_bytes(hashlib.sha256(raw).digest()[:8], "big", signed=True)
+    db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": key})
+
+
+def _earlier_active_run(db: Session, run: WorkflowRun, ticker: str, force: bool) -> WorkflowRun | None:
+    statement = select(WorkflowRun).where(
+        WorkflowRun.workflow_name == WORKFLOW_NAME,
+        WorkflowRun.id < run.id,
+        WorkflowRun.status.in_(ACTIVE_STATUSES),
+        WorkflowRun.input_payload["ticker"].as_string() == ticker.upper(),
+        WorkflowRun.input_payload["force"].as_boolean() == bool(force),
+    )
+    if run.tenant_id is not None:
+        statement = statement.where(WorkflowRun.tenant_id == run.tenant_id)
+    return db.scalar(statement.order_by(WorkflowRun.id).limit(1))
 
 
 def enqueue_generation(
@@ -77,9 +96,9 @@ def enqueue_generation(
 
     The idempotency key is a permanent request key, not an attempt key. A
     terminal run is therefore returned as a replay instead of attempting an
-    insert that violates ``uq_workflow_runs_idempotency``. Rows that could not
-    reach the broker remain recoverable and are re-dispatched on the next
-    request; a full outbox/reconciler remains a separate infrastructure task.
+    insert that violates ``uq_workflow_runs_idempotency``. Active ticker/force
+    runs are reused even across distinct click IDs. A server-side reconciler
+    re-dispatches rows that could not reach the broker without a user request.
     """
     key = idempotency_key_for(ticker, force, request_id)
     tenant_id = db.info.get("tenant_id")
@@ -90,7 +109,15 @@ def enqueue_generation(
     if user_id is not None:
         payload["user_id"] = user_id
 
-    existing = _find_by_key(db, key, tenant_id)
+    # A UUID is a request replay key, not permission to start another active
+    # generation after the user navigates away and comes back.
+    # Dos POST concurrentes (pestanas, dispositivos) con click IDs distintos
+    # llegan aqui a la vez: sin serializar, ambos ven "no hay activo" e insertan.
+    # En Postgres un lock transaccional por tenant+ticker+force los ordena; el
+    # lock se libera con el commit/rollback de la sesion.
+    _lock_generation(db, tenant_id, ticker, force)
+    active = latest_generation(db, ticker, active_only=True, force=force)
+    existing = _find_by_key(db, key, tenant_id) or active
     # Idempotencia: un run que ya termino bien se devuelve tal cual (replay),
     # pero uno FALLIDO no es un resultado reutilizable - el front dice
     # "puedes reintentar", asi que reintentar debe re-despachar de verdad.
@@ -98,29 +125,18 @@ def enqueue_generation(
         return existing, False
     if existing is not None:
         retrying_failed = existing.status == "failed"
-        needs_dispatch = retrying_failed or existing.status == "dispatch_failed" or (
-            existing.status == "queued"
-            and not (existing.input_payload or {}).get("dispatch_sent_at")
+        needs_dispatch = (
+            retrying_failed
+            or existing.status == "dispatch_failed"
+            or (existing.status == "queued" and not (existing.input_payload or {}).get("dispatch_sent_at"))
         )
         if needs_dispatch:
-            try:
-                _dispatch_run(existing)
-            except Exception as exc:
-                existing.status = "dispatch_failed"
-                existing.error_class = type(exc).__name__
-                existing.error_message = "Thesis job dispatch failed"
-                db.commit()
-                return existing, False
-            payload = dict(existing.input_payload or {})
             if retrying_failed:
-                payload["attempt"] = int(payload.get("attempt") or 1) + 1
-            payload["dispatch_sent_at"] = datetime.now(UTC).isoformat()
-            existing.input_payload = payload
-            existing.status = "queued"
-            existing.error_class = None
-            existing.error_message = None
-            existing.finished_at = None
-            db.commit()
+                existing.attempt = int(existing.attempt or 1) + 1
+                existing.started_at = None
+                existing.finished_at = None
+                db.commit()
+            dispatch_generation(db, existing)
         return existing, False
 
     run = WorkflowRun(
@@ -133,6 +149,14 @@ def enqueue_generation(
     )
     db.add(run)
     try:
+        db.flush()
+        # Red de seguridad sin lock (SQLite en tests/dev): si otra sesion ya
+        # dejo un run activo de este ticker+force con id menor, gana ese y el
+        # nuestro (aun sin publicar) se descarta.
+        rival = _earlier_active_run(db, run, ticker, force)
+        if rival is not None:
+            db.rollback()
+            return rival, False
         db.commit()
     except IntegrityError:
         db.rollback()
@@ -142,19 +166,77 @@ def enqueue_generation(
         raise
     db.refresh(run)
 
+    dispatch_generation(db, run)
+    return run, True
+
+
+def latest_generation(
+    db: Session, ticker: str, *, active_only: bool = False, force: bool | None = None
+) -> WorkflowRun | None:
+    # ORM tenant scope applies here just as it does to GET /jobs/{id}.
+    statement = select(WorkflowRun).where(WorkflowRun.workflow_name == WORKFLOW_NAME)
+    statement = statement.where(WorkflowRun.input_payload["ticker"].as_string() == ticker.upper())
+    if active_only:
+        statement = statement.where(WorkflowRun.status.in_(ACTIVE_STATUSES))
+    if force is not None:
+        statement = statement.where(WorkflowRun.input_payload["force"].as_boolean() == force)
+    return db.scalar(statement.order_by(desc(WorkflowRun.id)).limit(1))
+
+
+def dispatch_generation(db: Session, run: WorkflowRun) -> bool:
+    # Publish only AFTER making the run claimable. Sending first left a race:
+    # a fast worker saw dispatch_failed and discarded the only delivery.
+    db.refresh(run, with_for_update=True)
+    if run.status not in ("queued", "dispatch_failed", "failed"):
+        db.commit()
+        return True
+    run.status = "queued"
+    run.error_class = None
+    run.error_message = None
+    db.commit()
     try:
         _dispatch_run(run)
     except Exception as exc:
-        run.status = "dispatch_failed"
-        run.error_class = type(exc).__name__
-        run.error_message = "Thesis job dispatch failed"
-        db.commit()
-    else:
-        payload = dict(run.input_payload or {})
-        payload["dispatch_sent_at"] = datetime.now(UTC).isoformat()
-        run.input_payload = payload
-        db.commit()
-    return run, True
+        db.refresh(run)
+        if run.status == "queued":
+            run.status = "dispatch_failed"
+            run.error_class = type(exc).__name__
+            run.error_message = "Thesis job dispatch failed"
+            db.commit()
+        return False
+    db.refresh(run)
+    payload = dict(run.input_payload or {})
+    payload["dispatch_sent_at"] = datetime.now(UTC).isoformat()
+    payload["attempt"] = run.attempt
+    run.input_payload = payload
+    db.commit()
+    return True
+
+
+def reconcile_thesis_dispatches() -> dict:
+    """Recover the durable outbox without a browser or another user POST.
+
+    Queued rows are re-delivered after five minutes, including publish/commit
+    gaps and lost Redis messages. Running jobs are never restarted here.
+    Dramatiq handles worker retries; the running/terminal guard handles replay.
+    """
+    stats = {"redispatched": 0, "dispatch_failed": 0}
+    with SessionLocal() as db:
+        runs = db.scalars(
+            select(WorkflowRun)
+            .where(
+                WorkflowRun.workflow_name == WORKFLOW_NAME,
+                WorkflowRun.status.in_(("queued", "dispatch_failed")),
+                WorkflowRun.updated_at < datetime.now(UTC) - DISPATCH_RECHECK,
+            )
+            .order_by(WorkflowRun.id)
+            .limit(100)
+        ).all()
+        for run in runs:
+            success = dispatch_generation(db, run)
+            stats["redispatched" if success else "dispatch_failed"] += 1
+    return stats
+
 
 def job_payload(run: WorkflowRun) -> dict:
     """Honest status payload: real phases and timestamps, never an ETA."""
@@ -174,9 +256,7 @@ def job_payload(run: WorkflowRun) -> dict:
             }
             for s in steps
         ],
-        "current_phase": next(
-            (s.step_name for s in reversed(steps) if s.status == "running"), None
-        ),
+        "current_phase": next((s.step_name for s in reversed(steps) if s.status == "running"), None),
         "result": run.result_payload,
         "error_class": run.error_class,
         "error_message": run.error_message,
@@ -223,8 +303,11 @@ def run_thesis_job(run_id: int) -> None:
     """Run a thesis delivery with tenant context and recoverable retries."""
     db = SessionLocal()
     try:
-        run = db.get(
-            WorkflowRun, run_id, execution_options={"include_all_tenants": True}
+        run = db.scalar(
+            select(WorkflowRun)
+            .where(WorkflowRun.id == run_id)
+            .with_for_update()
+            .execution_options(include_all_tenants=True)
         )
         if run is None or run.status in TERMINAL_STATUSES or run.status == "dispatch_failed":
             return
@@ -251,9 +334,7 @@ def run_thesis_job(run_id: int) -> None:
         if tenant_id_int is not None and user_id:
             from app.models import Tenant
 
-            tenant = db.get(
-                Tenant, tenant_id_int, execution_options={"include_all_tenants": True}
-            )
+            tenant = db.get(Tenant, tenant_id_int, execution_options={"include_all_tenants": True})
         if tenant_id is not None and (tenant is None or tenant.status != "active"):
             run.status = "failed"
             run.error_class = "TenantAccessError"
@@ -261,9 +342,9 @@ def run_thesis_job(run_id: int) -> None:
             run.finished_at = now
             db.commit()
             raise ValueError(run.error_message)
-        if (
-            settings.research_auth_required or settings.is_production
-        ) and (tenant_id_int is None or not user_id):
+        if (settings.research_auth_required or settings.is_production) and (
+            tenant_id_int is None or not user_id
+        ):
             run.status = "failed"
             run.error_class = "MissingTenantContext"
             run.error_message = "Thesis job is missing tenant/user context"
@@ -315,8 +396,12 @@ def run_thesis_job(run_id: int) -> None:
             state["open_step_name"] = name
 
         try:
+            from app.services.company_enrichment_service import ensure_company_stub
             from app.services.thesis_service import ThesisService
 
+            # Network enrichment belongs to the worker, never the enqueue
+            # request (two 15 s Finnhub calls used to precede persistence).
+            ensure_company_stub(db, payload["ticker"])
             thesis = ThesisService().generate(
                 db,
                 payload["ticker"],
@@ -345,13 +430,9 @@ def run_thesis_job(run_id: int) -> None:
             # survives a rolled-back attempt would describe work that was
             # undone. Capture the step NAME before the rollback so the failure
             # handler can re-create the step it was running.
-            open_step_name = (
-                state["open_step_name"] if state.get("open_step") is not None else None
-            )
+            open_step_name = state["open_step_name"] if state.get("open_step") is not None else None
             db.rollback()
-            run = db.get(
-                WorkflowRun, run_id, execution_options={"include_all_tenants": True}
-            )
+            run = db.get(WorkflowRun, run_id, execution_options={"include_all_tenants": True})
             retryable = _is_retryable_error(exc)
             if run is not None:
                 if open_step_name is not None:
@@ -369,9 +450,7 @@ def run_thesis_job(run_id: int) -> None:
                     db.add(step)
                 run.error_class = type(exc).__name__
                 run.error_message = (
-                    "Transient failure; delivery will be retried"
-                    if retryable
-                    else "Thesis generation failed"
+                    "Transient failure; delivery will be retried" if retryable else "Thesis generation failed"
                 )
                 if retryable and int(run.attempt or 1) < MAX_ATTEMPTS:
                     run.status = "retrying"

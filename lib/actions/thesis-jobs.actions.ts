@@ -50,6 +50,17 @@ export async function getThesisJobStatus(runId: number): Promise<ThesisJobStatus
     return researchRequest<ThesisJobStatus>(`/api/thesis/jobs/${assertPositiveInt(runId, 'runId')}`);
 }
 
+/** Server is the source of truth; recovery works across tabs and devices. */
+export async function getLatestThesisJob(ticker: string): Promise<ThesisJobStatus | null> {
+    await requireAuthenticatedUser();
+    const clean = ticker.trim().toUpperCase();
+    if (!/^[A-Z0-9.\-]{1,20}$/.test(clean)) throw new Error('Ticker no válido');
+    const response = await researchRequest<{ job: ThesisJobStatus | null }>(
+        `/api/thesis/jobs?ticker=${encodeURIComponent(clean)}`,
+    );
+    return response.job;
+}
+
 export type ThesisDebateResult = SanitizedDebate;
 
 export interface RawThesisDebateResult {

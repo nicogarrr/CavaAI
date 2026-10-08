@@ -520,13 +520,8 @@ def generate_thesis_async(payload: ThesisGenerateRequest, db: Session = Depends(
     phase progress. Re-posting the same ticker+force while active returns the
     existing job (idempotent).
     """
-    from app.services.company_enrichment_service import ensure_company_stub
     from app.services.thesis_job_service import enqueue_generation, job_payload
 
-    # El buscador resuelve tickers (Finnhub) que aun no tienen ficha en BD;
-    # sin ficha, ThesisService.generate falla con "Unknown ticker" y el job
-    # queda fallido para siempre. Aseguramos la ficha antes de encolar.
-    ensure_company_stub(db, payload.ticker)
     run, _created = enqueue_generation(
         db, payload.ticker, payload.force_new_version, payload.request_id
     )
@@ -542,3 +537,12 @@ def thesis_job_status(run_id: int, db: Session = Depends(get_db)) -> dict:
     if run is None or run.workflow_name != WORKFLOW_NAME:
         raise HTTPException(status_code=404, detail="Job not found")
     return job_payload(run)
+
+
+@router.get("/jobs")
+def latest_thesis_job(ticker: str = Query(min_length=1, max_length=20), db: Session = Depends(get_db)) -> dict:
+    """Recover the user's latest active/completed generation after navigation."""
+    from app.services.thesis_job_service import job_payload, latest_generation
+
+    run = latest_generation(db, ticker, active_only=True) or latest_generation(db, ticker)
+    return {"job": job_payload(run) if run is not None else None}
