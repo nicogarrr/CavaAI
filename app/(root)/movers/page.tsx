@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { TrendingDown, TrendingUp, Activity } from 'lucide-react';
 
 import { getMarketMovers, type MarketMover } from '@/lib/actions/market.actions';
-import { NA, formatCompact, formatPercent, formatPrice, formatUserDateTime } from '@/lib/format';
+import { NA, formatCompact, formatMarketDate, formatPercent, formatPrice, formatUserDateTime } from '@/lib/format';
 import BackendOffline from '@/components/system/BackendOffline';
 import { getTickerContext } from '@/lib/actions/ticker-context.actions';
 import { TickerContextBadges } from '@/components/common/TickerContextBadges';
@@ -66,16 +66,16 @@ function MoversTable({ rows, caption, tickerSets, showVolume = false }: { rows: 
               <td className="py-3 px-2 text-right text-gray-300">
                 <span className="whitespace-nowrap">{formatPrice(row.price, safeCurrency(row.currency))}</span>
                 {row.date ? (
-                  <div className="ml-auto max-w-[7.5rem] text-xs text-gray-500">
-                    del {row.date}
-                    {row.registered_at ? ` · ${formatUserDateTime(row.registered_at, { hour: '2-digit', minute: '2-digit' })}` : ''}
+                  <div className="ml-auto whitespace-nowrap text-xs text-gray-500">
+                    {formatMarketDate(row.date, { day: 'numeric', month: 'short' })}
+                    {row.registered_at ? <span className="hidden sm:inline">{` · ${formatUserDateTime(row.registered_at, { hour: '2-digit', minute: '2-digit' })}`}</span> : null}
                   </div>
                 ) : null}
               </td>
               <td className={`py-3 px-2 text-right whitespace-nowrap font-medium ${row.change_pct === null ? 'text-gray-500' : row.change_pct >= 0 ? 'text-teal-300' : 'text-red-400'}`}>
                 {formatPct(row.change_pct)}
               </td>
-              {showVolume ? <td className="py-3 pl-2 text-right whitespace-nowrap text-gray-400">{row.volume === null ? '—' : formatCompact(row.volume, { maximumFractionDigits: 1 })}</td> : null}
+              {showVolume ? <td className="py-3 pl-2 text-right whitespace-nowrap text-gray-400">{row.volume == null ? NA : formatCompact(row.volume, { maximumFractionDigits: 1 })}</td> : null}
             </tr>
           ))}
         </tbody>
