@@ -3124,8 +3124,12 @@
         "additionalProperties": false,
         "properties": {
           "input_key": {
-            "const": "fcf_margin",
             "default": "fcf_margin",
+            "enum": [
+              "fcf_margin",
+              "wacc",
+              "terminal_growth"
+            ],
             "title": "Input Key",
             "type": "string"
           }
@@ -15511,7 +15515,7 @@
     },
     "/api/companies/{ticker}/inferred-inputs/llm": {
       "post": {
-        "description": "Estima el margen FCF con el LLM solo desde extractos ya ingeridos. Guarda INFERIDO.",
+        "description": "Estima FCF, WACC o crecimiento terminal desde extractos ingeridos. Guarda INFERIDO.",
         "operationId": "create_inferred_input_llm_api_companies__ticker__inferred_inputs_llm_post",
         "parameters": [
           {

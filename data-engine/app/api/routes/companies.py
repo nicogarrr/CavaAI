@@ -54,7 +54,7 @@ from app.services.fundamental_review_service import (
 )
 from app.services.inferred_input_llm_service import (
     InferenceRejected,
-    infer_fcf_margin,
+    infer_input,
 )
 from app.services.inferred_input_llm_service import (
     QuotaExceeded as InferenceQuotaExceeded,
@@ -560,7 +560,7 @@ def create_inferred_input(
 
 class InferredInputLLMRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    input_key: Literal["fcf_margin"] = "fcf_margin"
+    input_key: Literal["fcf_margin", "wacc", "terminal_growth"] = "fcf_margin"
 
 
 @router.post("/{ticker}/inferred-inputs/llm", status_code=201)
@@ -569,9 +569,9 @@ async def create_inferred_input_llm(
     payload: InferredInputLLMRequest,
     db: Session = Depends(get_db),
 ) -> dict:
-    """Estima el margen FCF con el LLM solo desde extractos ya ingeridos. Guarda INFERIDO."""
+    """Estima FCF, WACC o crecimiento terminal desde extractos ingeridos. Guarda INFERIDO."""
     try:
-        return inferred_input_payload(await infer_fcf_margin(db, ticker))
+        return inferred_input_payload(await infer_input(db, ticker, input_key=payload.input_key))
     except InferenceQuotaExceeded as exc:
         db.rollback()
         raise HTTPException(status_code=429, detail=str(exc)) from exc
