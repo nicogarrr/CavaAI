@@ -659,7 +659,9 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
       - name: Dependencias de sistema de Chromium (apt)
-        timeout-minutes: 8
+        # Mirror apt intermitente; tramo diagnosticado (la descarga del navegador
+        # va aparte, con su propio limite de 8 min).
+        timeout-minutes: 15
         run: npx playwright install-deps chromium
       - name: Descarga de Chromium
         if: steps.pw-cache.outputs.cache-hit != 'true'

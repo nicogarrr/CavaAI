@@ -87,8 +87,11 @@ jobs:
             can_comment=false
             reason="VERCEL_TOKEN existe pero faltan VERCEL_ORG_ID o VERCEL_PROJECT_ID, y .vercel/ no esta versionado (esta en .gitignore), asi que el proyecto de Vercel no se puede enlazar."
           else
-            deploy=true
-            reason="Vercel configurado: preview + comentario."
+            # Decision de Nico (8 oct): no se despliega ninguna rama ni PR hasta que
+            # llegue a main. Aunque existan los secrets, el deploy por CLI queda
+            # apagado: git.deploymentEnabled (vercel.json) no cubre `vercel deploy`.
+            can_comment=false
+            reason="Previews de rama/PR desactivados: solo main despliega (produccion)."
           fi
           {
             echo "deploy=$deploy"
@@ -210,10 +213,21 @@ jobs:
           script: |
             const marker = process.env.PREVIEW_MARKER;
             const issue = context.issue;
-            const { data: comments } = await github.paginate(github.rest.issues.listComments, {
-              ...issue,
-              per_page: 100,
-            });
+            // paginate devuelve el array de comentarios directamente (no {data}).
+            // Un 404 al listar significa que el PR/hilo ya no esta: nada que retirar.
+            let comments;
+            try {
+              comments = await github.paginate(github.rest.issues.listComments, {
+                ...issue,
+                per_page: 100,
+              });
+            } catch (error) {
+              if (error.status === 404) {
+                core.info('El hilo ya no existe; no hay comentario que retirar.');
+                return;
+              }
+              throw error;
+            }
             const mine = comments.filter((c) => c.body && c.body.includes(marker));
             if (mine.length === 0) {
               core.info('No habia comentario de preview que retirar.');
@@ -226,10 +240,23 @@ jobs:
               marker,
               '**Preview retirado.** El PR se cerr\u00f3, as\u00ed que este enlace ya no se actualiza.',
             ].join('\n');
+            // Un 404 aqui significa que el comentario ya no existe (borrado a
+            // mano o por una carrera con otro run): no hay nada que retirar y
+            // no es un fallo. Cualquier otro error (403, 5xx...) se propaga.
+            let marked = 0;
             for (const c of mine) {
-              await github.rest.issues.updateComment({ ...issue, comment_id: c.id, body });
+              try {
+                await github.rest.issues.updateComment({ ...issue, comment_id: c.id, body });
+                marked += 1;
+              } catch (error) {
+                if (error.status === 404) {
+                  core.info(`El comentario ${c.id} ya no existe; se omite.`);
+                  continue;
+                }
+                throw error;
+              }
             }
-            core.info(`Comentarios marcados como obsoletos: ${mine.length}`);
+            core.info(`Comentarios marcados como obsoletos: ${marked}`);
       - name: Publica o actualiza el comentario del preview
         if: ${{ github.event.action != 'closed' }}
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
@@ -247,7 +274,8 @@ jobs:
             const issue = context.issue;
             const url = process.env.PREVIEW_URL;
             const sha = (process.env.PREVIEW_SHA || '').slice(0, 7);
-            const { data: comments } = await github.paginate(github.rest.issues.listComments, {
+            // paginate devuelve el array de comentarios directamente (no {data}).
+            const comments = await github.paginate(github.rest.issues.listComments, {
               ...issue,
               per_page: 100,
             });
