@@ -57,7 +57,7 @@ describe('guardas de UI', () => {
     // «Estrategias» y «Rebalanceo» son la misma estrategia con dos lecturas
     // (el mismo currentStrategy): viven en una sola pestaña.
     const triggerBlocks = [...triggers.matchAll(/<TabsTrigger[\s\S]*?>/g)].map((match) => match[0]);
-    assert.equal(triggerBlocks.length, 3, 'la lista de pestañas de ProPicks tiene 3 pestañas');
+    assert.equal(triggerBlocks.length, 4, 'ProPicks tiene picks, estrategia, backtest y paper trading');
     // El contrato original, por trigger y no con un número suelto: cada uno
     // conserva su ANCHO NATURAL y nunca parte su etiqueta, para que a 390px
     // sea el contenedor, no cada tab, quien desborda horizontalmente. Una

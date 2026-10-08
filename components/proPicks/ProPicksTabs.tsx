@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import EnhancedProPicksContent from './EnhancedProPicksContent';
+import PaperTradingView from './PaperTradingView';
 import MonthlyRebalanceView from './MonthlyRebalanceView';
 import StrategyFactsheet from './StrategyFactsheet';
 import StrategySelector from './StrategySelector';
@@ -117,7 +118,10 @@ export default function ProPicksTabs({ strategies, initialPicks, generatedAt, pa
                 <TabsTrigger value="backtest" className="min-h-[44px] min-w-fit flex-none snap-start whitespace-nowrap data-[state=active]:bg-gray-700 data-[state=active]:text-teal-300">
                     Backtesting
                 </TabsTrigger>
+                <TabsTrigger value="paper" className="min-h-[44px] min-w-fit flex-none snap-start whitespace-nowrap data-[state=active]:bg-gray-700 data-[state=active]:text-teal-300">Paper trading</TabsTrigger>
             </TabsList>
+
+            <TabsContent value="paper" className="mt-6"><PaperTradingView /></TabsContent>
 
             <TabsContent value="picks" className="mt-6">
                 <EnhancedProPicksContent initialPicks={initialPicks} generatedAt={generatedAt} initialPassedCount={passedCount} />

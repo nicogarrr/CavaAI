@@ -24,6 +24,7 @@ from app.api.routes import (
     news,
     obsidian,
     ownership,
+    paper_trading,
     plan,
     portfolio,
     portfolio_moves,
@@ -96,4 +97,5 @@ api_router.include_router(macro.router, prefix="/macro", tags=["macro"])
 api_router.include_router(cnmv.router, prefix="/cnmv", tags=["cnmv"])
 api_router.include_router(workflows.router, prefix="/workflows", tags=["workflows"])
 
+api_router.include_router(paper_trading.router, prefix="/paper-trading", tags=["paper-trading"])
 api_router.include_router(filing_intelligence.router, prefix="/companies", tags=["companies"])
