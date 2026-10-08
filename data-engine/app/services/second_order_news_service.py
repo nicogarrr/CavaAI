@@ -22,6 +22,7 @@ from app.llm import LLMRequest, Message, ResponseFormat, create_llm_provider, pa
 from app.llm.model_aliases import VERIFIED_FREE_MODELS
 from app.models import Company, NewsEvent
 from app.services.async_bridge import run_from_any_context
+from app.services.llm_output_guard import complete_guarded
 from app.services.second_order_quota import reserve_llm_call
 
 
@@ -79,7 +80,7 @@ def _fallback(text: str) -> Extraction:
 _SCHEMA = Extraction.model_json_schema()
 
 
-async def _extract_with_llm(text: str) -> tuple[Extraction, object]:
+async def _extract_with_llm(text: str, before_retry=None) -> tuple[Extraction, object]:
     provider = create_llm_provider()
     if provider.name == "disabled":
         raise RuntimeError("LLM not configured")
@@ -105,7 +106,11 @@ async def _extract_with_llm(text: str) -> tuple[Extraction, object]:
     # Pin the exact free model: task overrides and env defaults may route to paid models.
     if provider.model_router.resolve(request) not in VERIFIED_FREE_MODELS:
         raise RuntimeError("Second-order model is not the verified free model")
-    response = await provider.complete(request)
+    # Salida con CJK, ingles mezclado o tokens corruptos: un reintento y, si falla, el
+    # llamador degrada al camino determinista. before_retry reserva cuota para el 2o intento.
+    response = (
+        await complete_guarded(provider, request, source="second_order", before_retry=before_retry)
+    ).response
     return Extraction.model_validate(parse_json_response(response.text)), response
 
 
@@ -262,7 +267,18 @@ def analyze_second_order(db: Session, event: NewsEvent, *, use_llm: bool = False
                 if not llm_quota["allowed"]:
                     llm_note = "Análisis LLM no disponible: tope alcanzado."
                 else:
-                    extraction, _response = run_from_any_context(_extract_with_llm(text))
+                    tenant_id = db.info.get("tenant_id")
+
+                    def _reserve_retry() -> None:
+                        nonlocal llm_quota
+                        retry = reserve_llm_call(tenant_id, get_settings())
+                        llm_quota = retry
+                        if not retry["allowed"]:
+                            raise RuntimeError("second-order LLM quota exhausted before retry")
+
+                    extraction, _response = run_from_any_context(
+                        _extract_with_llm(text, before_retry=_reserve_retry)
+                    )
                     mode = "llm"
             except Exception:  # noqa: BLE001 - never claim a failed call worked
                 llm_note = "Análisis LLM no disponible; se usa el camino determinista."
