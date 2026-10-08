@@ -243,36 +243,9 @@ class DocumentIngestionService:
             and db.info.get("tenant_id") is not None
             and db.info.get("user_id")
         ):
-            try:
-                from app.workers.dramatiq_app import (
-                    KPI_DEFERRED_KEY,
-                    extract_document_kpis,
-                    kpi_queue_has_capacity,
-                )
+            from app.workers.dramatiq_app import enqueue_document_kpis
 
-                if not kpi_queue_has_capacity():
-                    # Backpressure: la cola kpis llego al tope; se frena la
-                    # fuente y backfill_document_kpis lo recupera despues.
-                    meta = dict(document.metadata_ or {})
-                    meta.setdefault(KPI_DEFERRED_KEY, {"attempts": 0})
-                    document.metadata_ = meta
-                    db.commit()
-                    kpi_extraction = {"status": "deferred_backpressure"}
-                else:
-                    message = extract_document_kpis.send(
-                        document.id,
-                        tenant_id=int(db.info["tenant_id"]),
-                        user_id=str(db.info["user_id"]),
-                    )
-                    kpi_extraction = {
-                        "status": "queued",
-                        "message_id": str(message.message_id),
-                    }
-            except Exception as exc:
-                kpi_extraction = {
-                    "status": "queue_unavailable",
-                    "error": type(exc).__name__,
-                }
+            kpi_extraction = enqueue_document_kpis(db, document)
 
         if os.getenv("CAVAAI_ENABLE_VECTOR_INGEST") == "1":
             try:

@@ -9,12 +9,12 @@ from typing import Any
 from urllib.parse import urlparse
 
 import dramatiq
-from dramatiq.brokers.redis import RedisBroker
 
 from app.core.config import get_settings
+from app.workers.bounded_broker import BoundedRedisBroker, QueueCapacityError, max_pending
 
 settings = get_settings()
-broker = RedisBroker(url=settings.redis_url)
+broker = BoundedRedisBroker(url=settings.redis_url)
 dramatiq.set_broker(broker)
 
 
@@ -356,25 +356,20 @@ def _redis_client():
     return _redis.from_url(url, socket_connect_timeout=2, socket_timeout=2)
 
 
-def kpi_queue_depth(client=None) -> int:
-    """Pendientes en la cola kpis; 0 si la sonda falla (fail-open a encolar)."""
+def kpi_queue_depth(client=None) -> int | None:
+    """Ready + running + delayed KPI work; None means Redis unavailable."""
     try:
-        client = client or _redis_client()
+        client = client if client is not None else _redis_client()
         if client is None:
-            return 0
-        return int(client.hlen(f"dramatiq:{KPI_QUEUE_NAME}.msgs"))
-    except Exception:  # noqa: BLE001 - la sonda nunca rompe la ingesta
-        return 0
+            return None
+        base = f"{broker.namespace}:{KPI_QUEUE_NAME}"
+        return int(client.hlen(f"{base}.msgs")) + int(client.hlen(f"{base}.DQ.msgs"))
+    except Exception:  # noqa: BLE001 - defer rather than bypass the admission gate
+        return None
 
 
 def kpi_queue_max_pending() -> int:
-    """Tope de pendientes KPI antes de frenar la fuente (backpressure)."""
-    import os
-
-    try:
-        return max(1, int(os.getenv("KPI_QUEUE_MAX_PENDING", "500")))
-    except ValueError:
-        return 500
+    return max_pending()
 
 
 def kpi_defer_lease_seconds() -> int:
@@ -389,7 +384,8 @@ def kpi_defer_lease_seconds() -> int:
 
 def kpi_queue_has_capacity(client=None) -> bool:
     """True si la cola kpis admite mas trabajo sin degradar la cadencia LLM."""
-    return kpi_queue_depth(client) < kpi_queue_max_pending()
+    depth = kpi_queue_depth(client)
+    return depth is not None and depth < kpi_queue_max_pending()
 
 
 def tenant_contexts() -> list[tuple[int, str]]:
@@ -632,6 +628,30 @@ def extract_document_kpis(
         db.close()
 
 
+def enqueue_document_kpis(db, document) -> dict[str, Any]:
+    """Persist recovery state before sending, including ambiguous timeouts.
+
+    A Redis outage/full queue never loses the ingested document's KPI work.
+    Admission is atomic in BoundedRedisBroker, not a read-then-send probe.
+    """
+    meta = dict(document.metadata_ or {})
+    deferred = {"attempts": 0, "queued_at": int(time.time())}
+    document.metadata_ = {**meta, KPI_DEFERRED_KEY: deferred}
+    db.commit()
+    try:
+        message = extract_document_kpis.send(
+            document.id, tenant_id=int(db.info["tenant_id"]),
+            user_id=str(db.info["user_id"]),
+        )
+    except QueueCapacityError:
+        document.metadata_ = {**meta, KPI_DEFERRED_KEY: {"attempts": 0}}
+        db.commit()
+        return {"status": "deferred_backpressure"}
+    except Exception as exc:  # noqa: BLE001 - timeout may have accepted the send
+        return {"status": "queue_unavailable", "error": type(exc).__name__}
+    return {"status": "queued", "message_id": str(message.message_id)}
+
+
 @dramatiq.actor(max_retries=1, min_backoff=30_000)
 @_coalesce_on_success("backfill_document_kpis", 4 * 60)
 def backfill_document_kpis() -> dict[str, Any]:
@@ -651,6 +671,8 @@ def backfill_document_kpis() -> dict[str, Any]:
 
     client = _redis_client()
     depth = kpi_queue_depth(client)
+    if depth is None:
+        return {"actor": "backfill_document_kpis", "status": "skipped", "reason": "queue_unavailable"}
     capacity = kpi_queue_max_pending() - depth
     if capacity <= 0:
         return {"actor": "backfill_document_kpis", "status": "skipped", "reason": "queue_full"}
@@ -729,6 +751,13 @@ def backfill_document_kpis() -> dict[str, Any]:
                     extract_document_kpis.send(
                         document.id, tenant_id=tenant_id, user_id=user_id
                     )
+                except QueueCapacityError:
+                    deferred["attempts"] = attempts
+                    deferred.pop("queued_at", None)
+                    document.metadata_ = {**meta, KPI_DEFERRED_KEY: deferred}
+                    db.commit()
+                    return {"actor": "backfill_document_kpis", "status": "ok",
+                            "queued": queued, "exhausted": exhausted, "capacity": capacity}
                 except Exception:  # noqa: BLE001 - un send roto no frena el lote
                     # Resultado INCIERTO (auditor, bounce 5): un error de red
                     # o timeout no prueba que el mensaje no entrase en Redis
