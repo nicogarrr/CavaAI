@@ -204,6 +204,6 @@ def test_filings_efts_fallback_is_reported_as_partial_not_ok(db):
     )
     out = _run(service.get_filings(company))
     assert out["sec_status"] == "partial"
-    assert "efts.sec.gov" in out["source"] and "parcial" in out["source"]
+    assert out["source"] == "SEC EDGAR full-text search (efts.sec.gov), cobertura parcial"
     assert "parcial" in out["note"].lower()
     assert out["filings"][0]["source"] == "SEC EDGAR (efts.sec.gov)"
