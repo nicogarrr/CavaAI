@@ -378,19 +378,26 @@ def market_indices() -> dict:
 def _common_sessions(db: Session) -> tuple:
     """(ultima sesion comun, sesion anterior) de market_prices.
 
-    Una fecha cuenta como sesion si tiene cierres de al menos la mitad de las
-    empresas que tuvo la fecha mas completa de las ultimas 10: un cierre
-    suelto de fin de semana o de un solo ticker no define la sesion."""
+    Una fecha cuenta como sesion si es laborable y tiene cierres de al menos la
+    mitad de la MEDIANA de empresas por fecha en las ultimas 10 fechas
+    laborables. Con el maximo como referencia, una carga masiva puntual (1142
+    empresas un dia, ~60-120 los siguientes) dejaba como unica sesion valida
+    la de la carga y congelaba el ranking en una fecha vieja. Un cierre suelto
+    de fin de semana o de un solo ticker tampoco define la sesion."""
     rows = db.execute(
         select(MarketPrice.date, func.count(func.distinct(MarketPrice.company_id)))
         .group_by(MarketPrice.date)
         .order_by(MarketPrice.date.desc())
-        .limit(10)
+        .limit(30)
     ).all()
-    if not rows:
+    weekdays = [(day, count) for day, count in rows if day.weekday() < 5][:10]
+    if not weekdays:
         return None, None
-    threshold = max(count for _, count in rows) / 2
-    sessions = [day for day, count in rows if count >= threshold]
+    counts = sorted(count for _, count in weekdays)
+    mid = len(counts) // 2
+    median = counts[mid] if len(counts) % 2 else (counts[mid - 1] + counts[mid]) / 2
+    threshold = median / 2
+    sessions = [day for day, count in weekdays if count >= threshold]
     return (sessions[0] if sessions else None), (sessions[1] if len(sessions) > 1 else None)
 
 
@@ -480,9 +487,9 @@ def market_movers(
             "sector": sector,
             "currency": currency,
             "price": float(close or 0),
-            # Volumen desconocido = None (la UI muestra "-"), nunca un 0
-            # fabricado que corona al ticker como el menos activo.
-            "volume": int(volume) if volume is not None else None,
+            # Volumen desconocido o 0 = None (la UI muestra N/D): una sesion
+            # negociada no tiene volumen 0, es un dato ausente de la fuente.
+            "volume": int(volume) if volume else None,
             "date": day.isoformat() if day else None,
             # Hora de observacion/registro (updated_at, tz-aware): dentro de
             # la misma sesion conviven filas refrescadas a distinta hora y la
