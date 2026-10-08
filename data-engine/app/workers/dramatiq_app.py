@@ -2182,9 +2182,15 @@ def reconcile_alert_deliveries(
         )
         if lease is None:
             return {"status": "skipped", "actor": actor_name, "reason": "lease_held"}
+        from app.services.outbound_alerts import dispatch_pending
+
+        pending = dispatch_pending(db)
         stats = NotificationService().reconcile_stale_deliveries(
             db, tenant_id=tenant_id
         )
+        for key in ("candidates", "redispatched"):
+            stats[key] += pending[key]
+        stats["errors"].extend(pending["errors"])
         return {
             "status": "ok",
             "actor": actor_name,

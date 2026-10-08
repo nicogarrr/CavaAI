@@ -1234,6 +1234,20 @@ class ResearchAlert(TenantOwnedMixin, Base, TimestampMixin):
     metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
 
 
+class AlertSubscription(TenantOwnedMixin, Base, TimestampMixin):
+    """One Telegram destination per authenticated personal workspace/type."""
+
+    __tablename__ = "alert_subscriptions"
+    __table_args__ = (UniqueConstraint("tenant_id", "event_type", name="uq_alert_subscription_type"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(160))
+    event_type: Mapped[str] = mapped_column(String(40))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    chat_id: Mapped[str] = mapped_column(String(32))
+    enabled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class AlertDelivery(TenantOwnedMixin, Base, TimestampMixin):
     """Outbox de entrega por canal con claim atomico.
 

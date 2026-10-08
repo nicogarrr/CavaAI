@@ -9,6 +9,9 @@ from app.services.public_fetch import validate_public_url
 
 
 class _FakeResponse:
+    def json(self):
+        return {"ok": True}
+
     def raise_for_status(self) -> None:
         return None
 

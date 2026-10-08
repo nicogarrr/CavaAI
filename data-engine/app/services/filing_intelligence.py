@@ -53,10 +53,13 @@ def analyze_document(db: Session, document: Document) -> dict:
         raise ValueError("Tenant context required for filing analysis")
     if not official_document(document):
         return {"status": "insufficient_data", "reason": "Sin documento SEC/CNMV con URL oficial."}
+    company = db.get(Company, document.company_id) if document.company_id else None
     chunks = _chunks(db, document)
     meta = document.metadata_ or {}
     result = {"version": VERSION, "source": _citation(document)}
     if not chunks:
+        if company:
+            _alert(db, company, document, {"source": _citation(document)}, event_type="new_filing")
         result["status"] = "insufficient_data"
         result["reason"] = "Sin texto completo disponible dentro del límite de análisis."
         document.metadata_ = {**meta, KEY: result}
@@ -100,12 +103,13 @@ def analyze_document(db: Session, document: Document) -> dict:
     # Metadata replacement is required for SQLAlchemy JSON dirty tracking.
     document.metadata_ = {**meta, KEY: result}
     db.flush()
-    if company and result["status"] in {"changed", "ready"}:
-        _alert(db, company, document, result)
+    if company:
+        _alert(db, company, document, result,
+               event_type=None if result["status"] in {"changed", "ready"} else "new_filing")
     return result
 
 
-def _alert(db: Session, company: Company, document: Document, result: dict) -> None:
+def _alert(db: Session, company: Company, document: Document, result: dict, *, event_type: str | None = None) -> None:
     tenant = db.info["tenant_id"]
     held = db.scalar(select(Position.id).where(
         Position.tenant_id == tenant, Position.company_id == company.id, Position.quantity > 0,
@@ -126,11 +130,14 @@ def _alert(db: Session, company: Company, document: Document, result: dict) -> N
     title = f"{company.ticker}: {'comunicado de resultados' if earnings else 'cambios en el informe'}"
     message = ("Comunicado de resultados disponible con citas originales." if earnings else
                "Cambios textuales frente al mismo periodo del año anterior. No implican por sí solos materialidad financiera.")
+    if event_type == "new_filing":
+        title = f"Documento oficial nuevo: {company.ticker}"
+        message = "Documento SEC/CNMV disponible. El análisis puede estar pendiente o sin datos; revisa la fuente antes de cambiar la tesis."
     try:
         with db.begin_nested():
             db.add(ResearchAlert(
                 tenant_id=tenant, company_id=company.id, severity="medium", status="open",
-                alert_type="earnings_release" if earnings else "filing_changes", title=title,
+                alert_type=event_type or ("earnings_release" if earnings else "filing_changes"), title=title,
                 message=message, fingerprint=fingerprint, channels=["in_app"],
                 last_triggered_at=datetime.now(UTC),
                 metadata_={**result, "document_id": document.id, "source_url": document.source_url,

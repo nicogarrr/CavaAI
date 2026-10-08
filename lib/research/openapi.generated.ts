@@ -112,6 +112,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/alerts/telegram-subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Telegram Subscriptions */
+        get: operations["list_telegram_subscriptions_api_alerts_telegram_subscriptions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/alerts/telegram-subscriptions/{event_type}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Telegram Subscription */
+        put: operations["set_telegram_subscription_api_alerts_telegram_subscriptions__event_type__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/alerts/{alert_id}/action": {
         parameters: {
             query?: never;
@@ -6074,6 +6108,31 @@ export interface components {
              */
             key: "facts" | "calculations" | "user_hypotheses" | "unverified_claims" | "inferences" | "contradictions" | "insufficient_data" | "conclusion";
         };
+        /** TelegramSubscriptionIn */
+        TelegramSubscriptionIn: {
+            /**
+             * Chat Id
+             * @description Chat privado verificado del usuario en Asistenta
+             */
+            chat_id: string;
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+        };
+        /** TelegramSubscriptionOut */
+        TelegramSubscriptionOut: {
+            /** Chat Id */
+            chat_id?: string | null;
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Event Type
+             * @enum {string}
+             */
+            event_type: "thesis_broken" | "new_filing" | "insiders" | "shorts_rising";
+        };
         /** ThesisApproveRequest */
         ThesisApproveRequest: {
             /**
@@ -6832,6 +6891,88 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_telegram_subscriptions_api_alerts_telegram_subscriptions_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramSubscriptionOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_telegram_subscription_api_alerts_telegram_subscriptions__event_type__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path: {
+                event_type: "thesis_broken" | "new_filing" | "insiders" | "shorts_rising";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TelegramSubscriptionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramSubscriptionOut"];
                 };
             };
             /** @description Validation Error */

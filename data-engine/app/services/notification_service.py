@@ -51,7 +51,19 @@ class NotificationService:
             "created_at": alert.created_at.isoformat(),
             "jev_urgency": jev_urgency,
         }
-        for channel in alert.channels:
+        from app.services.outbound_alerts import event_type, subscription_for
+
+        category = event_type(db, alert)
+        subscription = subscription_for(db, alert) if category else None
+        channels = list(alert.channels)
+        if subscription and "telegram" not in channels:
+            channels.append("telegram")
+            alert.channels = channels
+            db.commit()
+        for channel in channels:
+            if channel == "telegram" and category and not subscription:
+                deliveries[channel] = self._result("skipped", error="Sin consentimiento para este tipo de alerta")
+                continue
             self._ensure_delivery_row(db, alert, channel)
             if not self._claim_delivery(db, alert, channel):
                 # Otro worker la tiene ('sending') o ya esta entregada: nunca
@@ -66,7 +78,7 @@ class NotificationService:
                 if channel == "in_app":
                     result = self._result("delivered")
                 elif channel == "telegram":
-                    result = self._dispatch_telegram(settings, payload)
+                    result = self._dispatch_telegram(settings, {**payload, **({"chat_id": subscription.chat_id} if subscription else {})})
                 else:
                     result = self._dispatch_webhook(settings, payload, channel)
             except Exception:
@@ -112,7 +124,7 @@ class NotificationService:
         statement = (
             select(AlertDelivery.alert_id)
             .where(
-                AlertDelivery.status.in_(("sending", "unknown", "throttled")),
+                AlertDelivery.status.in_(("pending", "sending", "unknown", "throttled")),
                 AlertDelivery.updated_at < cutoff,
             )
             .distinct()
@@ -151,6 +163,11 @@ class NotificationService:
         if exc.response.status_code != 429:
             return None
         raw = exc.response.headers.get("Retry-After")
+        if not raw:
+            try:
+                raw = str((exc.response.json().get("parameters") or {}).get("retry_after") or "")
+            except (ValueError, AttributeError, TypeError):
+                return None
         if not raw:
             return None
         seconds: int | None = None
@@ -330,7 +347,7 @@ class NotificationService:
 
     def _dispatch_telegram(self, settings, payload: dict) -> dict:
         token = settings.telegram_bot_token
-        chat_id = settings.telegram_chat_id
+        chat_id = payload.get("chat_id") or settings.telegram_chat_id
         if not settings.telegram_enabled or not token or not chat_id:
             return self._result(
                 "not_configured",
@@ -347,6 +364,14 @@ class NotificationService:
                     json={"chat_id": chat_id, "text": text},
                 )
                 response.raise_for_status()
+                body = response.json()
+                if body.get("ok") is not True:
+                    code = body.get("error_code")
+                    return self._result(
+                        "throttled" if code == 429 else "failed",
+                        error="Telegram rechazó el mensaje",
+                        retry_after=min(int((body.get("parameters") or {}).get("retry_after") or 600), RETRY_AFTER_CAP_SECONDS) if code == 429 else None,
+                    )
             return self._result("delivered")
         except Exception as exc:
             # Never persist upstream exception text: it may contain the bot token,
