@@ -84,7 +84,7 @@ def test_llm_failure_falls_back_honestly(db, monkeypatch):
     monkeypatch.setattr(service, "reserve_llm_call", lambda *_args: {
         "allowed": True, "minute_used": 1, "minute_limit": 2,
         "day_used": 1, "day_limit": 30, "reset": "UTC calendar minute/day"})
-    def boom(_payload):
+    def boom(_payload, **_kwargs):
         raise RuntimeError("provider down")
     monkeypatch.setattr(service, "_analyze_with_llm", boom)
     result = service.analyze_asts_catalog(db)
@@ -98,7 +98,7 @@ def stub_llm(monkeypatch, summary, observations=()):
     monkeypatch.setattr(service, "reserve_llm_call", lambda *_args: {
         "allowed": True, "minute_used": 1, "minute_limit": 2,
         "day_used": 1, "day_limit": 30, "reset": "UTC calendar minute/day"})
-    async def fake(_payload):
+    async def fake(_payload, **_kwargs):
         return service.AstsAnalysis(
             summary=summary,
             observations=[service.Observation(text=o) for o in observations]), object()
@@ -231,3 +231,237 @@ def test_requires_tenant(db):
         with pytest.raises(ValueError, match="Tenant"):
             service.analyze_asts_catalog(session)
     engine.dispose()
+
+
+def scripted_llm(monkeypatch, texts, *, db=None, budget_allowed=None):
+    import json
+    from types import SimpleNamespace
+
+    from app.llm import LLMResponse, Message, Usage
+
+    calls = []
+    reservations = []
+    monkeypatch.setenv("ASTS_LLM_ENABLED", "1")
+
+    def reserve(tenant_id, _settings):
+        reservations.append(tenant_id)
+        return {"allowed": True, "minute_used": len(reservations), "minute_limit": 4,
+                "day_used": len(reservations), "day_limit": 100}
+
+    class Provider:
+        name = "test"
+        model_router = SimpleNamespace(resolve=lambda request: request.model)
+
+        async def complete(self, request):
+            if db is not None:
+                assert not db.in_transaction()
+                pool = db.get_bind().pool
+                if hasattr(pool, "checkedout"):
+                    assert pool.checkedout() == 0
+            calls.append(request)
+            value = texts[len(calls) - 1]
+            text = json.dumps(value, ensure_ascii=False) if isinstance(value, dict) else value
+            return LLMResponse(message=Message("assistant", text), model="space-bunny-free",
+                               provider="test", usage=Usage(input_tokens=10, output_tokens=20, total_tokens=30))
+
+    monkeypatch.setattr(service, "reserve_llm_call", reserve)
+    monkeypatch.setattr(service, "create_llm_provider", lambda: Provider())
+    if budget_allowed is not None:
+        monkeypatch.setattr(service.BudgetController, "can_spend", budget_allowed)
+    return calls, reservations
+
+
+def good_analysis(fetched):
+    return {"summary": f"Catálogo CelesTrak descargado el {fetched.isoformat()[:10]}: 3 objetos.",
+            "observations": [{"text": "Inclinación uniforme de 53.22°."}]}
+
+
+def usage_rows(db):
+    from sqlalchemy import select
+
+    from app.models import BudgetUsage
+
+    return list(db.scalars(select(BudgetUsage).order_by(BudgetUsage.id)).all())
+
+
+@pytest.mark.parametrize("bad_text", ["中文模型", "The catalog is available and the satellites are active.",
+                                     "La inclinación?depende del catálogo."])
+def test_guard_retries_once_and_records_both_responses(db, monkeypatch, bad_text):
+    fetched = fresh_catalog(db)
+    bad = good_analysis(fetched)
+    bad["observations"] = [{"text": bad_text}]
+    calls, reservations = scripted_llm(monkeypatch, [bad, good_analysis(fetched)], db=db)
+    result = service.analyze_asts_catalog(db)
+    assert result["mode"] == "llm"
+    assert result["analysis"]["llm_interpretation"]["summary"] == good_analysis(fetched)["summary"]
+    assert len(calls) == 2 and reservations == [1, 1]
+    assert "REINTENTO" in calls[1].messages[0].content
+    assert result["llm_quota"]["day_used"] == 2
+    rows = usage_rows(db)
+    assert len(rows) == 2
+    assert all(r.tenant_id == 1 and r.workflow == "asts_catalog_analysis" for r in rows)
+    assert all(r.token_count == 30 for r in rows)
+    expected = service.BudgetController.estimate_cost_eur("space-bunny-free", 10, 20)
+    assert all(float(r.cost_eur) == pytest.approx(expected) for r in rows)
+
+
+def test_double_guard_rejection_stays_deterministic_and_records_cost(db, monkeypatch):
+    fresh_catalog(db)
+    calls, reservations = scripted_llm(monkeypatch, ["中文模型", "中文模型"])
+    result = service.analyze_asts_catalog(db)
+    assert result["mode"] == "determinista" and len(calls) == 2
+    assert reservations == [1, 1] and len(usage_rows(db)) == 2
+    assert result["analysis"]["llm_interpretation"] is None
+    assert "resumen determinista" in result["note"]
+
+
+def test_guard_retry_reserves_quota_and_stops_when_denied(db, monkeypatch):
+    fetched = fresh_catalog(db)
+    calls, reservations = scripted_llm(monkeypatch, ["中文模型", good_analysis(fetched)])
+
+    def reserve(tenant_id, _settings):
+        reservations.append(tenant_id)
+        return {"allowed": len(reservations) == 1, "day_used": 1, "day_limit": 1}
+
+    monkeypatch.setattr(service, "reserve_llm_call", reserve)
+    result = service.analyze_asts_catalog(db)
+    assert result["mode"] == "determinista" and len(calls) == 1
+    assert reservations == [1, 1] and len(usage_rows(db)) == 1
+    assert result["llm_quota"]["allowed"] is False
+
+
+def test_budget_exhausted_before_first_call_is_optional_fallback(db, monkeypatch):
+    fresh_catalog(db)
+    budget = service.BudgetController()
+    budget.record(db, "space-bunny-free", "other", budget.settings.llm_daily_cap_eur, 1)
+    calls, reservations = scripted_llm(monkeypatch, [])
+    result = service.analyze_asts_catalog(db)
+    assert result["status"] == "disponible" and result["mode"] == "determinista"
+    assert result["analysis"]["llm_interpretation"] is None
+    assert not calls and not reservations and result["llm_quota"] is None
+    assert not db.in_transaction()
+
+
+def test_budget_exhausted_before_retry_records_first_and_stops(db, monkeypatch):
+    fresh_catalog(db)
+    checks = []
+
+    def allowed(_budget, usage_db, _estimate):
+        checks.append(usage_db.info["tenant_id"])
+        # Real SELECT abre una transaccion: comprobar que se libera antes del LLM.
+        _budget.current_usage(usage_db)
+        return len(checks) == 1
+
+    calls, reservations = scripted_llm(monkeypatch, ["中文模型"], db=db, budget_allowed=allowed)
+    result = service.analyze_asts_catalog(db)
+    assert result["mode"] == "determinista" and len(calls) == 1
+    assert checks == [1, 1] and reservations == [1] and len(usage_rows(db)) == 1
+
+
+@pytest.mark.parametrize("text", ["not json", '{"observations": []}'])
+def test_invalid_json_or_schema_is_recorded_but_never_published(db, monkeypatch, text):
+    fresh_catalog(db)
+    calls, reservations = scripted_llm(monkeypatch, [text])
+    result = service.analyze_asts_catalog(db)
+    assert result["mode"] == "determinista" and result["analysis"]["llm_interpretation"] is None
+    assert len(calls) == 1 and reservations == [1] and len(usage_rows(db)) == 1
+
+
+def test_verified_values_check_still_runs_after_guard(db, monkeypatch):
+    fetched = fresh_catalog(db)
+    value = good_analysis(fetched)
+    value["observations"] = [{"text": "Inclinación de 99.99°."}]
+    calls, reservations = scripted_llm(monkeypatch, [value])
+    result = service.analyze_asts_catalog(db)
+    assert result["mode"] == "determinista" and "no contrastados" in result["note"]
+    assert len(calls) == 1 and reservations == [1] and len(usage_rows(db)) == 1
+
+
+@pytest.mark.parametrize("active_loop", [False, True])
+def test_releases_connections_and_records_in_separate_sessions(tmp_path, monkeypatch, active_loop):
+    import threading
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'asts.db'}", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(engine)
+    with sessionmaker(engine)() as session:
+        session.info["tenant_id"] = 1
+        session.add(Tenant(id=1, external_id="one"))
+        session.commit()
+        fetched = fresh_catalog(session)
+        calls, reservations = scripted_llm(monkeypatch, ["中文模型", good_analysis(fetched)], db=session)
+        owner_thread = threading.get_ident()
+        real_record = service.BudgetController.record
+        callback_threads = []
+
+        def record(budget, usage_db, *args, **kwargs):
+            assert usage_db is not session
+            callback_threads.append(threading.get_ident())
+            real_record(budget, usage_db, *args, **kwargs)
+
+        monkeypatch.setattr(service.BudgetController, "record", record)
+        if active_loop:
+            async def run():
+                return service.analyze_asts_catalog(session)
+            result = asyncio.run(run())
+        else:
+            result = service.analyze_asts_catalog(session)
+        assert result["mode"] == "llm" and len(calls) == 2 and reservations == [1, 1]
+        assert all((tid != owner_thread) == active_loop for tid in callback_threads)
+        assert not session.in_transaction() and engine.pool.checkedout() == 0
+        assert len(usage_rows(session)) == 2
+    engine.dispose()
+
+
+def test_catalog_snapshot_is_copied_before_commit(db, monkeypatch):
+    fetched = fresh_catalog(db)
+    snapshot = service.read_catalog(db)
+    monkeypatch.setattr(service, "read_catalog", lambda _db: snapshot)
+    real_commit = db.commit
+
+    def commit():
+        snapshot["satellites"][0]["inclination"] = 99.99
+        real_commit()
+
+    monkeypatch.setattr(db, "commit", commit)
+    scripted_llm(monkeypatch, [good_analysis(fetched)])
+    result = service.analyze_asts_catalog(db)
+    assert result["mode"] == "llm"
+    assert result["analysis"]["aggregates"]["inclination_deg_max"] == 53.22
+
+
+def test_other_tenants_budget_does_not_block_asts(db, monkeypatch):
+    from app.models import BudgetUsage
+
+    fetched = fresh_catalog(db)
+    budget = service.BudgetController()
+    with sessionmaker(db.get_bind())() as other:
+        other.info["tenant_id"] = 2
+        budget.record(other, "space-bunny-free", "other", budget.settings.llm_daily_cap_eur, 1)
+    scripted_llm(monkeypatch, [good_analysis(fetched)])
+    result = service.analyze_asts_catalog(db)
+    assert result["mode"] == "llm"
+    rows = usage_rows(db)
+    assert len(rows) == 1 and rows[0].tenant_id == 1
+    with sessionmaker(db.get_bind())() as other:
+        other.info["tenant_id"] = 2
+        assert other.query(BudgetUsage).count() == 1
+
+
+def test_upstream_error_does_not_retry_or_record_missing_response(db, monkeypatch):
+    from types import SimpleNamespace
+
+    fresh_catalog(db)
+    calls, reservations = scripted_llm(monkeypatch, [])
+
+    class Provider:
+        name = "test"
+        model_router = SimpleNamespace(resolve=lambda request: request.model)
+
+        async def complete(self, request):
+            calls.append(request)
+            raise RuntimeError("provider down")
+
+    monkeypatch.setattr(service, "create_llm_provider", lambda: Provider())
+    result = service.analyze_asts_catalog(db)
+    assert result["mode"] == "determinista" and len(calls) == 1 and reservations == [1]
+    assert not usage_rows(db)

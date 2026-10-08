@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from copy import deepcopy
 from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field
@@ -27,7 +28,9 @@ from app.llm.model_aliases import VERIFIED_FREE_MODELS
 from app.services.asts_catalog_service import read_catalog
 from app.services.asts_llm_quota import reserve_llm_call
 from app.services.async_bridge import run_from_any_context
+from app.services.budget import BudgetController, BudgetExceededError
 from app.services.connectors.celestrak_ast import SOURCE_URL
+from app.services.llm_output_guard import complete_guarded
 
 MAX_LLM_SATELLITES = 150
 
@@ -112,7 +115,7 @@ def _llm_payload(satellites: list[dict], agg: dict, fetched_at: str) -> tuple[st
     return json.dumps(base, ensure_ascii=False), mode
 
 
-async def _analyze_with_llm(payload: str) -> tuple[AstsAnalysis, object]:
+async def _analyze_with_llm(payload: str, *, on_response=None, before_retry=None) -> tuple[AstsAnalysis, object]:
     provider = create_llm_provider()
     if provider.name == "disabled":
         raise RuntimeError("LLM not configured")
@@ -139,7 +142,10 @@ async def _analyze_with_llm(payload: str) -> tuple[AstsAnalysis, object]:
     # Pin the exact free model: task overrides and env defaults may route to paid models.
     if provider.model_router.resolve(request) not in VERIFIED_FREE_MODELS:
         raise RuntimeError("ASTS catalog model is not the verified free model")
-    response = await provider.complete(request)
+    response = (await complete_guarded(
+        provider, request, source="asts_catalog_analysis",
+        on_response=on_response, before_retry=before_retry,
+    )).response
     return AstsAnalysis.model_validate(parse_json_response(response.text)), response
 
 
@@ -205,8 +211,11 @@ def _llm_text_verified(analysis: AstsAnalysis, satellites: list[dict], agg: dict
 
 
 def analyze_asts_catalog(db: Session, *, use_llm: bool = True) -> dict:
-    """Read-only except the LLM quota reservation; never mutates the catalog."""
-    snapshot = read_catalog(db)  # tenant-scoped; raises without tenant context
+    """Never mutates the catalog; reserves quota and records LLM budget usage."""
+    snapshot = deepcopy(read_catalog(db))  # escalares, sin referencias al JSON del ORM
+    tenant_id = db.info.get("tenant_id")
+    if use_llm:
+        db.commit()  # libera la lectura antes del LLM, tambien con un loop activo
     source = {
         "name": "celestrak", "url": SOURCE_URL,
         "fetched_at": snapshot["fetched_at"],
@@ -237,13 +246,45 @@ def analyze_asts_catalog(db: Session, *, use_llm: bool = True) -> dict:
             note = "Análisis LLM desactivado por configuración."
         else:
             try:
-                llm_quota = reserve_llm_call(db.info.get("tenant_id"), get_settings())
+                budget = BudgetController()
+                try:
+                    allowed = budget.can_spend(db, 0.02)
+                finally:
+                    db.commit()  # el SELECT de presupuesto tambien abre transaccion
+                if not allowed:
+                    raise BudgetExceededError("LLM budget exhausted")
+                llm_quota = reserve_llm_call(tenant_id, get_settings())
                 if not llm_quota["allowed"]:
                     note = "Análisis LLM no disponible: tope alcanzado."
                 else:
                     payload, llm_input = _llm_payload(snapshot["satellites"], agg,
                                                       snapshot["fetched_at"])
-                    extraction, _response = run_from_any_context(_analyze_with_llm(payload))
+                    bind = db.get_bind()
+
+                    def _record(response) -> None:
+                        # El puente puede ejecutar en otro hilo. No compartir la sesion
+                        # de la ruta: cada callback usa una transaccion corta propia.
+                        with Session(bind=bind, info={"tenant_id": tenant_id}) as usage_db:
+                            cost = budget.estimate_cost_eur(
+                                response.model, response.usage.input_tokens,
+                                response.usage.output_tokens,
+                            )
+                            budget.record(usage_db, response.model, "asts_catalog_analysis",
+                                          cost, response.usage.total_tokens)
+
+                    def _reserve_retry() -> None:
+                        nonlocal llm_quota
+                        with Session(bind=bind, info={"tenant_id": tenant_id}) as usage_db:
+                            retry_allowed = budget.can_spend(usage_db, 0.02)
+                        if not retry_allowed:
+                            raise BudgetExceededError("LLM budget exhausted before retry")
+                        llm_quota = reserve_llm_call(tenant_id, get_settings())
+                        if not llm_quota["allowed"]:
+                            raise RuntimeError("ASTS catalog LLM quota exhausted before retry")
+
+                    extraction, _response = run_from_any_context(_analyze_with_llm(
+                        payload, on_response=_record, before_retry=_reserve_retry,
+                    ))
                     if _llm_text_verified(extraction, snapshot["satellites"], agg,
                                           snapshot["fetched_at"]):
                         # Seccion aparte, nunca sustituye al resumen canonico.
