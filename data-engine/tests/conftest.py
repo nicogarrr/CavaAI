@@ -120,3 +120,14 @@ def reset_settings_cache():
         yield
     finally:
         get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def _reset_sec_client_state():
+    """Cache y reloj compartidos del SECClient son estado de proceso: sin
+    reiniciarlos, un test veria la respuesta cacheada de otro (F351)."""
+    from app.services.connectors.sec import reset_sec_client_state
+
+    reset_sec_client_state()
+    yield
+    reset_sec_client_state()
