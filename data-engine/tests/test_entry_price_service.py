@@ -64,6 +64,14 @@ REPRO_AUDITORIA = [
     "El modelo estima 90 millones USD.",
 ]
 
+# Segunda ronda (#946): importes en palabras que la lista parcial dejaba pasar.
+REPRO_AUDITORIA_CANTIDADES = [
+    "El precio de entrada es cero.",
+    "El precio de entrada es uno.",
+    "El precio de entrada es medio.",
+    "El precio de entrada es un cuarto.",
+]
+
 
 def _resp(text: str) -> LLMResponse:
     return LLMResponse(
@@ -231,9 +239,13 @@ def test_contexto_valido_sin_cifras_pasa():
     assert service.context_verified(CONTEXTO_VALIDO)
 
 
-@pytest.mark.parametrize("texto", REPRO_AUDITORIA)
+@pytest.mark.parametrize("texto", REPRO_AUDITORIA + REPRO_AUDITORIA_CANTIDADES)
 def test_repros_auditoria_rechazados_por_el_validador(texto):
     assert not service.context_verified(texto)
+
+
+def test_contexto_cualitativo_legitimo_pasa():
+    assert service.context_verified("Empresa con foso ancho y caja neta.")
 
 
 @pytest.mark.parametrize(
@@ -329,6 +341,24 @@ def test_repros_auditoria_degradan_a_determinista(monkeypatch, db_session, texto
     # La llamada se hizo y su coste quedo registrado aunque se rechace la salida.
     assert len(provider.calls) == 1
     assert _budget_rows(db_session) == 1
+
+
+@pytest.mark.parametrize("texto", REPRO_AUDITORIA_CANTIDADES)
+def test_repros_cantidades_degradan_a_determinista(monkeypatch, db_session, texto):
+    company = _company(db_session)
+    _patch_valuation(monkeypatch, VALUATION_AUDIT)
+    monkeypatch.setenv("ENTRY_PRICE_LLM_ENABLED", "1")
+    provider = FakeProvider(texto)
+    result = service.entry_price_report(
+        db_session, company, target_mos=0.25, use_llm=True, provider=provider
+    )
+    assert result["contexto"] is None
+    assert result["contexto_fuente"] is None
+    assert "rechazado" in result["note"]
+    # Lo que se muestra es la plantilla con SUS cifras verificadas, no la del modelo.
+    assert "90.00 USD" in result["explicacion"]
+    assert texto not in result["explicacion"]
+    assert len(provider.calls) == 1
 
 
 def test_flag_desactivado_no_llama_llm(monkeypatch, db_session):

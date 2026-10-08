@@ -94,15 +94,17 @@ _DIGIT_RE = re.compile(r"\d")
 _TOKEN_RE = re.compile(r"[a-z]+")
 _BANNED_SYMBOLS = ("%", "$", "€", "£", "¥")
 
-# Cardinales y ordinales numericos en espanol (normalizados, sin tildes). Se
-# excluyen a proposito "un/uno/una" (articulos), "primero", "segundo",
-# "cuarto", "medio" y "mayor/menor": son prosa conectiva habitual y su rechazo
-# solo costaria un fallback. Los demas solo aparecen para cuantificar.
+# Numericos en espanol (normalizados, sin tildes): cardinales, fracciones y
+# ordinales. "cero", "uno", "medio", "cuarto" y los ordinales son prosa en
+# otros contextos, pero aqui el contexto NUNCA debe cuantificar: "el precio
+# es uno" afirma un importe distinto del verificado, y un falso positivo solo
+# cuesta el camino determinista. Solo se excluyen los articulos "un/una",
+# que no cuantifican nada por si solos.
 _NUMBER_WORDS_ES = frozenset(
-    ["dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez", "once", "doce", "trece", "catorce", "quince", "dieciseis", "diecisiete", "dieciocho", "diecinueve", "veinte", "veintiuno", "veintidos", "veintitres", "veinticuatro", "veinticinco", "veintiseis", "veintisiete", "veintiocho", "veintinueve", "treinta", "cuarenta", "cincuenta", "sesenta", "setenta", "ochenta", "noventa", "cien", "ciento", "cientos", "doscientos", "trescientos", "cuatrocientos", "quinientos", "seiscientos", "setecientos", "ochocientos", "novecientos", "mitad", "tercio", "decena", "docena", "centena", "centenar", "millar", "doble", "triple", "cuadruple"]
+    ["cero", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez", "once", "doce", "trece", "catorce", "quince", "dieciseis", "diecisiete", "dieciocho", "diecinueve", "veinte", "veintiuno", "veintidos", "veintitres", "veinticuatro", "veinticinco", "veintiseis", "veintisiete", "veintiocho", "veintinueve", "treinta", "cuarenta", "cincuenta", "sesenta", "setenta", "ochenta", "noventa", "cien", "ciento", "cientos", "doscientos", "trescientos", "cuatrocientos", "quinientos", "seiscientos", "setecientos", "ochocientos", "novecientos", "primero", "primera", "segundo", "segunda", "tercero", "tercera", "cuarto", "cuarta", "quinto", "quinta", "sexto", "sexta", "septimo", "septima", "octavo", "octava", "noveno", "novena", "decimo", "decima", "ultimo", "ultima", "centesimo", "milesimo", "medio", "media", "mitad", "tercio", "decena", "docena", "centena", "centenar", "millar", "doble", "triple", "cuadruple"]
 )
 _NUMBER_WORDS_EN = frozenset(
-    ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety", "hundred", "thousands", "double", "triple", "half", "dozen"]
+    ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety", "hundred", "thousands", "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth", "last", "quarter", "double", "triple", "half", "dozen"]
 )
 _SCALE_WORDS = frozenset(
     ["mil", "miles", "millon", "millones", "billon", "billones", "trillon", "trillones", "hundred", "thousand", "million", "billion", "trillion"]
@@ -112,7 +114,60 @@ _SCALE_WORDS = frozenset(
 _CURRENCY_WORDS = frozenset(
     ["usd", "eur", "gbp", "jpy", "chf", "mxn", "dolar", "dolares", "dollar", "dollars", "euro", "euros", "libra", "libras", "pound", "pounds", "yen", "yenes", "peso", "pesos", "cent", "cents", "centavo", "centavos", "centimo", "centimos"]
 )
-_BANNED_TOKENS = _NUMBER_WORDS_ES | _NUMBER_WORDS_EN | _SCALE_WORDS | _CURRENCY_WORDS
+_AMOUNT_TOKENS = _NUMBER_WORDS_ES | _NUMBER_WORDS_EN | _SCALE_WORDS
+_BANNED_TOKENS = _AMOUNT_TOKENS | _CURRENCY_WORDS
+
+# Afirmaciones de importe/porcentaje: sustantivo financiero + copula +
+# expresion numerica en palabras o simbolos. Capa INDEPENDIENTE del blacklist:
+# aunque una forma numerica escape de la lista (como escapaba "cero"), la
+# afirmacion muere entera: el contexto es para tesis y cualitativo, nunca
+# para cifras. Los huecos no cruzan puntuacion ([a-z ]), asi que la copula y
+# la cifra conviven en la misma frase; el articulo entre copula y cifra
+# ("es un cuarto") cabe en el segundo hueco.
+_AMOUNT_NOUNS = (
+    "precio",
+    "entrada",
+    "margen",
+    "valor",
+    "cotizacion",
+    "importe",
+    "coste",
+    "costo",
+    "valoracion",
+    "descuento",
+    "accion",
+    "acciones",
+)
+_COPULAS = (
+    "es",
+    "esta",
+    "estan",
+    "estaba",
+    "estaban",
+    "sera",
+    "seran",
+    "seria",
+    "serian",
+    "fue",
+    "fueron",
+    "queda",
+    "quedan",
+    "vale",
+    "valen",
+    "cuesta",
+    "cuestan",
+    "cotiza",
+    "cotizan",
+    "resulta",
+    "resultan",
+)
+_AMOUNT_ASSERTION_RE = re.compile(
+    r"\b(?:" + "|".join(_AMOUNT_NOUNS) + r")\b"
+    r"[a-z ]{0,40}?"
+    r"\b(?:" + "|".join(_COPULAS) + r")\b"
+    r"[a-z ]{0,12}?"
+    r"\b(?:" + "|".join(sorted(_AMOUNT_TOKENS)) + r")\b"
+)
 
 
 def _normalize(text: str) -> str:
@@ -134,8 +189,13 @@ def context_verified(text: str) -> bool:
         return False
     if any(symbol in text for symbol in _BANNED_SYMBOLS):
         return False
-    tokens = set(_TOKEN_RE.findall(_normalize(text)))
-    return not tokens & _BANNED_TOKENS
+    normalized = _normalize(text)
+    tokens = set(_TOKEN_RE.findall(normalized))
+    if tokens & _BANNED_TOKENS:
+        return False
+    # Segunda capa: la afirmacion de importe/porcentaje muere entera aunque
+    # la forma numerica concreta no este en la lista.
+    return _AMOUNT_ASSERTION_RE.search(normalized) is None
 
 
 # ---------------------------------------------------------------------------
