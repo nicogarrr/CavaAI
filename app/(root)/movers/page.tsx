@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { TrendingDown, TrendingUp, Activity } from 'lucide-react';
 
 import { getMarketMovers, type MarketMover } from '@/lib/actions/market.actions';
-import { NA, formatCompact, formatMarketDate, formatPercent, formatPrice, formatUserDateTime } from '@/lib/format';
+import { NA, formatCompact, formatPercent, formatPrice, formatUserDateTime } from '@/lib/format';
 import BackendOffline from '@/components/system/BackendOffline';
 import { getTickerContext } from '@/lib/actions/ticker-context.actions';
 import { TickerContextBadges } from '@/components/common/TickerContextBadges';
@@ -66,9 +66,9 @@ function MoversTable({ rows, caption, tickerSets, showVolume = false }: { rows: 
               <td className="py-3 px-2 text-right text-gray-300">
                 <span className="whitespace-nowrap">{formatPrice(row.price, safeCurrency(row.currency))}</span>
                 {row.date ? (
-                  <div className="ml-auto whitespace-nowrap text-xs text-gray-500">
-                    {formatMarketDate(row.date, { day: 'numeric', month: 'short' })}
-                    {row.registered_at ? <span className="hidden sm:inline">{` · ${formatUserDateTime(row.registered_at, { hour: '2-digit', minute: '2-digit' })}`}</span> : null}
+                  <div className="ml-auto max-w-[7.5rem] text-xs text-gray-500">
+                    <span className="whitespace-nowrap">del {row.date}</span>
+                    {row.registered_at ? <span className="whitespace-nowrap">{` · ${formatUserDateTime(row.registered_at, { hour: '2-digit', minute: '2-digit' })}`}</span> : null}
                   </div>
                 ) : null}
               </td>
