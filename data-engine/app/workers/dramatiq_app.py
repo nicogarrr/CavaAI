@@ -1525,7 +1525,21 @@ def refresh_news(
                 if ticker
                 else (_tracked_companies(db) if scope == "tracked" else _companies(db))
             )
+            # El middleware TimeLimit mata el actor a los 10 min (TimeLimitExceeded
+            # no es Exception): con 429 y pacing de ~5 s el barrido alfabetico
+            # moria antes de llegar a ASTS. Prioritarias primero y corte limpio
+            # con resultado parcial bajo el limite.
+            from app.services.ticker_news_lane import PRIORITY_TICKERS
+
+            companies = sorted(
+                companies, key=lambda c: (c.ticker.upper() not in PRIORITY_TICKERS, c.ticker)
+            )
+            deadline = time.monotonic() + 510
+            truncated = False
             for company in companies:
+                if time.monotonic() > deadline:
+                    truncated = True
+                    break
                 try:
                     query = _gdelt_company_query(company)
                     result = _run(
@@ -1564,6 +1578,7 @@ def refresh_news(
                 "scope": scope,
                 "companies_processed": processed,
                 "news_ingested": ingested,
+                "truncated": truncated,
                 "errors": errors,
             }
         finally:
@@ -1577,6 +1592,109 @@ def refresh_news(
             ticker=ticker,
             max_records=max_records,
         )
+
+
+@dramatiq.actor(max_retries=1, min_backoff=15_000, time_limit=2 * 3600 * 1000)
+@_coalesce_on_success(
+    "refresh_ticker_news",
+    lambda scope="tracked", **_: 20 * 60 if scope == "tracked" else 5 * 3600,
+    ("tenant_id", "ticker", "scope"),
+)
+def refresh_ticker_news(
+    tenant_id: int | None = None,
+    user_id: str | None = None,
+    ticker: str | None = None,
+    scope: str = "tracked",
+) -> dict[str, Any]:
+    """Noticias por ticker desde Yahoo Finance RSS y Google News RSS (sin GDELT).
+
+    tracked: cartera + watchlist + ASTS/SPCX, Yahoo y Google. all: universo,
+    solo Yahoo y solo cotizadas en EEUU. Pacing 1,5 s entre peticiones.
+    """
+    actor_name = "refresh_ticker_news"
+    try:
+        from app.services.feed_ingestion_service import FeedIngestionService
+        from app.services.news_service import _ticker_evidence_level
+        from app.services.ticker_news_lane import (
+            PRIORITY_TICKERS,
+            google_feed_url,
+            is_us_listed,
+            label_google,
+            label_yahoo,
+            yahoo_feed_url,
+        )
+
+        db = _session(tenant_id, user_id)
+        try:
+            service = FeedIngestionService()
+            processed = ingested = 0
+            errors: list[dict] = []
+            if ticker:
+                companies = _companies(db, ticker)
+            elif scope == "tracked":
+                found = {company.id: company for company in _tracked_companies(db)}
+                for company in _companies(db):
+                    if company.ticker.upper() in PRIORITY_TICKERS:
+                        found[company.id] = company
+                # Prioritarias primero: un fallo posterior no las deja sin barrer.
+                companies = sorted(
+                    found.values(),
+                    key=lambda c: (c.ticker.upper() not in PRIORITY_TICKERS, c.ticker),
+                )
+            else:
+                companies = [c for c in _companies(db) if is_us_listed(c)]
+            deadline = time.monotonic() + 6900  # margen bajo time_limit de 2 h
+            truncated = False
+            for company in companies:
+                if time.monotonic() > deadline:
+                    truncated = True
+                    break
+                lanes = [("yahoo", yahoo_feed_url(company.ticker))] if is_us_listed(company) else []
+                if scope == "tracked" or ticker:
+                    lanes.append(("google-en", google_feed_url(company, lang="en")))
+                    if company.ticker.upper() in PRIORITY_TICKERS:
+                        lanes.append(("google-es", google_feed_url(company, lang="es")))
+                for lane, url in lanes:
+                    try:
+                        result = _run(service.poll_rss(url, ticker=company.ticker, max_items=30))
+                        result = (
+                            label_yahoo(result)
+                            if lane == "yahoo"
+                            else label_google(result, company, _ticker_evidence_level)
+                        )
+                        if result.errors:
+                            errors.extend(
+                                {"ticker": company.ticker, "source": lane, "message": error}
+                                for error in result.errors
+                            )
+                        ingestion = service.ingest_news_result(db, result, ticker=company.ticker)
+                        if result.status != "error":
+                            processed += 1
+                        ingested += int(ingestion.get("created", 0))
+                    except Exception as exc:
+                        _rollback(db)
+                        errors.append(
+                            {
+                                "ticker": company.ticker,
+                                "source": lane,
+                                "type": type(exc).__name__,
+                                "message": str(exc),
+                            }
+                        )
+                    time.sleep(1.5)
+            return {
+                "status": _batch_status(processed, errors),
+                "actor": actor_name,
+                "scope": scope,
+                "feeds_processed": processed,
+                "news_ingested": ingested,
+                "truncated": truncated,
+                "errors": errors,
+            }
+        finally:
+            db.close()
+    except Exception as exc:
+        return _handle_actor_error(actor_name, exc, tenant_id=tenant_id, user_id=user_id, ticker=ticker)
 
 
 @dramatiq.actor(max_retries=2, min_backoff=15_000, queue_name=ALERT_QUEUE_NAME)
