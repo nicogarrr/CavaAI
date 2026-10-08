@@ -49,7 +49,7 @@ VALUATION_SIN_DATOS = {
 # Fixtures de evidencia para la seleccion determinista del contexto. Cada una
 # sostiene exactamente una clave; VALUATION_OK (sin net_debt, foso ni motor
 # especial) es el fixture ASTS del auditor: sin evidencia, sin contexto.
-VALUATION_BALANCE = {
+VALUATION_CAJA_NETA = {
     **VALUATION_OK,
     "trace": {"engine": "standard_dcf", "net_debt": -120.0},
 }
@@ -58,7 +58,7 @@ VALUATION_FOSO = {
     "trace": {"engine": "standard_dcf"},
     "moat": {"status": "evidence_backed", "aggregate_strength": 72},
 }
-VALUATION_RIESGO = {**VALUATION_OK, "trace": {"resolved_engine": "bank"}}
+VALUATION_REGULADO = {**VALUATION_OK, "trace": {"resolved_engine": "bank"}}
 VALUATION_CICLICA = {**VALUATION_OK, "trace": {"engine": "commodity"}}
 
 
@@ -203,14 +203,16 @@ def test_mos_se_cuantiza_a_resolucion_autorizada_y_se_responde_cuantizado():
 # --------------------------------------------------------------------------
 
 
-def test_balance_solido_con_caja_neta_real():
-    clave, plantilla = service._selecciona_contexto(_company_transitoria(), VALUATION_BALANCE)
-    assert clave == "balance_solido"
-    assert plantilla == service._CONTEXTO_PLANTILLAS["balance_solido"]
+def test_caja_neta_con_net_debt_negativo():
+    clave, plantilla = service._selecciona_contexto(_company_transitoria(), VALUATION_CAJA_NETA)
+    assert clave == "caja_neta"
+    # La plantilla afirma SOLO el hecho demostrado: caja neta. net_debt < 0 no
+    # prueba "balance solido" ni "poco apalancamiento".
+    assert plantilla == "El snapshot financiero muestra caja neta."
 
 
 @pytest.mark.parametrize("net_debt", [None, 0.0, 50.0])
-def test_balance_solido_exige_caja_neta(net_debt):
+def test_caja_neta_exige_net_debt_negativo(net_debt):
     # Sin net_debt en el trace, o con deuda neta positiva o cero, no hay caja
     # neta que afirmar (net_debt None NO es deuda cero).
     valuation = {**VALUATION_OK, "trace": {"engine": "standard_dcf", "net_debt": net_debt}}
@@ -240,22 +242,36 @@ def test_foso_exige_umbral_y_evidencia(moat):
 
 
 @pytest.mark.parametrize("engine", ["bank", "insurer"])
-def test_riesgo_regulatorio_por_motor(engine):
+def test_sector_regulado_por_motor(engine):
     valuation = {**VALUATION_OK, "trace": {"engine": engine}}
-    clave, _ = service._selecciona_contexto(_company_transitoria(), valuation)
-    assert clave == "riesgo_regulatorio"
+    clave, plantilla = service._selecciona_contexto(_company_transitoria(), valuation)
+    assert clave == "sector_regulado"
+    # El dato prueba sector regulado; el GRADO del riesgo no lo mide nada.
+    assert plantilla == "El negocio opera en un sector regulado."
 
 
-def test_riesgo_regulatorio_por_riesgos_declarados():
-    company = _company_transitoria(special_risks=["Riesgo regulatorio: cambios de normativa"])
+def test_sector_regulado_por_etiqueta_tipada():
+    # La via de la ficha usa coincidencia EXACTA con la etiqueta del catalogo
+    # maestro, nunca substring sobre texto libre.
+    company = _company_transitoria(special_risks=["regulation"])
     clave, _ = service._selecciona_contexto(company, VALUATION_OK)
-    assert clave == "riesgo_regulatorio"
+    assert clave == "sector_regulado"
 
 
-def test_riesgo_regulatorio_por_motor_resuelto():
+def test_negacion_regulatoria_no_es_evidencia():
+    # Repro exacto del auditor: un substring "regulat" casaria esta frase y
+    # publicaria precisamente lo contrario.
+    company = _company_transitoria(
+        special_risks=["No presenta riesgo regulatorio elevado"]
+    )
+    clave, _ = service._selecciona_contexto(company, VALUATION_OK)
+    assert clave is None
+
+
+def test_sector_regulado_por_motor_resuelto():
     # El trace del servicio rotula el motor como resolved_engine.
-    clave, _ = service._selecciona_contexto(_company_transitoria(), VALUATION_RIESGO)
-    assert clave == "riesgo_regulatorio"
+    clave, _ = service._selecciona_contexto(_company_transitoria(), VALUATION_REGULADO)
+    assert clave == "sector_regulado"
 
 
 def test_ciclicidad_por_motor_de_materias_primas():
@@ -264,10 +280,10 @@ def test_ciclicidad_por_motor_de_materias_primas():
     assert plantilla == service._CONTEXTO_PLANTILLAS["ciclicidad"]
 
 
-def test_prioridad_balance_sobre_foso():
+def test_prioridad_caja_neta_sobre_foso():
     valuation = {**VALUATION_FOSO, "trace": {"engine": "standard_dcf", "net_debt": -1.0}}
     clave, _ = service._selecciona_contexto(_company_transitoria(), valuation)
-    assert clave == "balance_solido"
+    assert clave == "caja_neta"
 
 
 def test_sin_evidencia_no_hay_contexto():
@@ -279,8 +295,12 @@ def test_sin_evidencia_no_hay_contexto():
 
 def test_catalogo_sin_claves_sin_fuente_de_datos():
     # direccion_prudente se retiro: ningun dato disponible evalua a la
-    # direccion, y afirmarlo sin fuente seria inventarlo.
+    # direccion, y afirmarlo sin fuente seria inventarlo. Las claves que
+    # sobreafirmaban (balance_solido, riesgo_regulatorio) se renombraron al
+    # hecho demostrado (caja_neta, sector_regulado).
     assert "direccion_prudente" not in service._CONTEXTO_PLANTILLAS
+    assert "balance_solido" not in service._CONTEXTO_PLANTILLAS
+    assert "riesgo_regulatorio" not in service._CONTEXTO_PLANTILLAS
 
 
 # --------------------------------------------------------------------------
@@ -307,11 +327,11 @@ def test_camino_feliz_determinista(monkeypatch, db_session):
     assert not db_session.new
 
 
-def test_contexto_determinista_con_evidencia_de_balance(monkeypatch, db_session):
+def test_contexto_determinista_con_evidencia_de_caja_neta(monkeypatch, db_session):
     company = _company(db_session)
-    _patch_valuation(monkeypatch, VALUATION_BALANCE)
+    _patch_valuation(monkeypatch, VALUATION_CAJA_NETA)
     result = service.entry_price_report(db_session, company, target_mos=0.25)
-    assert result["contexto"] == service._CONTEXTO_PLANTILLAS["balance_solido"]
+    assert result["contexto"] == service._CONTEXTO_PLANTILLAS["caja_neta"]
     assert result["contexto_fuente"] == "determinista"
 
 

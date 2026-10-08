@@ -53,18 +53,6 @@ WARNING = (
 # conservador y sugeriria pagar de mas.
 _SCENARIO_KEYS = (("base", "base_value"), ("bear", "bear_value"))
 
-_SYSTEM_PROMPT = (
-    "Elige UNA clave que describa la tesis cualitativa de la entrada de una "
-    "acción y responde SOLO con la clave, tal cual, sin explicación, sin "
-    "puntuación y sin ningún otro texto. Claves permitidas: "
-    "foso_competitivo (ventajas competitivas duraderas difíciles de "
-    "replicar), balance_solido (caja neta y poco apalancamiento), "
-    "direccion_prudente (asignación de capital prudente), riesgo_regulatorio "
-    "(riesgo regulatorio elevado en el sector), ciclicidad (negocio cíclico: "
-    "los supuestos del modelo pesan más de lo habitual), ninguno (ninguna "
-    "clave encaja o no hay base para elegir). Nunca escribas cifras, "
-    "porcentajes ni divisas."
-)
 
 # ---------------------------------------------------------------------------
 # Contexto por PLANTILLA CONTROLADA con seleccion DETERMINISTA.
@@ -75,15 +63,15 @@ _SYSTEM_PROMPT = (
 # existe. "direccion_prudente" se retiro del catalogo: ningun dato disponible
 # evalua a la direccion, y afirmarlo sin fuente seria inventarlo.
 _CONTEXTO_PLANTILLAS = {
-    "balance_solido": (
-        "El modelo ve un balance sólido, con caja neta y poco apalancamiento."
-    ),
+    # net_debt < 0 prueba CAJA NETA; no "balance solido" ni "poco
+    # apalancamiento" (podria haber deuda bruta grande y caja algo mayor).
+    "caja_neta": "El snapshot financiero muestra caja neta.",
     "foso_competitivo": (
         "El modelo ve un negocio con foso competitivo ancho, difícil de replicar."
     ),
-    "riesgo_regulatorio": (
-        "El modelo ve riesgo regulatorio elevado en el sector."
-    ),
+    # Motor bank/insurer o etiqueta "regulation" prueban SECTOR REGULADO; el
+    # grado del riesgo ("elevado") no lo mide ningun dato disponible.
+    "sector_regulado": "El negocio opera en un sector regulado.",
     "ciclicidad": (
         "El modelo ve un negocio cíclico: los supuestos pesan más de lo habitual."
     ),
@@ -134,13 +122,15 @@ def _tiene_foso_ancho(valuation: Mapping[str, Any]) -> bool:
     return float(aggregate) >= _MIN_FORTALEZA_FOSO
 
 
-def _riesgo_regulatorio_evidenciado(company: Company, valuation: Mapping[str, Any]) -> bool:
+def _sector_regulado_evidenciado(company: Company, valuation: Mapping[str, Any]) -> bool:
     if _engine_key(valuation) in _MOTORES_REGULADOS:
         return True
+    # Coincidencia EXACTA con la etiqueta del catalogo maestro ("regulation").
+    # Nunca substring sobre texto libre: "No presenta riesgo regulatorio
+    # elevado" contiene "regulat" y publicaria exactamente lo contrario.
     return any(
-        "regulat" in risk.lower()
+        isinstance(risk, str) and risk.strip().lower() == "regulation"
         for risk in (company.special_risks or [])
-        if isinstance(risk, str)
     )
 
 
@@ -149,20 +139,19 @@ def _selecciona_contexto(
 ) -> tuple[str | None, str | None]:
     """(clave, plantilla) sostenida por evidencia real; (None, None) si no hay.
 
-    Primera regla que casa, de mas especifica a mas general: balance_solido
-    (caja neta del snapshot: net_debt < 0 en el trace del motor), luego
-    foso_competitivo (agregado del marco de fosos evidence_backed por encima
-    del umbral), luego riesgo_regulatorio (motor de banco/aseguradora o
-    riesgo regulatorio declarado en la ficha) y por ultimo ciclicidad (motor
-    de ciclo de materias primas).
+    Primera regla que casa, de mas especifica a mas general: caja_neta
+    (net_debt < 0 en el trace del motor), luego foso_competitivo (agregado
+    del marco de fosos evidence_backed por encima del umbral), luego
+    sector_regulado (motor de banco/aseguradora o etiqueta "regulation" de la
+    ficha) y por ultimo ciclicidad (motor de ciclo de materias primas).
     """
     net_debt = _trace_number(valuation, "net_debt")
     if net_debt is not None and net_debt < 0:
-        clave = "balance_solido"
+        clave = "caja_neta"
     elif _tiene_foso_ancho(valuation):
         clave = "foso_competitivo"
-    elif _riesgo_regulatorio_evidenciado(company, valuation):
-        clave = "riesgo_regulatorio"
+    elif _sector_regulado_evidenciado(company, valuation):
+        clave = "sector_regulado"
     elif _engine_key(valuation) in _MOTORES_CICLICOS:
         clave = "ciclicidad"
     else:
