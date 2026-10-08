@@ -198,12 +198,23 @@ class Settings(BaseSettings):
     ibkr_flex_query_id: str | None = None
     # SEC fair-access: exige UA declarado con contacto; bloquea placeholders
     # tipo example.com con 403. Este valor verificado 200 desde prod (25/9).
+    # OJO: este default es un fallback LOCAL no contactable (el dominio .local
+    # no existe). En produccion manda SEC_USER_AGENT del .env con un contacto
+    # real; la SEC puede bloquear UAs sin contacto verdadero.
     sec_user_agent: str = "CavaAI research contact@cavaai.local"
     # Directorio con snapshots EDGAR (manifest.json ticker->CIK,
     # companyfacts/CIK##########.json, submissions/CIK##########.json).
     # La SEC bloquea las IPs de datacenter; los snapshots se generan fuera
     # (PC residencial, espejo) y se despliegan con la app.
     sec_snapshot_dir: str | None = None
+    # Resiliencia del cliente SEC directo (sin proxies ni cambio de IP):
+    # cache en memoria de respuestas JSON, reintentos con backoff ante
+    # 429/5xx/red y fallback a EDGAR full-text search (efts.sec.gov) para el
+    # listado de filings cuando submissions falla. Env: SEC_CACHE_TTL_SECONDS,
+    # SEC_MAX_RETRIES, SEC_EFTS_FALLBACK_ENABLED.
+    sec_cache_ttl_seconds: float = Field(default=900.0, ge=0)
+    sec_max_retries: int = Field(default=3, ge=0, le=8)
+    sec_efts_fallback_enabled: bool = True
     # Dataset de HuggingFace que actua como mirror resiliente de la SEC
     # (companyfacts/submissions). Cuando esta configurado y la SEC rechaza
     # con 401/403 (ban de IP de datacenter), la ingesta lee el mismo JSON

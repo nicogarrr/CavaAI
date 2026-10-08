@@ -521,3 +521,28 @@ def test_mas_de_20_fy_cap_no_borra_ni_exagera(db):
     despues = _fy_rows(db, company)
     assert despues["2005-12-31:FY"] == Decimal("105")  # fuera del cap: preservado
     assert len(despues) == 21
+
+
+def test_anclas_efts_parciales_se_propagan_al_resultado_sin_tocar_valores(db):
+    """F351: si las anclas vienen del fallback EFTS (parcial), el resultado de
+    refresh_from_sec lo dice; los valores financieros son los mismos."""
+    from app.services.connectors.sec import AnchorMap
+
+    facts = {"facts": {"us-gaap": {
+        "Revenues": {"units": {"USD": _years_cal(2020, 2025, 100)}},
+    }}}
+    plain = _anchors_for_years(2020, 2025, "12-31")
+    company, base = _ingest(db, "ANCP", facts, plain)
+    assert base["annual_anchor_partial"] is False
+    assert base["annual_anchor_source"] == "sec-submissions"
+    assert base["annual_anchor_note"] is None
+    base_rows = _fy_rows(db, company)
+
+    partial = AnchorMap(plain)
+    partial.partial = True
+    partial.source = "efts-full-text-search"
+    result = _ingest_second(db, company, facts, partial)
+    assert result["annual_anchor_partial"] is True
+    assert result["annual_anchor_source"] == "efts-full-text-search"
+    assert "parcial" in result["annual_anchor_note"]
+    assert _fy_rows(db, company) == base_rows
