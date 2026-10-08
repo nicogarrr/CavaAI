@@ -39,6 +39,10 @@ def subscription_for(db: Session, alert: ResearchAlert) -> AlertSubscription | N
     ))
     if not row or row.user_id != db.info.get("user_id"):
         return None
+    from app.services.telegram_link import binding_for
+
+    if not binding_for(db, alert.tenant_id, row.user_id, row.chat_id):
+        return None
     created = alert.created_at
     since = row.enabled_at
     if created.tzinfo is None:

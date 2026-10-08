@@ -613,8 +613,6 @@ def maybe_notify_insider_buy(
         }
         if notifier is not None:
             return dict(notifier(payload))
-        from app.services.notification_service import NotificationService
-
-        return dict(NotificationService()._dispatch_telegram(settings, payload))
+        return {"status": "skipped", "reason": "Usa el outbox con suscripción y chat verificado"}
     except Exception as exc:  # noqa: BLE001 — notificar jamas rompe el flujo
         return {"status": "skipped", "reason": redact_secrets(f"{type(exc).__name__}: {exc}")}

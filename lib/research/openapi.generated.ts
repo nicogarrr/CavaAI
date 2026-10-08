@@ -90,6 +90,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/alerts/telegram-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start */
+        post: operations["start_api_alerts_telegram_link_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/alerts/telegram-link/{challenge_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Status */
+        get: operations["status_api_alerts_telegram_link__challenge_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/alerts/telegram-link/{challenge_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm */
+        post: operations["confirm_api_alerts_telegram_link__challenge_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/alerts/telegram-status": {
         parameters: {
             query?: never;
@@ -3465,6 +3516,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/telegram/link-proof": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Relay */
+        post: operations["relay_api_telegram_link_proof_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/thesis/generate": {
         parameters: {
             query?: never;
@@ -4153,6 +4221,17 @@ export interface components {
             source_url?: string | null;
             /** Title */
             title: string;
+        };
+        /** BotLinkIn */
+        BotLinkIn: {
+            /** Chat Id */
+            chat_id: string;
+            /** Chat Type */
+            chat_type: string;
+            /** Telegram User Id */
+            telegram_user_id: string;
+            /** Token */
+            token: string;
         };
         /** CalculatedMetricOut */
         CalculatedMetricOut: {
@@ -5126,6 +5205,34 @@ export interface components {
              * @enum {string}
              */
             scope: "letters" | "library";
+        };
+        /** LinkConfirmIn */
+        LinkConfirmIn: {
+            /** Chat Id */
+            chat_id: string;
+        };
+        /** LinkConfirmOut */
+        LinkConfirmOut: {
+            /** Chat Id */
+            chat_id: string;
+            /** Verified */
+            verified: boolean;
+        };
+        /** LinkStartOut */
+        LinkStartOut: {
+            /** Challenge Id */
+            challenge_id: number;
+            /** Command */
+            command: string;
+            /** Expires At */
+            expires_at: string;
+        };
+        /** LinkStatusOut */
+        LinkStatusOut: {
+            /** Chat Id */
+            chat_id: string | null;
+            /** Confirmed */
+            confirmed: boolean;
         };
         /** ManagementExplanationUpdate */
         ManagementExplanationUpdate: {
@@ -6112,7 +6219,7 @@ export interface components {
         TelegramSubscriptionIn: {
             /**
              * Chat Id
-             * @description Chat privado verificado del usuario en Asistenta
+             * @description Chat privado previamente vinculado mediante prueba del bot y confirmación del propietario
              */
             chat_id: string;
             /**
@@ -6851,6 +6958,128 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AlertRuleOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_api_alerts_telegram_link_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkStartOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    status_api_alerts_telegram_link__challenge_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path: {
+                challenge_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkStatusOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_api_alerts_telegram_link__challenge_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path: {
+                challenge_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkConfirmIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkConfirmOut"];
                 };
             };
             /** @description Validation Error */
@@ -15478,6 +15707,42 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    relay_api_telegram_link_proof_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-asistenta-timestamp"?: string;
+                "x-asistenta-signature"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BotLinkIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

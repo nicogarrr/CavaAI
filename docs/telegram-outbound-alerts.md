@@ -21,8 +21,8 @@ Asistenta sigue siendo el único consumidor de actualizaciones/webhook.
    Tipos: `thesis_broken`, `new_filing`, `insiders`, `shorts_rising`.
    `GET /api/alerts/telegram-subscriptions` devuelve los cuatro tipos, apagados
    por defecto. Desactivar usa el mismo PUT con `enabled:false`.
-   Este PR ofrece la API, no una pantalla nueva ni un flujo de vinculación
-   automático. Hasta verificar el chat y activar cada tipo no se envía nada.
+   Este PR ofrece las APIs de prueba del bot y confirmación del propietario,
+   no una pantalla nueva. Hasta verificar el chat y activar cada tipo no se envía nada.
 
 Una suscripción requiere tenant y usuario verificados por el puente de auth
 existente, nunca IDs suministrados en el cuerpo. El modelo actual de CavaAI es
@@ -69,3 +69,53 @@ scheduler con `docker-compose.prod.yml`. Las variables de entorno de Telegram
 ya existen. No se activa nada con la migración y no se toca `wake.ts`.
 Comprobar primero con un chat privado de prueba y consentimiento explícito;
 este PR usa HTTP simulado y no envía mensajes reales ni guarda credenciales.
+
+## Vinculación verificada (obligatoria desde 0055)
+
+El chat_id ya no se acepta como prueba de propiedad. Suscripciones existentes
+sin vínculo confirmado quedan bloqueadas, y ningún tipo de alerta desconocido
+puede usar el chat global.
+
+1. Con sesión CavaAI firmada, `POST /api/alerts/telegram-link` devuelve un
+   `challenge_id` y `/link <código de un solo uso>` que caduca en 10 minutos.
+   Solo se guarda SHA-256 del código. Un nuevo inicio invalida códigos anteriores.
+2. El propietario envía ese comando al bot de Asistenta en su chat privado.
+3. En su handler Telegram existente, Asistenta verifica que el update procede
+   del transporte Telegram autenticado, `message.chat.type == "private"`, y
+   `message.chat.id == message.from.id`. Extrae el código SOLO del comando
+   recibido; nunca toma chat_id/from.id de parámetros del usuario o de un
+   reenvío. No incluir este código ni la firma en logs.
+4. Asistenta serializa un JSON UTF-8 con `token`, `chat_id`,
+   `telegram_user_id` (ambos IDs como strings) y `chat_type:"private"`.
+   Lo envía por HTTPS a `POST /api/telegram/link-proof` con:
+   - `X-Asistenta-Timestamp`: segundos Unix actuales.
+   - `X-Asistenta-Signature`: hex HMAC-SHA256 de
+     `timestamp + "." + bytes_exactos_del_JSON`.
+   - `Content-Type: application/json`.
+   La clave compartida `TELEGRAM_LINK_SECRET` debe tener >=32 caracteres y
+   existir SOLO en el entorno servidor de Asistenta y CavaAI. Es distinta del
+   bot token y de la clave de identidad CavaAI. Nunca frontend, chat ni Git.
+   CavaAI valida firma y edad <=60 s, exige chat privado y remitente igual al
+   chat, y consume el código una vez de forma atómica. Este endpoint no necesita
+   firma de usuario CavaAI: la autenticación es HMAC del bot, fail-closed si falta.
+5. El propietario consulta `GET /api/alerts/telegram-link/{challenge_id}` en
+   CavaAI, revisa el chat candidato y confirma con
+   `POST /api/alerts/telegram-link/{challenge_id}/confirm`, cuerpo
+   `{ "chat_id": "<candidato revisado>" }`. No puede confirmar otro usuario
+   ni un chat diferente del probado por el bot. Solo entonces se persiste el
+   vínculo. Un chat no puede pertenecer a dos identidades.
+6. Activar los tipos usando el PUT de suscripciones anterior. Cualquier cambio
+   de destino requiere repetir esta prueba; confirmar un nuevo vínculo desactiva
+   todas las suscripciones anteriores para exigir un opt-in nuevo.
+
+El callback firmado certifica la observación de Asistenta, no de un cliente
+anónimo. No apuntar Telegram directamente a este endpoint: el bot actual sigue
+recibiendo updates y solo reenvía pruebas de `/link`. Sin ese pequeño handler de
+Asistenta la vinculación no se completa y Telegram permanece bloqueado.
+
+CNMV: además del mismo conjunto de titulares, todos los nuevos position_date
+son fechas válidas, no futuras, no anteriores a la fecha previa del titular y
+con antigüedad máxima de 35 días. Cada porcentaje cambiado exige avance de su
+fecha, y el snapshot debe tener al menos un avance verificable. Si falla una
+condición, no se emite alerta de aumento; el panel conserva su dato y fecha.
+El aviso incluye el rango de fechas de las posiciones públicas comparadas.

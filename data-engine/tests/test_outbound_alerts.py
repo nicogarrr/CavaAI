@@ -5,6 +5,7 @@ import httpx
 import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
+from sqlalchemy.pool import StaticPool
 
 from app.api.routes.alerts import (
     TelegramSubscriptionIn,
@@ -20,7 +21,7 @@ from app.services.short_positions_service import emit_shorts_increase
 
 @pytest.fixture
 def db():
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(engine)
     with Session(engine) as db:
         db.add(Tenant(id=1, external_id="owner"))
@@ -38,6 +39,10 @@ def alert(db, kind="thesis_broken", created=None):
 
 
 def opt_in(db, kind="thesis_broken"):
+    from app.models.entities import TelegramChatBinding
+    if db.info.get("user_id") == "owner" and db.scalar(select(TelegramChatBinding)) is None:
+        db.add(TelegramChatBinding(user_id="owner", chat_id="12345"))
+        db.commit()
     return set_telegram_subscription(kind, TelegramSubscriptionIn(enabled=True, chat_id="12345"), db)
 
 
@@ -151,7 +156,7 @@ def test_cnmv_holder_set_changes_not_total_market(db):
     db.add(company)
     db.commit()
     now = datetime.now(UTC)
-    old = {"source":"CNMV", "public_total_percent":.6, "positions":[{"holder":"A", "percent":.6, "position_date":now.date().isoformat()}]}
+    old = {"source":"CNMV", "public_total_percent":.6, "positions":[{"holder":"A", "percent":.6, "position_date":(now-timedelta(days=1)).date().isoformat()}]}
     new = {"source":"CNMV", "public_total_percent":.8, "positions":[{"holder":"B", "percent":.8, "position_date":now.date().isoformat()}], "source_url":"https://www.cnmv.es/"}
     emit_shorts_increase(db, company, old, new, now)
     assert db.scalar(select(ResearchAlert)) is None

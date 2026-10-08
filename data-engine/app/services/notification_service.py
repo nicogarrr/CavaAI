@@ -61,7 +61,7 @@ class NotificationService:
             alert.channels = channels
             db.commit()
         for channel in channels:
-            if channel == "telegram" and category and not subscription:
+            if channel == "telegram" and not subscription:
                 deliveries[channel] = self._result("skipped", error="Sin consentimiento para este tipo de alerta")
                 continue
             self._ensure_delivery_row(db, alert, channel)
@@ -347,11 +347,11 @@ class NotificationService:
 
     def _dispatch_telegram(self, settings, payload: dict) -> dict:
         token = settings.telegram_bot_token
-        chat_id = payload.get("chat_id") or settings.telegram_chat_id
+        chat_id = payload.get("chat_id")
         if not settings.telegram_enabled or not token or not chat_id:
             return self._result(
                 "not_configured",
-                error="Telegram notifications require TELEGRAM_ENABLED, TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID",
+                error="Telegram requiere TELEGRAM_ENABLED, TELEGRAM_BOT_TOKEN y un destino verificado",
             )
         text = self._telegram_text(payload)
         endpoint = (

@@ -344,7 +344,7 @@ def update_alert_channels(
 
 class TelegramSubscriptionIn(BaseModel):
     enabled: bool = False
-    chat_id: str = Field(pattern=r"^[1-9][0-9]{0,19}$", description="Chat privado verificado del usuario en Asistenta")
+    chat_id: str = Field(pattern=r"^[1-9][0-9]{0,19}$", description="Chat privado previamente vinculado mediante prueba del bot y confirmación del propietario")
 
 
 class TelegramSubscriptionOut(BaseModel):
@@ -379,6 +379,10 @@ def set_telegram_subscription(
     tenant, user = db.info.get("tenant_id"), db.info.get("user_id")
     if not tenant or not user:
         raise HTTPException(status_code=401, detail="Se requiere una identidad verificada")
+    from app.services.telegram_link import binding_for
+
+    if payload.enabled and not binding_for(db, tenant, user, payload.chat_id):
+        raise HTTPException(status_code=403, detail="Vincula y confirma este chat con Asistenta antes de activarlo")
     row = db.scalar(select(AlertSubscription).where(
         AlertSubscription.tenant_id == tenant, AlertSubscription.event_type == event_type,
     ))

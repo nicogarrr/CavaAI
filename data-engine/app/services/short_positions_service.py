@@ -107,12 +107,36 @@ def emit_shorts_increase(db: Session, company: Company, previous: dict, current:
         # as a real increase in the market's total open short interest.
         old = {r["holder"]: r for r in previous.get("positions", [])}
         new = {r["holder"]: r for r in current.get("positions", [])}
-        if old and old.keys() == new.keys():
+        valid_dates = bool(old and old.keys() == new.keys())
+        advanced = False
+        observation_dates = []
+        if valid_dates:
+            for holder in old:
+                try:
+                    before_date = date.fromisoformat(old[holder]["position_date"])
+                    after_date = date.fromisoformat(new[holder]["position_date"])
+                except (ValueError, TypeError, KeyError):
+                    valid_dates = False
+                    break
+                # Conservative alert policy: never infer a fresh increase from
+                # future, stale or backward holder disclosures. Public CNMV
+                # positions can remain legally current for longer; we keep
+                # them in the panel but do not call them a fresh increase.
+                if not (before_date <= after_date <= now.date()
+                        and now.date() - after_date <= timedelta(days=35)):
+                    valid_dates = False
+                    break
+                if new[holder]["percent"] != old[holder]["percent"] and after_date <= before_date:
+                    valid_dates = False
+                    break
+                advanced = advanced or after_date > before_date
+                observation_dates.append(after_date.isoformat())
+        if valid_dates and advanced:
             before = previous.get("public_total_percent")
             after = current.get("public_total_percent")
             if before is not None and after is not None and after > before:
                 message = (f"{company.ticker}: suma de posiciones cortas públicas CNMV "
-                           f"{before:g}% → {after:g}%. Mismos titulares; solo posiciones públicas >=0,5%, no el total del mercado.")
+                           f"{before:g}% → {after:g}% (fechas de posición {min(observation_dates)} a {max(observation_dates)}). Mismos titulares; solo posiciones públicas >=0,5%, no el total del mercado.")
                 parts = ["CNMV", *[f"{k}:{v['position_date']}:{v['percent']}" for k, v in sorted(new.items())]]
                 source_url = current.get("source_url")
     interest = current.get("short_interest")

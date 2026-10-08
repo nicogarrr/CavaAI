@@ -85,9 +85,11 @@ def test_telegram_notification_uses_configured_channel_without_leaking_token(mon
         ),
     )
 
-    result = _service_with_stubbed_outbox().dispatch(_FakeDB(), _alert(["telegram"]))
+    result = notification_service.NotificationService()._dispatch_telegram(
+        notification_service.get_settings(), {"severity": "high", "title": "Material company news",
+        "message": "A material event was detected.", "company_id": 11, "alert_id": 7, "chat_id": "12345"})
 
-    assert result["telegram"]["status"] == "delivered"
+    assert result["status"] == "delivered"
     url, body = _FakeClient.calls[0]
     assert url.endswith("/sendMessage")
     assert body["chat_id"] == "12345"
@@ -108,9 +110,11 @@ def test_telegram_notification_is_silent_when_not_configured(monkeypatch):
         ),
     )
 
-    result = _service_with_stubbed_outbox().dispatch(_FakeDB(), _alert(["telegram"]))
+    result = notification_service.NotificationService()._dispatch_telegram(
+        notification_service.get_settings(), {"severity": "high", "title": "Material company news",
+        "message": "A material event was detected.", "company_id": 11, "alert_id": 7, "chat_id": "12345"})
 
-    assert result["telegram"]["status"] == "not_configured"
+    assert result["status"] == "not_configured"
 
 
 @pytest.mark.parametrize(
@@ -169,9 +173,11 @@ def test_telegram_429_fails_honestly_without_retry_storm(monkeypatch):
         ),
     )
 
-    result = _service_with_stubbed_outbox().dispatch(_FakeDB(), _alert(["telegram"]))
+    result = notification_service.NotificationService()._dispatch_telegram(
+        notification_service.get_settings(), {"severity": "high", "title": "Material company news",
+        "message": "A material event was detected.", "company_id": 11, "alert_id": 7, "chat_id": "12345"})
 
-    delivery = result["telegram"]
+    delivery = result
     assert delivery["status"] == "throttled"
     assert delivery["error"] == "HTTPStatusError"
     assert _RateLimitedClient.attempts == 1
