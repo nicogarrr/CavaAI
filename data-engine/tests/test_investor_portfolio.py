@@ -198,3 +198,55 @@ def test_curated_data_has_source_and_date():
         assert p.source_url.startswith("https://www.sec.gov/") and p.accession_number and p.as_of
     for m in ip.CURATED_MOVEMENTS:
         assert m.source_url.startswith("https://www.sec.gov/") and m.accession_number and m.movement_date
+
+
+def test_13f_weights_not_official_when_a_value_is_missing():
+    db = _db()
+    _seed_13f(db)
+    beta = db.scalars(select(ManagerHolding).where(ManagerHolding.cusip == "BBB")).one()
+    beta.value_usd_thousands = None
+    db.commit()
+    out = investor_portfolio(db, "buffett")
+    assert out is not None
+    assert out["coverage"] == "partial"
+    assert out["total_value_usd"]["label"] == "SIN_DATOS"
+    assert all(
+        p["weight_pct"]["label"] == "SIN_DATOS" and p["weight_pct"]["value"] is None for p in out["positions"]
+    )
+    assert "parcial" in out["note"]
+
+
+def test_sync_form4_foreign_reporter_persists_nothing():
+    db = _db()
+    foreign = FORM4.replace("0000947033", "0000000001")
+    assert sync_form4(db, "trump", fetch=lambda u: foreign, filings=[FILING]) == 0
+    assert db.scalars(select(InvestorMovement)).all() == []
+
+
+def test_sync_form4_multi_reporter_persists_nothing():
+    db = _db()
+    extra = FORM4.replace(
+        "</reportingOwner>",
+        "</reportingOwner><reportingOwner><reportingOwnerId><rptOwnerCik>0000000002</rptOwnerCik>"
+        "<rptOwnerName>OTRO</rptOwnerName></reportingOwnerId></reportingOwner>",
+        1,
+    )
+    assert sync_form4(db, "trump", fetch=lambda u: extra, filings=[FILING]) == 0
+    assert db.scalars(select(InvestorMovement)).all() == []
+
+
+def test_sync_form4_fetches_outside_any_open_transaction():
+    db = _db()
+    second = {
+        **FILING,
+        "accession_number": "0009999999-24-000002",
+        "document_url": FILING["document_url"] + "2",
+    }
+    seen: list[bool] = []
+
+    def fetch(url: str) -> str:
+        seen.append(db.in_transaction())
+        return FORM4
+
+    assert sync_form4(db, "trump", fetch=fetch, filings=[FILING, second]) == 2
+    assert seen == [False, False]

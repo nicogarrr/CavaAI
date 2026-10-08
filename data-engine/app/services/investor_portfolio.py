@@ -287,7 +287,10 @@ def _portfolio_13f(db: Session, slug: str) -> dict[str, Any]:
             "note": "Sin datos: no hay 13F ingerido para este gestor.",
         }
     rows.sort(key=lambda r: r.value_usd_thousands or Decimal(0), reverse=True)
-    total = _total(rows)
+    complete = all(r.value_usd_thousands is not None for r in rows)
+    # Peso y total solo si TODAS las filas tienen valor: un denominador parcial
+    # daria porcentajes "oficiales" no verificables.
+    total = _total(rows) if complete else None
     report = manager.last_report_date  # type: ignore[union-attr]
     positions = [
         _position_item(
@@ -346,8 +349,11 @@ def _portfolio_13f(db: Session, slug: str) -> dict[str, Any]:
         "movements": movements,
         "as_of": report.isoformat(),
         "source_kinds": ["13F-HR"],
-        "total_value_usd": datum(total and _value_usd(total, report.isoformat()), OFICIAL, report),
-        "note": None,
+        "total_value_usd": datum(_value_usd(total, report.isoformat()) if total else None, OFICIAL, report),
+        "coverage": "ok" if complete else "partial",
+        "note": None
+        if complete
+        else "Cobertura parcial: faltan valores en algunas filas del 13F; pesos y total son SIN_DATOS.",
     }
 
 
@@ -503,9 +509,23 @@ def sync_form4(db: Session, slug: str, *, limit: int = 20, fetch=None, filings=N
         raise ValueError(f"no Form 4 filer CIK reviewed for {slug!r}")
     listing = filings if filings is not None else form4.recent_form4_filings(cik, limit=limit)
     fetch = fetch or form4.fetch_filing_xml
-    created = 0
+    expected = int(cik)
+
+    # Fase 1: red + parseo, sin tocar la BD (no se retiene transaccion durante el fetch).
+    fetched: list[tuple[dict, dict]] = []
     for filing in listing:
         parsed = form4.parse_form4_xml(fetch(filing["document_url"]))
+        reporters = parsed.get("reporters") or []
+        # Fail closed: un unico declarante y con el CIK revisado; si no, no se persiste.
+        if len(reporters) != 1 or not str(reporters[0].get("cik") or "").isdigit():
+            continue
+        if int(reporters[0]["cik"]) != expected:
+            continue
+        fetched.append((filing, parsed))
+
+    # Fase 2: persistencia corta.
+    created = 0
+    for filing, parsed in fetched:
         lines = [t for t in parsed["transactions"] if not t["is_derivative"]]
         for line_no, tx in enumerate(lines):
             exists = db.scalar(
