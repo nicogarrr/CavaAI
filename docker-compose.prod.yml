@@ -121,6 +121,35 @@ services:
       timeout: 5s
       retries: 10
 
+  garage:
+    # Garage (S3 compatible, mantenido, nodo unico). Convive con MinIO durante el
+    # puente: MinIO no se toca hasta cerrar la migracion (rollback = volver las
+    # variables OBJECT_STORAGE_* a su valor por defecto).
+    image: dxflrs/garage:v2.4.1
+    container_name: cavaai-garage
+    restart: unless-stopped
+    command: ["/garage", "server", "--single-node", "--default-bucket"]
+    volumes:
+      - ./infra/garage/garage.toml:/etc/garage.toml:ro
+      - garage_meta:/var/lib/garage/meta
+      - garage_data:/var/lib/garage/data
+    environment:
+      - GARAGE_RPC_SECRET=${GARAGE_RPC_SECRET:?Define GARAGE_RPC_SECRET (openssl rand -hex 32) en .env.production}
+      - GARAGE_DEFAULT_ACCESS_KEY=${GARAGE_ACCESS_KEY:?Define GARAGE_ACCESS_KEY (GK + 24 hex) en .env.production}
+      - GARAGE_DEFAULT_SECRET_KEY=${GARAGE_SECRET_KEY:?Define GARAGE_SECRET_KEY (64 hex) en .env.production}
+      - GARAGE_DEFAULT_BUCKET=research
+    healthcheck:
+      # La imagen solo trae el binario /garage (sin shell ni curl).
+      test: ["CMD", "/garage", "status"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
   backend:
     build:
       context: ./data-engine
@@ -170,9 +199,12 @@ services:
       - KPI_DEFER_LEASE_SECONDS=${KPI_DEFER_LEASE_SECONDS:-900}
       - QDRANT_URL=http://qdrant:6333
       - VECTOR_STORE=qdrant
-      - MINIO_ENDPOINT=minio:9000
-      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
-      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      # Backend de objetos: por defecto MinIO; el corte a Garage es solo cambiar
+      # OBJECT_STORAGE_* en .env.production (docs/OBJECT_STORAGE_MIGRATION.md).
+      - MINIO_ENDPOINT=${OBJECT_STORAGE_ENDPOINT:-minio:9000}
+      - MINIO_ACCESS_KEY=${OBJECT_STORAGE_ACCESS_KEY:-${MINIO_ROOT_USER}}
+      - MINIO_SECRET_KEY=${OBJECT_STORAGE_SECRET_KEY:-${MINIO_ROOT_PASSWORD}}
+      - MINIO_REGION=${OBJECT_STORAGE_REGION:-}
       - MINIO_BUCKET=research
       - DUCKDB_PATH=/data/analytics.duckdb
       - FASTEMBED_CACHE_PATH=/data/fastembed-cache
@@ -246,9 +278,12 @@ services:
       - KPI_DEFER_LEASE_SECONDS=${KPI_DEFER_LEASE_SECONDS:-900}
       - QDRANT_URL=http://qdrant:6333
       - VECTOR_STORE=qdrant
-      - MINIO_ENDPOINT=minio:9000
-      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
-      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      # Backend de objetos: por defecto MinIO; el corte a Garage es solo cambiar
+      # OBJECT_STORAGE_* en .env.production (docs/OBJECT_STORAGE_MIGRATION.md).
+      - MINIO_ENDPOINT=${OBJECT_STORAGE_ENDPOINT:-minio:9000}
+      - MINIO_ACCESS_KEY=${OBJECT_STORAGE_ACCESS_KEY:-${MINIO_ROOT_USER}}
+      - MINIO_SECRET_KEY=${OBJECT_STORAGE_SECRET_KEY:-${MINIO_ROOT_PASSWORD}}
+      - MINIO_REGION=${OBJECT_STORAGE_REGION:-}
       - MINIO_BUCKET=research
       - SEC_USER_AGENT=${SEC_USER_AGENT:-CavaAI research contact@cavaai.local}
       - SEC_SNAPSHOT_DIR=${SEC_SNAPSHOT_DIR:-}
@@ -309,9 +344,12 @@ services:
       - KPI_DEFER_LEASE_SECONDS=${KPI_DEFER_LEASE_SECONDS:-900}
       - QDRANT_URL=http://qdrant:6333
       - VECTOR_STORE=qdrant
-      - MINIO_ENDPOINT=minio:9000
-      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
-      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      # Backend de objetos: por defecto MinIO; el corte a Garage es solo cambiar
+      # OBJECT_STORAGE_* en .env.production (docs/OBJECT_STORAGE_MIGRATION.md).
+      - MINIO_ENDPOINT=${OBJECT_STORAGE_ENDPOINT:-minio:9000}
+      - MINIO_ACCESS_KEY=${OBJECT_STORAGE_ACCESS_KEY:-${MINIO_ROOT_USER}}
+      - MINIO_SECRET_KEY=${OBJECT_STORAGE_SECRET_KEY:-${MINIO_ROOT_PASSWORD}}
+      - MINIO_REGION=${OBJECT_STORAGE_REGION:-}
       - MINIO_BUCKET=research
       - SEC_USER_AGENT=${SEC_USER_AGENT:-CavaAI research contact@cavaai.local}
       - SEC_SNAPSHOT_DIR=${SEC_SNAPSHOT_DIR:-}
@@ -381,9 +419,12 @@ services:
       - KPI_DEFER_LEASE_SECONDS=${KPI_DEFER_LEASE_SECONDS:-900}
       - QDRANT_URL=http://qdrant:6333
       - VECTOR_STORE=qdrant
-      - MINIO_ENDPOINT=minio:9000
-      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
-      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      # Backend de objetos: por defecto MinIO; el corte a Garage es solo cambiar
+      # OBJECT_STORAGE_* en .env.production (docs/OBJECT_STORAGE_MIGRATION.md).
+      - MINIO_ENDPOINT=${OBJECT_STORAGE_ENDPOINT:-minio:9000}
+      - MINIO_ACCESS_KEY=${OBJECT_STORAGE_ACCESS_KEY:-${MINIO_ROOT_USER}}
+      - MINIO_SECRET_KEY=${OBJECT_STORAGE_SECRET_KEY:-${MINIO_ROOT_PASSWORD}}
+      - MINIO_REGION=${OBJECT_STORAGE_REGION:-}
       - MINIO_BUCKET=research
       - SEC_USER_AGENT=${SEC_USER_AGENT:-CavaAI research contact@cavaai.local}
       - SEC_SNAPSHOT_DIR=${SEC_SNAPSHOT_DIR:-}
@@ -433,9 +474,12 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - KPI_QUEUE_MAX_PENDING=${KPI_QUEUE_MAX_PENDING:-500}
       - KPI_DEFER_LEASE_SECONDS=${KPI_DEFER_LEASE_SECONDS:-900}
-      - MINIO_ENDPOINT=minio:9000
-      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
-      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      # Backend de objetos: por defecto MinIO; el corte a Garage es solo cambiar
+      # OBJECT_STORAGE_* en .env.production (docs/OBJECT_STORAGE_MIGRATION.md).
+      - MINIO_ENDPOINT=${OBJECT_STORAGE_ENDPOINT:-minio:9000}
+      - MINIO_ACCESS_KEY=${OBJECT_STORAGE_ACCESS_KEY:-${MINIO_ROOT_USER}}
+      - MINIO_SECRET_KEY=${OBJECT_STORAGE_SECRET_KEY:-${MINIO_ROOT_PASSWORD}}
+      - MINIO_REGION=${OBJECT_STORAGE_REGION:-}
       - MINIO_BUCKET=research
     healthcheck:
       test:
@@ -489,9 +533,12 @@ services:
       - KPI_DEFER_LEASE_SECONDS=${KPI_DEFER_LEASE_SECONDS:-900}
       - QDRANT_URL=http://qdrant:6333
       - VECTOR_STORE=qdrant
-      - MINIO_ENDPOINT=minio:9000
-      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
-      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      # Backend de objetos: por defecto MinIO; el corte a Garage es solo cambiar
+      # OBJECT_STORAGE_* en .env.production (docs/OBJECT_STORAGE_MIGRATION.md).
+      - MINIO_ENDPOINT=${OBJECT_STORAGE_ENDPOINT:-minio:9000}
+      - MINIO_ACCESS_KEY=${OBJECT_STORAGE_ACCESS_KEY:-${MINIO_ROOT_USER}}
+      - MINIO_SECRET_KEY=${OBJECT_STORAGE_SECRET_KEY:-${MINIO_ROOT_PASSWORD}}
+      - MINIO_REGION=${OBJECT_STORAGE_REGION:-}
       - MINIO_BUCKET=research
       - SEC_USER_AGENT=${SEC_USER_AGENT:-CavaAI research contact@cavaai.local}
       - SEC_HF_MIRROR_DATASET=${SEC_HF_MIRROR_DATASET:-}
@@ -558,6 +605,10 @@ volumes:
     name: cavaai-prod-qdrant
   minio_data:
     name: cavaai-prod-minio
+  garage_meta:
+    name: cavaai-prod-garage-meta
+  garage_data:
+    name: cavaai-prod-garage-data
   duckdb_data:
     name: cavaai-prod-duckdb
   caddy_data:

@@ -184,6 +184,9 @@ class Settings(BaseSettings):
     minio_access_key: str = "portfolio"
     minio_secret_key: str = "portfoliosecret"
     minio_bucket: str = "research"
+    # Region S3. Vacia con MinIO (el SDK la autodetecta); "garage" con Garage,
+    # que la fija en s3_region de garage.toml.
+    minio_region: str = ""
     document_storage_backend: str = "minio"
     # Mongo (auth Better Auth del frontend). Se valida aqui solo para poder
     # rechazar credenciales por defecto en produccion; el data-engine no
