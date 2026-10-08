@@ -6,6 +6,7 @@ Cero red: todo va contra httpx.MockTransport. Sin proxies ni cambio de IP.
 from __future__ import annotations
 
 import asyncio
+from urllib.parse import urlparse
 
 import httpx
 import pytest
@@ -171,7 +172,7 @@ def test_submissions_falls_back_to_efts_when_sec_blocks_and_marks_it_partial():
     async def handler(request: httpx.Request) -> httpx.Response:
         url = str(request.url)
         seen.append(url)
-        if "efts.sec.gov" in url:
+        if urlparse(url).hostname == "efts.sec.gov":
             return httpx.Response(
                 200,
                 json=_efts_page(
@@ -202,7 +203,7 @@ def test_submissions_falls_back_to_efts_when_sec_blocks_and_marks_it_partial():
 
 def test_404_is_a_data_failure_and_never_goes_to_efts():
     async def handler(request: httpx.Request) -> httpx.Response:
-        assert "efts.sec.gov" not in str(request.url)
+        assert urlparse(str(request.url)).hostname != "efts.sec.gov"
         return httpx.Response(404, request=request)
 
     async def probe():
@@ -229,7 +230,7 @@ def test_when_efts_also_fails_the_original_error_surfaces():
 
 def test_recent_filings_uses_efts_fallback_end_to_end():
     async def handler(request: httpx.Request) -> httpx.Response:
-        if "efts.sec.gov" in str(request.url):
+        if urlparse(str(request.url)).hostname == "efts.sec.gov":
             return httpx.Response(
                 200,
                 json=_efts_page([("0000000007-26-000001", "x-8k.htm", "8-K", "2026-10-01", "2026-09-30", 1)]),
@@ -282,7 +283,7 @@ def test_cache_returns_copies_so_mutation_does_not_leak():
 
 def test_efts_partial_coverage_is_exposed_to_consumers():
     async def handler(request: httpx.Request) -> httpx.Response:
-        if "efts.sec.gov" in str(request.url):
+        if urlparse(str(request.url)).hostname == "efts.sec.gov":
             return httpx.Response(
                 200,
                 json=_efts_page([("0000000004-26-000009", "k.htm", "10-K", "2026-02-01", "2025-12-31", 1)]),
