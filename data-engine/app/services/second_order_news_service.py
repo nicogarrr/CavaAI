@@ -12,7 +12,7 @@ import re
 import unicodedata
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 from sqlalchemy import String, cast, func, or_, select
@@ -127,7 +127,7 @@ def _company_exposures(company: Company) -> list[tuple[str, str]]:
     return values
 
 
-def _source_date(event: NewsEvent) -> str | None:
+def _source_date(event: Any) -> str | None:
     if (event.metadata_ or {}).get("date_source") != "source":
         return None
     date = event.date
@@ -163,7 +163,7 @@ def _jev_marker(theme: Theme) -> dict:
 
 
 def _candidate(company: Company, theme: Theme, field: str, value: str,
-               event: NewsEvent, marker: dict) -> dict:
+               event: Any, marker: dict) -> dict:
     source = {"news_event_id": event.id, "url": event.url, "published_at": _source_date(event)}
     return {
         "ticker": company.ticker, "company_name": company.name,
@@ -257,13 +257,13 @@ def analyze_second_order(db: Session, event: NewsEvent, *, use_llm: bool = False
     # Copia escalares y suelta la transaccion antes de cualquier LLM: sin conexion
     # retenida durante la espera ni en el reintento (pool 5+10).
     tenant_id = db.info.get("tenant_id")
-    event = SimpleNamespace(
+    snap: Any = SimpleNamespace(
         id=event.id, url=event.url, source=event.source, date=event.date,
         metadata_=dict(event.metadata_ or {}), title=event.title, summary=event.summary,
     )
     if use_llm:
         db.commit()
-    text = " ".join(part for part in (event.title, event.summary) if part)[:3500]
+    text = " ".join(part for part in (snap.title, snap.summary) if part)[:3500]
     mode = "determinista"
     llm_note = None
     llm_quota = None
@@ -307,15 +307,15 @@ def analyze_second_order(db: Session, event: NewsEvent, *, use_llm: bool = False
         if matches:
             marker = _jev_marker(theme)
             candidates.extend(
-                _candidate(company, theme, field, value, event, marker)
+                _candidate(company, theme, field, value, snap, marker)
                 for company, field, value in matches
             )
         if len(candidates) >= 100:
             break
     return {
-        "news_event_id": event.id, "status": "hipótesis_no_verificadas" if candidates else "sin_datos",
+        "news_event_id": snap.id, "status": "hipótesis_no_verificadas" if candidates else "sin_datos",
         "generated_at": datetime.now(UTC).isoformat(), "mode": mode,
-        "source": {"url": event.url, "published_at": _source_date(event), "name": event.source},
+        "source": {"url": snap.url, "published_at": _source_date(snap), "name": snap.source},
         "source_claim": text, "source_verified": False,
         "themes": [theme.model_dump() for theme in extraction.themes],
         "candidates": candidates, "limited_to": 100, "note": llm_note,
