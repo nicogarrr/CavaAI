@@ -25,7 +25,7 @@ retenciones (F), regalos (G), ejercicios (M) y disclosures 10b5-1 quedan
 fuera por construccion. El wording nunca afirma "mercado abierto": el
 codigo P cubre compras abiertas Y privadas (#81).
 
-Telegram es opt-in via settings.insider_alerts_enabled y jamas rompe la
+Telegram requiere suscripción persistida por propietario/tipo y jamas rompe la
 evaluacion; el canal por defecto es in-app.
 """
 
@@ -248,9 +248,6 @@ def evaluate(
                 )
             ).all()
         }
-        from app.core.config import get_settings
-
-        telegram_enabled = bool(getattr(get_settings(), "insider_alerts_enabled", False))
         alerts, coverage = _build_alerts(db, purchases)
         stats.update(coverage)
         for alert in alerts:
@@ -276,26 +273,17 @@ def evaluate(
             db.commit()
             existing.add(fp)
             stats["alerts_created"] += 1
-            if telegram_enabled:
-                try:
-                    payload = {
-                        "severity": alert["severity"],
-                        "title": alert["title"],
-                        "message": alert["message"],
-                        "alert_id": fp,
-                    }
-                    if notifier is not None:
-                        notifier(payload)
-                    else:
-                        from app.services.notification_service import NotificationService
+            # Per-user/type consent and atomic delivery claims supersede the
+            # old global INSIDER_ALERTS_ENABLED fire-and-forget path.
+            try:
+                from app.services.notification_service import NotificationService
 
-                        NotificationService()._dispatch_telegram(get_settings(), payload)
+                deliveries = NotificationService().dispatch(db, record)
+                if deliveries.get("telegram", {}).get("status") == "delivered":
                     stats["telegram_sent"] += 1
-                    record.channels = ["in_app", "telegram"]
-                    db.add(record)
-                    db.commit()
-                except Exception as exc:  # noqa: BLE001 - notificar jamas rompe
-                    stats["errors"].append(f"telegram: {type(exc).__name__}")
+            except Exception as exc:
+                db.rollback()
+                stats["errors"].append(f"telegram: {type(exc).__name__}")
         return stats
     except Exception as exc:  # noqa: BLE001 - el actor jamas recibe una excepcion
         stats["status"] = "error"

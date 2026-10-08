@@ -340,3 +340,62 @@ def update_alert_channels(
     db.commit()
     db.refresh(alert)
     return alert
+
+
+class TelegramSubscriptionIn(BaseModel):
+    enabled: bool = False
+    chat_id: str = Field(pattern=r"^[1-9][0-9]{0,19}$", description="Chat privado previamente vinculado mediante prueba del bot y confirmación del propietario")
+
+
+class TelegramSubscriptionOut(BaseModel):
+    event_type: Literal["thesis_broken", "new_filing", "insiders", "shorts_rising"]
+    enabled: bool
+    chat_id: str | None = None
+
+
+@router.get("/telegram-subscriptions", response_model=list[TelegramSubscriptionOut])
+def list_telegram_subscriptions(db: Session = Depends(get_db)) -> list[dict]:
+    from app.models import AlertSubscription
+    from app.services.outbound_alerts import EVENT_TYPES
+
+    if not db.info.get("tenant_id") or not db.info.get("user_id"):
+        raise HTTPException(status_code=401, detail="Se requiere una identidad verificada")
+    rows = {row.event_type: row for row in db.scalars(select(AlertSubscription).where(
+        AlertSubscription.user_id == db.info["user_id"],
+        AlertSubscription.tenant_id == db.info["tenant_id"],
+    ))}
+    return [{"event_type": kind, "enabled": rows[kind].enabled if kind in rows else False,
+             "chat_id": rows[kind].chat_id if kind in rows else None} for kind in EVENT_TYPES]
+
+
+@router.put("/telegram-subscriptions/{event_type}", response_model=TelegramSubscriptionOut)
+def set_telegram_subscription(
+    event_type: Literal["thesis_broken", "new_filing", "insiders", "shorts_rising"],
+    payload: TelegramSubscriptionIn,
+    db: Session = Depends(get_db),
+) -> dict:
+    from app.models import AlertSubscription
+
+    tenant, user = db.info.get("tenant_id"), db.info.get("user_id")
+    if not tenant or not user:
+        raise HTTPException(status_code=401, detail="Se requiere una identidad verificada")
+    from app.services.telegram_link import binding_for
+
+    if payload.enabled and not binding_for(db, tenant, user, payload.chat_id):
+        raise HTTPException(status_code=403, detail="Vincula y confirma este chat con Asistenta antes de activarlo")
+    row = db.scalar(select(AlertSubscription).where(
+        AlertSubscription.tenant_id == tenant, AlertSubscription.event_type == event_type,
+    ))
+    if row and row.user_id != user:
+        raise HTTPException(status_code=403, detail="Solo el propietario puede cambiar esta suscripción")
+    now = datetime.now(UTC)
+    if row is None:
+        row = AlertSubscription(tenant_id=tenant, user_id=user, event_type=event_type,
+                                chat_id=payload.chat_id, enabled=payload.enabled, enabled_at=now)
+        db.add(row)
+    else:
+        if payload.enabled and (not row.enabled or row.chat_id != payload.chat_id):
+            row.enabled_at = now
+        row.enabled, row.chat_id = payload.enabled, payload.chat_id
+    db.commit()
+    return {"event_type": event_type, "enabled": row.enabled, "chat_id": row.chat_id}

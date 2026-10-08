@@ -38,6 +38,7 @@ from app.api.routes import (
     settings,
     sources,
     taxes,
+    telegram_link,
     thesis,
     valuation,
     watchlist,
@@ -53,6 +54,7 @@ from app.api.routes import (
 api_router = APIRouter()
 api_router.include_router(data_health.router, prefix="/data-health", tags=["data-health"])
 api_router.include_router(alerts.router, prefix="/alerts", tags=["alerts"])
+api_router.include_router(telegram_link.router, prefix="/alerts", tags=["alerts"])
 api_router.include_router(calendar.router, prefix="/calendar", tags=["calendar"])
 api_router.include_router(companies.router, prefix="/companies", tags=["companies"])
 api_router.include_router(company_events.router, prefix="/companies", tags=["companies"])
