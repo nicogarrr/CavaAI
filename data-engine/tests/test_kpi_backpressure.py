@@ -9,7 +9,7 @@ import app.workers.dramatiq_app as workers
 
 def _client_with_depth(depth: int) -> MagicMock:
     client = MagicMock()
-    client.hlen.return_value = depth
+    client.hlen.side_effect = lambda key: 0 if ".DQ." in key else depth
     return client
 
 
@@ -17,12 +17,14 @@ class TestQueueProbes:
     def test_depth_uses_msgs_hash(self) -> None:
         client = _client_with_depth(42)
         assert workers.kpi_queue_depth(client) == 42
-        client.hlen.assert_called_once_with("dramatiq:kpis.msgs")
+        assert [call.args[0] for call in client.hlen.call_args_list] == [
+            "dramatiq:kpis.msgs", "dramatiq:kpis.DQ.msgs"
+        ]
 
-    def test_depth_fail_open_on_error(self) -> None:
+    def test_depth_unavailable_on_error(self) -> None:
         client = MagicMock()
         client.hlen.side_effect = ConnectionError("redis down")
-        assert workers.kpi_queue_depth(client) == 0
+        assert workers.kpi_queue_depth(client) is None
 
     def test_capacity_boundary(self) -> None:
         with patch.object(workers, "kpi_queue_max_pending", return_value=10):

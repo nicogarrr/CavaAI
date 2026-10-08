@@ -1,0 +1,21 @@
+{
+  "kind": "synthetic_local_not_production",
+  "dramatiq": "1.18.0",
+  "redis": "7.2.6",
+  "shared": {
+    "submitted_kpi": 80,
+    "admitted_kpi": 80,
+    "deferred_kpi": 0,
+    "threads": 4,
+    "alert_latency_ms": 810.84,
+    "admitted_batch_drain_ms": 821.09
+  },
+  "isolated_bounded": {
+    "submitted_kpi": 80,
+    "admitted_kpi": 20,
+    "deferred_kpi": 60,
+    "threads": 5,
+    "alert_latency_ms": 1.94,
+    "admitted_batch_drain_ms": 210.52
+  }
+}
