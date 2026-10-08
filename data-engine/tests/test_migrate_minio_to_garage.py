@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from io import BytesIO
 from types import SimpleNamespace
 
 from scripts.storage.migrate_minio_to_garage import migrate
