@@ -48967,8 +48967,8 @@
             "required": false,
             "schema": {
               "default": 0.25,
-              "exclusiveMinimum": 0,
               "maximum": 0.9,
+              "minimum": 0.0005,
               "title": "Target Mos",
               "type": "number"
             }

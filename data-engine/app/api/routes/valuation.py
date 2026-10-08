@@ -34,7 +34,7 @@ def historical_valuation(
 @router.get("/{ticker}/entry-price")
 def entry_price(
     ticker: str,
-    target_mos: float = Query(default=0.25, gt=0, le=0.9),
+    target_mos: float = Query(default=0.25, ge=0.0005, le=0.9),
     use_llm: bool = Query(default=False),
     db: Session = Depends(get_db),
 ) -> dict:

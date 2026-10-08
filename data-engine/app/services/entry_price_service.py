@@ -3,17 +3,24 @@
 El calculo es SIEMPRE determinista: precio de entrada = valor justo (escenarios
 base y bear del motor de valoracion) x (1 - margen de seguridad objetivo), con
 la distancia al precio actual. Sin valor justo el estado es N/D (sin_datos):
-nunca se inventa una cifra para sustituirlo. Todo el resultado se etiqueta
-como estimacion del modelo, nunca como dato oficial.
+nunca se inventa una cifra para sustituirlo. Sin moneda en la fuente, los
+importes se muestran sin atribuirle ninguna divisa (nunca un USD inventado) y
+``currency_estado`` lo declara. Todo el resultado se etiqueta como estimacion
+del modelo, nunca como dato oficial.
 
-El LLM solo REDACTA la explicacion, y solo cuando el endpoint la pide
-(``use_llm=true``) y el flag ENTRY_PRICE_LLM_ENABLED=1 esta activo. Recibe las
-cifras ya verificadas por este servicio como DATOS; su salida pasa por
-``complete_guarded`` (idioma e integridad de tokens, PR #933) y por un
-validador de cifras que rechaza cualquier numero que no sea una de las cifras
-verificadas. Ante cualquier fallo (proveedor, cuota, presupuesto, validacion)
-la explicacion que se muestra es la determinista. Sin datos suficientes no hay
-llamada al LLM.
+Toda cifra que ve el usuario sale de la PLANTILLA DETERMINISTA: cada numero va
+en su campo, con su unidad y su escenario, por construccion. El margen objetivo
+se cuantiza a resolucion de 0.1 punto porcentual y se muestra con esa misma
+precision (25%, 25.4%, 0.5%): el porcentaje declarado siempre reproduce el
+precio de entrada calculado, sin redondeos que lo contradigan.
+
+El LLM, como mucho, aporta un CONTEXTO sin cifras (flag ENTRY_PRICE_LLM_ENABLED=1
+y use_llm=true en el endpoint): una nota cualitativa corta que no recibe ningun
+numero del servicio y cuya salida se valida dos veces — complete_guarded
+(idioma e integridad, PR #933) y un validador que rechaza cualquier cifra
+(digitos, numeros en palabras, escalas como "millones", porcentajes y divisas).
+Ante cualquier fallo (proveedor, cuota, presupuesto, validacion) se publica
+solo la explicacion determinista. Sin datos suficientes no hay llamada al LLM.
 
 La sesion se confirma (commit) ANTES de cualquier llamada al LLM, siguiendo a
 llm_proposal_runner y second_order_news_service: ninguna conexion queda
@@ -29,6 +36,7 @@ import logging
 import math
 import os
 import re
+import unicodedata
 from collections.abc import Mapping
 from typing import Any
 
@@ -47,6 +55,12 @@ from app.services.valuation_service import ValuationService
 logger = logging.getLogger(__name__)
 
 DEFAULT_TARGET_MOS = 0.25
+# Resolucion autorizada del margen objetivo: decimas de punto porcentual. El
+# parametro se cuantiza a multiplos de 0.001 y se responde cuantizado, de modo
+# que el porcentaje mostrado SIEMPRE reproduce el precio de entrada calculado
+# (con 0.254 la entrada es 89.52 y el texto dice 25.4%, no 25%).
+RESOLUTION_MOS = 0.001
+MIN_TARGET_MOS = 0.001
 MAX_TARGET_MOS = 0.9
 # Estimacion de planificacion para el cortacircuitos de presupuesto: el modelo
 # fijado es gratuito, pero el tope protege de overrides de configuracion.
@@ -61,16 +75,87 @@ WARNING = (
 # conservador y sugeriria pagar de mas.
 _SCENARIO_KEYS = (("base", "base_value"), ("bear", "bear_value"))
 
-_NUMBER_RE = re.compile(r"[-+]?\d+(?:[.,]\d+)?")
-
 _SYSTEM_PROMPT = (
-    "Redacta una explicación breve (máximo 80 palabras) del precio de entrada "
-    "de una acción, en español profesional. Las cifras del mensaje son DATOS "
-    "verificados: úsalas exactamente con el formato dado y no escribas ningún "
-    "otro número (ni cantidades, ni ordinales, ni porcentajes nuevos). Di que "
-    "es una estimación del modelo con sus supuestos, no un dato oficial ni "
-    "una recomendación de inversión. No inventes noticias, fechas ni causas."
+    "Redacta un contexto breve (máximo 40 palabras) para acompañar el precio "
+    "de entrada de una acción calculado por un modelo de valoración, en "
+    "español profesional. PROHIBIDO escribir cifras: ningún número (ni en "
+    "dígitos ni en palabras), ningún porcentaje, ninguna cantidad, ninguna "
+    "escala (mil, millones...) y ninguna divisa. Explica en general qué "
+    "significa exigir un margen de seguridad antes de comprar y recuerda que "
+    "es una estimación del modelo con sus supuestos, no una recomendación de "
+    "inversión. No inventes noticias, fechas ni causas."
 )
+
+# ---------------------------------------------------------------------------
+# Validador del contexto LLM: no puede contener NINGUNA cifra.
+# ---------------------------------------------------------------------------
+
+_DIGIT_RE = re.compile(r"\d")
+_TOKEN_RE = re.compile(r"[a-z]+")
+_BANNED_SYMBOLS = ("%", "$", "€", "£", "¥")
+
+# Cardinales y ordinales numericos en espanol (normalizados, sin tildes). Se
+# excluyen a proposito "un/uno/una" (articulos), "primero", "segundo",
+# "cuarto", "medio" y "mayor/menor": son prosa conectiva habitual y su rechazo
+# solo costaria un fallback. Los demas solo aparecen para cuantificar.
+_NUMBER_WORDS_ES = frozenset(
+    ["dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez", "once", "doce", "trece", "catorce", "quince", "dieciseis", "diecisiete", "dieciocho", "diecinueve", "veinte", "veintiuno", "veintidos", "veintitres", "veinticuatro", "veinticinco", "veintiseis", "veintisiete", "veintiocho", "veintinueve", "treinta", "cuarenta", "cincuenta", "sesenta", "setenta", "ochenta", "noventa", "cien", "ciento", "cientos", "doscientos", "trescientos", "cuatrocientos", "quinientos", "seiscientos", "setecientos", "ochocientos", "novecientos", "mitad", "tercio", "decena", "docena", "centena", "centenar", "millar", "doble", "triple", "cuadruple"]
+)
+_NUMBER_WORDS_EN = frozenset(
+    ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety", "hundred", "thousands", "double", "triple", "half", "dozen"]
+)
+_SCALE_WORDS = frozenset(
+    ["mil", "miles", "millon", "millones", "billon", "billones", "trillon", "trillones", "hundred", "thousand", "million", "billion", "trillion"]
+)
+# El contexto nunca nombra divisas: sin moneda en la fuente, afirmar USD seria
+# inventarla; con moneda, la plantilla determinista es quien la rotula.
+_CURRENCY_WORDS = frozenset(
+    ["usd", "eur", "gbp", "jpy", "chf", "mxn", "dolar", "dolares", "dollar", "dollars", "euro", "euros", "libra", "libras", "pound", "pounds", "yen", "yenes", "peso", "pesos", "cent", "cents", "centavo", "centavos", "centimo", "centimos"]
+)
+_BANNED_TOKENS = _NUMBER_WORDS_ES | _NUMBER_WORDS_EN | _SCALE_WORDS | _CURRENCY_WORDS
+
+
+def _normalize(text: str) -> str:
+    return unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().lower()
+
+
+def context_verified(text: str) -> bool:
+    """El contexto LLM es publicable solo si NO contiene ninguna cifra.
+
+    Fail-closed por construccion: digitos, simbolos de porcentaje o divisa,
+    numeros en palabras (espanol e ingles), escalas ("millones") y nombres de
+    moneda invalidan el texto entero. Un falso positivo solo cuesta el
+    reintento o el camino determinista; un falso negativo publicaria una
+    cifra no verificada.
+    """
+    if not isinstance(text, str) or not text.strip():
+        return False
+    if _DIGIT_RE.search(text):
+        return False
+    if any(symbol in text for symbol in _BANNED_SYMBOLS):
+        return False
+    tokens = set(_TOKEN_RE.findall(_normalize(text)))
+    return not tokens & _BANNED_TOKENS
+
+
+# ---------------------------------------------------------------------------
+# Nucleo determinista
+# ---------------------------------------------------------------------------
+
+
+def quantize_target_mos(target_mos: float) -> float:
+    """Cuantiza el margen objetivo a la resolucion autorizada (0.1%).
+
+    Devuelve el valor cuantizado que se usa en el calculo y se muestra en los
+    textos, o levanta ValueError si queda fuera de [0.001, 0.9]. Asi la cifra
+    declarada y el precio de entrada son coherentes al decimal.
+    """
+    if isinstance(target_mos, bool) or not isinstance(target_mos, (int, float)):
+        raise ValueError(f"target_mos fuera de rango [{MIN_TARGET_MOS}, {MAX_TARGET_MOS}]")
+    target = round(float(target_mos), 3)
+    if not MIN_TARGET_MOS <= target <= MAX_TARGET_MOS:
+        raise ValueError(f"target_mos fuera de rango [{MIN_TARGET_MOS}, {MAX_TARGET_MOS}]")
+    return target
 
 
 def _positive_finite(value: Any) -> float | None:
@@ -87,6 +172,18 @@ def _fmt_price(value: float) -> str:
     return f"{value:.2f}"
 
 
+def _fmt_pct(value: float, *, signed: bool = False) -> str:
+    """Porcentaje con a lo sumo 1 decimal, sin ceros de relleno.
+
+    A la resolucion autorizada del margen (0.1%) la forma es exacta:
+    25%, 25.4%, 0.5%, 0.1%, 90%. Para la distancia (derivada) es la
+    presentacion; el valor exacto va en el campo JSON.
+    """
+    text = f"{abs(value) * 100:.1f}".rstrip("0").rstrip(".")
+    sign = "-" if value < 0 else ("+" if signed else "")
+    return f"{sign}{text}%"
+
+
 def _price_position(distance: float | None) -> str | None:
     if distance is None:
         return None
@@ -98,20 +195,14 @@ def compute_entry_prices(
 ) -> dict[str, Any]:
     """Nucleo determinista. Nunca llama al LLM ni toca la base de datos.
 
-    precio de entrada = valor justo x (1 - margen objetivo), por escenario
-    (base y bear). ``entry_vs_current_pct`` = entrada / precio actual - 1:
-    positivo, el precio actual ya esta por debajo de la entrada; negativo, la
-    entrada queda ese tramo por debajo del precio actual. Sin valor justo o
-    sin precio actual los campos son None y el estado lo dice, nunca un
-    numero inventado.
+    precio de entrada = valor justo x (1 - margen objetivo cuantizado), por
+    escenario (base y bear). ``entry_vs_current_pct`` = entrada / precio
+    actual - 1: positivo, el precio actual ya esta en o por debajo de la
+    entrada; negativo, la entrada queda ese tramo por debajo del precio
+    actual. Sin valor justo o sin precio actual los campos son None y el
+    estado lo dice, nunca un numero inventado.
     """
-    if (
-        isinstance(target_mos, bool)
-        or not isinstance(target_mos, (int, float))
-        or not 0 < float(target_mos) <= MAX_TARGET_MOS
-    ):
-        raise ValueError(f"target_mos fuera de rango (0, {MAX_TARGET_MOS}]")
-    target = float(target_mos)
+    target = quantize_target_mos(target_mos)
     current_price = _positive_finite(valuation.get("current_price"))
     trace = valuation.get("trace")
     price_as_of = trace.get("price_as_of") if isinstance(trace, Mapping) else None
@@ -145,16 +236,17 @@ def compute_entry_prices(
 
 
 def _deterministic_explanation(
-    ticker: str, currency: str, report: Mapping[str, Any]
+    ticker: str, currency: str | None, report: Mapping[str, Any]
 ) -> str:
-    """Explicacion de plantilla: siempre disponible, con las mismas cifras.
+    """Explicacion de plantilla: siempre disponible y unica fuente de cifras.
 
-    Es el fallback cuando el LLM no corre o su salida se rechaza, y nunca
-    empeora con la capa LLM: las relaciones cifra-campo-unidad ya salen
-    verificadas del calculo.
+    Cada numero va en su campo con su unidad y su escenario por construccion;
+    el LLM nunca lo reescribe. Sin moneda en la fuente, los importes se
+    muestran sin divisa y se declara — nunca se atribuye una inventada.
     """
     target = float(report["target_margin_of_safety"])
     current = report["current_price"]
+    unit = f" {currency}" if currency else ""
     computed = [s for s in report["scenarios"] if s["entry_price"] is not None]
     if not computed:
         return (
@@ -167,109 +259,47 @@ def _deterministic_explanation(
     for item in computed:
         intro = (
             f"Escenario {item['scenario']}: con un valor justo de "
-            f"{_fmt_price(item['fair_value'])} {currency} y un margen de "
-            f"seguridad objetivo del {target:.0%}, el precio de entrada es "
-            f"{_fmt_price(item['entry_price'])} {currency}"
+            f"{_fmt_price(item['fair_value'])}{unit} y un margen de "
+            f"seguridad objetivo del {_fmt_pct(target)}, el precio de entrada es "
+            f"{_fmt_price(item['entry_price'])}{unit}"
         )
         distance = item["entry_vs_current_pct"]
         if distance is None:
             parts.append(f"{intro}; sin precio actual no hay distancia que medir.")
         elif distance >= 0:
             parts.append(
-                f"{intro}; el precio actual ({_fmt_price(current)} {currency}) "
+                f"{intro}; el precio actual ({_fmt_price(current)}{unit}) "
                 "ya está en o por debajo de ese nivel."
             )
         else:
             parts.append(
-                f"{intro}, un {abs(distance):.1%} por debajo del precio actual "
-                f"({_fmt_price(current)} {currency})."
+                f"{intro}, un {_fmt_pct(abs(distance))} por debajo del precio actual "
+                f"({_fmt_price(current)}{unit})."
             )
     missing = [s["scenario"] for s in report["scenarios"] if s["entry_price"] is None]
     if missing:
         parts.append(
             f"Escenario {' y '.join(missing)} sin datos: el modelo no da valor justo."
         )
+    if currency is None:
+        parts.append("La fuente no declara la moneda de estos importes.")
     return " ".join(parts)
 
 
-def _verified_figure_values(report: Mapping[str, Any]) -> set[float]:
-    """Cifras que el LLM puede citar, en todas sus formas redondeadas.
-
-    Precios (valor justo, entrada, actual): solo su forma cruda redondeada a
-    0, 1 y 2 decimales. Ratios (margen objetivo, distancia): ademas su forma
-    porcentual (x100) con ambos signos — "-50.0%", "50 %", "0.5" y "0.50" son
-    la misma distancia. Dar a los precios la forma x100 admitiria una cifra
-    manipulada (90.00 -> "9000") y no darla a los ratios rechazaria el
-    formato porcentual con que se pasan al modelo. Cualquier otro numero en
-    la salida es una cifra manipulada o inventada y la invalida.
-    """
-    allowed: set[float] = set()
-
-    def add_price(value: float) -> None:
-        for ndigits in (0, 1, 2):
-            allowed.add(round(value, ndigits))
-
-    def add_ratio(value: float) -> None:
-        for scaled in (value, value * 100):
-            for ndigits in (0, 1, 2):
-                allowed.add(round(scaled, ndigits))
-                allowed.add(-round(scaled, ndigits))
-
-    add_ratio(float(report["target_margin_of_safety"]))
-    if report["current_price"] is not None:
-        add_price(float(report["current_price"]))
-    for item in report["scenarios"]:
-        if item["fair_value"] is not None:
-            add_price(float(item["fair_value"]))
-        if item["entry_price"] is not None:
-            add_price(float(item["entry_price"]))
-        if item["entry_vs_current_pct"] is not None:
-            add_ratio(float(item["entry_vs_current_pct"]))
-    return allowed
+# ---------------------------------------------------------------------------
+# Contexto LLM (opcional, sin cifras)
+# ---------------------------------------------------------------------------
 
 
-def figures_verified(text: str, allowed: set[float]) -> bool:
-    """Toda cifra del texto debe ser una de las verificadas (o su forma %).
-
-    Fail-closed por construccion: el prompt prohibe escribir otros numeros,
-    asi que un literal fuera del conjunto solo puede ser una cifra inventada
-    o manipulada (o texto que no siguio el formato, que tampoco se publica).
-    """
-    for token in _NUMBER_RE.findall(text):
-        value = float(token.replace(",", "."))
-        if round(value, 2) not in allowed:
-            return False
-    return True
+def _context_prompt(company: Company) -> str:
+    """Datos NO numericos para situar la redaccion; nunca cifras ni moneda."""
+    return json.dumps(
+        {"empresa": company.name, "ticker": company.ticker}, ensure_ascii=False
+    )
 
 
-def _llm_prompt(company: Company, currency: str, report: Mapping[str, Any]) -> str:
-    """Cifras verificadas como DATOS JSON; nunca instrucciones."""
-    escenarios: list[dict[str, str]] = []
-    for item in report["scenarios"]:
-        if item["entry_price"] is None:
-            continue
-        entry = {
-            "escenario": item["scenario"],
-            "valor_justo": _fmt_price(item["fair_value"]),
-            "precio_entrada": _fmt_price(item["entry_price"]),
-        }
-        if item["entry_vs_current_pct"] is not None:
-            entry["entrada_vs_precio_actual"] = f"{item['entry_vs_current_pct']:+.1%}"
-        escenarios.append(entry)
-    payload: dict[str, Any] = {
-        "empresa": company.name,
-        "ticker": company.ticker,
-        "moneda": currency,
-        "margen_seguridad_objetivo": f"{float(report['target_margin_of_safety']):.0%}",
-        "escenarios": escenarios,
-    }
-    if report["current_price"] is not None:
-        payload["precio_actual"] = _fmt_price(report["current_price"])
-    return json.dumps(payload, ensure_ascii=False)
-
-
-async def _draft_explanation(provider, prompt: str, *, on_response, before_retry) -> str:
-    """Una redaccion guardada: idioma e integridad via complete_guarded.
+async def _draft_context(provider, prompt: str, *, on_response, before_retry) -> str:
+    """Un contexto guardado: idioma e integridad via complete_guarded.
 
     El modelo fijado es el gratuito verificado; un override de entorno que lo
     mueva a un modelo de pago levanta y el llamador degrada al camino
@@ -280,7 +310,7 @@ async def _draft_explanation(provider, prompt: str, *, on_response, before_retry
         task="entry_price_explanation",
         model="space-bunny-free",
         temperature=0.2,
-        max_tokens=220,
+        max_tokens=160,
     )
     if provider.model_router.resolve(request) not in VERIFIED_FREE_MODELS:
         raise RuntimeError("Entry-price model is not the verified free model")
@@ -294,19 +324,17 @@ async def _draft_explanation(provider, prompt: str, *, on_response, before_retry
     return str(guarded.response.text).strip()
 
 
-def _try_llm_explanation(
+def _try_llm_context(
     db: Session,
     company: Company,
-    currency: str,
-    report: Mapping[str, Any],
     *,
     provider=None,
 ) -> tuple[str | None, dict | None, str | None]:
-    """Intenta la explicacion LLM. Devuelve (texto | None, quota | None, nota | None).
+    """Intenta el contexto LLM. Devuelve (texto | None, quota | None, nota | None).
 
-    Nunca lanza: cualquier fallo deja la explicacion determinista y una nota
-    honesta de por que la LLM no se muestra. Nunca afirma que una llamada
-    fallida funciono.
+    Nunca lanza: cualquier fallo deja solo la explicacion determinista y una
+    nota honesta de por que el contexto no se muestra. Nunca afirma que una
+    llamada fallida funciono.
     """
     tenant_id = db.info.get("tenant_id")
     quota: dict | None = None
@@ -317,16 +345,15 @@ def _try_llm_explanation(
         budget = BudgetController()
         settings = get_settings()
         if not budget.can_spend(db, _BUDGET_ESTIMATE_EUR):
-            return None, None, "Explicación LLM no disponible: presupuesto diario agotado."
+            return None, None, "Contexto LLM no disponible: presupuesto diario agotado."
         quota = reserve_llm_call(tenant_id, settings)
         if not quota["allowed"]:
-            return None, quota, "Explicación LLM no disponible: tope de llamadas alcanzado."
+            return None, quota, "Contexto LLM no disponible: tope de llamadas alcanzado."
     except Exception:  # noqa: BLE001 - config, tenant o cuota rotos: falla cerrado
         logger.warning("entry-price LLM: preparacion fallida, camino determinista", exc_info=True)
-        return None, quota, "Explicación LLM no disponible; se muestra la determinista."
+        return None, quota, "Contexto LLM no disponible; se muestra solo la explicación determinista."
 
-    prompt = _llm_prompt(company, currency, report)
-    allowed = _verified_figure_values(report)
+    prompt = _context_prompt(company)
     db.commit()  # sin conexion ni transaccion abiertas durante la espera del LLM
 
     def _record(resp) -> None:
@@ -352,24 +379,22 @@ def _try_llm_explanation(
 
     try:
         text = run_from_any_context(
-            _draft_explanation(
-                provider, prompt, on_response=_record, before_retry=_before_retry
-            )
+            _draft_context(provider, prompt, on_response=_record, before_retry=_before_retry)
         )
     except Exception as exc:  # noqa: BLE001 - el fallo del proveedor no rompe el endpoint
         logger.warning(
             "entry-price LLM: fallo (%s), camino determinista", type(exc).__name__
         )
-        return None, quota, "Explicación LLM no disponible; se muestra la determinista."
-    if not figures_verified(text, allowed):
+        return None, quota, "Contexto LLM no disponible; se muestra solo la explicación determinista."
+    if not context_verified(text):
         logger.warning(
-            "entry-price LLM: cifra no verificada en la salida, camino determinista"
+            "entry-price LLM: contexto con cifras o divisas, camino determinista"
         )
         return (
             None,
             quota,
-            "La explicación LLM fue rechazada por el validador de cifras; "
-            "se muestra la determinista.",
+            "El contexto LLM contenía cifras o divisas y fue rechazado; "
+            "se muestra solo la explicación determinista.",
         )
     return text, quota, None
 
@@ -382,44 +407,50 @@ def entry_price_report(
     use_llm: bool = False,
     provider=None,
 ) -> dict[str, Any]:
-    """Precio de entrada de una empresa: calculo determinista + explicacion.
+    """Precio de entrada de una empresa: calculo determinista + contexto LLM opcional.
 
-    Lee la valoracion del motor (sin persistir nada) y compone el informe.
-    Solo es candidato a explicacion LLM si hay al menos un precio de entrada
-    calculado: sin cifras verificadas no hay llamada al modelo.
+    Lee la valoracion del motor (sin persistir nada) y compone el informe. La
+    explicacion con cifras es siempre la plantilla determinista; el LLM solo
+    puede anadir un contexto cualitativo validado. Solo es candidato si hay
+    al menos un precio de entrada calculado: sin cifras verificadas no hay
+    llamada al modelo.
     """
     valuation = ValuationService().value_company(db, company)
     report = compute_entry_prices(valuation, target_mos=target_mos)
-    currency = company.currency or "USD"
+    currency = (
+        company.currency.strip()
+        if isinstance(company.currency, str) and company.currency.strip()
+        else None
+    )
     explanation = _deterministic_explanation(company.ticker, currency, report)
-    explanation_source = "determinista"
+    contexto = None
+    contexto_fuente = None
     note = None
     llm_quota = None
     if use_llm:
         if report["status"] != "ok":
             note = "Sin valor justo no se llama al LLM: no hay cifras que explicar."
         elif os.getenv("ENTRY_PRICE_LLM_ENABLED") != "1":
-            note = "Explicación LLM desactivada por configuración."
+            note = "Contexto LLM desactivado por configuración."
         else:
-            llm_text, llm_quota, note = _try_llm_explanation(
-                db, company, currency, report, provider=provider
-            )
-            if llm_text is not None:
-                explanation = llm_text
-                explanation_source = "llm"
+            contexto, llm_quota, note = _try_llm_context(db, company, provider=provider)
+            if contexto is not None:
+                contexto_fuente = "llm"
     return {
         "ticker": company.ticker,
         "status": report["status"],
         "etiqueta": "estimacion_modelo",
         "target_margin_of_safety": report["target_margin_of_safety"],
         "currency": currency,
+        "currency_estado": "ok" if currency is not None else "sin_datos",
         "current_price": report["current_price"],
         "current_price_as_of": report["current_price_as_of"],
         "scenarios": report["scenarios"],
         "valuation_status": valuation.get("status"),
         "valuation_publishable": bool(valuation.get("publishable")),
         "explicacion": explanation,
-        "explicacion_fuente": explanation_source,
+        "contexto": contexto,
+        "contexto_fuente": contexto_fuente,
         "note": note,
         "llm_quota": llm_quota,
         "warning": WARNING,
