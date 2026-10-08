@@ -22,9 +22,14 @@ MinIO esta archivado (abril 2026). Decision: [[cavaai-minio-garage]] (compilar M
        --src-endpoint minio:9000 --dst-endpoint garage:3900 --dst-region garage \
        --bucket research --report /tmp/migracion.json
    ```
-   Primero con `--dry-run`. Solo lee MinIO. Relee cada objeto de Garage y compara sha256. Idempotente. Codigo de salida != 0 si algo falta o difiere.
-3. **Corte.** Antes: pausar escrituras (parar `worker`/`worker-theses` o esperar a cola vacia), relanzar el paso 2 (copia de lo nuevo) y `--verify-only` (debe dar `ok: true`). Despues, en `.env.production` descomentar `OBJECT_STORAGE_ENDPOINT/ACCESS_KEY/SECRET_KEY/REGION` y `docker compose up -d backend worker worker-kpis worker-theses scheduler` (los que montan `MINIO_*`). Verificar `/health/ready` (sonda `minio` = ok) y subir/leer un documento con la cuenta de pruebas.
-4. **Rollback.** Comentar de nuevo las 4 variables `OBJECT_STORAGE_*` y recrear los mismos servicios: vuelven a MinIO, que **no se ha tocado**. Lo escrito en Garage tras el corte hay que volver a copiarlo (script con origen/destino invertidos) antes de volver.
+   Primero con `--dry-run`. Solo lee MinIO. Relee cada objeto de Garage y compara sha256. Idempotente. Codigo de salida != 0 si algo falta, difiere o no se puede leer, tambien con `--dry-run`.
+3. **Corte (con parada total de productores).** Todo servicio que monta `MINIO_*` puede escribir en storage: `backend`, `worker`, `worker-thesis`, `worker-kpis`, `worker-alerts`, `worker-gdelt` y el `scheduler` que los encola. Parar solo algunos deja bytes nuevos solo en MinIO con la base apuntando a Garage, asi que el corte se hace en ventana de mantenimiento:
+   1. `docker compose -p cavaai -f docker-compose.prod.yml stop backend worker worker-thesis worker-kpis worker-alerts worker-gdelt scheduler` (la app no responde hasta el paso 5; Postgres, Redis, MinIO y Garage siguen arriba).
+   2. Para el backend y confirmar que no queda ningun productor: `docker compose -p cavaai -f docker-compose.prod.yml ps` solo debe mostrar los servicios de datos. Lanzar el paso 2 (copia del delta) con `docker compose run --rm --no-deps backend ...` en vez de `exec`.
+   3. `--verify-only` debe dar `ok: true` y codigo de salida 0. Si no, no continuar: arrancar los servicios sin tocar el `.env` (siguen en MinIO).
+   4. En `.env.production` descomentar `OBJECT_STORAGE_ENDPOINT/ACCESS_KEY/SECRET_KEY/REGION`.
+   5. `docker compose -p cavaai -f docker-compose.prod.yml up -d --no-deps backend worker worker-thesis worker-kpis worker-alerts worker-gdelt scheduler`. Verificar `/health/ready` (sonda `minio` = ok) y subir/leer un documento con la cuenta de pruebas.
+4. **Rollback.** Comentar de nuevo las 4 variables `OBJECT_STORAGE_*` y repetir la parada total de productores y recrearlos: vuelven a MinIO, que **no se ha tocado**. Lo escrito en Garage tras el corte hay que volver a copiarlo (script con origen/destino invertidos) antes de volver.
 5. **Cierre (otro PR, tras >= 7 dias estables + backup verificado desde Garage):** retirar `minio` y `docker/minio`, ajustar `backup_*`/`verify_restore` y los tests de contrato. No se borra el volumen `cavaai-prod-minio` en el mismo paso.
 
 ## Riesgos conocidos

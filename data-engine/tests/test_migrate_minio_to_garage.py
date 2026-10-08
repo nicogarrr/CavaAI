@@ -69,3 +69,33 @@ def test_dry_run_writes_nothing():
     dst.buckets.clear()
     report = migrate(FakeS3(SRC), dst, "research", dry_run=True)
     assert len(report["copied"]) == 2 and dst.buckets == {}
+
+
+def test_dry_run_with_missing_source_bucket_fails_closed():
+    src = FakeS3()
+    src.buckets.clear()
+    report = migrate(src, FakeS3(), "research", dry_run=True)
+    assert report["ok"] is False and report["errors"]
+
+
+def test_dry_run_with_unreadable_object_fails_closed():
+    src = FakeS3(SRC)
+
+    def boom(bucket, key):
+        raise OSError("lectura fallida")
+
+    src.get_object = boom
+    report = migrate(src, FakeS3(), "research", dry_run=True)
+    assert report["ok"] is False and len(report["errors"]) == 2
+
+
+def test_main_exit_code_is_nonzero_for_failed_dry_run(monkeypatch):
+    from scripts.storage import migrate_minio_to_garage as mod
+
+    src = FakeS3()
+    src.buckets.clear()
+    monkeypatch.setattr(mod, "build_client", lambda *a, **k: src)
+    for var in ("SRC_ACCESS_KEY", "SRC_SECRET_KEY", "DST_ACCESS_KEY", "DST_SECRET_KEY"):
+        monkeypatch.setenv(var, "x")
+    argv = ["--src-endpoint", "a:1", "--dst-endpoint", "b:1", "--dry-run"]
+    assert mod.main(argv) == 1

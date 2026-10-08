@@ -79,6 +79,7 @@ def migrate(
     }
     if not src.bucket_exists(bucket):
         report["errors"].append(f"el bucket origen '{bucket}' no existe")
+        report["ok"] = False
         return report
     if not dry_run and not verify_only and not dst.bucket_exists(bucket):
         dst.make_bucket(bucket)
@@ -155,7 +156,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.report:
         with open(args.report, "w", encoding="utf-8") as fh:
             json.dump(report, fh, ensure_ascii=False, indent=2)
-    return 0 if report.get("ok", False) or args.dry_run else 1
+    # Fail-closed tambien en --dry-run: una lectura fallida o un origen ausente
+    # no es un plan valido. Solo el dry-run omite escrituras, no los errores.
+    return 0 if report.get("ok", False) else 1
 
 
 if __name__ == "__main__":
