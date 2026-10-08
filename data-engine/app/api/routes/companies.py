@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
@@ -51,6 +51,13 @@ from app.services.fundamental_model_repository import FundamentalModelRepository
 from app.services.fundamental_review_service import (
     DecisionJournalService,
     ExpectationRealityService,
+)
+from app.services.inferred_input_llm_service import (
+    InferenceRejected,
+    infer_fcf_margin,
+)
+from app.services.inferred_input_llm_service import (
+    QuotaExceeded as InferenceQuotaExceeded,
 )
 from app.services.inferred_input_service import (
     InferredInputError,
@@ -549,6 +556,34 @@ def create_inferred_input(
     except InferredInputError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return inferred_input_payload(row)
+
+
+class InferredInputLLMRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    input_key: Literal["fcf_margin"] = "fcf_margin"
+
+
+@router.post("/{ticker}/inferred-inputs/llm", status_code=201)
+async def create_inferred_input_llm(
+    ticker: str,
+    payload: InferredInputLLMRequest,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Estima el margen FCF con el LLM solo desde extractos ya ingeridos. Guarda INFERIDO."""
+    try:
+        return inferred_input_payload(await infer_fcf_margin(db, ticker))
+    except InferenceQuotaExceeded as exc:
+        db.rollback()
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
+    except InferenceRejected as exc:
+        db.rollback()
+        status = {"empresa_no_encontrada": 404, "llm_deshabilitado": 503, "presupuesto_agotado": 503}.get(
+            exc.reason, 422
+        )
+        detail = "N/D: sin extractos ingeridos con URL https para esta empresa" if exc.reason == "sin_fuentes" else (
+            f"Inferencia rechazada: {exc.reason}"
+        )
+        raise HTTPException(status_code=status, detail=detail) from exc
 
 
 @router.get("/{ticker}/snapshot", response_model=CompanySnapshotOut)
