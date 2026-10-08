@@ -11,9 +11,11 @@ from app.services.ticker_news_lane import (
     Deadline,
     finalize_status,
     google_feed_url,
+    ingest_in_chunks,
     is_us_listed,
     label_google,
     label_yahoo,
+    sweep,
     yahoo_feed_url,
 )
 
@@ -122,3 +124,64 @@ def test_truncated_sweep_is_never_ok_so_the_coalescer_does_not_mark_it_fresh():
     assert finalize_status("ok", False) == "ok"
     assert finalize_status("error", True) == "error"
     assert finalize_status("partial", True) == "partial"
+
+
+def _fake_run(n_feeds, clock_steps, *, items=0, chunk_clock=None):
+    """Ejecuta sweep con reloj simulado: clock_steps[i] = hora tras la unidad i."""
+    now = [0.0]
+    calls = {"fetch": 0, "ingest": 0}
+
+    def fetch(company, lane, url):
+        i = calls["fetch"]
+        calls["fetch"] += 1
+        now[0] = clock_steps[i]
+        return ConnectorResult(source="rss", items=[_item(f"t{k}") for k in range(items)])
+
+    def ingest(company, part):
+        calls["ingest"] += 1
+        if chunk_clock:
+            now[0] = chunk_clock[calls["ingest"] - 1]
+        return {"created": len(part.items)}
+
+    deadline = Deadline(6600, clock=lambda: now[0])
+    out = sweep(
+        [SPCX],
+        lambda c: [(f"feed{k}", f"u{k}") for k in range(n_feeds)],
+        fetch,
+        ingest,
+        deadline,
+    )
+    return out, deadline, calls
+
+
+def test_single_feed_that_overshoots_the_limit_is_partial_not_ok():
+    out, deadline, _ = _fake_run(1, [7000.0])
+    assert deadline.truncated is True
+    assert finalize_status("ok", deadline.truncated) == "partial"
+    assert out["processed"] == 1
+
+
+def test_three_feeds_stop_after_the_second_overshoots():
+    out, deadline, calls = _fake_run(3, [100.0, 7000.0, 7100.0])
+    assert calls["fetch"] == 2 and deadline.truncated is True
+
+
+def test_fast_sweep_stays_complete_and_ok():
+    out, deadline, calls = _fake_run(3, [1.0, 2.0, 3.0], items=3)
+    assert calls["fetch"] == 3 and deadline.truncated is False
+    assert finalize_status("ok", deadline.truncated) == "ok"
+    assert out["ingested"] == 9
+
+
+def test_ingestion_stops_between_item_chunks_when_budget_runs_out():
+    # 12 items = 3 tandas de 5/5/2; el limite se cruza tras la primera.
+    out, deadline, calls = _fake_run(1, [1.0], items=12, chunk_clock=[7000.0, 7000.0, 7000.0])
+    assert calls["ingest"] == 1 and out["ingested"] == 5
+    assert deadline.truncated is True
+
+
+def test_ingest_in_chunks_returns_created_total():
+    now = [0.0]
+    result = ConnectorResult(source="rss", items=[_item(f"x{i}") for i in range(11)])
+    total = ingest_in_chunks(lambda part: {"created": len(part.items)}, result, Deadline(10, clock=lambda: now[0]))
+    assert total == 11

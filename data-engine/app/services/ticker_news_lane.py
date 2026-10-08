@@ -21,6 +21,7 @@ import dataclasses
 import re
 import time
 from collections.abc import Callable
+from typing import Any
 from urllib.parse import quote_plus
 
 from app.services.connectors.base import ConnectorItem, ConnectorResult
@@ -139,3 +140,68 @@ def finalize_status(base_status: str, truncated: bool) -> str:
     if truncated and base_status == "ok":
         return "partial"
     return base_status
+
+
+ITEM_CHUNK = 5
+
+
+def ingest_in_chunks(ingest: Callable[[ConnectorResult], dict], result: ConnectorResult, deadline: Deadline) -> int:
+    """Ingiere por tandas de ITEM_CHUNK y comprueba el presupuesto entre tandas.
+
+    NewsService analiza cada item (llamadas externas): una sola llamada con 30
+    items no admite corte. Con tandas, el limite se respeta a nivel item y los
+    items no tratados se descartan del barrido (el siguiente tick los recoge,
+    el dedupe por URL evita duplicados). Devuelve las noticias creadas.
+    """
+    created = 0
+    for start in range(0, len(result.items), ITEM_CHUNK):
+        if deadline.expired():
+            break
+        part = dataclasses.replace(result, items=result.items[start : start + ITEM_CHUNK])
+        created += int(ingest(part).get("created", 0))
+    return created
+
+
+def sweep(
+    companies,
+    lanes_for: Callable[[Any], list[tuple[str, str]]],
+    fetch: Callable[[Any, str, str], ConnectorResult],
+    ingest: Callable[[Any, ConnectorResult], dict],
+    deadline: Deadline,
+    *,
+    pause: Callable[[], None] = lambda: None,
+    on_error: Callable[[], None] = lambda: None,
+) -> dict:
+    """Barrido por empresa y feed con presupuesto de tiempo en cada unidad.
+
+    El presupuesto se comprueba antes de cada empresa, antes y DESPUES de cada
+    feed (una ultima unidad que pasa el limite marca truncated) y entre tandas
+    de items. Un barrido truncado nunca se reporta como completo.
+    """
+    processed = ingested = 0
+    errors: list[dict] = []
+    for company in companies:
+        if deadline.expired():
+            break
+        for lane, url in lanes_for(company):
+            if deadline.expired():
+                break
+            try:
+                result = fetch(company, lane, url)
+                errors.extend(
+                    {"ticker": company.ticker, "source": lane, "message": message}
+                    for message in result.errors
+                )
+                ingested += ingest_in_chunks(lambda part: ingest(company, part), result, deadline)
+                if result.status != "error":
+                    processed += 1
+            except Exception as exc:  # noqa: BLE001 - un feed roto no tumba el barrido
+                on_error()
+                errors.append(
+                    {"ticker": company.ticker, "source": lane,
+                     "type": type(exc).__name__, "message": str(exc)}
+                )
+            pause()
+            if deadline.expired():  # post-unidad: el ultimo feed tambien cuenta
+                break
+    return {"processed": processed, "ingested": ingested, "errors": errors}
