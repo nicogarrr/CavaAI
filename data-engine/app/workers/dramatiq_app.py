@@ -2239,3 +2239,7 @@ def refresh_paper_trades(tenant_id: int | None = None, user_id: str | None = Non
         return _handle_actor_error("refresh_paper_trades", exc, tenant_id=tenant_id)
     finally:
         db.close()
+
+
+# RAG de conocimiento: registra el actor de ingesta (cola "knowledge").
+import app.workers.knowledge_rag_actors  # noqa: E402,F401

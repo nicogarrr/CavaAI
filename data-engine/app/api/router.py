@@ -17,6 +17,7 @@ from app.api.routes import (
     investors,
     knowledge,
     knowledge_graph,
+    knowledge_rag,
     macro,
     market,
     market_context,
@@ -82,6 +83,9 @@ api_router.include_router(reviews.router, prefix="/reviews", tags=["reviews"])
 api_router.include_router(research_assistant.router, prefix="/research", tags=["research-assistant"])
 api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
 api_router.include_router(knowledge.router, prefix="/knowledge", tags=["knowledge"])
+api_router.include_router(
+    knowledge_rag.router, prefix="/knowledge-rag", tags=["knowledge-rag"]
+)
 api_router.include_router(
     knowledge_graph.router, prefix="/knowledge-graph", tags=["knowledge-graph"]
 )
