@@ -284,3 +284,13 @@ def test_refresh_race_newer_mark_is_not_overwritten(tmp_path):
         assert stored.mark_price == Decimal(110)
         assert stored.status == "open"
     engine.dispose()
+
+
+def test_non_numeric_decimal_rejected_by_precision_normalizer():
+    with pytest.raises(ValidationError, match="Número fuera de la precisión persistida"):
+        PaperProposal(**body(conviction="not-a-number"))
+
+
+def test_short_target_at_entry_rejected_by_level_validator():
+    with pytest.raises(ValidationError, match="Short: objetivo < entrada propuesta < stop"):
+        PaperProposal(**body(direction="short", target="100", stop="110"))
