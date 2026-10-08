@@ -264,6 +264,7 @@ class Settings(BaseSettings):
     # snapshots/<LEI>.json normalizados desde filings.xbrl.org). Mismo motivo
     # que SEC: los datos viajan con la app, nunca se piden en caliente.
     esef_snapshot_dir: str | None = None
+    telegram_link_secret: str | None = Field(default=None, repr=False)
     telegram_enabled: bool = False
     telegram_bot_token: str | None = Field(default=None, repr=False)
     telegram_chat_id: str | None = None
