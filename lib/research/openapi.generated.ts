@@ -551,6 +551,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/companies/{ticker}/filing-intelligence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Filing Intelligence */
+        get: operations["filing_intelligence_api_companies__ticker__filing_intelligence_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/companies/{ticker}/filings": {
         parameters: {
             query?: never;
@@ -1279,6 +1296,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/investors/portfolio-overlap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Overlap Route */
+        get: operations["overlap_route_api_investors_portfolio_overlap_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/investors/{slug}": {
         parameters: {
             query?: never;
@@ -1344,6 +1378,23 @@ export interface paths {
         put?: never;
         /** Sync Knowledge Graph */
         post: operations["sync_knowledge_graph_api_knowledge_graph_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Chat Library */
+        post: operations["chat_library_api_knowledge_chat_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4931,6 +4982,23 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** LibraryQuestion */
+        LibraryQuestion: {
+            /** Author */
+            author?: string | null;
+            /** Collection Id */
+            collection_id?: number | null;
+            /** Document Id */
+            document_id?: number | null;
+            /** Question */
+            question: string;
+            /**
+             * Scope
+             * @default letters
+             * @enum {string}
+             */
+            scope: "letters" | "library";
+        };
         /** ManagementExplanationUpdate */
         ManagementExplanationUpdate: {
             /** Explanation */
@@ -7728,6 +7796,51 @@ export interface operations {
             };
         };
     };
+    filing_intelligence_api_companies__ticker__filing_intelligence_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+            };
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path: {
+                ticker: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_company_filings_api_companies__ticker__filings_get: {
         parameters: {
             query?: never;
@@ -9520,6 +9633,46 @@ export interface operations {
             };
         };
     };
+    overlap_route_api_investors_portfolio_overlap_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     investor_api_investors__slug__get: {
         parameters: {
             query?: never;
@@ -9667,6 +9820,50 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    chat_library_api_knowledge_chat_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibraryQuestion"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
