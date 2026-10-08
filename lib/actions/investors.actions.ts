@@ -138,3 +138,51 @@ export type PortfolioOverlap = {
 export async function getPortfolioOverlap(): Promise<PortfolioOverlap> {
   return requestJson('/api/investors/portfolio-overlap');
 }
+
+export type InvestorDatum = {
+  value: number | null;
+  label: "OFICIAL" | "INFERIDO" | "SIN_DATOS";
+  as_of: string | null;
+  source_url: string | null;
+};
+
+export type InvestorPortfolio = {
+  slug: string;
+  name: string;
+  firm: string;
+  has_13f: boolean;
+  status: "ok" | "sin_datos";
+  coverage?: string;
+  as_of: string | null;
+  total_value_usd: InvestorDatum;
+  limitations: string;
+  note: string | null;
+  positions: {
+    issuer: string;
+    ticker: string | null;
+    cusip: string | null;
+    title_of_class: string;
+    shares: InvestorDatum;
+    ownership_pct: InvestorDatum;
+    value_usd: InvestorDatum;
+    weight_pct: InvestorDatum;
+    source_form: string;
+    note: string | null;
+  }[];
+  movements: {
+    date: string | null;
+    issuer: string;
+    action: string;
+    shares: InvestorDatum;
+    price_usd: InvestorDatum;
+    shares_after: InvestorDatum;
+    source_form: string;
+    note: string | null;
+  }[];
+};
+
+export async function getInvestorPortfolio(
+  slug: string,
+): Promise<InvestorPortfolio> {
+  return requestJson(`/api/investors/${encodeURIComponent(slug)}/portfolio`);
+}

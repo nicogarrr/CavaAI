@@ -35,19 +35,17 @@ export default async function PortfoliosPage({ searchParams }: PageProps) {
         }
         throw error;
     }
-    const withPortfolio = data.investors.filter((investor) => investor.has_13f);
-    const paged = paginate(withPortfolio, pagina, PAGE_SIZE);
+    const paged = paginate(data.investors, pagina, PAGE_SIZE);
 
     return (
         <main id="content" tabIndex={-1} className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-12 overflow-x-clip py-6">
             <header className="flex flex-col gap-3">
                 <h1 className="text-3xl font-semibold text-gray-100">Carteras</h1>
-                <p className="text-base text-gray-400">Lo que declaran tener, tal como lo presentan a la SEC.</p>
             </header>
 
-            <ul className="grid gap-4 sm:grid-cols-2">
+            <ul className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
                 {paged.items.map((investor) => (
-                    <li key={investor.slug}>
+                    <li className="min-w-0" key={investor.slug}>
                         <Link
                             className="flex h-full flex-col gap-4 rounded-2xl border border-gray-800 bg-surface-1 p-6 transition-colors hover:border-gray-700"
                             href={`/inversores/${investor.slug}`}
@@ -77,7 +75,7 @@ export default async function PortfoliosPage({ searchParams }: PageProps) {
                                     </span>
                                 </span>
                             ) : (
-                                <span className="text-sm text-gray-500">Sin datos todavía: falta sincronizar su 13F.</span>
+                                <span className="text-sm text-gray-500">{investor.has_13f ? 'SIN_DATOS · 13F sin sincronizar' : 'Participaciones públicas · ver ficha'}</span>
                             )}
                         </Link>
                     </li>

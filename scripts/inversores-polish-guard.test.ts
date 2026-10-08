@@ -11,7 +11,7 @@ const crumbs = read('components/layout/Breadcrumbs.tsx');
 const grid = read('app/(root)/inversores/page.tsx');
 const portfolios = read('app/(root)/inversores/carteras/page.tsx');
 const bought = read('app/(root)/inversores/mas-compradas/page.tsx');
-const ficha = read('app/(root)/inversores/[slug]/page.tsx');
+const ficha = read('app/(root)/inversores/_components/Portfolio.tsx');
 const pagination = read('app/(root)/inversores/_components/Pagination.tsx');
 
 test('las migas no muestran el slug crudo de las subpaginas de Inversores', () => {
@@ -32,7 +32,7 @@ test('la página de Más compradas usa newLabel dentro de la plantilla (sin llav
 });
 
 test('los enlaces de la cabecera van en una fila', () => {
-    assert.match(grid, /flex flex-wrap items-center gap-x-6/);
+    assert.match(read('app/(root)/inversores/_components/HubNav.tsx'), /flex max-w-5xl flex-wrap gap-2/);
 });
 
 test('rejilla, carteras y ficha paginan dentro de la pagina, sin scroll infinito', () => {
@@ -45,6 +45,6 @@ test('rejilla, carteras y ficha paginan dentro de la pagina, sin scroll infinito
 });
 
 test('la ficha conserva la vista al cambiar de pagina', () => {
-    assert.match(ficha, /params=\{\{ vista: 'posiciones' \}\}/);
-    assert.match(ficha, /params=\{\{ vista: 'cambios' \}\}/);
+    assert.match(ficha, /params=\{\{ vista: view \}\}/);
+    assert.match(ficha, /view === ["']cambios["']/);
 });

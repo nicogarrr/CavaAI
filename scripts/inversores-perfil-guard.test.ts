@@ -24,11 +24,12 @@ test('la cartera sin datos explica el motivo', () => {
 test('la ficha usa el perfil publico y conserva "Sin datos" cuando no hay', () => {
     assert.match(ficha, /investor\.public_profile \?/);
     assert.match(ficha, /<PublicProfileSection profile=\{investor\.public_profile\} \/>/);
-    assert.match(ficha, /Sin datos: no presenta 13F/);
+    assert.match(ficha, /<Portfolio/);
+    assert.match(readFileSync('app/(root)/inversores/_components/Portfolio.tsx', 'utf8'), /SIN_DATOS/);
 });
 
 test('la rejilla distingue ficha publica de sin datos', () => {
     const list = readFileSync('app/(root)/inversores/page.tsx', 'utf8');
     assert.match(list, /investor\.has_public_profile/);
-    assert.match(list, /Ficha pública, sin 13F/);
+    assert.match(list, /Participaciones públicas · ver ficha/);
 });
