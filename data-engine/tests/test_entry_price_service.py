@@ -50,8 +50,7 @@ VALUATION_SIN_DATOS = {
 }
 
 CONTEXTO_VALIDO = (
-    "Exigir un margen de seguridad antes de comprar deja colchón frente a "
-    "errores del propio modelo y mejora el precio pagado por la misma tesis. "
+    "Negocio con foso competitivo ancho, caja neta y dirección prudente. "
     "Es una estimación del modelo con sus supuestos, no una recomendación de "
     "inversión."
 )
@@ -70,6 +69,26 @@ REPRO_AUDITORIA_CANTIDADES = [
     "El precio de entrada es uno.",
     "El precio de entrada es medio.",
     "El precio de entrada es un cuarto.",
+]
+
+# Tercera ronda (#946): cierre estructural, sin inventario numerico. La
+# morfologia caza variantes que la lista no conocia (doscientas, tresmil,
+# millones, ninety-five) y el vocabulario de importes esta prohibido en
+# cualquier forma, no solo en afirmaciones copulativas.
+REPRO_AUDITORIA_ESTRUCTURAL = [
+    "El precio de entrada es doscientas unidades.",
+    "El modelo estima veinte millones de beneficio.",
+    "El precio objetivo es tres mil.",
+    "El precio de entrada es noventa y cinco.",
+    "The entry price is ninety-five.",
+    "The entry price is ninety five.",
+]
+
+# Aceptado por diseno (nota del auditor): el contexto no habla de importes en
+# ninguna forma, asi que estas frases cualitativas tambien se rechazan.
+RECHAZOS_ACEPTADOS = [
+    "El margen de seguridad protege.",
+    "Las barreras de entrada son altas.",
 ]
 
 
@@ -239,13 +258,28 @@ def test_contexto_valido_sin_cifras_pasa():
     assert service.context_verified(CONTEXTO_VALIDO)
 
 
-@pytest.mark.parametrize("texto", REPRO_AUDITORIA + REPRO_AUDITORIA_CANTIDADES)
+@pytest.mark.parametrize(
+    "texto",
+    REPRO_AUDITORIA + REPRO_AUDITORIA_CANTIDADES + REPRO_AUDITORIA_ESTRUCTURAL,
+)
 def test_repros_auditoria_rechazados_por_el_validador(texto):
     assert not service.context_verified(texto)
 
 
-def test_contexto_cualitativo_legitimo_pasa():
-    assert service.context_verified("Empresa con foso ancho y caja neta.")
+@pytest.mark.parametrize("texto", RECHAZOS_ACEPTADOS)
+def test_contexto_que_menciona_importes_en_cualquier_forma_rechazado(texto):
+    assert not service.context_verified(texto)
+
+
+@pytest.mark.parametrize(
+    "texto",
+    [
+        "Empresa con foso ancho y caja neta.",
+        "Riesgo regulatorio elevado en el sector.",
+    ],
+)
+def test_contexto_cualitativo_legitimo_pasa(texto):
+    assert service.context_verified(texto)
 
 
 @pytest.mark.parametrize(
@@ -261,7 +295,9 @@ def test_contexto_cualitativo_legitimo_pasa():
         "Son unos mil títulos.",  # escala
         "La empresa vale millones.",  # escala sin cifra explicita
         "Cotiza en USD.",  # divisa sin cifra: el contexto nunca la nombra
-        "Hay dos escenarios.",  # cardinal en palabra: prohibido cuantificar
+        # Limite aceptado del cierre estructural (#946): "Hay dos escenarios."
+        # cuantifica sin sustantivo de importe ni morfologia numerica; cazarlo
+        # exigiria la lista de cardinales que este diseno elimina a proposito.
         "Versión 2 del modelo.",  # digito
     ],
 )
@@ -343,7 +379,9 @@ def test_repros_auditoria_degradan_a_determinista(monkeypatch, db_session, texto
     assert _budget_rows(db_session) == 1
 
 
-@pytest.mark.parametrize("texto", REPRO_AUDITORIA_CANTIDADES)
+@pytest.mark.parametrize(
+    "texto", REPRO_AUDITORIA_CANTIDADES + REPRO_AUDITORIA_ESTRUCTURAL[:4]
+)
 def test_repros_cantidades_degradan_a_determinista(monkeypatch, db_session, texto):
     company = _company(db_session)
     _patch_valuation(monkeypatch, VALUATION_AUDIT)

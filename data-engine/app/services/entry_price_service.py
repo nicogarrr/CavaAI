@@ -94,94 +94,70 @@ _DIGIT_RE = re.compile(r"\d")
 _TOKEN_RE = re.compile(r"[a-z]+")
 _BANNED_SYMBOLS = ("%", "$", "€", "£", "¥")
 
-# Numericos en espanol (normalizados, sin tildes): cardinales, fracciones y
-# ordinales. "cero", "uno", "medio", "cuarto" y los ordinales son prosa en
-# otros contextos, pero aqui el contexto NUNCA debe cuantificar: "el precio
-# es uno" afirma un importe distinto del verificado, y un falso positivo solo
-# cuesta el camino determinista. Solo se excluyen los articulos "un/una",
-# que no cuantifican nada por si solos.
-_NUMBER_WORDS_ES = frozenset(
-    ["cero", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez", "once", "doce", "trece", "catorce", "quince", "dieciseis", "diecisiete", "dieciocho", "diecinueve", "veinte", "veintiuno", "veintidos", "veintitres", "veinticuatro", "veinticinco", "veintiseis", "veintisiete", "veintiocho", "veintinueve", "treinta", "cuarenta", "cincuenta", "sesenta", "setenta", "ochenta", "noventa", "cien", "ciento", "cientos", "doscientos", "trescientos", "cuatrocientos", "quinientos", "seiscientos", "setecientos", "ochocientos", "novecientos", "primero", "primera", "segundo", "segunda", "tercero", "tercera", "cuarto", "cuarta", "quinto", "quinta", "sexto", "sexta", "septimo", "septima", "octavo", "octava", "noveno", "novena", "decimo", "decima", "ultimo", "ultima", "centesimo", "milesimo", "medio", "media", "mitad", "tercio", "decena", "docena", "centena", "centenar", "millar", "doble", "triple", "cuadruple"]
+# Vocabulario de importes: prohibido EN CUALQUIER FORMA en el contexto LLM,
+# no solo en afirmaciones copulativas. El contexto es para la tesis
+# cualitativa (foso, riesgos, negocio); TODA cifra vive en la plantilla
+# determinista, la unica fuente de importes verificados. Un falso positivo
+# ("el margen de seguridad protege", "barreras de entrada") solo cuesta el
+# camino determinista; un falso negativo publicaria una cifra no verificada.
+_FINANCIAL_NOUNS = frozenset(
+    [
+        "precio", "precios", "entrada", "entradas", "margen", "margenes",
+        "valor", "valores", "cotizacion", "cotizaciones", "importe",
+        "importes", "coste", "costes", "costo", "costos", "valoracion",
+        "valoraciones", "descuento", "descuentos", "divisa", "divisas",
+        "porcentaje", "porcentajes", "price", "prices", "margin", "margins",
+        "value", "values", "quote", "quotes", "amount", "amounts", "cost",
+        "costs", "valuation", "valuations", "discount", "discounts",
+        "currency", "currencies", "percent", "percentage",
+    ]
 )
-_NUMBER_WORDS_EN = frozenset(
-    ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety", "hundred", "thousands", "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth", "last", "quarter", "double", "triple", "half", "dozen"]
-)
-_SCALE_WORDS = frozenset(
-    ["mil", "miles", "millon", "millones", "billon", "billones", "trillon", "trillones", "hundred", "thousand", "million", "billion", "trillion"]
-)
-# El contexto nunca nombra divisas: sin moneda en la fuente, afirmar USD seria
-# inventarla; con moneda, la plantilla determinista es quien la rotula.
+# El contexto nunca nombra divisas: sin moneda en la fuente, afirmar USD
+# seria inventarla; con moneda, la plantilla determinista es quien la rotula.
 _CURRENCY_WORDS = frozenset(
     ["usd", "eur", "gbp", "jpy", "chf", "mxn", "dolar", "dolares", "dollar", "dollars", "euro", "euros", "libra", "libras", "pound", "pounds", "yen", "yenes", "peso", "pesos", "cent", "cents", "centavo", "centavos", "centimo", "centimos"]
 )
-_AMOUNT_TOKENS = _NUMBER_WORDS_ES | _NUMBER_WORDS_EN | _SCALE_WORDS
-_BANNED_TOKENS = _AMOUNT_TOKENS | _CURRENCY_WORDS
+_BANNED_TOKENS = _FINANCIAL_NOUNS | _CURRENCY_WORDS
 
-# Afirmaciones de importe/porcentaje: sustantivo financiero + copula +
-# expresion numerica en palabras o simbolos. Capa INDEPENDIENTE del blacklist:
-# aunque una forma numerica escape de la lista (como escapaba "cero"), la
-# afirmacion muere entera: el contexto es para tesis y cualitativo, nunca
-# para cifras. Los huecos no cruzan puntuacion ([a-z ]), asi que la copula y
-# la cifra conviven en la misma frase; el articulo entre copula y cifra
-# ("es un cuarto") cabe en el segundo hueco.
-_AMOUNT_NOUNS = (
-    "precio",
-    "entrada",
-    "margen",
-    "valor",
-    "cotizacion",
-    "importe",
-    "coste",
-    "costo",
-    "valoracion",
-    "descuento",
-    "accion",
-    "acciones",
+# Morfologia numerica SIN inventario: lo que ninguna lista puede enumerar
+# (doscientas, tresmil, veinte millones, ninety-five), la forma lo delata.
+# Sufijos de centena (-cientos/-cientas), ordinales de centena y derivados
+# (-ientos/-ientas), -mil compuesto, escalas (-illon/-illones, que tambien
+# cubre million/billion EN) y -th/-ty EN. El tokenizer separa el guion, asi
+# que "ninety-five" llega como dos tokens y muere por "ninety".
+_NUMERIC_SUFFIX_RE = re.compile(
+    r"(?:cientos?|cientas?|ientos?|ientas?|mil(?:es)?|illon(?:es)?|illion(?:s)?)$"
 )
-_COPULAS = (
-    "es",
-    "esta",
-    "estan",
-    "estaba",
-    "estaban",
-    "sera",
-    "seran",
-    "seria",
-    "serian",
-    "fue",
-    "fueron",
-    "queda",
-    "quedan",
-    "vale",
-    "valen",
-    "cuesta",
-    "cuestan",
-    "cotiza",
-    "cotizan",
-    "resulta",
-    "resultan",
+_EN_NUMERIC_SUFFIX_RE = re.compile(r"(?:th|ty)$")
+# Excepciones EN no numericas frecuentes en prosa de negocio ("growth",
+# "equity"): solo reducen falsos positivos. Ninguna excepcion es una forma
+# numerica, asi que la direccion del fallo sigue siendo segura.
+_EN_SUFFIX_EXCEPTIONS = frozenset(
+    [
+        "with", "both", "month", "growth", "health", "wealth", "worth",
+        "strength", "path", "truth", "youth", "death", "earth", "length",
+        "width", "depth", "warmth", "city", "safety", "quality", "activity",
+        "ability", "reality", "society", "variety", "majority", "minority",
+        "priority", "security", "opportunity", "university", "community",
+        "capacity", "volatility", "liquidity", "equity", "property",
+        "identity", "utility", "entity", "quantity", "stability",
+    ]
 )
-_AMOUNT_ASSERTION_RE = re.compile(
-    r"\b(?:" + "|".join(_AMOUNT_NOUNS) + r")\b"
-    r"[a-z ]{0,40}?"
-    r"\b(?:" + "|".join(_COPULAS) + r")\b"
-    r"[a-z ]{0,12}?"
-    r"\b(?:" + "|".join(sorted(_AMOUNT_TOKENS)) + r")\b"
-)
-
 
 def _normalize(text: str) -> str:
     return unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().lower()
 
 
 def context_verified(text: str) -> bool:
-    """El contexto LLM es publicable solo si NO contiene ninguna cifra.
+    """El contexto LLM es publicable solo si NO habla de cifras en absoluto.
 
     Fail-closed por construccion: digitos, simbolos de porcentaje o divisa,
-    numeros en palabras (espanol e ingles), escalas ("millones") y nombres de
-    moneda invalidan el texto entero. Un falso positivo solo cuesta el
-    reintento o el camino determinista; un falso negativo publicaria una
-    cifra no verificada.
+    vocabulario de importes/divisas en cualquier forma y morfologia numerica
+    (sufijos de centena, escala o decena, ES y EN) invalidan el texto entero.
+    El contexto es para la tesis cualitativa; las cifras son siempre la
+    plantilla determinista. Un falso positivo solo cuesta el reintento o el
+    camino determinista; un falso negativo publicaria una cifra no
+    verificada.
     """
     if not isinstance(text, str) or not text.strip():
         return False
@@ -193,9 +169,12 @@ def context_verified(text: str) -> bool:
     tokens = set(_TOKEN_RE.findall(normalized))
     if tokens & _BANNED_TOKENS:
         return False
-    # Segunda capa: la afirmacion de importe/porcentaje muere entera aunque
-    # la forma numerica concreta no este en la lista.
-    return _AMOUNT_ASSERTION_RE.search(normalized) is None
+    for token in tokens:
+        if _NUMERIC_SUFFIX_RE.search(token):
+            return False
+        if _EN_NUMERIC_SUFFIX_RE.search(token) and token not in _EN_SUFFIX_EXCEPTIONS:
+            return False
+    return True
 
 
 # ---------------------------------------------------------------------------
