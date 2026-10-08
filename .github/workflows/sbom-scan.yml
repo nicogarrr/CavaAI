@@ -130,7 +130,7 @@ jobs:
             "${{ matrix.production }}" | tee -a "digests/${{ matrix.name }}.tsv"
           docker image inspect "$ref" --format 'User={{.Config.User}} Entrypoint={{json .Config.Entrypoint}} Cmd={{json .Config.Cmd}}'
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: ${{ always() }}
         with:
           name: digest-${{ matrix.name }}
@@ -199,7 +199,7 @@ jobs:
 
       - name: SBOM CycloneDX (syft via anchore/sbom-action)
         id: sbom-cyclonedx
-        uses: anchore/sbom-action@v0.24.2
+        uses: anchore/sbom-action@v0.24.3
         with:
           image: cavaai/${{ matrix.name }}:${{ github.sha }}
           format: cyclonedx-json
@@ -211,7 +211,7 @@ jobs:
 
       - name: SBOM SPDX (syft via anchore/sbom-action)
         id: sbom-spdx
-        uses: anchore/sbom-action@v0.24.2
+        uses: anchore/sbom-action@v0.24.3
         with:
           image: cavaai/${{ matrix.name }}:${{ github.sha }}
           format: spdx-json
@@ -220,7 +220,7 @@ jobs:
           dependency-snapshot: false
 
       - name: Subir SBOM CycloneDX
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: ${{ always() }}
         with:
           name: sbom-${{ matrix.name }}-cyclonedx
@@ -229,7 +229,7 @@ jobs:
           retention-days: 90
 
       - name: Subir SBOM SPDX
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: ${{ always() }}
         with:
           name: sbom-${{ matrix.name }}-spdx
@@ -258,7 +258,7 @@ jobs:
         name: [frontend-dev, frontend-prod, backend-dev, backend-prod]
     steps:
       - name: SBOM del job sbom
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: sbom-${{ matrix.name }}-cyclonedx
           path: sbom
@@ -312,7 +312,7 @@ jobs:
         run: echo "${{ steps.anchore_scan.outcome }}" > reports/status.txt
 
       - name: Subir informe del motor 2
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: ${{ always() }}
         with:
           name: engine2-${{ matrix.name }}
@@ -382,7 +382,7 @@ jobs:
           cache-from: type=gha,scope=img-${{ matrix.name }}
 
       - name: Informe del motor 2 (job engine2)
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: engine2-${{ matrix.name }}
           path: engine2
@@ -478,7 +478,7 @@ jobs:
             --summary "reports/summary-${{ matrix.name }}.json"
 
       - name: Subir informes
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: ${{ always() }}
         with:
           name: reports-${{ matrix.name }}
