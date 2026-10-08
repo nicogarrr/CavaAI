@@ -256,11 +256,14 @@ def test_redis_caido_da_nd_y_no_ceros():
     # Un 0 aqui seria "lo medimos y hay 0 encolados": mentira.
 
 
-def test_sin_cliente_redis_todas_las_colas_son_nd():
+def test_sin_cliente_redis_todas_las_colas_son_nd(monkeypatch):
+    # None means auto-connect, not unavailable: simulate the factory returning
+    # no client explicitly so an installed/running Redis cannot change the test.
+    monkeypatch.setattr(queue_stats, "_redis_client", lambda client=None: None)
     states = queue_stats.probe_all(client=None, queues=("alerts", "kpis"))
-    # El doble se pasa explicitamente; con None el modulo intenta abrir Redis de
-    # verdad, asi que aqui se comprueba el camino del cliente inyectado que falla.
-    assert states == [] or all(s.status == queue_stats.UNKNOWN_STATUS for s in states)
+    assert [state.queue_name for state in states] == ["alerts", "kpis"]
+    assert all(state.status == queue_stats.UNKNOWN_STATUS for state in states)
+    assert all(state.unavailable == ["redis:no_configurado"] for state in states)
 
 
 def test_el_payload_deja_visible_el_nd():

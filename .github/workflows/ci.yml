@@ -164,6 +164,8 @@ jobs:
       # asi que solo se ven en el `pytest` de un venv de Windows. Dejarlos
       # anotados para que la ronda de fixes los haga portables y no parezca un
       # fallo nuevo cuando se arreglen.
+      - name: Redis local para tests de admision atomica
+        run: sudo apt-get update && sudo apt-get install -y redis-server
       - run: python -m pytest
       - name: Wait for Qdrant
         run: for i in $(seq 1 30); do curl -fs http://localhost:6333/collections && break || sleep 2; done
