@@ -48974,16 +48974,6 @@
             }
           },
           {
-            "in": "query",
-            "name": "use_llm",
-            "required": false,
-            "schema": {
-              "default": false,
-              "title": "Use Llm",
-              "type": "boolean"
-            }
-          },
-          {
             "in": "header",
             "name": "x-cavaai-user",
             "required": false,

@@ -16683,7 +16683,6 @@ export interface operations {
         parameters: {
             query?: {
                 target_mos?: number;
-                use_llm?: boolean;
             };
             header?: {
                 "x-cavaai-user"?: string | null;

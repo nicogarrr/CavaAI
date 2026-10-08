@@ -35,10 +35,9 @@ def historical_valuation(
 def entry_price(
     ticker: str,
     target_mos: float = Query(default=0.25, ge=0.0005, le=0.9),
-    use_llm: bool = Query(default=False),
     db: Session = Depends(get_db),
 ) -> dict:
     company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
-    return entry_price_report(db, company, target_mos=target_mos, use_llm=use_llm)
+    return entry_price_report(db, company, target_mos=target_mos)

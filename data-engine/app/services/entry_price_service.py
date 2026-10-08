@@ -14,44 +14,24 @@ se cuantiza a resolucion de 0.1 punto porcentual y se muestra con esa misma
 precision (25%, 25.4%, 0.5%): el porcentaje declarado siempre reproduce el
 precio de entrada calculado, sin redondeos que lo contradigan.
 
-El LLM, como mucho, ELIGE UNA CLAVE de un conjunto cerrado de contextos
-cualitativos (flag ENTRY_PRICE_LLM_ENABLED=1 y use_llm=true en el endpoint):
-el backend renderiza la plantilla asociada a la clave y NINGUN texto libre
-del modelo llega al output. complete_guarded (idioma e integridad, PR #933)
-sigue delante de la seleccion, y una respuesta que no sea una clave exacta se
-rechaza. Ante cualquier fallo (proveedor, cuota, presupuesto, clave invalida)
-se publica solo la explicacion determinista. Sin datos suficientes no hay
-llamada al LLM.
-
-La sesion se confirma (commit) ANTES de cualquier llamada al LLM, siguiendo a
-llm_proposal_runner y second_order_news_service: ninguna conexion queda
-abierta durante la espera. Cada respuesta del proveedor (tambien la que la
-validacion descarta) registra su coste en el presupuesto, y la cuota diaria
-por tenant se reserva antes de cada llamada, reintento incluido.
+El contexto cualitativo tambien es DETERMINISTA: el backend evalua la
+valoracion y solo renderiza una plantilla del conjunto cerrado cuando los
+datos reales la sostienen (caja neta del snapshot, foso con evidencia
+primaria, motor de sector regulado o ciclico). Sin evidencia para ninguna
+clave no hay contexto. Este endpoint no llama al LLM: una plantilla elegida
+por un modelo sin evidencia seria una afirmacion financiera sin fuente.
 """
 
 from __future__ import annotations
 
-import json
-import logging
 import math
-import os
 from collections.abc import Mapping
 from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
-from app.llm import LLMRequest, Message, create_llm_provider
-from app.llm.model_aliases import VERIFIED_FREE_MODELS
 from app.models import Company
-from app.services.async_bridge import run_from_any_context
-from app.services.budget import BudgetController, BudgetExceededError
-from app.services.entry_price_quota import reserve_llm_call
-from app.services.llm_output_guard import complete_guarded
 from app.services.valuation_service import ValuationService
-
-logger = logging.getLogger(__name__)
 
 DEFAULT_TARGET_MOS = 0.25
 # Resolucion autorizada del margen objetivo: decimas de punto porcentual. El
@@ -63,7 +43,6 @@ MIN_TARGET_MOS = 0.001
 MAX_TARGET_MOS = 0.9
 # Estimacion de planificacion para el cortacircuitos de presupuesto: el modelo
 # fijado es gratuito, pero el tope protege de overrides de configuracion.
-_BUDGET_ESTIMATE_EUR = 0.02
 
 WARNING = (
     "Estimación del modelo con sus propios supuestos: no es un dato oficial "
@@ -88,24 +67,19 @@ _SYSTEM_PROMPT = (
 )
 
 # ---------------------------------------------------------------------------
-# Contexto LLM por PLANTILLA CONTROLADA: el modelo solo elige una clave.
+# Contexto por PLANTILLA CONTROLADA con seleccion DETERMINISTA.
 # ---------------------------------------------------------------------------
-
-_CLAVE_NINGUNO = "ninguno"
-
-# Conjunto cerrado de contextos. El LLM devuelve UNA clave; el backend
-# renderiza la plantilla asociada. Ningun texto libre del modelo llega al
-# output, asi que no hay validador de vocabulario que pueda perder una
-# variante: lo que no es una clave exacta no existe para el usuario.
+# Cada clave solo es elegible cuando la valoracion aporta evidencia REAL que
+# la sostiene; sin evidencia para ninguna clave no hay contexto. Las
+# plantillas son afirmativas porque solo se renderizan cuando la evidencia
+# existe. "direccion_prudente" se retiro del catalogo: ningun dato disponible
+# evalua a la direccion, y afirmarlo sin fuente seria inventarlo.
 _CONTEXTO_PLANTILLAS = {
-    "foso_competitivo": (
-        "El modelo ve un negocio con foso competitivo ancho, difícil de replicar."
-    ),
     "balance_solido": (
         "El modelo ve un balance sólido, con caja neta y poco apalancamiento."
     ),
-    "direccion_prudente": (
-        "El modelo ve una dirección prudente en la asignación del capital."
+    "foso_competitivo": (
+        "El modelo ve un negocio con foso competitivo ancho, difícil de replicar."
     ),
     "riesgo_regulatorio": (
         "El modelo ve riesgo regulatorio elevado en el sector."
@@ -115,15 +89,85 @@ _CONTEXTO_PLANTILLAS = {
     ),
 }
 
+# Fuerza agregada minima (0-100) para rotular el foso como "ancho". El
+# agregado del marco de fosos es None cuando no hay categorias evaluables y
+# solo es evidence_backed con fuentes primarias detras.
+_MIN_FORTALEZA_FOSO = 60
 
-def _render_contexto(respuesta: str) -> str | None:
-    """Plantilla renderizada si la respuesta es una clave valida; None si no.
+# Motores cuya resolucion ya es evidencia: el resolvedor los elige a partir
+# del tipo y los datos de la empresa, asi que un banco/aseguradora ES un
+# sector regulado y un motor de ciclo de materias primas ES un negocio
+# ciclico.
+_MOTORES_REGULADOS = ("bank", "insurer")
+_MOTORES_CICLICOS = ("commodity",)
 
-    Hermetico por construccion: el unico camino del texto LLM hacia el output
-    pasa por el dict de plantillas. Texto libre, claves con puntuacion extra
-    o claves inexistentes devuelven None y degradan al camino determinista.
+
+def _trace_number(valuation: Mapping[str, Any], key: str) -> float | None:
+    trace = valuation.get("trace")
+    if not isinstance(trace, Mapping):
+        return None
+    value = trace.get(key)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    return number if math.isfinite(number) else None
+
+
+def _engine_key(valuation: Mapping[str, Any]) -> str | None:
+    trace = valuation.get("trace")
+    if isinstance(trace, Mapping):
+        engine = trace.get("resolved_engine") or trace.get("engine")
+        if isinstance(engine, str) and engine.strip():
+            return engine.strip()
+    return None
+
+
+def _tiene_foso_ancho(valuation: Mapping[str, Any]) -> bool:
+    moat = valuation.get("moat")
+    if not isinstance(moat, Mapping):
+        return False
+    if moat.get("status") != "evidence_backed":
+        return False
+    aggregate = moat.get("aggregate_strength")
+    if isinstance(aggregate, bool) or not isinstance(aggregate, (int, float)):
+        return False
+    return float(aggregate) >= _MIN_FORTALEZA_FOSO
+
+
+def _riesgo_regulatorio_evidenciado(company: Company, valuation: Mapping[str, Any]) -> bool:
+    if _engine_key(valuation) in _MOTORES_REGULADOS:
+        return True
+    return any(
+        "regulat" in risk.lower()
+        for risk in (company.special_risks or [])
+        if isinstance(risk, str)
+    )
+
+
+def _selecciona_contexto(
+    company: Company, valuation: Mapping[str, Any]
+) -> tuple[str | None, str | None]:
+    """(clave, plantilla) sostenida por evidencia real; (None, None) si no hay.
+
+    Primera regla que casa, de mas especifica a mas general: balance_solido
+    (caja neta del snapshot: net_debt < 0 en el trace del motor), luego
+    foso_competitivo (agregado del marco de fosos evidence_backed por encima
+    del umbral), luego riesgo_regulatorio (motor de banco/aseguradora o
+    riesgo regulatorio declarado en la ficha) y por ultimo ciclicidad (motor
+    de ciclo de materias primas).
     """
-    return _CONTEXTO_PLANTILLAS.get(respuesta.strip().lower())
+    net_debt = _trace_number(valuation, "net_debt")
+    if net_debt is not None and net_debt < 0:
+        clave = "balance_solido"
+    elif _tiene_foso_ancho(valuation):
+        clave = "foso_competitivo"
+    elif _riesgo_regulatorio_evidenciado(company, valuation):
+        clave = "riesgo_regulatorio"
+    elif _engine_key(valuation) in _MOTORES_CICLICOS:
+        clave = "ciclicidad"
+    else:
+        return None, None
+    return clave, _CONTEXTO_PLANTILLAS[clave]
 
 
 # ---------------------------------------------------------------------------
@@ -229,7 +273,7 @@ def _deterministic_explanation(
     """Explicacion de plantilla: siempre disponible y unica fuente de cifras.
 
     Cada numero va en su campo con su unidad y su escenario por construccion;
-    el LLM nunca lo reescribe. Sin moneda en la fuente, los importes se
+    nada externo lo reescribe. Sin moneda en la fuente, los importes se
     muestran sin divisa y se declara — nunca se atribuye una inventada.
     """
     target = float(report["target_margin_of_safety"])
@@ -274,140 +318,19 @@ def _deterministic_explanation(
     return " ".join(parts)
 
 
-# ---------------------------------------------------------------------------
-# Contexto LLM (opcional, sin cifras)
-# ---------------------------------------------------------------------------
-
-
-def _context_prompt(company: Company) -> str:
-    """Datos NO numericos para situar la redaccion; nunca cifras ni moneda."""
-    return json.dumps(
-        {"empresa": company.name, "ticker": company.ticker}, ensure_ascii=False
-    )
-
-
-async def _draft_context(provider, prompt: str, *, on_response, before_retry) -> str:
-    """Una clave guardada: idioma e integridad via complete_guarded.
-
-    El modelo fijado es el gratuito verificado; un override de entorno que lo
-    mueva a un modelo de pago levanta y el llamador degrada al camino
-    determinista, como en second_order_news_service.
-    """
-    request = LLMRequest(
-        messages=[Message("system", _SYSTEM_PROMPT), Message("user", prompt)],
-        task="entry_price_explanation",
-        model="space-bunny-free",
-        temperature=0.0,
-        max_tokens=32,
-    )
-    if provider.model_router.resolve(request) not in VERIFIED_FREE_MODELS:
-        raise RuntimeError("Entry-price model is not the verified free model")
-    guarded = await complete_guarded(
-        provider,
-        request,
-        source="entry_price",
-        on_response=on_response,
-        before_retry=before_retry,
-    )
-    return str(guarded.response.text).strip()
-
-
-def _try_llm_context(
-    db: Session,
-    company: Company,
-    *,
-    provider=None,
-) -> tuple[str | None, dict | None, str | None]:
-    """Intenta el contexto LLM. Devuelve (texto | None, quota | None, nota | None).
-
-    El texto devuelto es SIEMPRE una plantilla del conjunto cerrado renderizada
-    por el backend; el modelo solo eligio la clave. Nunca lanza: cualquier
-    fallo deja solo la explicacion determinista y una nota honesta de por que
-    el contexto no se muestra. Nunca afirma que una llamada fallida funciono.
-    """
-    tenant_id = db.info.get("tenant_id")
-    quota: dict | None = None
-    try:
-        provider = provider or create_llm_provider()
-        if provider.name == "disabled":
-            return None, None, "Proveedor LLM no configurado."
-        budget = BudgetController()
-        settings = get_settings()
-        if not budget.can_spend(db, _BUDGET_ESTIMATE_EUR):
-            return None, None, "Contexto LLM no disponible: presupuesto diario agotado."
-        quota = reserve_llm_call(tenant_id, settings)
-        if not quota["allowed"]:
-            return None, quota, "Contexto LLM no disponible: tope de llamadas alcanzado."
-    except Exception:  # noqa: BLE001 - config, tenant o cuota rotos: falla cerrado
-        logger.warning("entry-price LLM: preparacion fallida, camino determinista", exc_info=True)
-        return None, quota, "Contexto LLM no disponible; se muestra solo la explicación determinista."
-
-    prompt = _context_prompt(company)
-    db.commit()  # sin conexion ni transaccion abiertas durante la espera del LLM
-
-    def _record(resp) -> None:
-        # Cada respuesta del proveedor, tambien la que la validacion descarta,
-        # consume presupuesto.
-        cost = budget.estimate_cost_eur(
-            resp.model, resp.usage.input_tokens, resp.usage.output_tokens
-        )
-        budget.record(db, resp.model, "entry_price", cost, resp.usage.total_tokens)
-
-    def _before_retry() -> None:
-        nonlocal quota
-        retry_quota = reserve_llm_call(tenant_id, settings)
-        quota = retry_quota
-        if not retry_quota["allowed"]:
-            raise BudgetExceededError("entry-price LLM quota exhausted before retry")
-        try:
-            allowed_budget = budget.can_spend(db, _BUDGET_ESTIMATE_EUR)
-        finally:
-            db.commit()  # el SELECT del tope abre transaccion: se libera antes del 2o LLM
-        if not allowed_budget:
-            raise BudgetExceededError("LLM budget exhausted")
-
-    try:
-        text = run_from_any_context(
-            _draft_context(provider, prompt, on_response=_record, before_retry=_before_retry)
-        )
-    except Exception as exc:  # noqa: BLE001 - el fallo del proveedor no rompe el endpoint
-        logger.warning(
-            "entry-price LLM: fallo (%s), camino determinista", type(exc).__name__
-        )
-        return None, quota, "Contexto LLM no disponible; se muestra solo la explicación determinista."
-    if text.strip().lower() == _CLAVE_NINGUNO:
-        # Respuesta valida: el modelo no ve contexto que aportar. Ausencia,
-        # no fallo: sin contexto y sin nota de degradacion.
-        return None, quota, None
-    contexto = _render_contexto(text)
-    if contexto is None:
-        logger.warning(
-            "entry-price LLM: respuesta fuera del conjunto cerrado, camino determinista"
-        )
-        return (
-            None,
-            quota,
-            "El contexto LLM no era una clave de plantilla válida y fue "
-            "rechazado; se muestra solo la explicación determinista.",
-        )
-    return contexto, quota, None
-
-
 def entry_price_report(
     db: Session,
     company: Company,
     *,
     target_mos: float = DEFAULT_TARGET_MOS,
-    use_llm: bool = False,
-    provider=None,
 ) -> dict[str, Any]:
-    """Precio de entrada de una empresa: calculo determinista + contexto LLM opcional.
+    """Precio de entrada de una empresa: calculo y contexto deterministas.
 
     Lee la valoracion del motor (sin persistir nada) y compone el informe. La
-    explicacion con cifras es siempre la plantilla determinista; el LLM solo
-    puede anadir un contexto cualitativo validado. Solo es candidato si hay
-    al menos un precio de entrada calculado: sin cifras verificadas no hay
-    llamada al modelo.
+    explicacion con cifras es siempre la plantilla determinista; el contexto
+    cualitativo tambien lo es: solo se renderiza cuando la valoracion aporta
+    evidencia real que lo sostiene (_selecciona_contexto). Este endpoint no
+    llama al LLM.
     """
     valuation = ValuationService().value_company(db, company)
     report = compute_entry_prices(valuation, target_mos=target_mos)
@@ -417,19 +340,7 @@ def entry_price_report(
         else None
     )
     explanation = _deterministic_explanation(company.ticker, currency, report)
-    contexto = None
-    contexto_fuente = None
-    note = None
-    llm_quota = None
-    if use_llm:
-        if report["status"] != "ok":
-            note = "Sin valor justo no se llama al LLM: no hay cifras que explicar."
-        elif os.getenv("ENTRY_PRICE_LLM_ENABLED") != "1":
-            note = "Contexto LLM desactivado por configuración."
-        else:
-            contexto, llm_quota, note = _try_llm_context(db, company, provider=provider)
-            if contexto is not None:
-                contexto_fuente = "llm"
+    _, contexto = _selecciona_contexto(company, valuation)
     return {
         "ticker": company.ticker,
         "status": report["status"],
@@ -444,8 +355,6 @@ def entry_price_report(
         "valuation_publishable": bool(valuation.get("publishable")),
         "explicacion": explanation,
         "contexto": contexto,
-        "contexto_fuente": contexto_fuente,
-        "note": note,
-        "llm_quota": llm_quota,
+        "contexto_fuente": "determinista" if contexto is not None else None,
         "warning": WARNING,
     }
