@@ -557,3 +557,90 @@ def test_declared_pending_from_other_tenant_does_not_leak(db):
     assert comp["prior_losses"][0]["casilla_integracion"] is None
     # El saldo es el del libro (-400), no los 999 declarados por otro tenant.
     assert comp["prior_losses"][0]["pending_start_base"] == 400.0
+
+# Integración del TME manual desde la pestaña Impuestos.
+def test_manual_tme_preview_is_read_only_and_not_reused(db):
+    _eur_portfolio(db)
+    company = _company(db, 'TME', 'US')
+    _tx(db, company, date(2025, 5, 15), 'dividend', 0, 100, currency='EUR')
+    _tx(db, company, date(2025, 5, 15), 'withholding', 0, 15, currency='EUR')
+    from sqlalchemy import select
+
+    from app.models.entities import TaxReport
+    service = TaxReportService()
+    preview = service.get_report(db, 2025, tme=Decimal('0.10'))
+    assert preview['filing']['tme_percent_manual'] == 10
+    assert preview['filing']['double_taxation']['total_deduction_base'] == 10
+    assert db.scalars(select(TaxReport)).all() == []
+    normal = service.get_report(db, 2025)
+    assert normal['filing']['tme_percent_manual'] is None
+    assert normal['filing']['double_taxation']['total_deduction_base'] is None
+    assert normal['filing']['double_taxation']['status'] == 'pendiente_tme'
+
+
+@pytest.mark.parametrize('value', ['-0.01', '100.01', 'NaN', 'Infinity', '19.123'])
+def test_preview_rejects_invalid_tme(value):
+    from pydantic import ValidationError
+
+    from app.api.routes.taxes import FilingPreviewInput
+    with pytest.raises(ValidationError):
+        FilingPreviewInput(tme_percent=value)
+
+
+def test_preview_endpoint_accepts_zero_and_validates_year(db):
+    from fastapi import HTTPException
+
+    from app.api.routes.taxes import FilingPreviewInput, preview_tax_filing
+    _eur_portfolio(db)
+    result = preview_tax_filing(2025, FilingPreviewInput(tme_percent='0'), db)
+    assert result['filing']['tme_percent_manual'] == 0
+    assert result['filing']['double_taxation']['total_deduction_base'] == 0
+    with pytest.raises(HTTPException) as exc:
+        preview_tax_filing(1999, FilingPreviewInput(tme_percent='19'), db)
+    assert exc.value.status_code == 400
+
+
+def test_manual_tme_does_not_publish_partial_total(db):
+    _eur_portfolio(db)
+    unknown = _company(db, 'UNKNOWN', None)
+    _tx(db, unknown, date(2025, 5, 15), 'dividend', 0, 100, currency='EUR')
+    _tx(db, unknown, date(2025, 5, 15), 'withholding', 0, 15, currency='EUR')
+    result = TaxReportService().get_report(db, 2025, tme=Decimal('0.19'))
+    assert result['filing']['double_taxation']['partial'] is True
+    assert result['filing']['double_taxation']['total_deduction_base'] is None
+
+
+def _es_bucket(**over):
+    base = {
+        "ticker": "SAN",
+        "dividends_base": Decimal("100"),
+        "withholding_base": Decimal("19"),
+        "missing_fx": False,
+        "ambiguous_cash": False,
+        "payments": [],
+    }
+    base.update(over)
+    return base
+
+
+def test_0597_is_null_when_spanish_withholding_is_incomplete():
+    for bucket in (
+        _es_bucket(withholding_base=None, missing_fx=True),
+        _es_bucket(dividends_base=None, missing_fx=True),
+        _es_bucket(withholding_base=None),
+    ):
+        out = build_double_taxation([bucket], {"SAN": "ES"}, 2025)
+        base = out["spanish_withholding_base"]
+        assert base["amount"] is None and base["status"] == "SIN_DATOS"
+
+
+def test_0597_is_published_when_spanish_withholding_is_complete():
+    out = build_double_taxation([_es_bucket()], {"SAN": "ES"}, 2025)
+    base = out["spanish_withholding_base"]
+    assert base["amount"] == 19.0 and base["status"] == "calculada"
+
+
+def test_0597_ignores_incomplete_foreign_buckets():
+    foreign = _es_bucket(ticker="NESN", withholding_base=None, missing_fx=True)
+    out = build_double_taxation([_es_bucket(), foreign], {"SAN": "ES", "NESN": "CH"}, 2025)
+    assert out["spanish_withholding_base"]["amount"] == 19.0

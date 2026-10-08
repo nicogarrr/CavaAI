@@ -260,9 +260,22 @@ def build_double_taxation(
     """
     by_country: dict[str, dict] = {}
     manual_review = []
+    # La casilla 0597 suma retenciones ESPAÑOLAS. Si un bloque que podria ser
+    # espanol (pais ES o desconocido) no se puede convertir o revisar, o no trae
+    # la retencion, el total no es verificable: se publica null, nunca un 0.
+    es_incomplete = False
     for bucket in dividends:
         gross = bucket["dividends_base"]
         withheld = bucket["withholding_base"]
+        bucket_country = (country_by_ticker.get(bucket["ticker"]) or "").strip().upper()
+        may_be_es = bucket_country in {"", UNKNOWN_COUNTRY, "ES"}
+        if may_be_es and (
+            bucket["missing_fx"]
+            or bucket.get("ambiguous_cash")
+            or (bucket_country == "ES" and withheld is None and gross)
+            or (bucket_country == "ES" and gross is None and withheld)
+        ):
+            es_incomplete = True
         if bucket["missing_fx"]:
             manual_review.append({
                 "ticker": bucket["ticker"],
@@ -284,6 +297,8 @@ def build_double_taxation(
             if token in str(payment.get("raw_action") or "").lower()
         })
         if special:
+            if may_be_es:
+                es_incomplete = True
             manual_review.append({
                 "ticker": bucket["ticker"],
                 "reason": (
@@ -295,6 +310,7 @@ def build_double_taxation(
             continue
         country = (country_by_ticker.get(bucket["ticker"]) or "").strip().upper()
         if country in {"", UNKNOWN_COUNTRY}:
+            es_incomplete = True
             manual_review.append({
                 "ticker": bucket["ticker"],
                 "reason": "País de retención desconocido (sin domicilio del emisor); no se calcula deducción para este bloque.",
@@ -365,16 +381,24 @@ def build_double_taxation(
         "total_deduction_base": _money(total_deduction) if publish_total else None,
         "spanish_withholding_base": {
             "casilla": CASILLA_RETENCIONES_ES,
-            "amount": _money(spanish_withholding),
+            "amount": None if es_incomplete else _money(spanish_withholding),
+            "status": "SIN_DATOS" if es_incomplete else "calculada",
+            "reason": (
+                "Hay dividendos de emisor espanol o de pais desconocido sin tipo de cambio, "
+                "retencion o revision: el total de retenciones espanolas no es verificable."
+                if es_incomplete
+                else None
+            ),
         },
         "excess_withholding_reclaimable": any_excess,
         "manual_review": manual_review,
         "notas": [
             "La deducción final (0588) es el menor entre el tope de convenio "
-            "y la cuota española calculada con el TIPO MEDIO EFECTIVO de tu "
-            "declaración completa (Manual Renta 2025, cap. 18): ese tipo "
+            "y la cuota española calculada con el TIPO MEDIO EFECTIVO de la "
+            "base liquidable del ahorro (cuota líquida total entre base liquidable, "
+            "Manual Renta 2025, cap. 18; distinto del TME de la base general): ese tipo "
             "necesita bases y cuotas de toda la declaración, que no están en "
-            "este informe. Introduce tu TME del borrador de Renta Web para "
+            "este informe. Introduce el TME de la base liquidable del AHORRO de tu borrador para "
             "calcularla; hasta entonces el importe mostrado es solo el tope "
             "por convenio (límite superior).",
             "El exceso de retención sobre el tipo de convenio no lo devuelve "

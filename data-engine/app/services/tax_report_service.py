@@ -204,7 +204,7 @@ class TaxReportService:
         self.fx = PortfolioFXService()
         self.settings = get_settings()
 
-    def compute_report(self, db: Session, fiscal_year: int, include_filing: bool = True) -> dict:
+    def compute_report(self, db: Session, fiscal_year: int, include_filing: bool = True, tme: Decimal | None = None) -> dict:
         # SOLO lectura: sin portfolio persistido se usa la divisa por defecto;
         # crearlo aqui convertia cualquier GET del informe en una escritura.
         portfolio = self.fx.portfolio(db)
@@ -799,10 +799,10 @@ class TaxReportService:
             "misc": sorted(misc_rows, key=lambda d: d["date"]),
         }
         if include_filing:
-            data["filing"] = self._build_filing(db, fiscal_year, data)
+            data["filing"] = self._build_filing(db, fiscal_year, data, tme=tme)
         return data
 
-    def _build_filing(self, db: Session, fiscal_year: int, data: dict) -> dict:
+    def _build_filing(self, db: Session, fiscal_year: int, data: dict, tme: Decimal | None = None) -> dict:
         """Capa de declaracion IRPF (casillas Modelo 100 + doble imposicion).
 
         Deriva de los agregados del informe; nunca inventa cifras: si falta
@@ -877,6 +877,7 @@ class TaxReportService:
                 declared_pending = None
         return {
             "available": True,
+            "tme_percent_manual": float(tme * 100) if tme is not None else None,
             "casillas": build_casillas(
                 data.get("dividends") or [], data.get("realized") or [], fiscal_year
             ),
@@ -884,6 +885,7 @@ class TaxReportService:
                 data.get("dividends") or [],
                 country_by_ticker,
                 fiscal_year,
+                tme=tme,
             ),
             "loss_compensation": build_loss_compensation(
                 prior_year_nets,
@@ -896,7 +898,7 @@ class TaxReportService:
             ),
         }
 
-    def get_report(self, db: Session, fiscal_year: int) -> dict:
+    def get_report(self, db: Session, fiscal_year: int, tme: Decimal | None = None) -> dict:
         """Informe de un ejercicio. SOLO LECTURA: nunca escribe en la base.
 
         Si existe un informe persistido lo devuelve; si no, lo calcula en
@@ -921,9 +923,9 @@ class TaxReportService:
             # La capa de declaracion se calcula al leer (no se persiste): es
             # presentacion derivada de los mismos agregados, siempre al dia
             # con el mapeo normativo vigente en el codigo.
-            data["filing"] = self._build_filing(db, fiscal_year, data)
+            data["filing"] = self._build_filing(db, fiscal_year, data, tme=tme)
             return data
-        data = self.compute_report(db, fiscal_year)
+        data = self.compute_report(db, fiscal_year, tme=tme)
         data["generated_at"] = None
         data["persisted"] = False
         return data
