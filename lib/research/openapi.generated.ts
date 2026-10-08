@@ -705,6 +705,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/companies/{ticker}/inferred-inputs/llm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Inferred Input Llm
+         * @description Estima el margen FCF con el LLM solo desde extractos ya ingeridos. Guarda INFERIDO.
+         */
+        post: operations["create_inferred_input_llm_api_companies__ticker__inferred_inputs_llm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/companies/{ticker}/kpi-registry": {
         parameters: {
             query?: never;
@@ -5181,6 +5201,15 @@ export interface components {
             /** Value */
             value: number | string;
         };
+        /** InferredInputLLMRequest */
+        InferredInputLLMRequest: {
+            /**
+             * Input Key
+             * @default fcf_margin
+             * @constant
+             */
+            input_key: "fcf_margin";
+        };
         /** KPIExtractionAction */
         KPIExtractionAction: {
             /**
@@ -8593,6 +8622,52 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["InferredInputCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_inferred_input_llm_api_companies__ticker__inferred_inputs_llm_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path: {
+                ticker: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InferredInputLLMRequest"];
             };
         };
         responses: {
