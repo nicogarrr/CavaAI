@@ -14,13 +14,14 @@ se cuantiza a resolucion de 0.1 punto porcentual y se muestra con esa misma
 precision (25%, 25.4%, 0.5%): el porcentaje declarado siempre reproduce el
 precio de entrada calculado, sin redondeos que lo contradigan.
 
-El LLM, como mucho, aporta un CONTEXTO sin cifras (flag ENTRY_PRICE_LLM_ENABLED=1
-y use_llm=true en el endpoint): una nota cualitativa corta que no recibe ningun
-numero del servicio y cuya salida se valida dos veces — complete_guarded
-(idioma e integridad, PR #933) y un validador que rechaza cualquier cifra
-(digitos, numeros en palabras, escalas como "millones", porcentajes y divisas).
-Ante cualquier fallo (proveedor, cuota, presupuesto, validacion) se publica
-solo la explicacion determinista. Sin datos suficientes no hay llamada al LLM.
+El LLM, como mucho, ELIGE UNA CLAVE de un conjunto cerrado de contextos
+cualitativos (flag ENTRY_PRICE_LLM_ENABLED=1 y use_llm=true en el endpoint):
+el backend renderiza la plantilla asociada a la clave y NINGUN texto libre
+del modelo llega al output. complete_guarded (idioma e integridad, PR #933)
+sigue delante de la seleccion, y una respuesta que no sea una clave exacta se
+rechaza. Ante cualquier fallo (proveedor, cuota, presupuesto, clave invalida)
+se publica solo la explicacion determinista. Sin datos suficientes no hay
+llamada al LLM.
 
 La sesion se confirma (commit) ANTES de cualquier llamada al LLM, siguiendo a
 llm_proposal_runner y second_order_news_service: ninguna conexion queda
@@ -35,8 +36,6 @@ import json
 import logging
 import math
 import os
-import re
-import unicodedata
 from collections.abc import Mapping
 from typing import Any
 
@@ -76,105 +75,55 @@ WARNING = (
 _SCENARIO_KEYS = (("base", "base_value"), ("bear", "bear_value"))
 
 _SYSTEM_PROMPT = (
-    "Redacta un contexto breve (máximo 40 palabras) para acompañar el precio "
-    "de entrada de una acción calculado por un modelo de valoración, en "
-    "español profesional. PROHIBIDO escribir cifras: ningún número (ni en "
-    "dígitos ni en palabras), ningún porcentaje, ninguna cantidad, ninguna "
-    "escala (mil, millones...) y ninguna divisa. Explica en general qué "
-    "significa exigir un margen de seguridad antes de comprar y recuerda que "
-    "es una estimación del modelo con sus supuestos, no una recomendación de "
-    "inversión. No inventes noticias, fechas ni causas."
+    "Elige UNA clave que describa la tesis cualitativa de la entrada de una "
+    "acción y responde SOLO con la clave, tal cual, sin explicación, sin "
+    "puntuación y sin ningún otro texto. Claves permitidas: "
+    "foso_competitivo (ventajas competitivas duraderas difíciles de "
+    "replicar), balance_solido (caja neta y poco apalancamiento), "
+    "direccion_prudente (asignación de capital prudente), riesgo_regulatorio "
+    "(riesgo regulatorio elevado en el sector), ciclicidad (negocio cíclico: "
+    "los supuestos del modelo pesan más de lo habitual), ninguno (ninguna "
+    "clave encaja o no hay base para elegir). Nunca escribas cifras, "
+    "porcentajes ni divisas."
 )
 
 # ---------------------------------------------------------------------------
-# Validador del contexto LLM: no puede contener NINGUNA cifra.
+# Contexto LLM por PLANTILLA CONTROLADA: el modelo solo elige una clave.
 # ---------------------------------------------------------------------------
 
-_DIGIT_RE = re.compile(r"\d")
-_TOKEN_RE = re.compile(r"[a-z]+")
-_BANNED_SYMBOLS = ("%", "$", "€", "£", "¥")
+_CLAVE_NINGUNO = "ninguno"
 
-# Vocabulario de importes: prohibido EN CUALQUIER FORMA en el contexto LLM,
-# no solo en afirmaciones copulativas. El contexto es para la tesis
-# cualitativa (foso, riesgos, negocio); TODA cifra vive en la plantilla
-# determinista, la unica fuente de importes verificados. Un falso positivo
-# ("el margen de seguridad protege", "barreras de entrada") solo cuesta el
-# camino determinista; un falso negativo publicaria una cifra no verificada.
-_FINANCIAL_NOUNS = frozenset(
-    [
-        "precio", "precios", "entrada", "entradas", "margen", "margenes",
-        "valor", "valores", "cotizacion", "cotizaciones", "importe",
-        "importes", "coste", "costes", "costo", "costos", "valoracion",
-        "valoraciones", "descuento", "descuentos", "divisa", "divisas",
-        "porcentaje", "porcentajes", "price", "prices", "margin", "margins",
-        "value", "values", "quote", "quotes", "amount", "amounts", "cost",
-        "costs", "valuation", "valuations", "discount", "discounts",
-        "currency", "currencies", "percent", "percentage",
-    ]
-)
-# El contexto nunca nombra divisas: sin moneda en la fuente, afirmar USD
-# seria inventarla; con moneda, la plantilla determinista es quien la rotula.
-_CURRENCY_WORDS = frozenset(
-    ["usd", "eur", "gbp", "jpy", "chf", "mxn", "dolar", "dolares", "dollar", "dollars", "euro", "euros", "libra", "libras", "pound", "pounds", "yen", "yenes", "peso", "pesos", "cent", "cents", "centavo", "centavos", "centimo", "centimos"]
-)
-_BANNED_TOKENS = _FINANCIAL_NOUNS | _CURRENCY_WORDS
-
-# Morfologia numerica SIN inventario: lo que ninguna lista puede enumerar
-# (doscientas, tresmil, veinte millones, ninety-five), la forma lo delata.
-# Sufijos de centena (-cientos/-cientas), ordinales de centena y derivados
-# (-ientos/-ientas), -mil compuesto, escalas (-illon/-illones, que tambien
-# cubre million/billion EN) y -th/-ty EN. El tokenizer separa el guion, asi
-# que "ninety-five" llega como dos tokens y muere por "ninety".
-_NUMERIC_SUFFIX_RE = re.compile(
-    r"(?:cientos?|cientas?|ientos?|ientas?|mil(?:es)?|illon(?:es)?|illion(?:s)?)$"
-)
-_EN_NUMERIC_SUFFIX_RE = re.compile(r"(?:th|ty)$")
-# Excepciones EN no numericas frecuentes en prosa de negocio ("growth",
-# "equity"): solo reducen falsos positivos. Ninguna excepcion es una forma
-# numerica, asi que la direccion del fallo sigue siendo segura.
-_EN_SUFFIX_EXCEPTIONS = frozenset(
-    [
-        "with", "both", "month", "growth", "health", "wealth", "worth",
-        "strength", "path", "truth", "youth", "death", "earth", "length",
-        "width", "depth", "warmth", "city", "safety", "quality", "activity",
-        "ability", "reality", "society", "variety", "majority", "minority",
-        "priority", "security", "opportunity", "university", "community",
-        "capacity", "volatility", "liquidity", "equity", "property",
-        "identity", "utility", "entity", "quantity", "stability",
-    ]
-)
-
-def _normalize(text: str) -> str:
-    return unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().lower()
+# Conjunto cerrado de contextos. El LLM devuelve UNA clave; el backend
+# renderiza la plantilla asociada. Ningun texto libre del modelo llega al
+# output, asi que no hay validador de vocabulario que pueda perder una
+# variante: lo que no es una clave exacta no existe para el usuario.
+_CONTEXTO_PLANTILLAS = {
+    "foso_competitivo": (
+        "El modelo ve un negocio con foso competitivo ancho, difícil de replicar."
+    ),
+    "balance_solido": (
+        "El modelo ve un balance sólido, con caja neta y poco apalancamiento."
+    ),
+    "direccion_prudente": (
+        "El modelo ve una dirección prudente en la asignación del capital."
+    ),
+    "riesgo_regulatorio": (
+        "El modelo ve riesgo regulatorio elevado en el sector."
+    ),
+    "ciclicidad": (
+        "El modelo ve un negocio cíclico: los supuestos pesan más de lo habitual."
+    ),
+}
 
 
-def context_verified(text: str) -> bool:
-    """El contexto LLM es publicable solo si NO habla de cifras en absoluto.
+def _render_contexto(respuesta: str) -> str | None:
+    """Plantilla renderizada si la respuesta es una clave valida; None si no.
 
-    Fail-closed por construccion: digitos, simbolos de porcentaje o divisa,
-    vocabulario de importes/divisas en cualquier forma y morfologia numerica
-    (sufijos de centena, escala o decena, ES y EN) invalidan el texto entero.
-    El contexto es para la tesis cualitativa; las cifras son siempre la
-    plantilla determinista. Un falso positivo solo cuesta el reintento o el
-    camino determinista; un falso negativo publicaria una cifra no
-    verificada.
+    Hermetico por construccion: el unico camino del texto LLM hacia el output
+    pasa por el dict de plantillas. Texto libre, claves con puntuacion extra
+    o claves inexistentes devuelven None y degradan al camino determinista.
     """
-    if not isinstance(text, str) or not text.strip():
-        return False
-    if _DIGIT_RE.search(text):
-        return False
-    if any(symbol in text for symbol in _BANNED_SYMBOLS):
-        return False
-    normalized = _normalize(text)
-    tokens = set(_TOKEN_RE.findall(normalized))
-    if tokens & _BANNED_TOKENS:
-        return False
-    for token in tokens:
-        if _NUMERIC_SUFFIX_RE.search(token):
-            return False
-        if _EN_NUMERIC_SUFFIX_RE.search(token) and token not in _EN_SUFFIX_EXCEPTIONS:
-            return False
-    return True
+    return _CONTEXTO_PLANTILLAS.get(respuesta.strip().lower())
 
 
 # ---------------------------------------------------------------------------
@@ -338,7 +287,7 @@ def _context_prompt(company: Company) -> str:
 
 
 async def _draft_context(provider, prompt: str, *, on_response, before_retry) -> str:
-    """Un contexto guardado: idioma e integridad via complete_guarded.
+    """Una clave guardada: idioma e integridad via complete_guarded.
 
     El modelo fijado es el gratuito verificado; un override de entorno que lo
     mueva a un modelo de pago levanta y el llamador degrada al camino
@@ -348,8 +297,8 @@ async def _draft_context(provider, prompt: str, *, on_response, before_retry) ->
         messages=[Message("system", _SYSTEM_PROMPT), Message("user", prompt)],
         task="entry_price_explanation",
         model="space-bunny-free",
-        temperature=0.2,
-        max_tokens=160,
+        temperature=0.0,
+        max_tokens=32,
     )
     if provider.model_router.resolve(request) not in VERIFIED_FREE_MODELS:
         raise RuntimeError("Entry-price model is not the verified free model")
@@ -371,9 +320,10 @@ def _try_llm_context(
 ) -> tuple[str | None, dict | None, str | None]:
     """Intenta el contexto LLM. Devuelve (texto | None, quota | None, nota | None).
 
-    Nunca lanza: cualquier fallo deja solo la explicacion determinista y una
-    nota honesta de por que el contexto no se muestra. Nunca afirma que una
-    llamada fallida funciono.
+    El texto devuelto es SIEMPRE una plantilla del conjunto cerrado renderizada
+    por el backend; el modelo solo eligio la clave. Nunca lanza: cualquier
+    fallo deja solo la explicacion determinista y una nota honesta de por que
+    el contexto no se muestra. Nunca afirma que una llamada fallida funciono.
     """
     tenant_id = db.info.get("tenant_id")
     quota: dict | None = None
@@ -425,17 +375,22 @@ def _try_llm_context(
             "entry-price LLM: fallo (%s), camino determinista", type(exc).__name__
         )
         return None, quota, "Contexto LLM no disponible; se muestra solo la explicación determinista."
-    if not context_verified(text):
+    if text.strip().lower() == _CLAVE_NINGUNO:
+        # Respuesta valida: el modelo no ve contexto que aportar. Ausencia,
+        # no fallo: sin contexto y sin nota de degradacion.
+        return None, quota, None
+    contexto = _render_contexto(text)
+    if contexto is None:
         logger.warning(
-            "entry-price LLM: contexto con cifras o divisas, camino determinista"
+            "entry-price LLM: respuesta fuera del conjunto cerrado, camino determinista"
         )
         return (
             None,
             quota,
-            "El contexto LLM contenía cifras o divisas y fue rechazado; "
-            "se muestra solo la explicación determinista.",
+            "El contexto LLM no era una clave de plantilla válida y fue "
+            "rechazado; se muestra solo la explicación determinista.",
         )
-    return text, quota, None
+    return contexto, quota, None
 
 
 def entry_price_report(

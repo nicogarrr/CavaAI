@@ -1,11 +1,12 @@
-"""Precio de entrada determinista + contexto LLM sin cifras.
+"""Precio de entrada determinista + contexto LLM por plantilla controlada.
 
 Casos del diseno y de la auditoria (#946): sin valor justo el estado es N/D y
-no hay llamada LLM; toda cifra la produce la plantilla determinista; cualquier
-salida LLM con cifras (digitos, palabras, escalas, porcentajes, divisas) se
-rechaza y se publica solo la explicacion determinista; sin moneda en la fuente
-ningun importe se atribuye a una divisa inventada; y el margen objetivo
-cuantizado es coherente al decimal entre texto y calculo.
+no hay llamada LLM; toda cifra la produce la plantilla determinista; el LLM
+solo elige UNA clave de un conjunto cerrado y el backend renderiza la
+plantilla (ningun texto libre del modelo llega al output: cualquier repro
+historico de la auditoria degrada porque no es una clave); sin moneda en la
+fuente ningun importe se atribuye a una divisa inventada; y el margen
+objetivo cuantizado es coherente al decimal entre texto y calculo.
 """
 
 from __future__ import annotations
@@ -49,11 +50,10 @@ VALUATION_SIN_DATOS = {
     "trace": {},
 }
 
-CONTEXTO_VALIDO = (
-    "Negocio con foso competitivo ancho, caja neta y dirección prudente. "
-    "Es una estimación del modelo con sus supuestos, no una recomendación de "
-    "inversión."
-)
+# Salida valida del LLM: UNA clave del conjunto cerrado. Lo que llega al
+# usuario es la plantilla que el backend renderiza para esa clave.
+CONTEXTO_CLAVE = "foso_competitivo"
+CONTEXTO_PLANTILLA = service._CONTEXTO_PLANTILLAS[CONTEXTO_CLAVE]
 
 # Las 3 cadenas exactas del repro de la auditoria: el validador global las
 # aceptaba como verificadas; ahora deben degradar a la explicacion determinista.
@@ -89,6 +89,32 @@ REPRO_AUDITORIA_ESTRUCTURAL = [
 RECHAZOS_ACEPTADOS = [
     "El margen de seguridad protege.",
     "Las barreras de entrada son altas.",
+]
+
+# Cuarta ronda (#946): afirmaciones de importe sin sustantivo prohibido ni
+# simbolo. Refutan la premisa de que toda afirmacion financiera nombra el
+# importe; con la plantilla controlada dejan de ser un problema de vocabulario.
+REPRO_AUDITORIA_CIFRAS_SUELTAS = [
+    "Se puede comprar a noventa y cinco.",
+    "Pagar noventa por título deja colchón.",
+    "El negocio crece cuarenta por cien cada año.",
+]
+
+# Repros historicos del validador de vocabulario (rondas 1-3): textos con
+# cifras en digitos, palabras, escalas, porcentajes o divisas. Ninguno es una
+# clave valida, asi que todos degradan por el mismo camino cerrado.
+REPRO_AUDITORIA_HISTORICOS = [
+    "La entrada ronda los noventa millones.",
+    "El precio cayó noventa dólares.",
+    "El precio cayó ninety dollars.",
+    "Subió un cuarenta por ciento.",
+    "Subió un 40%.",
+    "El descuento es del 25 %.",
+    "El precio es 90€.",
+    "Son unos mil títulos.",
+    "La empresa vale millones.",
+    "Cotiza en USD.",
+    "Versión 2 del modelo.",
 ]
 
 
@@ -250,59 +276,23 @@ def test_mos_se_cuantiza_a_resolucion_autorizada_y_se_responde_cuantizado():
 
 
 # --------------------------------------------------------------------------
-# Validador del contexto LLM: sin cifras de ninguna clase
+# Conjunto cerrado de claves: la unica via de texto LLM hacia el output
 # --------------------------------------------------------------------------
 
 
-def test_contexto_valido_sin_cifras_pasa():
-    assert service.context_verified(CONTEXTO_VALIDO)
+def test_clave_valida_renderiza_su_plantilla():
+    for clave, plantilla in service._CONTEXTO_PLANTILLAS.items():
+        assert service._render_contexto(clave) == plantilla
+        assert service._render_contexto(f"  {clave.upper()}\n") == plantilla
 
 
-@pytest.mark.parametrize(
-    "texto",
-    REPRO_AUDITORIA + REPRO_AUDITORIA_CANTIDADES + REPRO_AUDITORIA_ESTRUCTURAL,
-)
-def test_repros_auditoria_rechazados_por_el_validador(texto):
-    assert not service.context_verified(texto)
-
-
-@pytest.mark.parametrize("texto", RECHAZOS_ACEPTADOS)
-def test_contexto_que_menciona_importes_en_cualquier_forma_rechazado(texto):
-    assert not service.context_verified(texto)
-
-
-@pytest.mark.parametrize(
-    "texto",
-    [
-        "Empresa con foso ancho y caja neta.",
-        "Riesgo regulatorio elevado en el sector.",
-    ],
-)
-def test_contexto_cualitativo_legitimo_pasa(texto):
-    assert service.context_verified(texto)
-
-
-@pytest.mark.parametrize(
-    "texto",
-    [
-        "La entrada ronda los noventa millones.",  # numeros en palabras + escala
-        "El precio cayó noventa dólares.",  # palabras + divisa
-        "El precio cayó ninety dollars.",  # palabras en ingles + divisa
-        "Subió un cuarenta por ciento.",  # porcentaje en palabras
-        "Subió un 40%.",  # porcentaje incorrecto en digitos
-        "El descuento es del 25 %.",  # simbolo de porcentaje
-        "El precio es 90€.",  # simbolo de divisa
-        "Son unos mil títulos.",  # escala
-        "La empresa vale millones.",  # escala sin cifra explicita
-        "Cotiza en USD.",  # divisa sin cifra: el contexto nunca la nombra
-        # Limite aceptado del cierre estructural (#946): "Hay dos escenarios."
-        # cuantifica sin sustantivo de importe ni morfologia numerica; cazarlo
-        # exigiria la lista de cardinales que este diseno elimina a proposito.
-        "Versión 2 del modelo.",  # digito
-    ],
-)
-def test_contexto_con_cifras_o_divisas_rechazado(texto):
-    assert not service.context_verified(texto)
+def test_respuesta_fuera_del_conjunto_cerrado_no_renderiza():
+    assert service._render_contexto("tesis libre con foso ancho") is None
+    assert service._render_contexto("foso_competitivo.") is None  # puntuacion
+    assert service._render_contexto("foso_amplio") is None  # clave inexistente
+    assert service._render_contexto("") is None
+    # "ninguno" tampoco renderiza: el llamador la trata como ausencia valida.
+    assert service._render_contexto(service._CLAVE_NINGUNO) is None
 
 
 # --------------------------------------------------------------------------
@@ -314,16 +304,16 @@ def test_camino_feliz_llm(monkeypatch, db_session):
     company = _company(db_session)
     _patch_valuation(monkeypatch, VALUATION_OK)
     monkeypatch.setenv("ENTRY_PRICE_LLM_ENABLED", "1")
-    provider = FakeProvider(CONTEXTO_VALIDO)
+    provider = FakeProvider(CONTEXTO_CLAVE)
     result = service.entry_price_report(
         db_session, company, target_mos=0.25, use_llm=True, provider=provider
     )
     assert result["status"] == "ok"
     assert result["etiqueta"] == "estimacion_modelo"
-    # Las cifras SOLO salen de la plantilla determinista; el LLM aporta contexto.
+    # Las cifras SOLO salen de la plantilla determinista; el LLM elige clave.
     assert "90.00 USD" in result["explicacion"]
     assert "margen de seguridad objetivo del 25%" in result["explicacion"]
-    assert result["contexto"] == CONTEXTO_VALIDO
+    assert result["contexto"] == CONTEXTO_PLANTILLA
     assert result["contexto_fuente"] == "llm"
     assert result["note"] is None
     assert len(provider.calls) == 1
@@ -341,11 +331,27 @@ def test_camino_feliz_llm(monkeypatch, db_session):
     assert not db_session.new
 
 
+def test_clave_ninguno_es_ausencia_valida_sin_nota(monkeypatch, db_session):
+    company = _company(db_session)
+    _patch_valuation(monkeypatch, VALUATION_OK)
+    monkeypatch.setenv("ENTRY_PRICE_LLM_ENABLED", "1")
+    provider = FakeProvider("ninguno")
+    result = service.entry_price_report(
+        db_session, company, target_mos=0.25, use_llm=True, provider=provider
+    )
+    assert result["contexto"] is None
+    assert result["contexto_fuente"] is None
+    # No es un fallo: sin nota de degradacion, con la cuota consumida visible.
+    assert result["note"] is None
+    assert len(provider.calls) == 1
+    assert result["llm_quota"]["allowed"] is True
+
+
 def test_sin_fair_value_nd_y_sin_llamada_llm(monkeypatch, db_session):
     company = _company(db_session)
     _patch_valuation(monkeypatch, VALUATION_SIN_DATOS)
     monkeypatch.setenv("ENTRY_PRICE_LLM_ENABLED", "1")
-    provider = FakeProvider(CONTEXTO_VALIDO)
+    provider = FakeProvider(CONTEXTO_CLAVE)
     result = service.entry_price_report(
         db_session, company, target_mos=0.25, use_llm=True, provider=provider
     )
@@ -358,52 +364,45 @@ def test_sin_fair_value_nd_y_sin_llamada_llm(monkeypatch, db_session):
     assert result["llm_quota"] is None
 
 
-@pytest.mark.parametrize("texto", REPRO_AUDITORIA)
+@pytest.mark.parametrize(
+    "texto",
+    REPRO_AUDITORIA
+    + REPRO_AUDITORIA_CANTIDADES
+    + REPRO_AUDITORIA_ESTRUCTURAL
+    + REPRO_AUDITORIA_CIFRAS_SUELTAS
+    + REPRO_AUDITORIA_HISTORICOS
+    + RECHAZOS_ACEPTADOS,
+)
 def test_repros_auditoria_degradan_a_determinista(monkeypatch, db_session, texto):
+    """Ningun texto libre llega al output: lo que no es una clave, degrada.
+
+    Las cadenas en espanol llegan a la seleccion de clave y se rechazan como
+    clave invalida (nota "rechazado", una llamada); las que el guard de
+    idioma (PR #933) intercepta antes degradan con la nota generica. En ambos
+    casos el usuario solo ve la explicacion determinista con SUS cifras.
+    """
     company = _company(db_session)
     _patch_valuation(monkeypatch, VALUATION_AUDIT)
     monkeypatch.setenv("ENTRY_PRICE_LLM_ENABLED", "1")
-    provider = FakeProvider(texto)
+    provider = FakeProvider(texto, texto)
     result = service.entry_price_report(
         db_session, company, target_mos=0.25, use_llm=True, provider=provider
     )
     assert result["contexto"] is None
     assert result["contexto_fuente"] is None
-    assert "rechazado" in result["note"]
-    # La explicacion que se muestra es la determinista, con SUS cifras verificadas.
+    assert result["note"] is not None
     assert "90.00 USD" in result["explicacion"]  # base: 120 x 0.75
     assert "60.00 USD" in result["explicacion"]  # bear: 80 x 0.75
     assert texto not in result["explicacion"]
-    # La llamada se hizo y su coste quedo registrado aunque se rechace la salida.
-    assert len(provider.calls) == 1
-    assert _budget_rows(db_session) == 1
-
-
-@pytest.mark.parametrize(
-    "texto", REPRO_AUDITORIA_CANTIDADES + REPRO_AUDITORIA_ESTRUCTURAL[:4]
-)
-def test_repros_cantidades_degradan_a_determinista(monkeypatch, db_session, texto):
-    company = _company(db_session)
-    _patch_valuation(monkeypatch, VALUATION_AUDIT)
-    monkeypatch.setenv("ENTRY_PRICE_LLM_ENABLED", "1")
-    provider = FakeProvider(texto)
-    result = service.entry_price_report(
-        db_session, company, target_mos=0.25, use_llm=True, provider=provider
-    )
-    assert result["contexto"] is None
-    assert result["contexto_fuente"] is None
-    assert "rechazado" in result["note"]
-    # Lo que se muestra es la plantilla con SUS cifras verificadas, no la del modelo.
-    assert "90.00 USD" in result["explicacion"]
-    assert texto not in result["explicacion"]
-    assert len(provider.calls) == 1
+    assert 1 <= len(provider.calls) <= 2
+    assert _budget_rows(db_session) == len(provider.calls)
 
 
 def test_flag_desactivado_no_llama_llm(monkeypatch, db_session):
     company = _company(db_session)
     _patch_valuation(monkeypatch, VALUATION_OK)
     monkeypatch.setenv("ENTRY_PRICE_LLM_ENABLED", "0")
-    provider = FakeProvider(CONTEXTO_VALIDO)
+    provider = FakeProvider(CONTEXTO_CLAVE)
     result = service.entry_price_report(
         db_session, company, target_mos=0.25, use_llm=True, provider=provider
     )
@@ -422,7 +421,7 @@ def test_cuota_agotada_no_llama_llm(monkeypatch, db_session):
         entry_price_llm_calls_per_day=20,
     )
     monkeypatch.setattr(service, "get_settings", lambda: fake_settings)
-    provider = FakeProvider(CONTEXTO_VALIDO)
+    provider = FakeProvider(CONTEXTO_CLAVE)
     result = service.entry_price_report(
         db_session, company, target_mos=0.25, use_llm=True, provider=provider
     )
@@ -475,7 +474,7 @@ def test_sin_moneda_no_se_atribuye_divisa_inventada(monkeypatch, db_session):
     company = _company_sin_moneda()
     _patch_valuation(monkeypatch, VALUATION_OK)
     monkeypatch.setenv("ENTRY_PRICE_LLM_ENABLED", "1")
-    provider = FakeProvider(CONTEXTO_VALIDO)
+    provider = FakeProvider(CONTEXTO_CLAVE)
     result = service.entry_price_report(
         db_session, company, target_mos=0.25, use_llm=True, provider=provider
     )
@@ -485,8 +484,8 @@ def test_sin_moneda_no_se_atribuye_divisa_inventada(monkeypatch, db_session):
     assert "no declara la moneda" in result["explicacion"]
     # Los importes siguen calculandose; lo que falta es la etiqueta de moneda.
     assert "90.00" in result["explicacion"]
-    # El contexto LLM tampoco puede nombrar divisas (validador).
-    assert result["contexto"] == CONTEXTO_VALIDO
+    # El contexto LLM tampoco puede nombrar divisas (conjunto cerrado).
+    assert result["contexto"] == CONTEXTO_PLANTILLA
 
 
 def test_moneda_en_blanco_tampoco_se_inventa(monkeypatch, db_session):
@@ -494,7 +493,7 @@ def test_moneda_en_blanco_tampoco_se_inventa(monkeypatch, db_session):
     company.currency = "   "
     _patch_valuation(monkeypatch, VALUATION_OK)
     monkeypatch.setenv("ENTRY_PRICE_LLM_ENABLED", "1")
-    provider = FakeProvider(CONTEXTO_VALIDO)
+    provider = FakeProvider(CONTEXTO_CLAVE)
     result = service.entry_price_report(
         db_session, company, target_mos=0.25, use_llm=True, provider=provider
     )
