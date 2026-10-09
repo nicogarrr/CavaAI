@@ -17,6 +17,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import Company, NewsEvent, Position, ResearchAlert, WatchItem
+from app.services.notification_service import record_in_app_delivery
 from app.services.tracked_news_alerts import _valid_source_url
 
 VERSION = "asts-spacex-mno-v1"
@@ -158,6 +159,7 @@ def evaluate(db: Session, *, now: datetime | None = None) -> dict:
             with db.begin_nested():
                 db.add(alert)
                 db.flush()
+                record_in_app_delivery(db, alert)
         except IntegrityError:
             stats["duplicates"] += 1
             continue

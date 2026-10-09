@@ -12,6 +12,7 @@ from app.models import (
     ResearchReview,
     ThesisChange,
 )
+from app.services.notification_service import record_in_app_delivery
 from app.services.review_copy import change_type_label, claim_status_label
 
 
@@ -195,6 +196,7 @@ class ReviewAlertService:
         )
         db.add(alert)
         db.flush()
+        record_in_app_delivery(db, alert)
         return alert
 
     def _default_channels(self) -> list[str]:
