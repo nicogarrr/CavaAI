@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from xml.etree import ElementTree
 
@@ -135,7 +135,9 @@ def validate_flex_xml(xml_text: str) -> list[str]:
                     f"Fila {index} (CashTransaction): la fecha '{raw_date}' no tiene un formato "
                     "reconocido (usa AAAA-MM-DD). Corrige el valor o excluye la fila."
                 )
-        elif tag == "CashReport":
+        elif tag in ("CashReport", "CashReportCurrency"):
+            if _is_cash_summary_row(element):
+                continue
             if not _attr(element, "currency"):
                 errors.append(
                     f"Fila {index} (CashReport): falta la divisa (atributo currency). "
@@ -254,6 +256,19 @@ def validate_ibkr_csv(csv_text: str) -> list[str]:
     return errors
 
 
+def _is_cash_summary_row(element: ElementTree.Element) -> bool:
+    """Filas de efectivo que no son un saldo por divisa.
+
+    El total en divisa base (BASE_SUMMARY) no es una divisa, y el contenedor
+    <CashReport> del Flex real no lleva atributos: solo agrupa CashReportCurrency.
+    """
+    if not element.attrib and len(element) > 0:
+        return True
+    currency = (_attr(element, "currency") or "").upper()
+    level = (_attr(element, "levelOfDetail") or "").lower()
+    return currency == "BASE_SUMMARY" or level == "basecurrency"
+
+
 def _tag_name(element: ElementTree.Element) -> str:
     return element.tag.rsplit("}", 1)[-1]
 
@@ -311,8 +326,132 @@ def _attr(element: ElementTree.Element, *names: str) -> str | None:
     return None
 
 
+def _statement_identity_blockers(
+    root: ElementTree.Element, *, expected_account_id: str, max_age_days: int
+) -> list[str]:
+    """Cuenta y fecha del extracto. Se evalua ANTES de escribir nada."""
+    reasons: list[str] = []
+    expected = expected_account_id.strip().upper()
+    statements = [e for e in root.iter() if _tag_name(e) == "FlexStatement"]
+    if len(statements) != 1:
+        return [f"se esperaba 1 FlexStatement y hay {len(statements)}"]
+    statement = statements[0]
+    account = (statement.attrib.get("accountId") or "").strip().upper()
+    if account != expected:
+        reasons.append("la cuenta del extracto no es la esperada")
+    raw_to = (statement.attrib.get("toDate") or "").split(";", 1)[0].strip()
+    to_date: date | None = None
+    for fmt in ("%Y%m%d", "%Y-%m-%d"):
+        try:
+            to_date = datetime.strptime(raw_to, fmt).date()
+            break
+        except ValueError:
+            continue
+    if to_date is None:
+        reasons.append("el extracto no trae toDate valido")
+    else:
+        today = date.today()
+        if to_date > today:
+            reasons.append("toDate esta en el futuro")
+        elif to_date < today - timedelta(days=max_age_days):
+            reasons.append(f"el extracto es mas antiguo de {max_age_days} dias")
+    # Cualquier fila con accountId (Trade, CashTransaction, CashReport, ...) debe ser
+    # de la cuenta esperada: no entra nada de otra cuenta.
+    for element in root.iter():
+        row_account = (element.attrib.get("accountId") or "").strip().upper()
+        if row_account and row_account != expected:
+            reasons.append("hay filas de otra cuenta")
+            break
+    return reasons
+
+
+def _snapshot_blockers(
+    root: ElementTree.Element,
+    *,
+    expected_account_id: str,
+    positions_imported: int,
+    position_rows_skipped: int,
+    cash_rows_skipped: int,
+    cash_imported: int,
+    max_age_days: int,
+    query_complete_attested: bool,
+) -> list[str]:
+    """Motivos por los que el extracto NO prueba ser un snapshot completo de la cuenta."""
+    reasons = _statement_identity_blockers(
+        root, expected_account_id=expected_account_id, max_age_days=max_age_days
+    )
+    if not query_complete_attested:
+        reasons.append(
+            "la consulta Flex no esta declarada como completa (sin filtros, todas las secciones)"
+        )
+    statements = [e for e in root.iter() if _tag_name(e) == "FlexStatement"]
+    if len(statements) != 1:
+        return reasons
+    statement = statements[0]
+    raw_to = (statement.attrib.get("toDate") or "").split(";", 1)[0].strip()
+    to_date: date | None = None
+    for fmt in ("%Y%m%d", "%Y-%m-%d"):
+        try:
+            to_date = datetime.strptime(raw_to, fmt).date()
+            break
+        except ValueError:
+            continue
+    tags = {_tag_name(e) for e in statement.iter()}
+    if "OpenPositions" not in tags:
+        reasons.append("falta la seccion OpenPositions")
+    if "CashReport" not in tags:
+        reasons.append("falta la seccion CashReport")
+    if not positions_imported:
+        reasons.append("el extracto no trae posiciones")
+    if position_rows_skipped:
+        reasons.append("hay filas de posicion omitidas")
+    if cash_rows_skipped:
+        reasons.append("hay filas de caja omitidas")
+    if not cash_imported:
+        reasons.append("el extracto no trae saldos de caja")
+    if to_date is not None:
+        for element in statement.iter():
+            if _tag_name(element) != "OpenPosition":
+                continue
+            raw = (element.attrib.get("reportDate") or "").split(";", 1)[0].strip()
+            if raw and raw.replace("-", "") != to_date.strftime("%Y%m%d"):
+                reasons.append("hay posiciones con fecha distinta al statement")
+                break
+    return reasons
+
+
 class IBKRImportService:
-    def import_flex_xml(self, db: Session, xml_text: str) -> dict:
+    def import_flex_xml(
+        self,
+        db: Session,
+        xml_text: str,
+        *,
+        reconcile: bool = False,
+        expected_account_id: str | None = None,
+        reconcile_sources: tuple[str, ...] = ("ibkr_flex",),
+        dry_run: bool = False,
+        query_complete_attested: bool = False,
+        max_statement_age_days: int = 5,
+    ) -> dict:
+        """Importa un Flex Query.
+
+        ``reconcile=True`` hace IBKR fuente de verdad: tras importar un extracto
+        completo se eliminan las posiciones y saldos de caja que ya no vienen en el
+        (las operaciones del libro no se tocan). Solo actua si el extracto trae
+        posiciones y ninguna se omitio; un extracto vacio o roto nunca vacia la cartera.
+
+        Contrato de snapshot completo (sin el, se importa en modo merge y NO se borra
+        nada; ``reconcile_blocked`` lista los motivos): ``expected_account_id``
+        obligatorio, un unico FlexStatement de esa cuenta, ``toDate`` valido y no
+        anterior a ``max_statement_age_days``, todas las filas de esa cuenta y con
+        fecha del statement, secciones OpenPositions y CashReport presentes sin filas
+        omitidas. Solo se borran filas cuyo ``source`` este en ``reconcile_sources``
+        (por defecto ``ibkr_flex``) y solo si ``query_complete_attested`` (la consulta
+        Flex esta declarada sin filtros y con todas las secciones; el XML no puede
+        probarlo). Con ``expected_account_id`` una cuenta/fecha incorrecta se rechaza
+        antes de escribir. Lo manual u otras fuentes no se tocan.
+        ``dry_run=True`` calcula lo que cerraria y hace rollback de todo.
+        """
         # Los errores de fila ("se omite…", "excluye la fila") no bloquean:
         # se importan las filas válidas y se devuelven en row_errors. Solo los
         # errores fatales (XML ilegible, raíz incorrecta) interrumpen.
@@ -326,6 +465,20 @@ class IBKRImportService:
             raise IBKRImportError(" ".join(fatal_errors))
         row_errors = [error for error in parse_errors if error not in fatal_errors]
         root = ElementTree.fromstring(xml_text)
+        if reconcile and not (expected_account_id or "").strip():
+            raise IBKRImportError(
+                "reconcile exige expected_account_id: sin cuenta esperada no se puede probar que el extracto es completo."
+            )
+        if expected_account_id and expected_account_id.strip():
+            # Cuenta equivocada, varias cuentas o statement antiguo: se rechaza ANTES
+            # de escribir nada (tambien en modo merge).
+            identity = _statement_identity_blockers(
+                root,
+                expected_account_id=expected_account_id,
+                max_age_days=max_statement_age_days,
+            )
+            if identity:
+                raise IBKRImportError("Extracto Flex rechazado: " + "; ".join(identity) + ".")
         # Batch: all external ids referenced by this report, one existence query
         # instead of one per row.
         report_ids = {
@@ -359,6 +512,10 @@ class IBKRImportService:
         cash_transactions_imported = 0
         rows_skipped = 0
         unattributed = 0
+        imported_company_ids: set[int] = set()
+        imported_cash_currencies: set[str] = set()
+        position_rows_skipped = 0
+        cash_rows_skipped = 0
 
         for element in root.iter():
             tag = _tag_name(element)
@@ -366,9 +523,11 @@ class IBKRImportService:
                 symbol = _attr(element, "symbol", "underlyingSymbol")
                 if not symbol:
                     rows_skipped += 1
+                    position_rows_skipped += 1
                     continue
                 if _missing_position_fields(element):
                     rows_skipped += 1
+                    position_rows_skipped += 1
                     continue
                 raw_quantity = _attr(element, "position", "quantity")
                 raw_price = _attr(element, "markPrice", "marketPrice", "price")
@@ -379,6 +538,7 @@ class IBKRImportService:
                     for raw in (raw_quantity, raw_price, raw_value, raw_cost)
                 ):
                     rows_skipped += 1
+                    position_rows_skipped += 1
                     continue
                 company = self._company(db, companies, symbol)
                 self._capture_isin(company, element)
@@ -421,18 +581,27 @@ class IBKRImportService:
                     else None
                 )
                 position.source = "ibkr_flex"
+                imported_company_ids.add(company.id)
                 positions_imported += 1
 
-            elif tag == "CashReport":
+            elif tag in ("CashReport", "CashReportCurrency"):
+                if _is_cash_summary_row(element):
+                    continue
                 currency = _attr(element, "currency")
                 if not currency:
                     rows_skipped += 1
+                    cash_rows_skipped += 1
                     continue
                 raw_cash = _attr(element, "endingCash", "cash", "balance")
                 if raw_cash is not None and not _is_number(raw_cash):
                     rows_skipped += 1
+                    cash_rows_skipped += 1
                     continue
                 cash = db.scalar(select(CashBalance).where(CashBalance.currency == currency))
+                imported_cash_currencies.add(currency)
+                if cash is None and abs(_decimal(_attr(element, "endingCash", "cash", "balance"))) < Decimal("0.005"):
+                    # Polvo de redondeo (1e-5): no crea una divisa fantasma.
+                    continue
                 if cash is None:
                     cash = CashBalance(currency=currency)
                     db.add(cash)
@@ -440,7 +609,7 @@ class IBKRImportService:
                 cash.settled_cash = _decimal(_attr(element, "settledCash", "endingSettledCash"), str(cash.balance))
                 cash.interest_rate = _decimal(_attr(element, "interestRate"))
                 cash.source = "ibkr_flex"
-                cash.as_of = _date(_attr(element, "reportDate", "asOfDate"))
+                cash.as_of = _date(_attr(element, "reportDate", "asOfDate", "toDate"))
                 cash_imported += 1
 
             elif tag == "Trade":
@@ -604,6 +773,46 @@ class IBKRImportService:
                 db.add(transaction)
                 dividends_imported += 1
 
+        positions_closed: list[str] = []
+        cash_removed: list[str] = []
+        reconcile_blocked: list[str] = []
+        if reconcile:
+            db.flush()
+            reconcile_blocked = _snapshot_blockers(
+                root,
+                expected_account_id=expected_account_id or "",
+                positions_imported=positions_imported,
+                position_rows_skipped=position_rows_skipped,
+                cash_rows_skipped=cash_rows_skipped,
+                cash_imported=cash_imported,
+                max_age_days=max_statement_age_days,
+                query_complete_attested=query_complete_attested,
+            )
+            if not reconcile_blocked:
+                allowed = set(reconcile_sources)
+                for stale in db.scalars(select(Position)).all():
+                    if stale.company_id not in imported_company_ids and stale.source in allowed:
+                        company = db.get(Company, stale.company_id)
+                        positions_closed.append(company.ticker if company else str(stale.company_id))
+                        if not dry_run:
+                            db.delete(stale)
+                for stale_cash in db.scalars(select(CashBalance)).all():
+                    if stale_cash.currency not in imported_cash_currencies and stale_cash.source in allowed:
+                        cash_removed.append(stale_cash.currency)
+                        if not dry_run:
+                            db.delete(stale_cash)
+            db.flush()
+            if dry_run:
+                db.rollback()
+                return {
+                    "status": "dry_run",
+                    "would_close_positions": sorted(positions_closed),
+                    "would_remove_cash": sorted(cash_removed),
+                    "reconcile_blocked": reconcile_blocked,
+                    "positions_in_statement": positions_imported,
+                    "cash_in_statement": cash_imported,
+                }
+
         from app.services.portfolio_snapshot_service import PortfolioSnapshotService
 
         # SessionLocal usa autoflush=False: sin flush las filas importadas no se ven.
@@ -628,6 +837,9 @@ class IBKRImportService:
             "rows_skipped": rows_skipped,
             "unattributed_cash_rows": unattributed,
             "row_errors": row_errors,
+            "positions_closed": sorted(positions_closed),
+            "cash_removed": sorted(cash_removed),
+            "reconcile_blocked": reconcile_blocked,
             "portfolio_snapshot_id": snapshot.id,
         }
 
