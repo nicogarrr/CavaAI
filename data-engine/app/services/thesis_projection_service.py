@@ -65,6 +65,8 @@ SCENARIOS = ("bear", "base", "bull")
 LABEL_OFICIAL = "OFICIAL"
 LABEL_INFERIDO = "INFERIDO"
 LABEL_ND = "N/D"
+PUBLISHABLE_MIN_RATIO = 0.25
+PUBLISHABLE_MAX_RATIO = 4.0
 
 DISCLAIMER_ES = (
     "Proyeccion del modelo a 5 ejercicios basada en hipotesis propias "
@@ -797,8 +799,16 @@ class ThesisProjectionService:
                 "precio_actual": price,
                 "precio_fecha": price_date,
             }
-
+        # El aviso describe los valores crudos del modelo; el guard despues
+        # retira de la publicacion lo incoherente o fuera de rango (N/D).
         aviso = self._coherence_warning(scenarios, years)
+        guarded = self._apply_publishability_guard(targets, scenarios, years, price, price_date)
+        for scenario in SCENARIOS:
+            scenarios[scenario]["precio_objetivo_5y"] = {
+                **guarded[scenario],
+                "precio_actual": price,
+                "precio_fecha": price_date,
+            }
 
         return {
             "ticker": company.ticker,
@@ -822,6 +832,52 @@ class ThesisProjectionService:
             "escenarios": scenarios,
             "aviso_coherencia": aviso,
         }
+
+    @staticmethod
+    def _apply_publishability_guard(
+        targets: dict[str, dict[str, Any]],
+        scenarios: dict[str, dict[str, Any]],
+        years: list[int],
+        price: float | None,
+        price_date: str | None,
+    ) -> dict[str, dict[str, Any]]:
+        """Un objetivo incoherente o fuera de rango pasa a N/D con razon, no solo aviso.
+
+        1) Con precio fechado, un objetivo fuera de 0,25x-4x del precio actual
+           es un artefacto del multiplo implicito, no una tesis: N/D.
+        2) Si los objetivos que quedan no cumplen bear <= base <= bull, o los
+           ingresos del ultimo ano no cumplen ese orden, ningun escenario es
+           publicable: N/D en todos. Nunca se reordena ni se recorta.
+        """
+        out = {s_: dict(t) for s_, t in targets.items()}
+
+        def _blank(scenario: str, reason: str) -> None:
+            out[scenario].update({"valor": None, "etiqueta": LABEL_ND, "mos": None, "base": reason})
+
+        if price is not None and price > 0 and price_date is not None:
+            for scenario in SCENARIOS:
+                value = out[scenario]["valor"]
+                if value is not None and not (
+                    PUBLISHABLE_MIN_RATIO * price <= value <= PUBLISHABLE_MAX_RATIO * price
+                ):
+                    _blank(
+                        scenario,
+                        "escenario fuera de rango (0,25x-4x del precio actual), no publicable",
+                    )
+        values = [out[s_]["valor"] for s_ in SCENARIOS]
+        present = [v for v in values if v is not None]
+        unordered = present != sorted(present)
+        revenue_unordered = False
+        if years:
+            last_revenue = [scenarios[s_]["proyecciones"][-1]["ingresos"] for s_ in SCENARIOS]
+            revenue_unordered = all(v is not None for v in last_revenue) and not (
+                last_revenue[0] <= last_revenue[1] <= last_revenue[2]  # type: ignore[operator]
+            )
+        if unordered or revenue_unordered:
+            for scenario in SCENARIOS:
+                if out[scenario]["valor"] is not None:
+                    _blank(scenario, "escenarios incoherentes (no cumplen bear <= base <= bull), no publicable")
+        return out
 
     @staticmethod
     def _coherence_warning(
