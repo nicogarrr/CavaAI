@@ -25,6 +25,7 @@ import {
     type Alert,
     type TriggeredAlertDelivery,
 } from '@/lib/actions/alerts.actions';
+import { holdingDisplayMode } from '@/lib/portfolio/holding-display';
 import { alertCardDestination } from '@/lib/alerts/card-destination';
 import { alertCardCopy } from '@/lib/alerts/card-copy';
 import { t } from '@/lib/i18n/t';
@@ -337,8 +338,8 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
         if (!portfolioSummary) return [];
         return [...portfolioSummary.holdings]
             .sort((a, b) => {
-                const aCost = a.cost > 0 && !a.fxMissing;
-                const bCost = b.cost > 0 && !b.fxMissing;
+                const aCost = holdingDisplayMode(a) === 'gain';
+                const bCost = holdingDisplayMode(b) === 'gain';
                 if (aCost !== bCost) return aCost ? -1 : 1;
                 return aCost ? Math.abs(b.gainPercent) - Math.abs(a.gainPercent) : b.value - a.value;
             })
@@ -440,11 +441,11 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                             className="flex min-h-[44px] items-center justify-between gap-2 p-3 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors border border-gray-700/30"
                                         >
                                             <span className="text-white font-semibold">{h.symbol}</span>
-                                            {h.cost > 0 && !h.fxMissing ? (
+                                            {holdingDisplayMode(h) === 'gain' ? (
                                                 <span className={`font-mono ${h.gainPercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                                                     {formatPercent(h.gainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
                                                 </span>
-                                            ) : !h.fxMissing && h.value > 0 && isValidCurrencyCode(h.baseCurrency) ? (
+                                            ) : holdingDisplayMode(h) === 'value' && isValidCurrencyCode(h.baseCurrency) ? (
                                                 // Sin base de coste no hay rentabilidad (N/D), pero el valor y el peso
                                                 // salen de la cotización y se muestran con su divisa.
                                                 <span className="text-right font-mono text-gray-300">
