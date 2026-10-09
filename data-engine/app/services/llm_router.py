@@ -59,6 +59,9 @@ ROUTES = {
     ),
     "code": ModelRoute("code", "space-bunny-free", "product coding"),
     "premium_financial_analysis": ModelRoute("premium_financial_analysis", "space-bunny-free", "eval-gated premium escalation"),
+    "bottleneck_discovery": ModelRoute(
+        "bottleneck_discovery", "space-bunny-free", "free-tier inferred candidates per bottleneck theme"
+    ),
     "fallback": ModelRoute("fallback", "space-bunny-free", "cheap fallback"),
 }
 

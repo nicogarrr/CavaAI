@@ -1,14 +1,15 @@
 """Persisted, tenant-scoped supply constraints. GET never ingests or calls AI."""
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.models import BottleneckSignal
+from app.models import BottleneckDiscovery, BottleneckSignal
+from app.services.bottleneck_discovery_service import NO_DATA, resolve_evidence
 from app.services.bottleneck_service import THEMES
 
 router = APIRouter()
@@ -49,3 +50,65 @@ def list_bottlenecks(db: Session = Depends(get_db)) -> BottlenecksOut:
             status="detectado" if row and row.n_sources >= 2 else "N/D",
         ))
     return BottlenecksOut(signals=signals)
+
+
+class DiscoveryEvidenceOut(BaseModel):
+    id: str
+    title: str | None
+    url: str | None
+    status: Literal["verificada", "N/D"]
+
+
+class DiscoveryOut(BaseModel):
+    id: int
+    theme: str
+    ticker: str
+    label: Literal["INFERIDO"]
+    reasoning: str
+    evidence: list[DiscoveryEvidenceOut]
+    model: str
+    created_at: datetime
+
+
+class DiscoveriesOut(BaseModel):
+    items: list[DiscoveryOut]
+    total: int
+    limit: int
+    offset: int
+    has_more: bool
+    note: str = (
+        "Candidatos INFERIDOS por un modelo a partir de evidencias almacenadas; son hipotesis, "
+        "no hechos ni recomendaciones. Las URLs proceden de la fuente guardada, nunca del modelo"
+    )
+
+
+@router.get("/discoveries", response_model=DiscoveriesOut, summary="Listar candidatos inferidos por tema")
+def list_discoveries(
+    db: Session = Depends(get_db),
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> DiscoveriesOut:
+    """Solo lectura sobre lo persistido: no ingiere ni llama a ningun modelo."""
+    tenant = db.info.get("tenant_id")
+    if not isinstance(tenant, int):
+        return DiscoveriesOut(items=[], total=0, limit=limit, offset=offset, has_more=False)
+    scope = BottleneckDiscovery.tenant_id == tenant
+    total = int(db.scalar(select(func.count(BottleneckDiscovery.id)).where(scope)) or 0)
+    rows = db.scalars(select(BottleneckDiscovery).where(scope).order_by(
+        BottleneckDiscovery.created_at.desc(), BottleneckDiscovery.id.desc()
+    ).limit(limit).offset(offset)).all()
+    resolved = resolve_evidence(db, [i for row in rows for i in row.evidence_ids or []])
+    items = []
+    for row in rows:
+        evidence = []
+        for ident in row.evidence_ids or []:
+            found = resolved.get(ident)
+            url = found.url if found else None
+            evidence.append(DiscoveryEvidenceOut(
+                id=ident, title=found.title if found else None, url=url,
+                status="verificada" if url else NO_DATA))
+        items.append(DiscoveryOut(
+            id=row.id, theme=row.theme, ticker=row.ticker, label="INFERIDO", reasoning=row.reasoning,
+            evidence=evidence, model=row.model, created_at=row.created_at))
+    return DiscoveriesOut(items=items, total=total, limit=limit, offset=offset,
+                          has_more=offset + len(items) < total)
