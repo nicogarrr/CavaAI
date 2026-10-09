@@ -1006,6 +1006,64 @@ def refresh_macro_context() -> dict[str, Any]:
             return _handle_actor_error("refresh_macro_context", exc)
 
 
+@dramatiq.actor(max_retries=2, min_backoff=60_000)
+def sync_ibkr_flex() -> dict[str, Any]:
+    """Sincroniza la cartera real desde IBKR Flex Web Service (solo lectura).
+
+    El token es de UNA cuenta: se aplica solo al tenant IBKR_FLEX_TENANT_ID,
+    nunca por fan-out. Sin token, query id o tenant no hace nada. La descarga
+    ocurre sin sesion de DB abierta (pool 5+10) y los errores no llevan el token.
+    """
+    from app.core.config import get_settings
+    from app.services.connectors.ibkr import IBKRFlexClient
+    from app.services.ibkr_import_service import IBKRImportError, IBKRImportService
+
+    client = IBKRFlexClient()
+    tenant_id = get_settings().ibkr_flex_tenant_id
+    account_id = (get_settings().ibkr_flex_account_id or "").strip()
+    if not client.configured() or tenant_id is None or not account_id:
+        return {"actor": "sync_ibkr_flex", "status": "skipped", "reason": "not_configured"}
+    user_id = next((uid for tid, uid in tenant_contexts() if tid == tenant_id), None)
+    if user_id is None:
+        return {"actor": "sync_ibkr_flex", "status": "skipped", "reason": "tenant_not_active"}
+    try:
+        xml_text = _run(client.fetch_latest_xml())
+    except Exception as exc:  # noqa: BLE001 - IBKRFlexError ya viene sin token
+        return _handle_actor_error("sync_ibkr_flex", exc)
+    db = _session(tenant_id, user_id)
+    try:
+        result = IBKRImportService().import_flex_xml(
+            db,
+            xml_text,
+            reconcile=True,
+            expected_account_id=account_id,
+            query_complete_attested=bool(
+                get_settings().ibkr_flex_complete_query_id
+                and get_settings().ibkr_flex_complete_query_id == get_settings().ibkr_flex_query_id
+            ),
+        )
+        return {
+            "actor": "sync_ibkr_flex",
+            "status": result["status"],
+            "positions_imported": result["positions_imported"],
+            "cash_imported": result["cash_imported"],
+            "trades_imported": result["trades_imported"],
+            "rows_skipped": result["rows_skipped"],
+            "row_errors": len(result["row_errors"]),
+            "positions_closed": result["positions_closed"],
+            "cash_removed": result["cash_removed"],
+            "reconcile_blocked": result["reconcile_blocked"],
+        }
+    except IBKRImportError as exc:
+        _rollback(db)
+        return _failure("sync_ibkr_flex", exc)
+    except Exception as exc:  # noqa: BLE001
+        _rollback(db)
+        return _handle_actor_error("sync_ibkr_flex", exc)
+    finally:
+        db.close()
+
+
 @dramatiq.actor(max_retries=2, min_backoff=15_000, queue_name="prices")
 def refresh_market_pipeline(
     tenant_id: int | None = None,

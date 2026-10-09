@@ -199,6 +199,15 @@ class Settings(BaseSettings):
     screener_quote_vendor: str = "finnhub"
     ibkr_flex_token: str | None = None
     ibkr_flex_query_id: str | None = None
+    # Tenant dueño del token Flex (cuenta de Nico). Sin él la sincronizacion
+    # periodica no corre: el token es de UNA cuenta y nunca se reparte por tenants.
+    ibkr_flex_tenant_id: int | None = None
+    # Cuenta IBKR esperada (p. ej. U1234567): sin ella la sync no borra nada.
+    ibkr_flex_account_id: str | None = None
+    # Declaracion del operador: la consulta con ESTE id es de cuenta completa (sin
+    # filtros, todas las secciones). Debe coincidir con IBKR_FLEX_QUERY_ID para que
+    # la sync pueda cerrar posiciones; el XML por si solo no lo prueba.
+    ibkr_flex_complete_query_id: str | None = None
     # SEC fair-access: exige UA declarado con contacto; bloquea placeholders
     # tipo example.com con 403. Este valor verificado 200 desde prod (25/9).
     # OJO: este default es un fallback LOCAL no contactable (el dominio .local
@@ -395,6 +404,14 @@ class Settings(BaseSettings):
         'dev' y 'ci' sin limite efectivo.
         """
         return not self.is_production
+
+    @field_validator("ibkr_flex_tenant_id", "ibkr_flex_account_id", "ibkr_flex_complete_query_id", mode="before")
+    @classmethod
+    def _blank_flex_tenant_is_none(cls, value):
+        # docker-compose pasa IBKR_FLEX_TENANT_ID="" cuando no esta definido.
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
     @field_validator("llm_model_overrides", mode="before")
     @classmethod
