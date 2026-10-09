@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+// @ts-expect-error TS5097: la extensión explícita la exige node --experimental-strip-types.
 import { formatPeerValue, peerMedianText } from '../lib/research/peer-format.ts';
 
 test('un valor ausente nunca se muestra como 0', () => {
