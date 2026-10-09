@@ -235,6 +235,34 @@ class ThesisService:
             .limit(1)
         )
 
+    @staticmethod
+    def _insufficient_signature(valuation: dict, material_fp: str) -> dict:
+        """Firma estructurada de una valoracion insufficient_data.
+
+        Motivo, motor, metodo, entradas faltantes y huella de la evidencia SIN el
+        precio (documentos, hechos, noticias, modelo). Solo dos versiones con la
+        misma firma completa son equivalentes.
+        """
+        trace = valuation.get("trace") or {}
+        return {
+            "reason": trace.get("reason"),
+            "engine": trace.get("engine"),
+            "method": trace.get("method"),
+            "missing_inputs": sorted(str(x) for x in (valuation.get("missing_inputs") or [])),
+            "material_fp": material_fp,
+        }
+
+    @staticmethod
+    def _same_insufficient_signature(existing, signature: dict | None) -> bool:
+        """True solo con evidencia previa explicita e identica; sin firma previa NO se deduplica."""
+        if signature is None or existing.status != "insufficient_data":
+            return False
+        basis = existing.valuation_basis
+        if not isinstance(basis, dict):
+            return False
+        previous = basis.get("insufficient_signature")
+        return isinstance(previous, dict) and previous == signature
+
     def _input_fingerprint(
         self,
         db: Session,
@@ -242,6 +270,7 @@ class ThesisService:
         valuation: dict,
         long_term_model: dict,
         news_items: list[dict] | None = None,
+        include_price: bool = True,
     ) -> str:
         documents = list(
             db.execute(
@@ -272,7 +301,9 @@ class ThesisService:
             "documents": [f"{d.id}:{d.checksum or d.updated_at.isoformat()}" for d in documents],
             "facts": [f"{f.id}:{f.metric}:{f.period}:{f.value}" for f in facts],
             "market_price": (
-                f"{market_price.date.isoformat()}:{market_price.close}" if market_price else None
+                (f"{market_price.date.isoformat()}:{market_price.close}" if market_price else None)
+                if include_price
+                else "excluded"
             ),
             "model_version": MODEL_VERSION,
             "prompt_version": PROMPT_VERSION,
@@ -403,7 +434,24 @@ class ThesisService:
 
         existing = self.latest(db, ticker)
         if existing and not force_new_version:
-            if getattr(existing, "input_fingerprint", None) == fingerprint:
+            if valuation.get("status") == "insufficient_data":
+                # QA-6: la decision depende de la firma estructurada completa
+                # (motivo, motor, metodo, entradas faltantes, evidencia sin
+                # precio). El atajo por fingerprint NO aplica aqui: no incluye
+                # motivo/metodo/inputs y resucitaria una version vieja o sin firma.
+                insufficient_signature = self._insufficient_signature(
+                    valuation,
+                    self._input_fingerprint(
+                        db, company, valuation, long_term_model, news_items, include_price=False
+                    ),
+                )
+                if self._same_insufficient_signature(existing, insufficient_signature):
+                    if savepoint is not None:
+                        savepoint.rollback()
+                    existing.updated_at = datetime.now(UTC)
+                    db.flush()
+                    return existing
+            elif getattr(existing, "input_fingerprint", None) == fingerprint:
                 # Sin mutación previa: el fingerprint se calculó solo con
                 # lecturas, así que se devuelve sin tocar la transacción
                 # (el savepoint de generate() se libera solo).
@@ -494,6 +542,18 @@ class ThesisService:
         def _dec(value) -> Decimal | None:
             return None if value is None else Decimal(str(value))
 
+        valuation_basis = self._valuation_basis(valuation)
+        if valuation.get("status") == "insufficient_data":
+            valuation_basis = {
+                **(valuation_basis or {}),
+                "insufficient_signature": self._insufficient_signature(
+                    valuation,
+                    self._input_fingerprint(
+                        db, company, valuation, long_term_model, news_items, include_price=False
+                    ),
+                ),
+            }
+
         _phase("persist_thesis")
         thesis = ThesisVersion(
             company_id=company.id,
@@ -522,7 +582,7 @@ class ThesisService:
             invalidation_criteria=invalidation,
             scenario_probabilities=scenario_probabilities,
             narrative_sections=narrative_sections,
-            valuation_basis=self._valuation_basis(valuation),
+            valuation_basis=valuation_basis,
         )
         db.add(thesis)
         db.flush()
