@@ -1,76 +1,108 @@
-"""QA-6: insufficient_data consecutivas con el mismo motivo no crean version nueva."""
+"""QA-6: insufficient_data equivalentes (solo cambia el precio) no apilan versiones."""
 import inspect
+from datetime import UTC, date, datetime, timedelta
+from types import SimpleNamespace
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import select
 
-from app.core.database import Base
-from app.models import Company, SourceAudit, ThesisVersion
+import main
+from app.core.database import SessionLocal, init_db
+from app.models import Company, MarketPrice, NewsEvent, ThesisVersion
+from app.seed import seed
 from app.services.thesis_service import ThesisService
-from tests.test_ibkr_import import _tenant_session
-
-PREFIX = "Faltan entradas de valoración (variables del modelo): "
+from tests import test_thesis_auto_ingest as base
 
 
-def _setup(status="insufficient_data", fixes=None):
-    engine = create_engine("sqlite+pysqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    db: Session = _tenant_session(engine)
-    company = Company(ticker="ASTS", name="AST", currency="USD", exchange="NASDAQ", company_type="operating", valuation_model="standard_dcf")
-    db.add(company)
-    db.flush()
-    thesis = ThesisVersion(
-        company_id=company.id, version=1, status=status, thesis_markdown="x",
-        executive_summary="x", rating=status, data_confidence_score=0,
-        source_coverage_score=0, red_team_score=0, valuation_risk_score=0,
-    )
-    db.add(thesis)
-    db.flush()
-    db.add(SourceAudit(
-        thesis_version_id=thesis.id, passed=False, source_coverage_score=0,
-        unsupported_claims=[], weak_claims=[], data_conflicts=[], required_fixes=fixes or [],
-    ))
-    db.flush()
-    return db, thesis
+@pytest.fixture(autouse=True)
+def _cleanup():
+    yield
+    base._clean_asts_evidence()
 
 
-def _svc():
-    return ThesisService.__new__(ThesisService)
+def _versions():
+    db = SessionLocal()
+    try:
+        company = db.scalar(select(Company).where(Company.ticker == "ASTS"))
+        rows = db.scalars(
+            select(ThesisVersion).where(ThesisVersion.company_id == company.id).order_by(ThesisVersion.version)
+        ).all()
+        return [(r.id, r.version, r.status, r.updated_at) for r in rows]
+    finally:
+        db.close()
 
 
-def test_same_missing_inputs_is_same_reason():
-    db, thesis = _setup(fixes=[PREFIX + "wacc, revenue"])
-    assert _svc()._same_insufficient_reason(
-        db, thesis, {"status": "insufficient_data", "missing_inputs": ["revenue", "wacc"]}
-    )
-    db.close()
+def _new_price():
+    db = SessionLocal()
+    try:
+        company = db.scalar(select(Company).where(Company.ticker == "ASTS"))
+        db.add(MarketPrice(company_id=company.id, date=date.today() + timedelta(days=30),
+                           open=1, high=1, low=1, close=31.25, source="test"))
+        db.commit()
+    finally:
+        db.close()
 
 
-def test_different_missing_inputs_creates_new_version():
-    db, thesis = _setup(fixes=[PREFIX + "wacc"])
-    assert not _svc()._same_insufficient_reason(
-        db, thesis, {"status": "insufficient_data", "missing_inputs": ["wacc", "capex"]}
-    )
-    db.close()
+def test_generate_dedupes_price_only_change_but_not_material_or_forced(monkeypatch):
+    init_db()
+    seed()
+    base._clean_asts_evidence()
+    base._mock_all_sources(monkeypatch)
+    base._seed_evidence_rows()
+    client = TestClient(main.app)
+
+    first = client.post("/api/thesis/generate", json={"ticker": "ASTS", "force_new_version": True}).json()
+    assert first["status"] == "insufficient_data"
+    assert "insufficient_signature" in (first["valuation_basis"] or {})
+    before = _versions()
+
+    # Solo cambia el precio: misma firma => no hay version nueva.
+    _new_price()
+    again = client.post("/api/thesis/generate", json={"ticker": "ASTS"}).json()
+    after_price = _versions()
+    assert again["id"] == first["id"]
+    assert [v[:3] for v in after_price] == [v[:3] for v in before]
+
+    # Noticia nueva = evidencia material: version nueva.
+    db = SessionLocal()
+    try:
+        company = db.scalar(select(Company).where(Company.ticker == "ASTS"))
+        db.add(NewsEvent(company_id=company.id, date=datetime.now(UTC), title="ASTS nueva noticia material",
+                         source="press", url="https://example.com/n2", summary="x", event_type="partnership",
+                         materiality_score=8, impact_direction="positive"))
+        db.commit()
+    finally:
+        db.close()
+    after_news = client.post("/api/thesis/generate", json={"ticker": "ASTS"}).json()
+    assert after_news["id"] != first["id"]
+    assert len(_versions()) == len(before) + 1
+
+    # force_new_version siempre crea.
+    forced = client.post("/api/thesis/generate", json={"ticker": "ASTS", "force_new_version": True}).json()
+    assert forced["id"] not in (first["id"], after_news["id"])
 
 
-def test_never_dedupes_when_either_side_is_not_insufficient():
-    db, thesis = _setup(status="draft", fixes=[])
-    assert not _svc()._same_insufficient_reason(db, thesis, {"status": "insufficient_data"})
-    db.close()
-    db, thesis = _setup(fixes=[])
-    assert not _svc()._same_insufficient_reason(db, thesis, {"status": "partial"})
-    db.close()
+def _row(status, basis):
+    return SimpleNamespace(status=status, valuation_basis=basis)
 
 
-def test_no_missing_inputs_on_both_sides_matches():
-    db, thesis = _setup(fixes=[])
-    assert _svc()._same_insufficient_reason(db, thesis, {"status": "insufficient_data"})
-    db.close()
+SIG = {"reason": "r", "engine": "e", "method": "m", "missing_inputs": ["wacc"], "material_fp": "x"}
 
 
-def test_dedupe_runs_before_persisting_a_new_version():
-    src = inspect.getsource(ThesisService.generate) if hasattr(ThesisService, "generate") else ""
+def test_signature_requires_every_field_equal_and_explicit_previous():
+    same = _row("insufficient_data", {"insufficient_signature": dict(SIG)})
+    assert ThesisService._same_insufficient_signature(same, dict(SIG))
+    for key, other in (("reason", "otro"), ("engine", "otro"), ("method", "otro"),
+                       ("missing_inputs", ["capex"]), ("material_fp", "y")):
+        assert not ThesisService._same_insufficient_signature(same, {**SIG, key: other}), key
+    # Sin evidencia previa explicita: nunca se deduplica.
+    assert not ThesisService._same_insufficient_signature(_row("insufficient_data", None), dict(SIG))
+    assert not ThesisService._same_insufficient_signature(_row("insufficient_data", {}), dict(SIG))
+    assert not ThesisService._same_insufficient_signature(_row("draft", {"insufficient_signature": dict(SIG)}), dict(SIG))
+    assert not ThesisService._same_insufficient_signature(same, None)
+
+
+def test_dedupe_check_runs_before_persisting_a_new_version():
     full = inspect.getsource(ThesisService)
-    assert full.index("_same_insufficient_reason(db, existing, valuation)") < full.index("thesis = ThesisVersion(")
-    assert src is not None
+    assert full.index("_same_insufficient_signature(existing, insufficient_signature)") < full.index("thesis = ThesisVersion(")

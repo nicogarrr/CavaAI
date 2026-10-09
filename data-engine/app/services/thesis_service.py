@@ -236,28 +236,32 @@ class ThesisService:
         )
 
     @staticmethod
-    def _missing_inputs_marker(required_fixes: list | None) -> tuple[str, ...] | None:
-        prefix = "Faltan entradas de valoración (variables del modelo): "
-        for fix in required_fixes or []:
-            if isinstance(fix, str) and fix.startswith(prefix):
-                return tuple(sorted(x.strip() for x in fix[len(prefix):].split(",") if x.strip()))
-        return ()
+    def _insufficient_signature(valuation: dict, material_fp: str) -> dict:
+        """Firma estructurada de una valoracion insufficient_data.
 
-    def _same_insufficient_reason(self, db: Session, existing, valuation: dict) -> bool:
-        """True si la tesis previa y la nueva valoracion son insufficient_data por lo mismo."""
-        if existing.status != "insufficient_data" or valuation.get("status") != "insufficient_data":
+        Motivo, motor, metodo, entradas faltantes y huella de la evidencia SIN el
+        precio (documentos, hechos, noticias, modelo). Solo dos versiones con la
+        misma firma completa son equivalentes.
+        """
+        trace = valuation.get("trace") or {}
+        return {
+            "reason": trace.get("reason"),
+            "engine": trace.get("engine"),
+            "method": trace.get("method"),
+            "missing_inputs": sorted(str(x) for x in (valuation.get("missing_inputs") or [])),
+            "material_fp": material_fp,
+        }
+
+    @staticmethod
+    def _same_insufficient_signature(existing, signature: dict | None) -> bool:
+        """True solo con evidencia previa explicita e identica; sin firma previa NO se deduplica."""
+        if signature is None or existing.status != "insufficient_data":
             return False
-        audit_row = db.scalar(
-            select(SourceAudit)
-            .where(SourceAudit.thesis_version_id == existing.id)
-            .order_by(SourceAudit.id.desc())
-            .limit(1)
-        )
-        if audit_row is None:
+        basis = existing.valuation_basis
+        if not isinstance(basis, dict):
             return False
-        previous = self._missing_inputs_marker(audit_row.required_fixes)
-        current = tuple(sorted(str(x) for x in (valuation.get("missing_inputs") or [])))
-        return previous == current
+        previous = basis.get("insufficient_signature")
+        return isinstance(previous, dict) and previous == signature
 
     def _input_fingerprint(
         self,
@@ -266,6 +270,7 @@ class ThesisService:
         valuation: dict,
         long_term_model: dict,
         news_items: list[dict] | None = None,
+        include_price: bool = True,
     ) -> str:
         documents = list(
             db.execute(
@@ -296,7 +301,9 @@ class ThesisService:
             "documents": [f"{d.id}:{d.checksum or d.updated_at.isoformat()}" for d in documents],
             "facts": [f"{f.id}:{f.metric}:{f.period}:{f.value}" for f in facts],
             "market_price": (
-                f"{market_price.date.isoformat()}:{market_price.close}" if market_price else None
+                (f"{market_price.date.isoformat()}:{market_price.close}" if market_price else None)
+                if include_price
+                else "excluded"
             ),
             "model_version": MODEL_VERSION,
             "prompt_version": PROMPT_VERSION,
@@ -434,12 +441,21 @@ class ThesisService:
                 if savepoint is not None:
                     savepoint.rollback()
                 return existing
-            if self._same_insufficient_reason(db, existing, valuation):
+            insufficient_signature = (
+                self._insufficient_signature(
+                    valuation,
+                    self._input_fingerprint(
+                        db, company, valuation, long_term_model, news_items, include_price=False
+                    ),
+                )
+                if valuation.get("status") == "insufficient_data"
+                else None
+            )
+            if self._same_insufficient_signature(existing, insufficient_signature):
+                # QA-6: mismo motivo, motor, entradas faltantes y evidencia
+                # material (solo cambio el precio): no se apila otra version.
                 if savepoint is not None:
                     savepoint.rollback()
-                # QA-6: otra version insufficient_data con el mismo motivo no
-                # aporta nada (solo cambio el input, p. ej. el precio). Se
-                # marca revisada la anterior y no se crea version nueva.
                 existing.updated_at = datetime.now(UTC)
                 db.flush()
                 return existing
@@ -527,6 +543,18 @@ class ThesisService:
         def _dec(value) -> Decimal | None:
             return None if value is None else Decimal(str(value))
 
+        valuation_basis = self._valuation_basis(valuation)
+        if valuation.get("status") == "insufficient_data":
+            valuation_basis = {
+                **(valuation_basis or {}),
+                "insufficient_signature": self._insufficient_signature(
+                    valuation,
+                    self._input_fingerprint(
+                        db, company, valuation, long_term_model, news_items, include_price=False
+                    ),
+                ),
+            }
+
         _phase("persist_thesis")
         thesis = ThesisVersion(
             company_id=company.id,
@@ -555,7 +583,7 @@ class ThesisService:
             invalidation_criteria=invalidation,
             scenario_probabilities=scenario_probabilities,
             narrative_sections=narrative_sections,
-            valuation_basis=self._valuation_basis(valuation),
+            valuation_basis=valuation_basis,
         )
         db.add(thesis)
         db.flush()
