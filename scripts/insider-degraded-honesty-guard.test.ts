@@ -25,9 +25,15 @@ test('degraded con contadores: cabecera con N de M y sin reason', () => {
 test('degraded con reason (catch global): cabecera que abarca consulta y lectura + reason como detalle', () => {
     // El catch también cubre fallos antes de consultar Form 4 (CIK, listado):
     // afirmar «no devolvió ningún Form 4 legible» sobreafirmaría.
-    const { header, detail } = degradedCopy('AAPL', { reason: 'TypeError: fetch failed' }, count);
+    const { header, detail } = degradedCopy('AAPL', { reason: 'sec_bloquea_datacenter' }, count);
     assert.equal(header, 'AAPL: no se pudieron consultar o leer las señales Form 4 de SEC EDGAR.');
-    assert.equal(detail, 'TypeError: fetch failed');
+    assert.equal(detail, 'la SEC rechaza las consultas automáticas desde este servidor (HTTP 403)');
+});
+
+test('F30: una excepción cruda nunca llega al usuario', () => {
+    for (const raw of ['HTTPStatusError: Client error 403 Forbidden for url sec.gov', 'TypeError: fetch failed']) {
+        assert.equal(degradedCopy('AAPL', { reason: raw }, count).detail, null);
+    }
 });
 
 test('la reason nunca sustituye a la cabecera en el componente', () => {
