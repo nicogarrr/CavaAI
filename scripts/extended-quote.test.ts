@@ -2,6 +2,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 // @ts-expect-error explicit extension required by node strip-types.
+import { e2eExtendedQuoteFixture } from '../lib/e2e-extended-quote-fixture.ts';
+// @ts-expect-error explicit extension required by node strip-types.
+import { isE2EMarketFixtureEnabled } from '../lib/e2e-market-fixture.ts';
+// @ts-expect-error explicit extension required by node strip-types.
 import { extendedQuoteLabel } from '../lib/market/extended-quote.ts';
 const base = { source: 'Yahoo Finance (no oficial), retraso posible', ticker: 'MSFT', status: 'available' as const, session: 'post' as const, price_session: 'post' as const, price: 103, timestamp: 1791497100, trading_date: '2026-10-08', fetched_at: 1791497100 };
 test('Madrid times and explicit sessions including DST', () => {
@@ -31,4 +35,27 @@ test('price_session prevents last regular point becoming premarket or post becom
     assert.equal(extendedQuoteLabel({ ...base, session: 'pre', price_session: 'regular' }), 'Último precio regular del 8 oct · 00:05');
     assert.equal(extendedQuoteLabel({ ...base, session: 'cerrado', price_session: 'regular', regular_close_timestamp: base.timestamp }), 'Cierre del 8 oct · 00:05');
     assert.equal(extendedQuoteLabel({ ...base, price_session: null }), 'N/D');
+});
+
+test('extended quote proxy uses the same strict E2E gate and never calls Yahoo for its fixture', () => {
+    const proxy = readFileSync('app/api/companies/[ticker]/extended-quote/route.ts', 'utf8');
+    assert.match(proxy, /await requireAuthenticatedUser\(\)/);
+    assert.match(proxy, /isE2EMarketFixtureEnabled\(process\.env, ticker\)/);
+    assert.match(proxy, /return Response.json\(e2eExtendedQuoteFixture\(ticker\)/);
+    assert.ok(proxy.indexOf('isE2EMarketFixtureEnabled(process.env, ticker)') < proxy.indexOf('await researchRequest'));
+    assert.doesNotMatch(proxy, /E2E_AUTH_BYPASS ===/);
+});
+
+test('extended fixture is dated and the test gate stays fail-closed', () => {
+    const env = { APP_ENV: 'test', E2E_AUTH_BYPASS: '1', NODE_ENV: 'development' };
+    assert.equal(isE2EMarketFixtureEnabled(env, 'MSFT'), true);
+    for (const bad of [{ ...env, APP_ENV: 'production' }, { ...env, NODE_ENV: 'production' }, { ...env, E2E_AUTH_BYPASS: '0' }, {}]) {
+        assert.equal(isE2EMarketFixtureEnabled(bad, 'MSFT'), false);
+    }
+    assert.equal(isE2EMarketFixtureEnabled(env, 'AAPL'), false);
+    const quote = e2eExtendedQuoteFixture('MSFT');
+    assert.equal(quote.price, 336.56);
+    assert.equal(quote.source, 'Fixture local');
+    assert.equal(extendedQuoteLabel(quote), 'Mercado abierto · 17:00');
+    assert.equal(quote.previous_close_timestamp, null);
 });

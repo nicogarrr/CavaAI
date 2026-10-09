@@ -53,3 +53,16 @@ for (const width of [1440, 390]) {
         await expect(header.locator('.text-4xl')).toHaveText('N/D');
     });
 }
+
+test('real authenticated proxy serves the gated E2E fixture without Yahoo', async ({ page }) => {
+    const responsePromise = page.waitForResponse('**/api/companies/MSFT/extended-quote');
+    await page.goto('/extended-quote-preview');
+    const response = await responsePromise;
+    expect(response.status()).toBe(200);
+    expect(await response.json()).toMatchObject({ price: 336.56, source: 'Fixture local', timestamp: 1788966000 });
+    const header = page.getByTestId('company-header-quote');
+    await expect(header.getByText('336,56 US$', { exact: true })).toBeVisible();
+    await expect(header.getByText('+2,34', { exact: false })).toBeVisible();
+    await expect(header.getByText('Fixture local · Sesión regular del 2026-09-09 · 17:00 (Madrid)', { exact: true })).toBeVisible();
+    await page.screenshot({ path: '/downloads/extended-quote-test-fixture.png', fullPage: true });
+});
