@@ -42,6 +42,7 @@ from app.api.routes import (
     telegram_link,
     thesis,
     thesis_projection,
+    thesis_scenarios,
     valuation,
     watchlist,
     work_products,
@@ -111,3 +112,7 @@ api_router.include_router(workflows.router, prefix="/workflows", tags=["workflow
 
 api_router.include_router(paper_trading.router, prefix="/paper-trading", tags=["paper-trading"])
 api_router.include_router(filing_intelligence.router, prefix="/companies", tags=["companies"])
+
+api_router.include_router(
+    thesis_scenarios.router, prefix="/companies", tags=["companies"]
+)
