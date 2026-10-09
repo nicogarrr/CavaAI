@@ -251,3 +251,16 @@ def test_partial_fallback_mixes_live_and_persisted(monkeypatch):
     finally:
         _cleanup(db)
         db.close()
+
+
+def test_public_reason_never_leaks_exception_text():
+    import httpx
+
+    from app.services.insider_service import public_reason
+
+    request = httpx.Request("GET", "https://www.sec.gov/files/company_tickers.json")
+    forbidden = httpx.HTTPStatusError("403 Forbidden", request=request, response=httpx.Response(403, request=request))
+    limited = httpx.HTTPStatusError("429", request=request, response=httpx.Response(429, request=request))
+    assert public_reason(forbidden) == "sec_bloquea_datacenter"
+    assert public_reason(limited) == "sec_limita_peticiones"
+    assert public_reason(RuntimeError("secret sec.gov detail")) == "fuente_no_disponible"
