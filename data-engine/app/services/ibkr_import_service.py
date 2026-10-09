@@ -135,7 +135,9 @@ def validate_flex_xml(xml_text: str) -> list[str]:
                     f"Fila {index} (CashTransaction): la fecha '{raw_date}' no tiene un formato "
                     "reconocido (usa AAAA-MM-DD). Corrige el valor o excluye la fila."
                 )
-        elif tag == "CashReport":
+        elif tag in ("CashReport", "CashReportCurrency"):
+            if _is_cash_summary_row(element):
+                continue
             if not _attr(element, "currency"):
                 errors.append(
                     f"Fila {index} (CashReport): falta la divisa (atributo currency). "
@@ -252,6 +254,19 @@ def validate_ibkr_csv(csv_text: str) -> list[str]:
                 "reconocido (usa AAAA-MM-DD). Corrige el valor o elimina la fila."
             )
     return errors
+
+
+def _is_cash_summary_row(element: ElementTree.Element) -> bool:
+    """Filas de efectivo que no son un saldo por divisa.
+
+    El total en divisa base (BASE_SUMMARY) no es una divisa, y el contenedor
+    <CashReport> del Flex real no lleva atributos: solo agrupa CashReportCurrency.
+    """
+    if not element.attrib and len(element) > 0:
+        return True
+    currency = (_attr(element, "currency") or "").upper()
+    level = (_attr(element, "levelOfDetail") or "").lower()
+    return currency == "BASE_SUMMARY" or level == "basecurrency"
 
 
 def _tag_name(element: ElementTree.Element) -> str:
@@ -423,7 +438,9 @@ class IBKRImportService:
                 position.source = "ibkr_flex"
                 positions_imported += 1
 
-            elif tag == "CashReport":
+            elif tag in ("CashReport", "CashReportCurrency"):
+                if _is_cash_summary_row(element):
+                    continue
                 currency = _attr(element, "currency")
                 if not currency:
                     rows_skipped += 1
@@ -433,6 +450,9 @@ class IBKRImportService:
                     rows_skipped += 1
                     continue
                 cash = db.scalar(select(CashBalance).where(CashBalance.currency == currency))
+                if cash is None and abs(_decimal(_attr(element, "endingCash", "cash", "balance"))) < Decimal("0.005"):
+                    # Polvo de redondeo (1e-5): no crea una divisa fantasma.
+                    continue
                 if cash is None:
                     cash = CashBalance(currency=currency)
                     db.add(cash)
@@ -440,7 +460,7 @@ class IBKRImportService:
                 cash.settled_cash = _decimal(_attr(element, "settledCash", "endingSettledCash"), str(cash.balance))
                 cash.interest_rate = _decimal(_attr(element, "interestRate"))
                 cash.source = "ibkr_flex"
-                cash.as_of = _date(_attr(element, "reportDate", "asOfDate"))
+                cash.as_of = _date(_attr(element, "reportDate", "asOfDate", "toDate"))
                 cash_imported += 1
 
             elif tag == "Trade":
