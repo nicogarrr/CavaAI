@@ -13,6 +13,7 @@ from app.models import Company, Document, DocumentChunk, Position, ResearchAlert
 from app.services.company_resolver import resolve_company
 from app.services.earnings_releases import summarize_release
 from app.services.filing_changes import comparable, compare_sections, reported_period
+from app.services.notification_service import record_in_app_delivery
 
 VERSION = "filing-intelligence-v1"
 KEY = "filing_intelligence"
@@ -135,15 +136,17 @@ def _alert(db: Session, company: Company, document: Document, result: dict, *, e
         message = "Documento SEC/CNMV disponible. El análisis puede estar pendiente o sin datos; revisa la fuente antes de cambiar la tesis."
     try:
         with db.begin_nested():
-            db.add(ResearchAlert(
+            alert = ResearchAlert(
                 tenant_id=tenant, company_id=company.id, severity="medium", status="open",
                 alert_type=event_type or ("earnings_release" if earnings else "filing_changes"), title=title,
                 message=message, fingerprint=fingerprint, channels=["in_app"],
                 last_triggered_at=datetime.now(UTC),
                 metadata_={**result, "document_id": document.id, "source_url": document.source_url,
                            "matching": (["cartera"] if held is not None else []) + (["watchlist"] if watched else [])},
-            ))
+            )
+            db.add(alert)
             db.flush()
+            record_in_app_delivery(db, alert)
     except IntegrityError:
         # Only suppress the unique-fingerprint race, not another integrity bug.
         if db.scalar(select(ResearchAlert.id).where(
