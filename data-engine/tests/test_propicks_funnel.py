@@ -257,3 +257,187 @@ def test_execute_run_persists_run_and_candidates():
 
         stored = db.scalar(select(ProPickRun).where(ProPickRun.id == run.id))
         assert stored is not None and stored.params["weights"]
+
+
+# --- One entry per issuer (share classes) -----------------------------------
+
+
+def _prices(db: Session, company: Company, volume: int | None) -> None:
+    from datetime import date, timedelta
+
+    from app.models import MarketPrice
+
+    for i in range(1, 6):
+        db.add(
+            MarketPrice(
+                company_id=company.id,
+                date=date.today() - timedelta(days=i),
+                open=Decimal("10"),
+                high=Decimal("11"),
+                low=Decimal("9"),
+                close=Decimal("10"),
+                volume=volume,
+            )
+        )
+
+
+def _good_company(db: Session, ticker: str, name: str, exchange: str = "NASDAQ") -> Company:
+    company = _company(ticker)
+    company.name = name
+    company.exchange = exchange
+    db.add(company)
+    db.flush()
+    _full_metrics(db, company)
+    _five_good_years(db, company)
+    return company
+
+
+def test_share_classes_take_one_slot_and_canonical_is_highest_volume():
+    with _db() as db:
+        goog = _good_company(db, "GOOG", "Alphabet Inc")
+        googl = _good_company(db, "GOOGL", "Alphabet Inc")
+        other = _good_company(db, "OTHR", "Other Inc")
+        _prices(db, goog, 21_000_000)
+        _prices(db, googl, 32_000_000)
+        _prices(db, other, 1_000_000)
+        db.commit()
+        results, stats = run_funnel(db, top_n=20)
+        by_ticker = {db.get(Company, r.company_id).ticker: r for r in results}
+        assert by_ticker["GOOGL"].passed is True
+        assert by_ticker["GOOG"].passed is False
+        assert "clase_duplicada:GOOGL" in by_ticker["GOOG"].failed_gates
+        assert by_ticker["OTHR"].passed is True
+        assert stats["passed_count"] == 2
+        ranked_tickers = [
+            db.get(Company, r.company_id).ticker for r in results if "rank" in r.metrics
+        ]
+        assert sorted(ranked_tickers) == ["GOOGL", "OTHR"]
+
+
+def test_canonical_flips_with_volume_and_persists_single_candidate():
+    with _db() as db:
+        goog = _good_company(db, "GOOG", "Alphabet Inc")
+        googl = _good_company(db, "GOOGL", "Alphabet Inc")
+        _prices(db, goog, 50_000_000)
+        _prices(db, googl, 10_000_000)
+        db.commit()
+        run = execute_run(db, top_n=20)
+        candidates = db.scalars(
+            select(ProPickCandidate).where(ProPickCandidate.run_id == run.id)
+        ).all()
+        by_id = {c.company_id: c for c in candidates}
+        assert by_id[goog.id].passed is True and by_id[goog.id].rank == 1
+        assert by_id[googl.id].passed is False and by_id[googl.id].rank is None
+
+
+def test_failing_class_never_hides_a_qualifying_sibling():
+    with _db() as db:
+        goog = _good_company(db, "GOOG", "Alphabet Inc")
+        googl = _good_company(db, "GOOGL", "Alphabet Inc")
+        db.add(
+            CalculatedMetric(
+                company_id=googl.id, metric="roic", value=Decimal("0.01"), unit="decimal",
+                period="FY2026", fiscal_year=2026, status="ok", definition_version="t",
+                formula="roic", source_fact_ids=[], calculation_trace={}, confidence=Decimal("0.9"),
+            )
+        )
+        _prices(db, goog, 1_000)
+        _prices(db, googl, 9_000_000)  # higher volume but fails its own gates
+        db.commit()
+        results, _ = run_funnel(db)
+        by_ticker = {db.get(Company, r.company_id).ticker: r for r in results}
+        assert by_ticker["GOOGL"].passed is False
+        assert by_ticker["GOOG"].passed is True
+
+
+def test_no_volume_data_falls_back_to_lowest_id_and_zero_is_not_data():
+    with _db() as db:
+        first = _good_company(db, "FOX", "Fox Corp")
+        second = _good_company(db, "FOXA", "Fox Corp")
+        _prices(db, first, None)
+        _prices(db, second, 0)
+        db.commit()
+        results, _ = run_funnel(db)
+        by_id = {r.company_id: r for r in results}
+        assert by_id[first.id].passed is True
+        assert by_id[second.id].passed is False
+
+
+def test_unrelated_same_name_companies_are_not_merged():
+    with _db() as db:
+        a = _good_company(db, "FWONA", "Formula One Group")
+        b = _good_company(db, "LLYVA", "Formula One Group")
+        c = _good_company(db, "GHC", "Graham Holdings Co", "NYSE")
+        d = _good_company(db, "GHM", "Graham Corp", "NYSE")
+        db.commit()
+        results, _ = run_funnel(db)
+        by_id = {r.company_id: r for r in results}
+        assert all(by_id[x.id].passed for x in (a, b, c, d))
+
+
+def test_name_fallback_links_unmapped_classes_with_common_root():
+    with _db() as db:
+        a = _good_company(db, "ABCDA", "Abcd Holdings")
+        b = _good_company(db, "ABCDB", "Abcd Holdings")
+        _prices(db, a, 5)
+        _prices(db, b, 9)
+        db.commit()
+        results, _ = run_funnel(db)
+        by_id = {r.company_id: r for r in results}
+        assert by_id[b.id].passed is True and by_id[a.id].passed is False
+
+
+def test_three_classes_form_one_group_in_any_order():
+    import itertools
+
+    from app.services.propicks_funnel_service import _group_share_classes
+
+    base = [
+        _company("ABCDA"),
+        _company("ABCDB"),
+        _company("ABCDC"),
+        _company("OTHER"),
+    ]
+    for i, company in enumerate(base, start=1):
+        company.id = i
+        company.name = "Abcd Holdings" if company.ticker != "OTHER" else "Other Inc"
+        company.exchange = "NASDAQ"
+    for order in itertools.permutations(base):
+        groups = _group_share_classes(list(order))
+        assert set(groups) == {1, 2, 3}
+        assert len(set(groups.values())) == 1
+
+
+def test_three_classes_take_one_slot_in_run_funnel_and_execute_run():
+    for order in ((0, 1, 2), (2, 1, 0), (1, 2, 0)):
+        with _db() as db:
+            made = [
+                _good_company(db, t, "Abcd Holdings") for t in ("ABCDA", "ABCDB", "ABCDC")
+            ]
+            volumes = {"ABCDA": 5, "ABCDB": 9, "ABCDC": 7}
+            for company in made:
+                _prices(db, company, volumes[company.ticker])
+            db.commit()
+            results, stats = run_funnel(db, top_n=20)
+            passing = [r for r in results if r.passed]
+            assert len(passing) == 1 and stats["passed_count"] == 1
+            assert db.get(Company, passing[0].company_id).ticker == "ABCDB"
+            run = execute_run(db, top_n=20)
+            ranked = db.scalars(
+                select(ProPickCandidate).where(
+                    ProPickCandidate.run_id == run.id, ProPickCandidate.rank.is_not(None)
+                )
+            ).all()
+            assert len(ranked) == 1
+
+
+def test_mapped_and_name_links_merge_into_one_component():
+    from app.services.propicks_funnel_service import _group_share_classes
+
+    a, b, c = _company("GOOG"), _company("GOOGL"), _company("GOOGX")
+    for i, company in enumerate((a, b, c), start=1):
+        company.id = i
+        company.name = "Alphabet Inc"
+        company.exchange = "NASDAQ"
+    groups = _group_share_classes([c, a, b])
+    assert set(groups) == {1, 2, 3} and len(set(groups.values())) == 1
