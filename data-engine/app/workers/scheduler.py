@@ -27,6 +27,7 @@ from app.workers.dramatiq_app import (
     refresh_propicks_prices,
     refresh_rss_feeds,
     refresh_sec_filings,
+    refresh_ticker_news,
     review_theses,
     run_daily_research,
     scan_contradictions,
@@ -139,6 +140,23 @@ def build_scheduler(*, background: bool = False) -> BlockingScheduler | Backgrou
         partial(enqueue_for_all_tenants, refresh_news, scope="all"),
         "interval",
         job_id="news_refresh_universe",
+        hours=6,
+    )
+    # Carril de noticias por ticker sin GDELT (Yahoo Finance RSS + Google News
+    # RSS): GDELT devuelve 429 en la mayoria de las consultas y dejaba a ASTS
+    # y SPCX sin titulares. Tracked cada 30 min; universo US cada 6 h.
+    _register(
+        scheduler,
+        partial(enqueue_for_all_tenants, refresh_ticker_news, scope="tracked"),
+        "interval",
+        job_id="ticker_news_refresh",
+        minutes=30,
+    )
+    _register(
+        scheduler,
+        partial(enqueue_for_all_tenants, refresh_ticker_news, scope="all"),
+        "interval",
+        job_id="ticker_news_refresh_universe",
         hours=6,
     )
     # Carril macro (temas sin ticker: oro/bancos centrales, tipos, etc.);
