@@ -43,10 +43,11 @@ def _utc(value: datetime) -> datetime:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
-def paid_model_risk(provider) -> str | None:
+def paid_model_risk(provider, *, request=None) -> str | None:
     """Motivo de bloqueo si la peticion REAL del proposal podria usar un modelo no gratuito.
 
-    La sonda es la misma peticion que `propose` envia (build_request: sin modelo fijado,
+    `request` permite verificar la petición real de otros flujos (p. ej. narrativa).
+    Por defecto la sonda es la misma peticion que `propose` envia (build_request: sin modelo fijado,
     solo task), de modo que los overrides de entorno por tarea se resuelven igual que
     en la llamada real. Tambien se mira el modelo de fallback del adaptador.
     Fail-closed: si no se puede verificar, se bloquea.
@@ -54,7 +55,7 @@ def paid_model_risk(provider) -> str | None:
     router = getattr(provider, "model_router", None)
     if router is None:
         return "modelo_no_verificable"
-    probe = build_request("X", Decimal(1), "USD", [], None)
+    probe = request if request is not None else build_request("X", Decimal(1), "USD", [], None)
     try:
         resolved = router.resolve(probe)
     except Exception:  # noqa: BLE001 - alias deshabilitado o inconsistente
