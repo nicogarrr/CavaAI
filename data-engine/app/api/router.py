@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.routes import (
     alerts,
     asts,
+    bottlenecks,
     calendar,
     chat,
     cnmv,
@@ -52,6 +53,7 @@ from app.api.routes import (
 # en api_router lo haría heredar la auth de main.py.
 
 api_router = APIRouter()
+api_router.include_router(bottlenecks.router, prefix="/bottlenecks", tags=["bottlenecks"])
 api_router.include_router(data_health.router, prefix="/data-health", tags=["data-health"])
 api_router.include_router(alerts.router, prefix="/alerts", tags=["alerts"])
 api_router.include_router(telegram_link.router, prefix="/alerts", tags=["alerts"])
