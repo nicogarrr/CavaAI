@@ -11,17 +11,20 @@ import asyncio
 import hashlib
 import re
 import threading
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.llm import create_llm_provider
+from app.llm.model_aliases import VERIFIED_FREE_MODELS
 from app.models.entities import Company, NewsEvent
 from app.models.paper_trading import PaperTrade
 from app.schemas.paper_trading import PaperProposal
 from app.services.budget import BudgetController, BudgetExceededError
-from app.services.llm_proposal_service import ProposalRejected, propose
+from app.services.llm_proposal_service import ProposalRejected, build_request, propose
 from app.services.paper_trading_service import create_proposal
 
 DAILY_QUOTA = 5  # propuestas LLM guardadas por tenant y dia UTC
@@ -38,6 +41,30 @@ class QuotaExceeded(Exception):
 
 def _utc(value: datetime) -> datetime:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
+def paid_model_risk(provider) -> str | None:
+    """Motivo de bloqueo si la peticion REAL del proposal podria usar un modelo no gratuito.
+
+    La sonda es la misma peticion que `propose` envia (build_request: sin modelo fijado,
+    solo task), de modo que los overrides de entorno por tarea se resuelven igual que
+    en la llamada real. Tambien se mira el modelo de fallback del adaptador.
+    Fail-closed: si no se puede verificar, se bloquea.
+    """
+    router = getattr(provider, "model_router", None)
+    if router is None:
+        return "modelo_no_verificable"
+    probe = build_request("X", Decimal(1), "USD", [], None)
+    try:
+        resolved = router.resolve(probe)
+    except Exception:  # noqa: BLE001 - alias deshabilitado o inconsistente
+        return "modelo_no_verificable"
+    if resolved not in VERIFIED_FREE_MODELS:
+        return "modelo_no_gratuito"
+    fallback = getattr(provider, "_fallback_model", None)
+    if fallback and fallback not in VERIFIED_FREE_MODELS:
+        return "fallback_no_gratuito"
+    return None
 
 
 def todays_llm_proposals(db: Session, now: datetime) -> int:
@@ -90,7 +117,10 @@ def load_headlines(db: Session, ticker: str, now: datetime) -> list[dict]:
         raise ProposalRejected("empresa_no_seguida")
     rows = db.scalars(
         select(NewsEvent)
-        .where(NewsEvent.company_id == company.id, NewsEvent.date >= _utc(now) - NEWS_WINDOW)
+        .where(NewsEvent.company_id == company.id,
+            NewsEvent.date >= _utc(now) - NEWS_WINDOW,
+            NewsEvent.date <= _utc(now),  # sin evidencia con fecha futura
+        )
         .order_by(NewsEvent.date.desc(), NewsEvent.id.desc())
         .limit(MAX_HEADLINES)
     ).all()
@@ -108,14 +138,29 @@ async def generate_proposal(
     provider=None,
     fetch_quote=None,
     now: datetime | None = None,
+    clock: Callable[[], datetime] | None = None,
 ) -> PaperTrade:
-    now = now or datetime.now(UTC)
+    # Reloj: `clock` (inyectable) > `now` fijo (tests/replay) > reloj real. La frescura de
+    # la cotizacion se valida contra el reloj POSTERIOR al fetch, no el del inicio: una
+    # cotizacion recibida segundos despues de arrancar no es "futura".
+    fixed_now = now
+
+    def _real_clock() -> datetime:
+        return fixed_now if fixed_now is not None else datetime.now(UTC)
+
+    read_clock: Callable[[], datetime] = clock or _real_clock
+    now = read_clock()
     ticker = (ticker or "").strip().upper()
     if not _TICKER.match(ticker):
         raise ProposalRejected("ticker_invalido")
     provider = provider or create_llm_provider()
     if provider.name == "disabled":
         raise ProposalRejected("llm_deshabilitado")
+    # Solo modelos gratuitos (EUR 0): se resuelve ANTES de gastar nada, con el router
+    # del adaptador y una peticion construida por build_request (la misma que se enviara).
+    blocked = paid_model_risk(provider)
+    if blocked:
+        raise ProposalRejected(blocked)
     budget = BudgetController()
     if not budget.can_spend(db, 0.02):
         raise ProposalRejected("presupuesto_agotado")
@@ -131,6 +176,7 @@ async def generate_proposal(
         quote = await asyncio.to_thread(fetch_quote, ticker)
     except Exception:  # noqa: BLE001 - sin cotizacion no hay propuesta
         quote = None
+    now = read_clock()  # recepcion de la cotizacion: base de frescura, cuota y fechas
 
     def _record(resp) -> None:
         # Cada respuesta del proveedor, tambien la que el validador descarta, consume presupuesto.
