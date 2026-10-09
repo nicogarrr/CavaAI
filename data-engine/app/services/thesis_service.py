@@ -235,6 +235,30 @@ class ThesisService:
             .limit(1)
         )
 
+    @staticmethod
+    def _missing_inputs_marker(required_fixes: list | None) -> tuple[str, ...] | None:
+        prefix = "Faltan entradas de valoración (variables del modelo): "
+        for fix in required_fixes or []:
+            if isinstance(fix, str) and fix.startswith(prefix):
+                return tuple(sorted(x.strip() for x in fix[len(prefix):].split(",") if x.strip()))
+        return ()
+
+    def _same_insufficient_reason(self, db: Session, existing, valuation: dict) -> bool:
+        """True si la tesis previa y la nueva valoracion son insufficient_data por lo mismo."""
+        if existing.status != "insufficient_data" or valuation.get("status") != "insufficient_data":
+            return False
+        audit_row = db.scalar(
+            select(SourceAudit)
+            .where(SourceAudit.thesis_version_id == existing.id)
+            .order_by(SourceAudit.id.desc())
+            .limit(1)
+        )
+        if audit_row is None:
+            return False
+        previous = self._missing_inputs_marker(audit_row.required_fixes)
+        current = tuple(sorted(str(x) for x in (valuation.get("missing_inputs") or [])))
+        return previous == current
+
     def _input_fingerprint(
         self,
         db: Session,
@@ -409,6 +433,15 @@ class ThesisService:
                 # (el savepoint de generate() se libera solo).
                 if savepoint is not None:
                     savepoint.rollback()
+                return existing
+            if self._same_insufficient_reason(db, existing, valuation):
+                if savepoint is not None:
+                    savepoint.rollback()
+                # QA-6: otra version insufficient_data con el mismo motivo no
+                # aporta nada (solo cambio el input, p. ej. el precio). Se
+                # marca revisada la anterior y no se crea version nueva.
+                existing.updated_at = datetime.now(UTC)
+                db.flush()
                 return existing
             # Material evidence changed — fall through and create a new version.
 
