@@ -636,6 +636,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/companies/{ticker}/extended-quote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Company Extended Quote
+         * @description Yahoo intraday/extended hours; no persistence or database dependency.
+         */
+        get: operations["company_extended_quote_api_companies__ticker__extended_quote_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/companies/{ticker}/facts": {
         parameters: {
             query?: never;
@@ -5123,6 +5143,62 @@ export interface components {
             /** Suggestion Type */
             suggestion_type: string;
         };
+        /** ExtendedQuote */
+        ExtendedQuote: {
+            /** Change */
+            change?: number | null;
+            /** Change Percent */
+            change_percent?: number | null;
+            /** Currency */
+            currency?: string | null;
+            /** Fetched At */
+            fetched_at: number;
+            /** High */
+            high?: number | null;
+            /** Low */
+            low?: number | null;
+            /** Metrics Session */
+            metrics_session?: string | null;
+            /** Metrics Timestamp */
+            metrics_timestamp?: number | null;
+            /** Open */
+            open?: number | null;
+            /** Previous Close */
+            previous_close?: number | null;
+            /** Previous Close Timestamp */
+            previous_close_timestamp?: number | null;
+            /** Price */
+            price?: number | null;
+            /** Price Session */
+            price_session?: ("pre" | "regular" | "post" | "cerrado") | null;
+            /** Regular Close */
+            regular_close?: number | null;
+            /** Regular Close Timestamp */
+            regular_close_timestamp?: number | null;
+            /**
+             * Session
+             * @default cerrado
+             * @enum {string}
+             */
+            session: "pre" | "regular" | "post" | "cerrado";
+            /**
+             * Source
+             * @default Yahoo Finance (no oficial), retraso posible
+             */
+            source: string;
+            /**
+             * Status
+             * @default unavailable
+             * @enum {string}
+             */
+            status: "available" | "retrasado" | "unavailable";
+            /** Ticker */
+            ticker: string;
+            /** Timestamp */
+            timestamp?: number | null;
+            /** Trading Date */
+            trading_date?: string | null;
+        };
         /** FXRateInput */
         FXRateInput: {
             /** Base Currency */
@@ -8477,6 +8553,46 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    company_extended_quote_api_companies__ticker__extended_quote_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path: {
+                ticker: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtendedQuote"];
                 };
             };
             /** @description Validation Error */

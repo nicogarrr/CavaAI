@@ -15,7 +15,7 @@ describe('ficha: cifra grande y métricas compactas', () => {
     it('cuatro métricas verificadas de la cotización, sin adivinar múltiplos', () => {
         assert.match(quote, /company-metric-strip/);
         for (const label of ['Apertura', 'Máximo', 'Mínimo', 'Cierre anterior']) assert.ok(quote.includes(label));
-        assert.match(quote, /value == null \? NA : formatMoney/);
+        assert.match(quote, /value == null \|\| !isValidCurrencyCode\(currency\) \? NA : formatMoney/);
         assert.match(quote, /divide-gray-800/);
         assert.match(quote, /isValidCurrencyCode\(currency\)/);
     });

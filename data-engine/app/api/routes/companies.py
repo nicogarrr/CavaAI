@@ -45,6 +45,7 @@ from app.services.driver_assumption_service import (
     DriverAssumptionService,
     driver_assumption_payload,
 )
+from app.services.extended_quote_service import ExtendedQuote, extended_quote_service
 from app.services.financial_ingestion_service import FinancialIngestionService
 from app.services.financial_terminal_service import FinancialTerminalService
 from app.services.fundamental_model_repository import FundamentalModelRepository
@@ -80,6 +81,13 @@ router = APIRouter()
 
 
 MAX_SNAPSHOT_BATCH_TICKERS = 50
+
+
+@router.get("/{ticker}/extended-quote", response_model=ExtendedQuote)
+async def company_extended_quote(ticker: str) -> ExtendedQuote:
+    """Yahoo intraday/extended hours; no persistence or database dependency."""
+    return await extended_quote_service.get(ticker)
+
 
 
 @router.get("/snapshots", response_model=CompanySnapshotsBatchOut)

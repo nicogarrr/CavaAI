@@ -87,16 +87,16 @@ test('la variación omite ausencias: línea entera fuera si faltan ambos', () =>
     // Con change y changePercent ausentes (fallback a cierre de vela) NO se
     // pinta «N/D · N/D» bajo el precio: la línea entera se omite y cada valor
     // presente se muestra solo, con separador condicional.
-    assert.match(component, /quote\.change != null \|\| quote\.changePercent != null \? \(/);
+    assert.match(component, /quote.change != null \|\| quote.change_percent != null/);
     assert.match(component, /\.filter\(Boolean\)\s*\.join\(' · '\)/);
     assert.ok(!/\{' · '\}/.test(component), 'queda un separador incondicional');
-    assert.match(component, /value == null \? NA : formatMoney/, 'ausencias en la tira de métricas, nunca precio fabricado');
+    assert.match(component, /value == null \|\| !isValidCurrencyCode\(currency\) \? NA : formatMoney/, 'ausencias en la tira de métricas, nunca precio fabricado');
 });
 
 test('el color del signo sigue al dato disponible (change ?? changePercent)', () => {
     // Con change ausente y changePercent negativo, el porcentaje no puede
     // salir en verde: el signo se deriva del primer valor presente.
-    assert.match(component, /quote\.change \?\? quote\.changePercent \?\? 0/);
+    assert.match(component, /quote\?\.change \?\? quote\?\.change_percent \?\? 0/);
 });
 
 test('el precio de cierre se rotula con fecha y lleva gráfico técnico', () => {
@@ -106,6 +106,6 @@ test('el precio de cierre se rotula con fecha y lleva gráfico técnico', () => 
     assert.match(actions, /const change = quoteUsable \? quote\?\.d \?\? null : null;/);
     assert.match(actions, /const priceAsOf = quoteLive[\s\S]{0,200}lastClose\?\.date \?\? null;/);
     // Rótulo «Cierre del …» y rango de fechas del sparkline.
-    assert.match(component, /Cierre del \{formatMarketDate\(quote\.priceAsOf/);
+    assert.match(component, /extendedQuoteLabel\(quote\)/);
     assert.match(component, /CompanyTechnicalWorkspace snapshot=\{snapshot\}/);
 });
