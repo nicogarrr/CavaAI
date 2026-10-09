@@ -41,6 +41,7 @@ from app.api.routes import (
     taxes,
     telegram_link,
     thesis,
+    thesis_projection,
     valuation,
     watchlist,
     work_products,
@@ -74,6 +75,9 @@ api_router.include_router(ownership.router, prefix="/ownership", tags=["ownershi
 api_router.include_router(investors.router, prefix="/investors", tags=["investors"])
 api_router.include_router(taxes.router, prefix="/taxes", tags=["taxes"])
 api_router.include_router(thesis.router, prefix="/thesis", tags=["thesis"])
+api_router.include_router(
+    thesis_projection.router, prefix="/companies", tags=["companies"]
+)
 api_router.include_router(obsidian.router, prefix="/thesis", tags=["thesis"])
 api_router.include_router(obsidian.vault_router, prefix="/obsidian", tags=["obsidian"])
 api_router.include_router(valuation.router, prefix="/valuation", tags=["valuation"])
