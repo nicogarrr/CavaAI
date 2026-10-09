@@ -40,7 +40,8 @@ class Provider:
 
     def __init__(self, *outs):
         self.outs, self.calls = list(outs), 0
-        self.model_router = Router()
+        self.model_router: Any = Router()
+        self._fallback_model: str | None = None
         self.requests = []
 
     async def complete(self, request):
@@ -51,7 +52,8 @@ class Provider:
         return LLMResponse(Message("assistant", text), Usage(10, 10, 20), "space-bunny-free", "p")
 
 
-def cand(ticker="NVDA", exposicion="beneficiaria", canal="proveedor_directo", ids=("news_event:1",), **extra):
+def cand(ticker: Any = "NVDA", exposicion: Any = "beneficiaria", canal: Any = "proveedor_directo",
+         ids=("news_event:1",), **extra):
     return {"ticker": ticker, "exposicion": exposicion, "canal": canal, "evidence_ids": list(ids), **extra}
 
 
@@ -387,7 +389,7 @@ def test_migration_upgrade_downgrade():
     path = Path(__file__).parents[1] / "alembic/versions/0057_bottleneck_discovery.py"
     spec = importlib.util.spec_from_file_location("migration_discovery", path)
     assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
+    module: Any = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     assert module.down_revision == "0056_bottleneck_signal"
     engine = create_engine("sqlite://")
