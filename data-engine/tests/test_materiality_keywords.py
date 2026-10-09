@@ -51,3 +51,29 @@ def test_word_boundary_helper():
     assert not _has_term("second", "sec")
     assert _has_term("sec filing", "sec")
     assert MaterialityService  # import guard
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("Company secures new contracts with major customers", "contract"),
+        ("Company raises quarterly dividends and repurchases stock", "capital_allocation"),
+        ("Firm announces share buybacks", "capital_allocation"),
+        ("Company launches new satellites", "contract"),
+        ("Anuncia emisión de acciones", "dilution"),
+        ("Anuncia ampliación de capital", "dilution"),
+    ],
+)
+def test_inflections_and_accents(text, expected):
+    assert expected in _types(text)
+
+
+def test_product_offering_is_not_dilution():
+    assert "dilution" not in _types("Company announces new product offering")
+    assert "dilution" in _types("Company prices public offering of common stock")
+    assert "dilution" in _types("Company announces $200M equity offering")
+
+
+def test_short_acronyms_do_not_inflect():
+    assert not _has_term("secs and edgar", "sec")
+    assert _has_term("sec investigation", "sec")

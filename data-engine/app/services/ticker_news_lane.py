@@ -47,18 +47,21 @@ _TICKER_RE = re.compile(r"^[A-Z]{1,5}$")
 _DATA_PAGE_PATTERNS = tuple(
     re.compile(pattern, re.IGNORECASE)
     for pattern in (
+        # Solo FORMATO de ficha de datos, nunca tema: una noticia sobre acciones
+        # tokenizadas, previsiones o cripto es prensa y debe conservarse.
         r"\b(?:19|20)\d{2}\s+\d[\d.,]*\s+(?:call|put)\b",  # "Oct 2026 136.000 call"
-        r"\b[A-Z]{1,6}\d{6}[CP]\d{8}\b",  # simbolo OCC de opcion: SPCX261030C00136000
-        r"\(\s*[A-Z0-9]{2,10}\s*-\s*[A-Z]{2,5}\s*\)",  # (ASTSX-USD)
-        r"\b(?:\w+\s+)?tokenized stock\b|\bxstock\b",
-        r"\(\d?x\s+(?:long|short)\)|\b3x\s+(?:long|short)\b",
-        r"^(?:precio de acciones|stock price|share price)[, ]",
+        r"\b[A-Z]{1,6}\d{6}[CP]\d{8}\b",  # simbolo OCC: SPCX261030C00136000
+        r"\(\s*[A-Z0-9]{3,10}\s*-\s*(?:USD|EUR|USDT|GBP)\s*\)",  # par: (ASTSX-USD)
+        r"\(\d?x\s+(?:long|short)\)\s*\([A-Z0-9]{4,}\)",  # ETP apalancado + codigo
+        r"^(?:[A-Z]{1,5}\s+)?(?:precio de acciones|stock price|share price)[, ].*\b(?:historial|history)\b",
         r"\bprecio de acciones, noticias, cotizaci[oó]n e historial\b",
-        r"\b(?:perfil y datos|profile and data|datos hist[oó]ricos|historical data)\b",
-        r"\bvalor de precio de\b|\bprice (?:today|live|chart)\b.*\b(?:usd|eur)\b",
+        r"^(?:[A-Z]{1,5}\s+)?(?:gr[aá]fico de acciones interactivo|datos y precios hist[oó]ricos)\b",
+        r"^(?:[A-Z]{1,5}\s+)?(?:predicci[oó]n|previsi[oó]n) de precio de\b",
+        r"^(?:[A-Z]{1,5}\s+)?precio,? gr[aá]ficos,? capitalizaci[oó]n de mercado\b",
+        r"\bperfil y datos de (?:criptomonedas|cripto)\b",
+        r"\bvalor de precio de\b",
         r"\binformaci[oó]n de precios,? capitalizaci[oó]n de mercado\b",
-        r"\b(?:cryptocurrency|criptomonedas?)\s+(?:profile|perfil)\b",
-        r"\bprevisi[oó]n de [A-Z]{2,5}:\s*precio objetivo\b|\b[A-Z]{2,5} price (?:prediction|forecast)\b",
+        r"\bprevisi[oó]n de [A-Z]{2,5}:\s*precio objetivo\s+(?:19|20)\d{2}\b",
     )
 )
 

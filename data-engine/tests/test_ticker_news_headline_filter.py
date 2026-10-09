@@ -9,6 +9,9 @@ DATA_PAGES = [
     "Arcus SPCX (3x Long) (PSPCX3X) información de precios, capitalización de mercado, gráficos",
     "Previsión de ASTS: precio objetivo 2027, TV",
     "ASTS Oct 2026 72.000 call",
+    "ASTS Predicción de precio de AST SpaceMobile, Inc. (Coinbase Tokenized Stock) (ASTSC) entre 2026 y 2030",
+    "Precio, gráficos, capitalización de mercado de AST SpaceMobile, Inc. Tokenized Stock",
+    "Gráfico de acciones interactivo de SPCX Jan 2029 5.000 put(SPCX290119P00005000)",
 ]
 NEWS = [
     "Telecom stocks tumble on SpaceX spectrum acquisition news",
@@ -17,6 +20,11 @@ NEWS = [
     "Las acciones de AST SpaceMobile caen por doble noticia negativa",
     "AST SpaceMobile lanza BlueBird y fija precio de la oferta en 72 dólares",
     "SpaceX Plans $40 Billion Financing Deal Led by Apollo to Buy Nvidia AI Chips",
+    "Kraken to launch tokenized stock trading for Apple, Nvidia, and others outside US",
+    "Robinhood expands tokenized stocks in Europe",
+    "Analysts raise ASTS price forecast after BlueBird launch",
+    "Why xStocks are growing: tokenized Tesla shares hit record volume",
+    "Cryptocurrency exchange lists leveraged ETP on SpaceX",
 ]
 
 

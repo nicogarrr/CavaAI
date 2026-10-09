@@ -1,4 +1,5 @@
 import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -15,10 +16,13 @@ MATERIAL_KEYWORDS = {
     # titular bursatil ("Shares of AT&T fell", "platform"): solo cuentan frases
     # de emision/venta de acciones y el programa ATM como palabra completa.
     "dilution": [
-        "offering", "dilution", "dilutive", "atm program", "atm offering",
-        "at-the-market", "capital raise", "convertible", "share issuance",
-        "issue new shares", "issues new shares", "new shares", "share sale",
-        "stock sale", "secondary offering", "emision de acciones", "ampliacion de capital",
+        "dilution", "dilutive", "atm program", "atm offering", "at-the-market",
+        "capital raise", "convertible", "share issuance", "issue new shares",
+        "new shares", "share sale", "stock sale", "public offering",
+        "equity offering", "stock offering", "share offering", "secondary offering",
+        "direct offering", "follow-on offering", "common stock offering",
+        "offering of common stock", "offering of shares", "offering of ordinary shares",
+        "emision de acciones", "ampliacion de capital",
     ],
     "earnings": ["earnings", "guidance", "revenue", "eps", "fcf", "margin"],
     "regulatory": ["fda", "sec", "fcc", "ema", "regulatory", "investigation", "approval"],
@@ -38,9 +42,23 @@ POSITIVE_TERMS = ["beat", "approval", "award", "buyback", "raise", "record", "ac
 NEGATIVE_TERMS = ["miss", "cut", "delay", "offering", "investigation", "default", "halt", "fraud"]
 CRITICAL_TERMS = ["bankruptcy", "fraud", "halt", "default"]
 
+def _fold(text: str) -> str:
+    """Minusculas y sin tildes: "emisión" casa con "emision"."""
+    decomposed = unicodedata.normalize("NFKD", text.lower())
+    return "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+
+
+# Flexiones habituales (plural y verbo regular). Las siglas cortas (<= 3
+# letras: sec, fda, atm, eps) no las admiten.
+_INFLECTION = r"(?:s|es|ed|d|ing)?"
+
+
 def _has_term(lower_text: str, term: str) -> bool:
-    """Coincidencia por palabra completa: "sec" no casa dentro de "second"."""
-    return re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", lower_text) is not None
+    """Palabra completa con plural/flexion: "contracts" casa "contract",
+    "repurchases" casa "repurchase", pero "sec" no casa dentro de "second"."""
+    text, word = _fold(lower_text), _fold(term)
+    suffix = "" if len(word) <= 3 else _INFLECTION
+    return re.search(rf"(?<![a-z0-9]){re.escape(word)}{suffix}(?![a-z0-9])", text) is not None
 
 
 # Un evento mas viejo que esta ventana nunca es "urgente" por recencia: un
