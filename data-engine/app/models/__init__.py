@@ -230,3 +230,7 @@ __all__.append("BottleneckSignal")
 from app.models.bottleneck_discovery import BottleneckDiscovery as BottleneckDiscovery  # noqa: E402
 
 __all__.append("BottleneckDiscovery")
+
+from app.models.thesis_projection import ThesisProjectionYear as ThesisProjectionYear  # noqa: E402
+
+__all__.append("ThesisProjectionYear")
