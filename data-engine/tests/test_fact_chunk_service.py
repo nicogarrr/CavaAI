@@ -6,7 +6,14 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from app.models.entities import Base, Company, Document, DocumentChunk, FinancialFact
+from app.models.entities import (
+    Base,
+    Company,
+    Document,
+    DocumentChunk,
+    EvidenceSuggestion,
+    FinancialFact,
+)
 from app.services.fact_chunk_service import sync_company_fact_chunks
 
 
@@ -100,3 +107,28 @@ def test_company_without_documents_is_a_noop(db):
     _fact(db, company, "revenue", 100, 2024)
     stats = sync_company_fact_chunks(db, company)
     assert stats == {"sources": 0, "chunks": 0}
+
+
+def test_sync_keeps_chunk_ids_cited_by_evidence(db):
+    company = _company(db)
+    db.add(Document(company_id=company.id, title="SEC XBRL facts - TEF", source_type="SEC"))
+    db.flush()
+    _fact(db, company, "revenue", 100, 2024, source="SEC")
+    _fact(db, company, "revenue", 90, 2023, source="SEC")
+    sync_company_fact_chunks(db, company)
+    chunk_2024 = db.scalar(
+        select(DocumentChunk).where(DocumentChunk.text.like("%ejercicio fiscal 2024%"))
+    )
+    db.add(EvidenceSuggestion(document_chunk_id=chunk_2024.id, statement="x"))
+    db.flush()
+    cited_id = chunk_2024.id
+
+    db.query(FinancialFact).filter(FinancialFact.fiscal_year == 2023).delete()
+    _fact(db, company, "net_income", 7, 2024, source="SEC")
+    stats = sync_company_fact_chunks(db, company)
+
+    chunks = list(db.scalars(select(DocumentChunk)).all())
+    assert stats["chunks"] == 1
+    assert [c.id for c in chunks] == [cited_id]
+    assert "beneficio neto" in chunks[0].text
+    assert chunks[0].chunk_index == 0
