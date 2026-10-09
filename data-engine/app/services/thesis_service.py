@@ -434,30 +434,29 @@ class ThesisService:
 
         existing = self.latest(db, ticker)
         if existing and not force_new_version:
-            if getattr(existing, "input_fingerprint", None) == fingerprint:
-                # Sin mutación previa: el fingerprint se calculó solo con
-                # lecturas, así que se devuelve sin tocar la transacción
-                # (el savepoint de generate() se libera solo).
-                if savepoint is not None:
-                    savepoint.rollback()
-                return existing
-            insufficient_signature = (
-                self._insufficient_signature(
+            if valuation.get("status") == "insufficient_data":
+                # QA-6: la decision depende de la firma estructurada completa
+                # (motivo, motor, metodo, entradas faltantes, evidencia sin
+                # precio). El atajo por fingerprint NO aplica aqui: no incluye
+                # motivo/metodo/inputs y resucitaria una version vieja o sin firma.
+                insufficient_signature = self._insufficient_signature(
                     valuation,
                     self._input_fingerprint(
                         db, company, valuation, long_term_model, news_items, include_price=False
                     ),
                 )
-                if valuation.get("status") == "insufficient_data"
-                else None
-            )
-            if self._same_insufficient_signature(existing, insufficient_signature):
-                # QA-6: mismo motivo, motor, entradas faltantes y evidencia
-                # material (solo cambio el precio): no se apila otra version.
+                if self._same_insufficient_signature(existing, insufficient_signature):
+                    if savepoint is not None:
+                        savepoint.rollback()
+                    existing.updated_at = datetime.now(UTC)
+                    db.flush()
+                    return existing
+            elif getattr(existing, "input_fingerprint", None) == fingerprint:
+                # Sin mutación previa: el fingerprint se calculó solo con
+                # lecturas, así que se devuelve sin tocar la transacción
+                # (el savepoint de generate() se libera solo).
                 if savepoint is not None:
                     savepoint.rollback()
-                existing.updated_at = datetime.now(UTC)
-                db.flush()
                 return existing
             # Material evidence changed — fall through and create a new version.
 

@@ -1,5 +1,4 @@
 """QA-6: insufficient_data equivalentes (solo cambia el precio) no apilan versiones."""
-import inspect
 from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
 
@@ -103,6 +102,69 @@ def test_signature_requires_every_field_equal_and_explicit_previous():
     assert not ThesisService._same_insufficient_signature(same, None)
 
 
-def test_dedupe_check_runs_before_persisting_a_new_version():
-    full = inspect.getsource(ThesisService)
-    assert full.index("_same_insufficient_signature(existing, insufficient_signature)") < full.index("thesis = ThesisVersion(")
+
+
+def _setup_first(monkeypatch):
+    init_db()
+    seed()
+    base._clean_asts_evidence()
+    base._mock_all_sources(monkeypatch)
+    base._seed_evidence_rows()
+    client = TestClient(main.app)
+    first = client.post("/api/thesis/generate", json={"ticker": "ASTS", "force_new_version": True}).json()
+    assert first["status"] == "insufficient_data"
+    return client, first
+
+
+def _patch_valuation(monkeypatch, **trace_changes):
+    orig = ThesisService.__init__
+
+    def init(self, *a, **k):
+        orig(self, *a, **k)
+        vs = self.valuation_service
+        real = vs.value_company
+
+        def patched(db, company):
+            out = real(db, company)
+            out.setdefault("trace", {}).update(trace_changes.get("trace", {}))
+            if "missing_inputs" in trace_changes:
+                out["missing_inputs"] = trace_changes["missing_inputs"]
+            return out
+
+        vs.value_company = patched
+
+    monkeypatch.setattr(ThesisService, "__init__", init)
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"trace": {"reason": "motivo distinto"}},
+        {"trace": {"method": "otro_metodo"}},
+        {"missing_inputs": ["capex_distinto"]},
+    ],
+)
+def test_generate_same_fingerprint_but_different_reason_method_or_inputs_creates_version(monkeypatch, changes):
+    client, first = _setup_first(monkeypatch)
+    n = len(_versions())
+    _patch_valuation(monkeypatch, **changes)
+    out = client.post("/api/thesis/generate", json={"ticker": "ASTS"}).json()
+    assert out["id"] != first["id"]
+    assert len(_versions()) == n + 1
+
+
+def test_generate_legacy_insufficient_without_signature_creates_version(monkeypatch):
+    client, first = _setup_first(monkeypatch)
+    db = SessionLocal()
+    try:
+        row = db.get(ThesisVersion, first["id"])
+        basis = dict(row.valuation_basis or {})
+        basis.pop("insufficient_signature", None)
+        row.valuation_basis = basis
+        db.commit()
+    finally:
+        db.close()
+    n = len(_versions())
+    out = client.post("/api/thesis/generate", json={"ticker": "ASTS"}).json()
+    assert out["id"] != first["id"]
+    assert len(_versions()) == n + 1
