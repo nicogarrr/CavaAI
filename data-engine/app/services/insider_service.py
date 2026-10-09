@@ -519,7 +519,18 @@ def get_signals_for_ticker(
         return result
     except Exception as exc:  # noqa: BLE001 — el endpoint nunca debe romper
         return {"ticker": wanted, "status": "degraded",
-                "reason": redact_secrets(f"{type(exc).__name__}: {exc}"), "signals": []}
+                "reason": public_reason(exc), "signals": []}
+
+
+def public_reason(exc: BaseException) -> str:
+    """Codigo estable y sin datos internos para la vista: nunca el nombre de la
+    excepcion ni su texto (F30). SEC veta IPs de datacenter con 403."""
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    if status == 403:
+        return "sec_bloquea_datacenter"
+    if status == 429:
+        return "sec_limita_peticiones"
+    return "fuente_no_disponible"
 
 
 # company_tickers.json son ~2 MB y se descarga una vez por ticker resuelto.

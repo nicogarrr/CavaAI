@@ -24,6 +24,20 @@ type CountText = (value: unknown) => string;
 const asNumber = (value: unknown): number | null =>
     typeof value === 'number' && Number.isFinite(value) ? value : null;
 
+const REASON_COPY: Record<string, string> = {
+    sec_bloquea_datacenter:
+        'la SEC rechaza las consultas automáticas desde este servidor (HTTP 403)',
+    sec_limita_peticiones: 'la SEC limita temporalmente las peticiones (HTTP 429)',
+    fuente_no_disponible: 'la fuente no respondió',
+};
+
+/** Detalle apto para usuario: códigos conocidos en español; cualquier otra
+ *  cadena (nombres de excepción, trazas) no se muestra nunca (F30). */
+export function reasonCopy(reason: unknown): string | null {
+    if (typeof reason !== 'string' || !reason) return null;
+    return Object.hasOwn(REASON_COPY, reason) ? REASON_COPY[reason] : null;
+}
+
 export function degradedCopy(
     ticker: string,
     fields: InsiderStatusFields,
@@ -38,9 +52,7 @@ export function degradedCopy(
         scanned !== null && failed !== null
             ? `${ticker}: SEC EDGAR no devolvió ningún Form 4 legible (${countText(failed)} con error de ${countText(scanned)} escaneados).`
             : `${ticker}: no se pudieron consultar o leer las señales Form 4 de SEC EDGAR.`;
-    const detail =
-        typeof fields.reason === 'string' && fields.reason ? fields.reason : null;
-    return { header, detail };
+    return { header, detail: reasonCopy(fields.reason) };
 }
 
 export function analyzedCountCopy(
