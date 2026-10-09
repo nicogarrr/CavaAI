@@ -61,7 +61,11 @@ _RE_NOT_CLOSED = re.compile(
     r"\b(?:den(?:y|ies|ied)|no|not|never|cancel(?:s|led|ed|ls)?|terminat\w*|collaps\w*|"
     r"scrap\w*|suspend\w*|halt\w*|paus\w*|abandon\w*|shelv\w*|axed?|withdr\w+|ditch\w*|unwind\w*|"
     r"walks?\s+away|breaks?|"
-    r"talks?|negotiat\w*|plans?|planning|could|may|might|would|reportedly|rumou?rs?|"
+    r"talks?|negotiat\w*|plans?|planning|could|may|might|would|will|shall|should|reportedly|rumou?rs?|"
+    r"if|whether|unless|when|once|expect(?:s|ed|ing)?|anticipat\w*|forecast\w*|predict\w*|"
+    r"likely|unlikely|soon|poised|set\s+to|about\s+to|close\s+to|nears?|hopes?|bets?|speculat\w*|"
+    r"analysts?|sources?\s+say|seg[uú]n|si|cuando|esperan?|espera(?:do|da)?|previsible|posible|"
+    r"probable|pronostic\w*|"
     r"seeks?|eyes?|considers?|considering|fails?|failed|rejects?|rejected|drops?|dropped|ends?|ended|"
     r"niega|negó|cancela|cancelad[oa]|suspende|rechaza|conversaciones|negocia\w*|planea|podr[ií]a|rumor\w*|"
     r"sin acuerdo)\b",
@@ -75,6 +79,9 @@ def matches(headline: str | None) -> bool:
     """Acuerdo cerrado entre SpaceX/Starlink y una operadora de la lista, con la
     operadora como contraparte; sin negaciones/suspensiones/planes ni AST."""
     if not headline or not isinstance(headline, str):
+        return False
+    # Una pregunta no afirma nada: cualquier signo de interrogacion descarta.
+    if "?" in headline or "¿" in headline:
         return False
     if _RE_AST.search(headline) or _RE_NOT_CLOSED.search(headline):
         return False

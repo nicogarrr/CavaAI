@@ -43,6 +43,12 @@ def test_matches_rejects_denials_cancellations_plans_and_ast_deals():
     assert not matches("SpaceX partnership with Apple brings competition to Verizon")
     assert not matches("SpaceX deal with Verizon scrapped")
     assert not matches("SpaceX suspends agreement with Verizon")
+    assert not matches("If SpaceX signs a deal with Verizon, competition intensifies")
+    assert not matches("Will SpaceX sign a deal with Verizon?")
+    assert not matches("SpaceX signs deal with Verizon?")
+    assert not matches("Analyst expects SpaceX signs a deal with Verizon soon")
+    assert not matches("Si SpaceX firma un acuerdo con Telefónica, crece la competencia")
+    assert not matches("¿SpaceX firma un acuerdo con Telefónica")
     assert not matches("SpaceX niega un acuerdo con Telefónica")
     assert not matches("Verizon signs agreement with AST SpaceMobile as SpaceX faces delays")
     assert not matches("Direct-to-cell agreement signed with Verizon")  # sin actor SpaceX
