@@ -352,6 +352,31 @@ def test_no_lookahead_on_document_publication_date(db):
         project(db)
 
 
+def test_no_lookahead_on_old_cagr_endpoint_publication(db):
+    # Repro del auditor: el documento futuro cuelga del FY VIEJO (extremo del
+    # CAGR), no del ancla reciente. Tambien se rechaza.
+    doc = Document(
+        company_id=1,
+        title="Restatement FY2022",
+        source_type="primary_official",
+        source_url="https://www.sec.gov/restatement",
+        published_at=datetime(2027, 2, 1, tzinfo=UTC),
+    )
+    db.add(doc)
+    db.flush()
+    old_fact = db.scalar(
+        select(FinancialFact).where(
+            FinancialFact.company_id == 1,
+            FinancialFact.metric == "revenue",
+            FinancialFact.fiscal_year == 2022,
+        )
+    )
+    old_fact.source_id = doc.id
+    db.commit()
+    with pytest.raises(LookaheadError):
+        project(db)
+
+
 def test_no_lookahead_on_future_assumption_versions(db):
     model = ValuationModel(
         company_id=1, model_type="dcf", version=1, status="final"

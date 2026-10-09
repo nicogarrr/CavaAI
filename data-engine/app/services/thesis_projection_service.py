@@ -246,6 +246,21 @@ class ThesisProjectionService:
             )
             if (row.fiscal_quarter or "").upper().startswith("Q"):
                 continue
+            # CADA fact que entra en la proyeccion (el ancla mas reciente y
+            # los extremos del CAGR por igual) exige fuente no futura: un
+            # restatement publicado despues del corte es lookahead aunque
+            # cuelgue de un ejercicio viejo.
+            if row.source_id:
+                doc = db.get(Document, row.source_id)
+                if doc is not None:
+                    assert_no_lookahead(
+                        as_of=as_of,
+                        data_date=_known_date(doc.published_at),
+                        label=(
+                            f"documento fuente de FinancialFact {company.ticker} "
+                            f"{row.metric} FY{row.fiscal_year}"
+                        ),
+                    )
             # Ordenado por id descendente: el primero por ejercicio es el mas
             # reciente; setdefault conserva ese y descarta restatements viejos.
             out.setdefault(row.metric, {}).setdefault(row.fiscal_year, row)  # type: ignore[arg-type]
