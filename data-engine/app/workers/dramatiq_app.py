@@ -961,6 +961,28 @@ def refresh_bottlenecks(tenant_id: int | None = None, user_id: str | None = None
         db.close()
 
 
+DISCOVERY_DEADLINE_SECONDS = 480  # margen de 2 min bajo el time_limit de 10 min
+
+
+@dramatiq.actor(max_retries=1, min_backoff=30_000, time_limit=600_000)
+def discover_bottlenecks(tenant_id: int | None = None, user_id: str | None = None) -> dict[str, Any]:
+    """Candidatos INFERIDOS por tema de cuello de botella (solo proveedor gratuito, sin dinero)."""
+    from app.services.bottleneck_discovery_service import discover
+    from app.services.ticker_news_lane import Deadline
+
+    db = _session(tenant_id, user_id)
+    try:
+        deadline = Deadline(DISCOVERY_DEADLINE_SECONDS)
+        outcome = _run(discover(db, deadline=deadline))
+        status = "partial" if deadline.truncated and outcome.get("status") == "ok" else outcome["status"]
+        return {"actor": "discover_bottlenecks", **outcome, "status": status}
+    except Exception as exc:
+        _rollback(db)
+        return _handle_actor_error("discover_bottlenecks", exc, tenant_id=tenant_id)
+    finally:
+        db.close()
+
+
 @dramatiq.actor(max_retries=1, min_backoff=30_000)
 def refresh_macro_context() -> dict[str, Any]:
     """Fetch public FRED CSV once globally, then persist an honest snapshot."""
