@@ -356,7 +356,7 @@ def save_within_quota(
         return saved
 
 
-def paid_model_risk(provider: Any, model: str, task: str = TASK) -> str | None:
+def paid_model_risk(provider: Any, model: str) -> str | None:
     """Motivo de bloqueo si la llamada REAL podria usar un modelo no gratuito, o None.
 
     Resuelve con el mismo router que usara el proveedor (incluidos overrides de
@@ -367,7 +367,7 @@ def paid_model_risk(provider: Any, model: str, task: str = TASK) -> str | None:
     router = getattr(provider, "model_router", None)
     if router is None:
         return "modelo_no_verificable"
-    probe = LLMRequest(messages=[Message("user", "x")], task=task, model=model)
+    probe = LLMRequest(messages=[Message("user", "x")], task=TASK, model=model)
     try:
         resolved = router.resolve(probe)
     except Exception:  # noqa: BLE001 - alias deshabilitado o inconsistente

@@ -1,5 +1,6 @@
 import asyncio
 import json
+from typing import Any
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -39,16 +40,16 @@ class FreeRouter:
         self.resolved = resolved
 
     def resolve(self, request):
-        return self.resolved or request.model
+        return self.resolved or request.model or "space-bunny-free"
 
 
 class Provider:
     name = "stub"
-    _fallback_model = None
+    _fallback_model: Any = None
 
     def __init__(self, *outs):
         self.outs, self.calls = list(outs), 0
-        self.model_router: FreeRouter | None = FreeRouter()
+        self.model_router: Any = FreeRouter()
 
     async def complete(self, request):
         self.calls += 1
@@ -304,3 +305,19 @@ def test_future_dated_news_is_not_given_to_the_model(db):
     db.commit()
     titles = [h["title"] for h in runner.load_headlines(db, "AAPL", NOW)]
     assert "Titular futuro" not in titles and titles
+
+
+def test_guard_probe_is_the_real_request_not_a_pinned_model(db):
+    """Un override por tarea solo se ve si la sonda no fija modelo, como la peticion real."""
+
+    class TaskOverrideRouter:
+        def resolve(self, request):
+            if request.model is None and request.task == "main_financial_analysis":
+                return "paid-model"  # override de entorno por tarea
+            return request.model or "space-bunny-free"
+
+    provider = Provider(good())
+    provider.model_router = TaskOverrideRouter()
+    with pytest.raises(ProposalRejected) as exc:
+        run(db, provider)
+    assert exc.value.reason == "modelo_no_gratuito" and provider.calls == 0

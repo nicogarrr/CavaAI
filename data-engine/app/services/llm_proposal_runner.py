@@ -12,6 +12,7 @@ import hashlib
 import re
 import threading
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
@@ -21,10 +22,8 @@ from app.llm.model_aliases import VERIFIED_FREE_MODELS
 from app.models.entities import Company, NewsEvent
 from app.models.paper_trading import PaperTrade
 from app.schemas.paper_trading import PaperProposal
-from app.services.bottleneck_discovery_service import paid_model_risk
 from app.services.budget import BudgetController, BudgetExceededError
-from app.services.llm_proposal_service import PROPOSAL_TASK, ProposalRejected, propose
-from app.services.llm_router import route_model
+from app.services.llm_proposal_service import ProposalRejected, build_request, propose
 from app.services.paper_trading_service import create_proposal
 
 DAILY_QUOTA = 5  # propuestas LLM guardadas por tenant y dia UTC
@@ -41,6 +40,30 @@ class QuotaExceeded(Exception):
 
 def _utc(value: datetime) -> datetime:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
+def paid_model_risk(provider) -> str | None:
+    """Motivo de bloqueo si la peticion REAL del proposal podria usar un modelo no gratuito.
+
+    La sonda es la misma peticion que `propose` envia (build_request: sin modelo fijado,
+    solo task), de modo que los overrides de entorno por tarea se resuelven igual que
+    en la llamada real. Tambien se mira el modelo de fallback del adaptador.
+    Fail-closed: si no se puede verificar, se bloquea.
+    """
+    router = getattr(provider, "model_router", None)
+    if router is None:
+        return "modelo_no_verificable"
+    probe = build_request("X", Decimal(1), "USD", [], None)
+    try:
+        resolved = router.resolve(probe)
+    except Exception:  # noqa: BLE001 - alias deshabilitado o inconsistente
+        return "modelo_no_verificable"
+    if resolved not in VERIFIED_FREE_MODELS:
+        return "modelo_no_gratuito"
+    fallback = getattr(provider, "_fallback_model", None)
+    if fallback and fallback not in VERIFIED_FREE_MODELS:
+        return "fallback_no_gratuito"
+    return None
 
 
 def todays_llm_proposals(db: Session, now: datetime) -> int:
@@ -122,12 +145,9 @@ async def generate_proposal(
     provider = provider or create_llm_provider()
     if provider.name == "disabled":
         raise ProposalRejected("llm_deshabilitado")
-    # Solo modelos gratuitos (EUR 0): se resuelve el modelo REAL (con overrides de
-    # entorno) y el fallback del adaptador ANTES de gastar nada. Fail-closed.
-    route = route_model(PROPOSAL_TASK)
-    if route.model not in VERIFIED_FREE_MODELS:
-        raise ProposalRejected("modelo_no_gratuito")
-    blocked = paid_model_risk(provider, route.model, PROPOSAL_TASK)
+    # Solo modelos gratuitos (EUR 0): se resuelve ANTES de gastar nada, con el router
+    # del adaptador y una peticion construida por build_request (la misma que se enviara).
+    blocked = paid_model_risk(provider)
     if blocked:
         raise ProposalRejected(blocked)
     budget = BudgetController()
