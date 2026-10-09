@@ -30,21 +30,40 @@ _MNOS = (
     r"airtel|reliance\s+jio|am[eé]rica\s+m[oó]vil|telcel|telenor|swisscom|"
     r"liberty\s+global|echostar|bouygues|iliad|telecom\s+italia|tim\s+brasil|telus)"
 )
-_DEAL = (
-    r"(?:agreement|agrees?|agreed|deal|partner(?:s|ship|ed)?|signs?|signed|contract|"
-    r"acuerdo|alianza|firma(?:n|do)?)"
+# Patron conservador: actor, verbo de cierre, sustantivo de acuerdo y operadora
+# como CONTRAPARTE ("with"/"con"). Sin proximidad libre: un sustantivo suelto
+# (agreement/deal) no es un verbo y una operadora citada de pasada no es parte.
+_SIGN = (
+    r"(?:sign(?:s|ed)?|strik(?:es|e)|struck|reach(?:es|ed)?|seal(?:s|ed)?|ink(?:s|ed)?|"
+    r"clinch(?:es|ed)?|secur(?:es|ed)|firma(?:n)?|firm[oó]|alcanza(?:n)?|cierra(?:n)?|cerr[oó])"
 )
-# Hueco corto sin puntuacion de frase: actor y operadora en la misma oracion,
-# con el verbo de acuerdo entre ambos (en cualquiera de los dos ordenes).
-_GAP = r"[^.;:!?]{0,80}?"
-_RE_FORWARD = re.compile(rf"\b{_SPACEX}\b{_GAP}\b{_DEAL}\b{_GAP}(?<![\w]){_MNOS}(?![\w])", re.IGNORECASE)
-_RE_REVERSE = re.compile(rf"(?<![\w]){_MNOS}(?![\w]){_GAP}\b{_DEAL}\b{_GAP}\b{_SPACEX}\b", re.IGNORECASE)
-# Negaciones, cancelaciones, planes o rumores: no son un acuerdo cerrado.
+_NOUN = r"(?:agreement|deal|partnership|contract|acuerdo|alianza|contrato)"
+_MOD = r"(?:an?|the|new|multi-year|multiyear|long-term|landmark|un|una|nuevo|nueva)"
+_DEALP = rf"{_SIGN}\s+(?:{_MOD}\s+){{0,3}}{_NOUN}"
+_MNO_B = rf"(?<![\w]){_MNOS}(?![\w])"
+_SPX_B = rf"\b{_SPACEX}\b"
+_PARTNER = r"(?:partners|teams\s+up|joins\s+forces)\s+with"
+_PATTERNS = tuple(
+    re.compile(p, re.IGNORECASE)
+    for p in (
+        # SpaceX signs (a) deal with Verizon
+        rf"{_SPX_B}\s+{_DEALP}\s+(?:with|con)\s+{_MNO_B}",
+        # SpaceX partners with Verizon
+        rf"{_SPX_B}\s+{_PARTNER}\s+{_MNO_B}",
+        # SpaceX and Verizon reached an agreement
+        rf"{_SPX_B}\s+(?:and|&|y)\s+{_MNO_B}\s+{_DEALP}",
+        # Verizon signs deal with Starlink / Verizon partners with Starlink
+        rf"{_MNO_B}\s+(?:{_DEALP}\s+(?:with|con)|{_PARTNER})\s+{_SPX_B}",
+    )
+)
+# Negaciones, cancelaciones, suspensiones, planes o rumores: no son un acuerdo cerrado.
 _RE_NOT_CLOSED = re.compile(
     r"\b(?:den(?:y|ies|ied)|no|not|never|cancel(?:s|led|ed|ls)?|terminat\w*|collaps\w*|"
+    r"scrap\w*|suspend\w*|halt\w*|paus\w*|abandon\w*|shelv\w*|axed?|withdr\w+|ditch\w*|unwind\w*|"
+    r"walks?\s+away|breaks?|"
     r"talks?|negotiat\w*|plans?|planning|could|may|might|would|reportedly|rumou?rs?|"
     r"seeks?|eyes?|considers?|considering|fails?|failed|rejects?|rejected|drops?|dropped|ends?|ended|"
-    r"niega|negó|cancela|cancelad[oa]|rechaza|conversaciones|negocia\w*|planea|podr[ií]a|rumor\w*|"
+    r"niega|negó|cancela|cancelad[oa]|suspende|rechaza|conversaciones|negocia\w*|planea|podr[ií]a|rumor\w*|"
     r"sin acuerdo)\b",
     re.IGNORECASE,
 )
@@ -53,13 +72,13 @@ _RE_AST = re.compile(r"\b(?:ast\s+spacemobile|ast\s+space\s+mobile|asts|ast)\b",
 
 
 def matches(headline: str | None) -> bool:
-    """Actor SpaceX/Starlink + operadora de la lista con verbo de acuerdo entre
-    ambos, sin negaciones/cancelaciones/planes y sin AST en el titular."""
+    """Acuerdo cerrado entre SpaceX/Starlink y una operadora de la lista, con la
+    operadora como contraparte; sin negaciones/suspensiones/planes ni AST."""
     if not headline or not isinstance(headline, str):
         return False
     if _RE_AST.search(headline) or _RE_NOT_CLOSED.search(headline):
         return False
-    return bool(_RE_FORWARD.search(headline) or _RE_REVERSE.search(headline))
+    return any(pattern.search(headline) for pattern in _PATTERNS)
 
 
 def _aware(value: datetime) -> datetime:
