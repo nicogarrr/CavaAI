@@ -2430,5 +2430,24 @@ def refresh_paper_trades(tenant_id: int | None = None, user_id: str | None = Non
         db.close()
 
 
+@dramatiq.actor(max_retries=0, time_limit=900_000)
+def propose_paper_trades(tenant_id: int | None = None, user_id: str | None = None) -> dict[str, Any]:
+    """Lote de propuestas LLM para el paper book (INFERIDO, solo proveedor gratuito).
+
+    SIN schedule: se lanza a mano (POST /paper-trading/feed). Comparte la cuota
+    diaria con el endpoint manual de propuestas; no define tope propio.
+    """
+    from app.services.paper_feed_service import run_feed
+
+    db = _session(tenant_id, user_id)
+    try:
+        return {"actor": "propose_paper_trades", **_run(run_feed(db))}
+    except Exception as exc:
+        _rollback(db)
+        return _handle_actor_error("propose_paper_trades", exc, tenant_id=tenant_id)
+    finally:
+        db.close()
+
+
 # RAG de conocimiento: registra el actor de ingesta (cola "knowledge").
 import app.workers.knowledge_rag_actors  # noqa: E402,F401

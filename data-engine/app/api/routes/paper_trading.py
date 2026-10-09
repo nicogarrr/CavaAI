@@ -66,6 +66,15 @@ def refresh(db: Session = Depends(get_db)) -> dict:
     return {"status": "queued", "message_id": str(message.message_id)}
 
 
+@router.post("/feed", status_code=202)
+def feed(db: Session = Depends(get_db)) -> dict:
+    """Encola un lote de propuestas LLM (INFERIDO). Comparte la cuota diaria con /llm-proposals."""
+    from app.workers.dramatiq_app import propose_paper_trades
+
+    message = propose_paper_trades.send(db.info.get("tenant_id"), db.info.get("user_id"))
+    return {"status": "queued", "message_id": str(message.message_id)}
+
+
 @router.post("/proposals/{proposal_id}/close")
 def close(proposal_id: int, db: Session = Depends(get_db)) -> dict:
     row = db.scalar(select(PaperTrade).where(PaperTrade.id == proposal_id))
