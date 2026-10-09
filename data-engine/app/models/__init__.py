@@ -222,3 +222,7 @@ __all__ = [
 from app.models.paper_trading import PaperTrade as PaperTrade  # noqa: E402
 
 __all__.append("PaperTrade")
+
+from app.models.bottleneck import BottleneckSignal as BottleneckSignal  # noqa: E402
+
+__all__.append("BottleneckSignal")

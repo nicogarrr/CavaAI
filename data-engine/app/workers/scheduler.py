@@ -16,6 +16,7 @@ from app.workers.dramatiq_app import (
     reconcile_alert_analyses,
     reconcile_alert_deliveries,
     refresh_asts_catalog,
+    refresh_bottlenecks,
     refresh_ir_pages,
     refresh_macro_context,
     refresh_macro_news,
@@ -116,6 +117,9 @@ def build_scheduler(*, background: bool = False) -> BlockingScheduler | Backgrou
         job_id="market_refresh_universe",
         hours=6,
     )
+    # Local-only reconciliation covers pre-existing ingested letters/chunks/news.
+    _register(scheduler, partial(enqueue_for_all_tenants, refresh_bottlenecks),
+              "interval", job_id="bottleneck_refresh", hours=1)
     _register(scheduler, refresh_macro_context.send, "cron", job_id="macro_context_refresh", hour=23, minute=10)
     # One global GP + SupGP fetch every 2 h, never per tenant or more often.
     _register(scheduler, refresh_asts_catalog.send, "interval", job_id="asts_celestrak_refresh", hours=2)

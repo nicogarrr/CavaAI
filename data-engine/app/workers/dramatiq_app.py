@@ -945,6 +945,23 @@ def refresh_asts_catalog() -> dict[str, Any]:
 
 
 @dramatiq.actor(max_retries=1, min_backoff=30_000)
+def refresh_bottlenecks(tenant_id: int | None = None, user_id: str | None = None) -> dict[str, Any]:
+    """Reconcile all local evidence, including historical letters, without AI."""
+    from app.services.bottleneck_service import refresh_signals
+
+    db = _session(tenant_id, user_id)
+    try:
+        count = refresh_signals(db)
+        db.commit()
+        return {"actor": "refresh_bottlenecks", "status": "ok", "themes": count}
+    except Exception as exc:
+        _rollback(db)
+        return _handle_actor_error("refresh_bottlenecks", exc)
+    finally:
+        db.close()
+
+
+@dramatiq.actor(max_retries=1, min_backoff=30_000)
 def refresh_macro_context() -> dict[str, Any]:
     """Fetch public FRED CSV once globally, then persist an honest snapshot."""
     from app.core.database import SessionLocal
