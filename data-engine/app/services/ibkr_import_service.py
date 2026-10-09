@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from xml.etree import ElementTree
 
@@ -326,14 +326,100 @@ def _attr(element: ElementTree.Element, *names: str) -> str | None:
     return None
 
 
+def _snapshot_blockers(
+    root: ElementTree.Element,
+    *,
+    expected_account_id: str,
+    positions_imported: int,
+    position_rows_skipped: int,
+    cash_rows_skipped: int,
+    cash_imported: int,
+    max_age_days: int,
+) -> list[str]:
+    """Motivos por los que el extracto NO prueba ser un snapshot completo de la cuenta."""
+    reasons: list[str] = []
+    expected = expected_account_id.strip().upper()
+    statements = [e for e in root.iter() if _tag_name(e) == "FlexStatement"]
+    if len(statements) != 1:
+        return [f"se esperaba 1 FlexStatement y hay {len(statements)}"]
+    statement = statements[0]
+    account = (statement.attrib.get("accountId") or "").strip().upper()
+    if account != expected:
+        reasons.append("la cuenta del extracto no es la esperada")
+    raw_to = (statement.attrib.get("toDate") or "").split(";", 1)[0].strip()
+    to_date: date | None = None
+    for fmt in ("%Y%m%d", "%Y-%m-%d"):
+        try:
+            to_date = datetime.strptime(raw_to, fmt).date()
+            break
+        except ValueError:
+            continue
+    if to_date is None:
+        reasons.append("el extracto no trae toDate valido")
+    else:
+        today = date.today()
+        if to_date > today:
+            reasons.append("toDate esta en el futuro")
+        elif to_date < today - timedelta(days=max_age_days):
+            reasons.append(f"el extracto es mas antiguo de {max_age_days} dias")
+    tags = {_tag_name(e) for e in statement.iter()}
+    if "OpenPositions" not in tags:
+        reasons.append("falta la seccion OpenPositions")
+    if "CashReport" not in tags:
+        reasons.append("falta la seccion CashReport")
+    if not positions_imported:
+        reasons.append("el extracto no trae posiciones")
+    if position_rows_skipped:
+        reasons.append("hay filas de posicion omitidas")
+    if cash_rows_skipped:
+        reasons.append("hay filas de caja omitidas")
+    if not cash_imported:
+        reasons.append("el extracto no trae saldos de caja")
+    for element in statement.iter():
+        if _tag_name(element) not in ("OpenPosition", "CashReportCurrency"):
+            continue
+        row_account = (element.attrib.get("accountId") or "").strip().upper()
+        if row_account and row_account != expected:
+            reasons.append("hay filas de otra cuenta")
+            break
+    if to_date is not None:
+        for element in statement.iter():
+            if _tag_name(element) != "OpenPosition":
+                continue
+            raw = (element.attrib.get("reportDate") or "").split(";", 1)[0].strip()
+            if raw and raw.replace("-", "") != to_date.strftime("%Y%m%d"):
+                reasons.append("hay posiciones con fecha distinta al statement")
+                break
+    return reasons
+
+
 class IBKRImportService:
-    def import_flex_xml(self, db: Session, xml_text: str, *, reconcile: bool = False) -> dict:
+    def import_flex_xml(
+        self,
+        db: Session,
+        xml_text: str,
+        *,
+        reconcile: bool = False,
+        expected_account_id: str | None = None,
+        reconcile_sources: tuple[str, ...] = ("ibkr_flex",),
+        dry_run: bool = False,
+        max_statement_age_days: int = 5,
+    ) -> dict:
         """Importa un Flex Query.
 
         ``reconcile=True`` hace IBKR fuente de verdad: tras importar un extracto
         completo se eliminan las posiciones y saldos de caja que ya no vienen en el
         (las operaciones del libro no se tocan). Solo actua si el extracto trae
         posiciones y ninguna se omitio; un extracto vacio o roto nunca vacia la cartera.
+
+        Contrato de snapshot completo (sin el, se importa en modo merge y NO se borra
+        nada; ``reconcile_blocked`` lista los motivos): ``expected_account_id``
+        obligatorio, un unico FlexStatement de esa cuenta, ``toDate`` valido y no
+        anterior a ``max_statement_age_days``, todas las filas de esa cuenta y con
+        fecha del statement, secciones OpenPositions y CashReport presentes sin filas
+        omitidas. Solo se borran filas cuyo ``source`` este en ``reconcile_sources``
+        (por defecto ``ibkr_flex``): lo manual u otras fuentes no se tocan.
+        ``dry_run=True`` calcula lo que cerraria y hace rollback de todo.
         """
         # Los errores de fila ("se omite…", "excluye la fila") no bloquean:
         # se importan las filas válidas y se devuelven en row_errors. Solo los
@@ -348,6 +434,10 @@ class IBKRImportService:
             raise IBKRImportError(" ".join(fatal_errors))
         row_errors = [error for error in parse_errors if error not in fatal_errors]
         root = ElementTree.fromstring(xml_text)
+        if reconcile and not (expected_account_id or "").strip():
+            raise IBKRImportError(
+                "reconcile exige expected_account_id: sin cuenta esperada no se puede probar que el extracto es completo."
+            )
         # Batch: all external ids referenced by this report, one existence query
         # instead of one per row.
         report_ids = {
@@ -644,20 +734,42 @@ class IBKRImportService:
 
         positions_closed: list[str] = []
         cash_removed: list[str] = []
+        reconcile_blocked: list[str] = []
         if reconcile:
             db.flush()
-            if positions_imported and not position_rows_skipped:
+            reconcile_blocked = _snapshot_blockers(
+                root,
+                expected_account_id=expected_account_id or "",
+                positions_imported=positions_imported,
+                position_rows_skipped=position_rows_skipped,
+                cash_rows_skipped=cash_rows_skipped,
+                cash_imported=cash_imported,
+                max_age_days=max_statement_age_days,
+            )
+            if not reconcile_blocked:
+                allowed = set(reconcile_sources)
                 for stale in db.scalars(select(Position)).all():
-                    if stale.company_id not in imported_company_ids:
+                    if stale.company_id not in imported_company_ids and stale.source in allowed:
                         company = db.get(Company, stale.company_id)
                         positions_closed.append(company.ticker if company else str(stale.company_id))
-                        db.delete(stale)
-            if cash_imported and not cash_rows_skipped:
+                        if not dry_run:
+                            db.delete(stale)
                 for stale_cash in db.scalars(select(CashBalance)).all():
-                    if stale_cash.currency not in imported_cash_currencies:
+                    if stale_cash.currency not in imported_cash_currencies and stale_cash.source in allowed:
                         cash_removed.append(stale_cash.currency)
-                        db.delete(stale_cash)
+                        if not dry_run:
+                            db.delete(stale_cash)
             db.flush()
+            if dry_run:
+                db.rollback()
+                return {
+                    "status": "dry_run",
+                    "would_close_positions": sorted(positions_closed),
+                    "would_remove_cash": sorted(cash_removed),
+                    "reconcile_blocked": reconcile_blocked,
+                    "positions_in_statement": positions_imported,
+                    "cash_in_statement": cash_imported,
+                }
 
         from app.services.portfolio_snapshot_service import PortfolioSnapshotService
 
@@ -685,6 +797,7 @@ class IBKRImportService:
             "row_errors": row_errors,
             "positions_closed": sorted(positions_closed),
             "cash_removed": sorted(cash_removed),
+            "reconcile_blocked": reconcile_blocked,
             "portfolio_snapshot_id": snapshot.id,
         }
 

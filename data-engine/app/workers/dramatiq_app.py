@@ -1020,7 +1020,8 @@ def sync_ibkr_flex() -> dict[str, Any]:
 
     client = IBKRFlexClient()
     tenant_id = get_settings().ibkr_flex_tenant_id
-    if not client.configured() or tenant_id is None:
+    account_id = (get_settings().ibkr_flex_account_id or "").strip()
+    if not client.configured() or tenant_id is None or not account_id:
         return {"actor": "sync_ibkr_flex", "status": "skipped", "reason": "not_configured"}
     user_id = next((uid for tid, uid in tenant_contexts() if tid == tenant_id), None)
     if user_id is None:
@@ -1031,7 +1032,9 @@ def sync_ibkr_flex() -> dict[str, Any]:
         return _handle_actor_error("sync_ibkr_flex", exc)
     db = _session(tenant_id, user_id)
     try:
-        result = IBKRImportService().import_flex_xml(db, xml_text, reconcile=True)
+        result = IBKRImportService().import_flex_xml(
+            db, xml_text, reconcile=True, expected_account_id=account_id
+        )
         return {
             "actor": "sync_ibkr_flex",
             "status": result["status"],
@@ -1042,6 +1045,7 @@ def sync_ibkr_flex() -> dict[str, Any]:
             "row_errors": len(result["row_errors"]),
             "positions_closed": result["positions_closed"],
             "cash_removed": result["cash_removed"],
+            "reconcile_blocked": result["reconcile_blocked"],
         }
     except IBKRImportError as exc:
         _rollback(db)

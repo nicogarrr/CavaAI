@@ -202,6 +202,8 @@ class Settings(BaseSettings):
     # Tenant dueño del token Flex (cuenta de Nico). Sin él la sincronizacion
     # periodica no corre: el token es de UNA cuenta y nunca se reparte por tenants.
     ibkr_flex_tenant_id: int | None = None
+    # Cuenta IBKR esperada (p. ej. U1234567): sin ella la sync no borra nada.
+    ibkr_flex_account_id: str | None = None
     # SEC fair-access: exige UA declarado con contacto; bloquea placeholders
     # tipo example.com con 403. Este valor verificado 200 desde prod (25/9).
     # OJO: este default es un fallback LOCAL no contactable (el dominio .local
@@ -399,7 +401,7 @@ class Settings(BaseSettings):
         """
         return not self.is_production
 
-    @field_validator("ibkr_flex_tenant_id", mode="before")
+    @field_validator("ibkr_flex_tenant_id", "ibkr_flex_account_id", mode="before")
     @classmethod
     def _blank_flex_tenant_is_none(cls, value):
         # docker-compose pasa IBKR_FLEX_TENANT_ID="" cuando no esta definido.

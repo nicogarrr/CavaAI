@@ -6,6 +6,12 @@ import httpx
 from app.core.config import get_settings
 
 
+def _safe_code(code: str | None) -> str:
+    """Solo el codigo numerico de IBKR; nunca texto libre del servidor (puede reflejar el token)."""
+    text = (code or "").strip()
+    return text if text.isdigit() and len(text) <= 6 else "n/d"
+
+
 class IBKRFlexError(RuntimeError):
     """Error del Flex Web Service sin URL ni parametros: el token viaja en la query string."""
 
@@ -60,7 +66,7 @@ class IBKRFlexClient:
         text = await self._get(self.send_url, params, 30)
         status, code, message = self._status(text)
         if status != "Success":
-            raise IBKRFlexError(f"IBKR Flex request failed (code {code or 'n/d'}): {(message or '')[:200]}")
+            raise IBKRFlexError(f"IBKR Flex request failed (code {_safe_code(code)})")
         root = ElementTree.fromstring(text)
         reference_code = root.findtext(".//ReferenceCode")
         if not reference_code:
@@ -77,7 +83,7 @@ class IBKRFlexClient:
             if status is None:
                 # El extracto real no trae <Status>: es FlexQueryResponse.
                 return text
-            last = f"code {code or 'n/d'}: {(message or '')[:120]}"
+            last = f"code {_safe_code(code)}"
             if code not in _RETRY_CODES:
                 raise IBKRFlexError(f"IBKR Flex statement failed ({last})")
             if attempt + 1 < self.poll_attempts:

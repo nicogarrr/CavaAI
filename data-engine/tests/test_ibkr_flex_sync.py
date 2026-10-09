@@ -129,7 +129,27 @@ def test_http_error_message_never_contains_token():
     assert info.value.__cause__ is None
 
 
-def _seeded():
+from datetime import date, timedelta
+
+ACCT = "U1"
+
+
+def _fresh(body: str, *, account: str = ACCT, days_ago: int = 1, wrap: bool = True) -> str:
+    """Extracto con toDate reciente y secciones OpenPositions/CashReport."""
+    d = (date.today() - timedelta(days=days_ago)).strftime("%Y%m%d")
+    body = body.replace("20261008", d)
+    if wrap and "<OpenPositions>" not in body and "<OpenPosition " in body:
+        body = body.replace("<OpenPosition ", "<OpenPositions><OpenPosition ", 1)
+        body = body[: body.rindex("/>") + 2] + "</OpenPositions>" + body[body.rindex("/>") + 2 :]
+    return (
+        '<?xml version="1.0"?><FlexQueryResponse><FlexStatements>'
+        f'<FlexStatement accountId="{account}" fromDate="{d}" toDate="{d}">'
+        + body
+        + "</FlexStatement></FlexStatements></FlexQueryResponse>"
+    )
+
+
+def _seeded(source: str = "ibkr_flex"):
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
     db: Session = _tenant_session(engine)
@@ -139,6 +159,11 @@ def _seeded():
         '<CashReportCurrency currency="GBP" endingCash="50.00"/>'
     )
     service.import_flex_xml(db, _xml(old + POSITION))
+    for row in db.query(Position).all():
+        row.source = source
+    for row in db.query(CashBalance).all():
+        row.source = source
+    db.commit()
     return db, service
 
 
@@ -149,13 +174,70 @@ def _tickers(db):
     return sorted(names[p.company_id] for p in db.query(Position).all())
 
 
-def test_reconcile_closes_positions_and_cash_missing_from_statement():
+def _rc(service, db, xml, **kw):
+    kw.setdefault("expected_account_id", ACCT)
+    return service.import_flex_xml(db, xml, reconcile=True, **kw)
+
+
+def test_reconcile_closes_ibkr_positions_and_cash_missing_from_proven_statement():
     db, service = _seeded()
-    result = service.import_flex_xml(db, _xml(CASH + POSITION), reconcile=True)
+    result = _rc(service, db, _fresh(CASH + POSITION))
+    assert result["reconcile_blocked"] == []
     assert _tickers(db) == ["ASTS"]
     assert result["positions_closed"] == ["NVDA"]
     assert result["cash_removed"] == ["GBP"]
-    assert {c.currency for c in db.query(CashBalance).all()} == {"EUR", "USD"}
+    db.close()
+
+
+def test_reconcile_requires_expected_account():
+    db, service = _seeded()
+    with pytest.raises(Exception, match="expected_account_id"):
+        service.import_flex_xml(db, _fresh(CASH + POSITION), reconcile=True)
+    db.close()
+
+
+def test_reconcile_never_deletes_manual_or_other_sources():
+    db, service = _seeded(source="manual")
+    result = _rc(service, db, _fresh(CASH + POSITION))
+    assert _tickers(db) == ["ASTS", "NVDA"]
+    assert result["positions_closed"] == [] and result["cash_removed"] == []
+    db.close()
+
+
+def test_reconcile_sources_must_be_explicit_to_close_other_sources():
+    db, service = _seeded(source="ibkr_screenshot_x")
+    _rc(service, db, _fresh(CASH + POSITION))
+    assert "NVDA" in _tickers(db)
+    _rc(service, db, _fresh(CASH + POSITION), reconcile_sources=("ibkr_flex", "ibkr_screenshot_x"))
+    assert _tickers(db) == ["ASTS"]
+    db.close()
+
+
+@pytest.mark.parametrize(
+    "xml,reason",
+    [
+        (lambda: _fresh(CASH + POSITION, account="U2"), "cuenta"),
+        (lambda: _fresh(CASH + POSITION, days_ago=30), "antiguo"),
+        (lambda: _fresh(CASH + POSITION, days_ago=-3), "futuro"),
+        (lambda: _fresh(POSITION), "CashReport"),
+        (lambda: _fresh(CASH), "OpenPositions"),
+        (lambda: _fresh(CASH + POSITION).replace('toDate="', 'x="'), "toDate"),
+        (
+            lambda: _fresh(CASH + POSITION).replace(
+                "</FlexStatement>", "</FlexStatement><FlexStatement accountId=\"U1\"/>"
+            ),
+            "FlexStatement",
+        ),
+        (lambda: _fresh(CASH + POSITION).replace("<OpenPosition ", '<OpenPosition accountId="U9" ', 1), "otra cuenta"),
+    ],
+)
+def test_reconcile_blocked_without_completeness_proof_keeps_everything(xml, reason):
+    db, service = _seeded()
+    result = _rc(service, db, xml())
+    assert result["reconcile_blocked"], reason
+    assert any(reason.lower() in r.lower() for r in result["reconcile_blocked"]), result["reconcile_blocked"]
+    assert _tickers(db) == ["ASTS", "NVDA"]
+    assert result["positions_closed"] == [] and result["cash_removed"] == []
     db.close()
 
 
@@ -166,18 +248,43 @@ def test_default_import_keeps_absent_positions():
     db.close()
 
 
-def test_reconcile_never_empties_portfolio_on_statement_without_positions():
-    db, service = _seeded()
-    result = service.import_flex_xml(db, _xml(CASH), reconcile=True)
-    assert _tickers(db) == ["ASTS", "NVDA"]
-    assert result["positions_closed"] == []
-    db.close()
-
-
 def test_reconcile_skips_when_any_position_row_was_rejected():
     db, service = _seeded()
     bad = '<OpenPosition symbol="TSLA" markPrice="1" positionValue="1" reportDate="20261008"/>'
-    result = service.import_flex_xml(db, _xml(CASH + POSITION + bad), reconcile=True)
+    result = _rc(service, db, _fresh(CASH + POSITION + bad))
     assert "NVDA" in _tickers(db)
     assert result["positions_closed"] == []
+    assert result["reconcile_blocked"]
     db.close()
+
+
+def test_dry_run_reports_plan_and_changes_nothing():
+    db, service = _seeded()
+    result = _rc(service, db, _fresh(CASH + POSITION), dry_run=True)
+    assert result["status"] == "dry_run"
+    assert result["would_close_positions"] == ["NVDA"]
+    assert result["would_remove_cash"] == ["GBP"]
+    assert _tickers(db) == ["ASTS", "NVDA"]
+    assert {c.currency for c in db.query(CashBalance).all()} >= {"GBP"}
+    db.close()
+
+
+def test_flex_server_error_text_is_never_reflected(monkeypatch):
+    client = IBKRFlexClient()
+    bad = (
+        '<FlexStatementResponse><Status>Fail</Status><ErrorCode>1012</ErrorCode>'
+        '<ErrorMessage>Bad token SYNTHETIC-SECRET https://x/?t=SYNTHETIC-SECRET</ErrorMessage></FlexStatementResponse>'
+    )
+
+    async def fake_get(self, url, params, timeout):
+        return bad
+
+    monkeypatch.setattr(IBKRFlexClient, "_get", fake_get)
+    monkeypatch.setattr(client.settings, "ibkr_flex_token", "SYNTHETIC-SECRET")
+    monkeypatch.setattr(client.settings, "ibkr_flex_query_id", "1")
+    for make in (lambda: client.request_statement(), lambda: client.fetch_statement("REF")):
+        with pytest.raises(IBKRFlexError) as info:
+            asyncio.run(make())
+        assert "SYNTHETIC-SECRET" not in str(info.value)
+        assert "Bad token" not in str(info.value)
+        assert "1012" in str(info.value)
