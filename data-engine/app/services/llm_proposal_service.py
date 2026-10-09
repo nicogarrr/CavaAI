@@ -69,6 +69,9 @@ SYSTEM = (
 )
 
 
+PROPOSAL_TASK = "main_financial_analysis"
+
+
 class ProposalRejected(Exception):
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
@@ -128,7 +131,7 @@ def build_request(
             Message("system", SYSTEM),
             Message("user", json.dumps(payload, ensure_ascii=False, default=str)),
         ],
-        task="main_financial_analysis",
+        task=PROPOSAL_TASK,
         temperature=0.2,
         max_tokens=900,
         response_format=ResponseFormat.json_schema(_SCHEMA, name="paper_proposal"),
