@@ -44,13 +44,36 @@ CONSTRAINT = re.compile(
     r"(?:longer|extended|lengthen\w*|increas\w*|weeks?|months?|largo\w*|aument\w*|semanas?|meses?)\b|"
     r"\b(?:longer|extended|long|largos?)\s+(?:lead times?|delivery times?|plazos? de entrega)\b"
 )
-NEGATION = re.compile(
-    r"\b(?:no|not|without|sin)\b(?:\W+\w+){0,3}\W*$|"
-    r"\b(?:easing|resolved|eliminated|falling|shrinking|reduced|resuelta|resuelto|disminuye|reducida)\b(?:\W+\w+){0,3}\W*$"
+# Falla cerrada: una mencion de escasez solo cuenta si NO hay negacion, alivio
+# ni hipotesis en la misma frase. Perder una frase dudosa es preferible a abrir
+# el estado "detectado" con ausencia de restriccion o con un escenario.
+_NEG_WORDS = (
+    r"no|not|never|without|nor|none|neither|n't|cannot|"
+    r"sin|nunca|tampoco|ni|ningun[ao]?|jamas"
 )
-RELIEF = re.compile(
-    r"^\W*(?:(?:is|are|was|were|has been|have been|esta|estan|se ha)\W+)?"
-    r"(?:easing|resolved|eliminated|falling|shrinking|reduced|resuelt[ao]s?|disminuyendo|reducid[ao]s?)\b"
+# Negacion ANTES de la escasez ("no chip shortages") hasta 6 palabras.
+NEGATION = re.compile(rf"\b(?:{_NEG_WORDS})\b(?:\W+\w+){{0,6}}\W*$")
+# Alivio ANTES ("resolved shortage", "end of the shortage").
+RELIEF_BEFORE = re.compile(
+    r"\b(?:easing|eased|resolved|eliminated|falling|shrinking|reduced|reduction in|end of|"
+    r"overcome|alleviated|mitigated|cleared|resuelta|resuelto|fin de|superada|superado|"
+    r"disminucion de|reduccion de|alivio de)\b(?:\W+\w+){0,3}\W*$"
+)
+# Negacion o alivio DESPUES ("shortages are not expected", "did not materialize",
+# "shortage already resolved", "ya resuelta"), con cualquier adverbio intermedio.
+AFTER_CUES = re.compile(
+    rf"\b(?:{_NEG_WORDS}|easing|eased|easy|easier|resolved|ended|over|behind us|subsided|"
+    r"alleviated|mitigated|cleared|disappeared|vanished|normali[sz]ed|overcome|unlikely|"
+    r"improving|improved|falling|fell|shrinking|resuelt[ao]s?|superad[ao]s?|terminad[ao]s?|"
+    r"disminuy\w+|reducid[ao]s?|mejor\w+|normalizad[ao]s?|improbable|descartad[ao]s?)\b"
+)
+# Hipotesis, escenario o riesgo: no es evidencia de una restriccion real.
+CONDITIONAL = re.compile(
+    r"\b(?:if|unless|whether|should|could|would|may|might|in case|in the event|"
+    r"what if|scenario|hypothetical|potential|possible|possibly|risk of|risks of|fear|fears|"
+    r"feared|worry|worried|concern(?:s|ed)? (?:about|over|of)|"
+    r"si|salvo que|a menos que|en caso de|podria|podrian|podria ser|escenario|"
+    r"hipotetic\w+|potencial|posible|posibles|riesgo de|riesgos de|temor|temores|preocupa\w*)\b"
 )
 
 
@@ -61,10 +84,12 @@ def fold(text: str) -> str:
 def extract_themes(text: str) -> set[str]:
     found: set[str] = set()
     for sentence in re.split(r"[.!?;\n]+", fold(text)):
+        if CONDITIONAL.search(sentence):
+            continue
         for match in CONSTRAINT.finditer(sentence):
-            if NEGATION.search(sentence[max(0, match.start() - 65):match.start()]):
-                continue
-            if RELIEF.search(sentence[match.end():match.end() + 70]):
+            before = sentence[max(0, match.start() - 80):match.start()]
+            after = sentence[match.end():match.end() + 80]
+            if NEGATION.search(before) or RELIEF_BEFORE.search(before) or AFTER_CUES.search(after):
                 continue
             # Co-occurrence within 100 characters, never across sentences.
             local = sentence[max(0, match.start() - 100):match.end() + 100]

@@ -43,6 +43,59 @@ def test_extraction(text, theme):
     assert extract_themes(text) == ({theme} if theme else set())
 
 
+ABSENCE_OR_HYPOTHESIS = [
+    "Chip shortages are not expected.",
+    "The chip shortage did not materialize.",
+    "If chip shortages occur, production could slow.",
+    "Escasez de chips ya resuelta.",
+    "The chip shortage was already resolved last quarter.",
+    "Chip shortages have never been a problem here.",
+    "Chip shortages might return next year.",
+    "Analysts fear a chip shortage.",
+    "La escasez de chips no se ha materializado.",
+    "Si hay escasez de chips, la produccion se frenara.",
+    "Chip shortage is behind us.",
+    "A chip shortage is unlikely.",
+]
+
+
+@pytest.mark.parametrize("text", ABSENCE_OR_HYPOTHESIS)
+def test_absence_relief_and_hypotheses_fail_closed(text):
+    assert extract_themes(text) == set()
+
+
+@pytest.mark.parametrize("text", ABSENCE_OR_HYPOTHESIS)
+def test_absence_never_opens_detectado_through_aggregate(text):
+    rows = [evidence("a", "publisher-a", text), evidence("b", "publisher-b", text, day=2)]
+    result = aggregate(rows)["Semiconductores"]
+    assert result["evidence_ids"] == [] and result["n_sources"] == 0
+
+
+def test_auditor_mixed_sources_do_not_reach_threshold():
+    rows = [evidence("a", "p-a", "Chip shortages are not expected."),
+            evidence("b", "p-b", "The chip shortage did not materialize.")]
+    result = aggregate(rows)["Semiconductores"]
+    assert result["n_sources"] == 0 and result["evidence_ids"] == []
+
+
+def test_absence_stored_in_db_stays_nd_in_endpoint_model(db):
+    for i, text in enumerate(ABSENCE_OR_HYPOTHESIS[:4]):
+        db.add(NewsEvent(title=text, url=f"https://pub{i}.example/n", date=datetime(2026, 10, 3, tzinfo=UTC)))
+    db.commit()
+    refresh_signals(db)
+    db.commit()
+    assert all(s.status == "N/D" and s.evidence_ids == [] for s in list_bottlenecks(db).signals)
+
+
+def test_real_constraints_still_detected_end_to_end(db):
+    for i, text in enumerate(["Chip shortages persist", "Escasez de chips durante el trimestre"]):
+        db.add(NewsEvent(title=text, url=f"https://real{i}.example/n", date=datetime(2026, 10, 3, tzinfo=UTC)))
+    db.commit()
+    refresh_signals(db)
+    db.commit()
+    assert list_bottlenecks(db).signals[0].status == "detectado"
+
+
 def evidence(id, origin, text="Chip shortages persist", day=1, keys=()):
     return Evidence(id, text, datetime(2026, 10, day, tzinfo=UTC), origin, keys or (id,))
 
