@@ -25,6 +25,7 @@ import {
     type Alert,
     type TriggeredAlertDelivery,
 } from '@/lib/actions/alerts.actions';
+import { holdingDisplayMode } from '@/lib/portfolio/holding-display';
 import { alertCardDestination } from '@/lib/alerts/card-destination';
 import { alertCardCopy } from '@/lib/alerts/card-copy';
 import { t } from '@/lib/i18n/t';
@@ -336,7 +337,12 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
     const sortedHoldings = useMemo(() => {
         if (!portfolioSummary) return [];
         return [...portfolioSummary.holdings]
-            .sort((a, b) => Math.abs(b.gainPercent) - Math.abs(a.gainPercent))
+            .sort((a, b) => {
+                const aCost = holdingDisplayMode(a) === 'gain';
+                const bCost = holdingDisplayMode(b) === 'gain';
+                if (aCost !== bCost) return aCost ? -1 : 1;
+                return aCost ? Math.abs(b.gainPercent) - Math.abs(a.gainPercent) : b.value - a.value;
+            })
             .slice(0, 4);
     }, [portfolioSummary]);
 
@@ -435,9 +441,22 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                             className="flex min-h-[44px] items-center justify-between gap-2 p-3 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors border border-gray-700/30"
                                         >
                                             <span className="text-white font-semibold">{h.symbol}</span>
-                                            <span className={`font-mono ${h.cost > 0 ? (h.gainPercent >= 0 ? 'text-green-400' : 'text-red-400') : 'text-gray-500'}`}>
-                                                {h.cost > 0 ? formatPercent(h.gainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' }) : NA}
-                                            </span>
+                                            {holdingDisplayMode(h) === 'gain' ? (
+                                                <span className={`font-mono ${h.gainPercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                                    {formatPercent(h.gainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
+                                                </span>
+                                            ) : holdingDisplayMode(h) === 'value' && isValidCurrencyCode(h.baseCurrency) ? (
+                                                // Sin base de coste no hay rentabilidad (N/D), pero el valor y el peso
+                                                // salen de la cotización y se muestran con su divisa.
+                                                <span className="text-right font-mono text-gray-300">
+                                                    {formatMoney(h.value, h.baseCurrency)}
+                                                    {portfolioSummary && portfolioSummary.equityValue > 0
+                                                        ? ` · ${formatPercent((h.value / portfolioSummary.equityValue) * 100, { fromRatio: false, digits: 1 })}`
+                                                        : ''}
+                                                </span>
+                                            ) : (
+                                                <span className="font-mono text-gray-500">{NA}</span>
+                                            )}
                                         </Link>
                                     ))}
                             </div>
