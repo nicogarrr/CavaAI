@@ -256,47 +256,61 @@ def _is_financial(company: Company) -> bool:
     return (company.sector or "").strip().lower() == "financials"
 
 
-def _share_class_key(company: Company) -> str | None:
-    """Group key for companies that are classes of the same issuer."""
-    ticker = (company.ticker or "").upper()
-    for index, group in enumerate(SHARE_CLASS_GROUPS):
-        if ticker in group:
-            return f"map:{index}"
-    return None
+def _common_root(a: str, b: str) -> int:
+    root = 0
+    while root < min(len(a), len(b)) and a[root] == b[root]:
+        root += 1
+    return root
 
 
 def _group_share_classes(companies: list[Company]) -> dict[int, str]:
-    """company_id -> group key, only for companies that have a sibling class."""
-    keyed: dict[str, list[Company]] = {}
-    for company in companies:
-        key = _share_class_key(company)
-        if key is not None:
-            keyed.setdefault(key, []).append(company)
+    """company_id -> group key, only for companies that have a sibling class.
+
+    Union-find over every link (explicit map and name fallback), so a chain
+    like ABCDA-ABCDB-ABCDC is ONE component whatever the order of ``companies``.
+    """
+    parent: dict[int, int] = {c.id: c.id for c in companies}
+
+    def find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(x: int, y: int) -> None:
+        rx, ry = find(x), find(y)
+        if rx != ry:
+            parent[max(rx, ry)] = min(rx, ry)  # deterministic root: lowest id
+
+    mapped: dict[int, list[int]] = {}
     by_name: dict[tuple[str, str], list[Company]] = {}
     for company in companies:
-        if _share_class_key(company) is not None or not (company.name or "").strip():
-            continue
-        name_key = ((company.name or "").strip().lower(), (company.exchange or "").strip().lower())
-        by_name.setdefault(name_key, []).append(company)
-    for (name, _exchange), same in by_name.items():
-        if len(same) < 2:
-            continue
-        # Link only tickers with a common root of 3+ characters.
+        index = next(
+            (i for i, group in enumerate(SHARE_CLASS_GROUPS) if (company.ticker or "").upper() in group),
+            None,
+        )
+        if index is not None:
+            mapped.setdefault(index, []).append(company.id)
+        name = (company.name or "").strip().lower()
+        if name:
+            by_name.setdefault((name, (company.exchange or "").strip().lower()), []).append(company)
+    for ids in mapped.values():
+        for other in ids[1:]:
+            union(ids[0], other)
+    for same in by_name.values():
         for i, first in enumerate(same):
             for other in same[i + 1 :]:
-                a, b = first.ticker.upper(), other.ticker.upper()
-                root = 0
-                while root < min(len(a), len(b)) and a[root] == b[root]:
-                    root += 1
-                if root >= 3:
-                    keyed.setdefault(f"name:{name}:{min(a, b)}", [first]).append(other)
-    groups: dict[int, str] = {}
-    for key, members in keyed.items():
-        unique = {m.id: m for m in members}
-        if len(unique) > 1:
-            for company_id in unique:
-                groups[company_id] = key
-    return groups
+                if _common_root(first.ticker.upper(), other.ticker.upper()) >= 3:
+                    union(first.id, other.id)
+    components: dict[int, list[int]] = {}
+    for company in companies:
+        components.setdefault(find(company.id), []).append(company.id)
+    return {
+        cid: f"group:{root}"
+        for root, ids in components.items()
+        if len(ids) > 1
+        for cid in ids
+    }
 
 
 def _average_volumes(db: Session, company_ids: list[int]) -> dict[int, float]:

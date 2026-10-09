@@ -385,3 +385,59 @@ def test_name_fallback_links_unmapped_classes_with_common_root():
         results, _ = run_funnel(db)
         by_id = {r.company_id: r for r in results}
         assert by_id[b.id].passed is True and by_id[a.id].passed is False
+
+
+def test_three_classes_form_one_group_in_any_order():
+    import itertools
+
+    from app.services.propicks_funnel_service import _group_share_classes
+
+    base = [
+        _company("ABCDA"),
+        _company("ABCDB"),
+        _company("ABCDC"),
+        _company("OTHER"),
+    ]
+    for i, company in enumerate(base, start=1):
+        company.id = i
+        company.name = "Abcd Holdings" if company.ticker != "OTHER" else "Other Inc"
+        company.exchange = "NASDAQ"
+    for order in itertools.permutations(base):
+        groups = _group_share_classes(list(order))
+        assert set(groups) == {1, 2, 3}
+        assert len(set(groups.values())) == 1
+
+
+def test_three_classes_take_one_slot_in_run_funnel_and_execute_run():
+    for order in ((0, 1, 2), (2, 1, 0), (1, 2, 0)):
+        with _db() as db:
+            made = [
+                _good_company(db, t, "Abcd Holdings") for t in ("ABCDA", "ABCDB", "ABCDC")
+            ]
+            volumes = {"ABCDA": 5, "ABCDB": 9, "ABCDC": 7}
+            for company in made:
+                _prices(db, company, volumes[company.ticker])
+            db.commit()
+            results, stats = run_funnel(db, top_n=20)
+            passing = [r for r in results if r.passed]
+            assert len(passing) == 1 and stats["passed_count"] == 1
+            assert db.get(Company, passing[0].company_id).ticker == "ABCDB"
+            run = execute_run(db, top_n=20)
+            ranked = db.scalars(
+                select(ProPickCandidate).where(
+                    ProPickCandidate.run_id == run.id, ProPickCandidate.rank.is_not(None)
+                )
+            ).all()
+            assert len(ranked) == 1
+
+
+def test_mapped_and_name_links_merge_into_one_component():
+    from app.services.propicks_funnel_service import _group_share_classes
+
+    a, b, c = _company("GOOG"), _company("GOOGL"), _company("GOOGX")
+    for i, company in enumerate((a, b, c), start=1):
+        company.id = i
+        company.name = "Alphabet Inc"
+        company.exchange = "NASDAQ"
+    groups = _group_share_classes([c, a, b])
+    assert set(groups) == {1, 2, 3} and len(set(groups.values())) == 1
