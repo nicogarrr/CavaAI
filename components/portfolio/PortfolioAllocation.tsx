@@ -87,7 +87,7 @@ export default function PortfolioAllocation({ holdings, totalValue, cash, baseCu
                                 ) : (
                                     <Link
                                         href={`/research/${item.symbol}`}
-                                        className="text-sm text-gray-300 hover:text-teal-300 transition-colors"
+                                        className="inline-flex min-h-[44px] min-w-[44px] items-center text-sm text-gray-300 hover:text-teal-300 transition-colors"
                                     >
                                         {item.symbol}
                                     </Link>
