@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -10,7 +11,15 @@ from app.services.llm_router import route_model
 from app.services.source_hierarchy_service import SourceTier, classify_source
 
 MATERIAL_KEYWORDS = {
-    "dilution": ["offering", "dilution", "atm", "capital raise", "convertible", "shares"],
+    # "shares" a secas y "atm" como subcadena marcaban dilucion en cualquier
+    # titular bursatil ("Shares of AT&T fell", "platform"): solo cuentan frases
+    # de emision/venta de acciones y el programa ATM como palabra completa.
+    "dilution": [
+        "offering", "dilution", "dilutive", "atm program", "atm offering",
+        "at-the-market", "capital raise", "convertible", "share issuance",
+        "issue new shares", "issues new shares", "new shares", "share sale",
+        "stock sale", "secondary offering", "emision de acciones", "ampliacion de capital",
+    ],
     "earnings": ["earnings", "guidance", "revenue", "eps", "fcf", "margin"],
     "regulatory": ["fda", "sec", "fcc", "ema", "regulatory", "investigation", "approval"],
     "contract": ["contract", "award", "customer", "backlog", "launch", "partnership"],
@@ -28,6 +37,11 @@ ASSUMPTIONS_BY_EVENT_TYPE = {
 POSITIVE_TERMS = ["beat", "approval", "award", "buyback", "raise", "record", "accelerate"]
 NEGATIVE_TERMS = ["miss", "cut", "delay", "offering", "investigation", "default", "halt", "fraud"]
 CRITICAL_TERMS = ["bankruptcy", "fraud", "halt", "default"]
+
+def _has_term(lower_text: str, term: str) -> bool:
+    """Coincidencia por palabra completa: "sec" no casa dentro de "second"."""
+    return re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", lower_text) is not None
+
 
 # Un evento mas viejo que esta ventana nunca es "urgente" por recencia: un
 # filing de 2025 ingerido hoy no puede abrir una cola de revision urgente.
@@ -85,7 +99,7 @@ class MaterialityService:
         matched_types = [
             event_type
             for event_type, keywords in MATERIAL_KEYWORDS.items()
-            if any(keyword in lower_text for keyword in keywords)
+            if any(_has_term(lower_text, keyword) for keyword in keywords)
         ]
         event_type = matched_types[0] if matched_types else "general_news"
         source_tier = classify_source(source, url)

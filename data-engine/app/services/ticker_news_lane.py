@@ -41,6 +41,33 @@ _NAME_NOISE = frozenset({
     "the", "group", "holdings", "holding", "limited", "sme", "s.a.",
 })
 _TICKER_RE = re.compile(r"^[A-Z]{1,5}$")
+# Paginas de datos que Google News/Yahoo mezclan con la prensa: fichas de
+# precio, cotizaciones de opciones, tokens cripto, perfiles. No son noticias.
+# Reglas conservadoras: mejor perder un titular dudoso que ensuciar el feed.
+_DATA_PAGE_PATTERNS = tuple(
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"\b(?:19|20)\d{2}\s+\d[\d.,]*\s+(?:call|put)\b",  # "Oct 2026 136.000 call"
+        r"\b[A-Z]{1,6}\d{6}[CP]\d{8}\b",  # simbolo OCC de opcion: SPCX261030C00136000
+        r"\(\s*[A-Z0-9]{2,10}\s*-\s*[A-Z]{2,5}\s*\)",  # (ASTSX-USD)
+        r"\b(?:\w+\s+)?tokenized stock\b|\bxstock\b",
+        r"\(\d?x\s+(?:long|short)\)|\b3x\s+(?:long|short)\b",
+        r"^(?:precio de acciones|stock price|share price)[, ]",
+        r"\bprecio de acciones, noticias, cotizaci[oó]n e historial\b",
+        r"\b(?:perfil y datos|profile and data|datos hist[oó]ricos|historical data)\b",
+        r"\bvalor de precio de\b|\bprice (?:today|live|chart)\b.*\b(?:usd|eur)\b",
+        r"\binformaci[oó]n de precios,? capitalizaci[oó]n de mercado\b",
+        r"\b(?:cryptocurrency|criptomonedas?)\s+(?:profile|perfil)\b",
+        r"\bprevisi[oó]n de [A-Z]{2,5}:\s*precio objetivo\b|\b[A-Z]{2,5} price (?:prediction|forecast)\b",
+    )
+)
+
+
+def is_data_page_headline(title: str | None) -> bool:
+    text = (title or "").strip()
+    return any(pattern.search(text) for pattern in _DATA_PAGE_PATTERNS)
+
+
 _PUBLISHER_RE = re.compile(r"^(?P<title>.+?)\s+-\s+(?P<publisher>[^-]{2,60})$")
 
 
@@ -69,7 +96,11 @@ def google_feed_url(company, *, lang: str = "en") -> str:
 
 def label_yahoo(result: ConnectorResult) -> ConnectorResult:
     """Fuente legible y estable: el titulo del feed es 'Yahoo! Finance: X News'."""
-    result.items = [dataclasses.replace(item, source="Yahoo Finance") for item in result.items]
+    result.items = [
+        dataclasses.replace(item, source="Yahoo Finance")
+        for item in result.items
+        if not is_data_page_headline(item.title)
+    ]
     return result
 
 
@@ -101,6 +132,8 @@ def label_google(result: ConnectorResult, company, evidence_level) -> ConnectorR
     kept: list[ConnectorItem] = []
     for item in result.items:
         text = f"{item.title} {item.summary}"
+        if is_data_page_headline(item.title):
+            continue
         if not company_mentioned(company, text, evidence_level):
             continue
         match = _PUBLISHER_RE.match(item.title)
