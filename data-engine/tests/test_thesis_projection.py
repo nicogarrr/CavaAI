@@ -629,3 +629,39 @@ def test_persist_skips_outputs_without_target_or_mos(db):
     assert db.scalars(select(ValuationOutput)).all() == []
     rows = db.scalars(select(ThesisProjectionYear)).all()
     assert len(rows) == 15
+
+
+def _fixed_values(monkeypatch, bear, base, bull):
+    def fixed(self, db, company, *, as_of=None):  # noqa: ARG001
+        return {
+            "bear_value": bear,
+            "base_value": base,
+            "bull_value": bull,
+            "publishable": True,
+            "publication_blockers": [],
+        }
+
+    monkeypatch.setattr(ValuationService, "value_company", fixed)
+
+
+def test_guard_blanks_target_outside_price_range(db, monkeypatch):
+    # precio 100; ancla FCF/accion 2. bull con multiplo enorme -> fuera de 4x.
+    _fixed_values(monkeypatch, 20.0, 50.0, 5000.0)
+    payload = project(db)
+    bull = payload["escenarios"]["bull"]["precio_objetivo_5y"]
+    assert bull["valor"] is None and bull["mos"] is None and bull["etiqueta"] == "N/D"
+    assert "fuera de rango" in bull["base"]
+    assert payload["escenarios"]["base"]["precio_objetivo_5y"]["valor"] is not None
+
+
+def test_guard_blanks_all_when_unordered_and_persist_has_no_outputs(db, monkeypatch):
+    _fixed_values(monkeypatch, 90.0, 40.0, 25.0)
+    payload = project(db)
+    for scenario in ("bear", "base", "bull"):
+        target = payload["escenarios"][scenario]["precio_objetivo_5y"]
+        assert target["valor"] is None and target["etiqueta"] == "N/D"
+        assert "incoherentes" in target["base"]
+    assert payload["aviso_coherencia"] is not None
+    model = ThesisProjectionService().persist(db, db.get(Company, 1), payload)
+    assert model.status == "draft"
+    assert db.scalars(select(ValuationOutput)).all() == []
