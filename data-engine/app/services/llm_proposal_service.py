@@ -43,6 +43,30 @@ def _is_transient(exc: Exception) -> bool:
     return False
 
 
+class _TransientRetryProvider:
+    """Envuelve provider.complete: UN reintento por propuesta ante error transitorio.
+
+    Presupuesto comprobado (before_retry) y sesion liberada antes del reintento. El
+    contador es de toda la propuesta, asi que un fallo de transporte intercalado entre
+    dos salidas rechazadas no concede reintentos extra.
+    """
+
+    def __init__(self, inner: Any, before_retry=None) -> None:
+        self._inner, self._before_retry, self._used = inner, before_retry, False
+
+    async def complete(self, request):
+        try:
+            return await self._inner.complete(request)
+        except (ProviderResponseError, ProviderTransportError) as exc:
+            if self._used or not _is_transient(exc):
+                raise
+            self._used = True
+            if self._before_retry is not None:
+                self._before_retry()
+            await asyncio.sleep(TRANSIENT_RETRY_PAUSE)
+            return await self._inner.complete(request)
+
+
 NOTIONAL = Decimal("1000")  # supuesto: importe simulado por propuesta, no capital real
 MAX_ENTRY_DEVIATION = Decimal("0.05")
 MAX_QUOTE_AGE = timedelta(hours=24)
@@ -220,25 +244,15 @@ async def propose(
     if not headlines:
         raise ProposalRejected("sin_titulares")
     request = build_request(ticker, price, currency, headlines, momentum)
-    guarded = None
-    for attempt in (1, 2):
-        try:
-            guarded = await complete_guarded(
-                provider, request, source="llm_proposal", on_response=on_response, before_retry=before_retry
-            )
-            break
-        except LLMOutputRejected as exc:
-            raise ProposalRejected(f"salida_rechazada:{','.join(exc.reasons)}") from exc
-        except (ProviderResponseError, ProviderTransportError) as exc:
-            # UN reintento, solo ante respuesta vacia/sin mensaje o timeout del proveedor
-            # (modelo gratuito intermitente). El presupuesto se comprueba antes y la sesion
-            # se libera (before_retry de generate_proposal hace commit). El validador no se toca.
-            if attempt == 2 or not _is_transient(exc):
-                raise
-            if before_retry is not None:
-                before_retry()
-            await asyncio.sleep(TRANSIENT_RETRY_PAUSE)
-    assert guarded is not None
+    # El reintento transitorio vive en el limite de provider.complete: no reinicia
+    # complete_guarded, asi que el unico reintento de salida del guard no se resetea.
+    guarded_provider = _TransientRetryProvider(provider, before_retry)
+    try:
+        guarded = await complete_guarded(
+            guarded_provider, request, source="llm_proposal", on_response=on_response, before_retry=before_retry
+        )
+    except LLMOutputRejected as exc:
+        raise ProposalRejected(f"salida_rechazada:{','.join(exc.reasons)}") from exc
     try:
         raw = parse_json_response(guarded.response.text)
     except Exception as exc:  # noqa: BLE001 - JSON roto = rechazo, no excepcion al llamador

@@ -401,3 +401,27 @@ def test_retry_is_blocked_when_budget_is_exhausted_and_session_is_released(db, f
     with pytest.raises(ProposalRejected) as exc:
         run(db, provider)
     assert exc.value.reason == "presupuesto_agotado" and provider.attempts == 1
+
+
+def test_transport_retry_does_not_reset_the_single_output_retry(db, fast_retry):
+    """CJK -> timeout -> CJK: el limite de salida NO se resetea (sin 4a llamada)."""
+    cjk = good(thesis="El contrato \u4e2d\u6587\u6a21\u578b mejora la visibilidad de ingresos del trimestre.")
+
+    class Mixed(Provider):
+        def __init__(self):
+            super().__init__(cjk, cjk, good())
+            self.n = 0
+
+        async def complete(self, request):
+            self.n += 1
+            if self.n == 2:
+                raise ProviderTransportError("opencode-go", "read_timeout", 1)
+            return await super().complete(request)
+
+    provider = Mixed()
+    with pytest.raises(ProposalRejected) as exc:
+        run(db, provider)
+    # 1 CJK, 2 timeout (reintento transitorio), 3 CJK: el guard ya gasto su unico reintento
+    # de salida, no hay 4a llamada y la propuesta valida (good) nunca se alcanza
+    assert exc.value.reason == "salida_rechazada:cjk"
+    assert provider.n == 3 and len(provider.outs) == 1
