@@ -265,6 +265,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bottlenecks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listar señales de cuellos de botella */
+        get: operations["list_bottlenecks_api_bottlenecks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/calendar/dividends": {
         parameters: {
             query?: never;
@@ -736,7 +753,7 @@ export interface paths {
         put?: never;
         /**
          * Create Inferred Input Llm
-         * @description Estima el margen FCF con el LLM solo desde extractos ya ingeridos. Guarda INFERIDO.
+         * @description Estima FCF, WACC o crecimiento terminal desde extractos ingeridos. Guarda INFERIDO.
          */
         post: operations["create_inferred_input_llm_api_companies__ticker__inferred_inputs_llm_post"];
         delete?: never;
@@ -3926,6 +3943,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/valuation/{ticker}/entry-price": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Entry Price */
+        get: operations["entry_price_api_valuation__ticker__entry_price_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/valuation/{ticker}/history": {
         parameters: {
             query?: never;
@@ -4332,6 +4366,39 @@ export interface components {
             telegram_user_id: string;
             /** Token */
             token: string;
+        };
+        /** BottleneckSignalOut */
+        BottleneckSignalOut: {
+            /** Evidence Ids */
+            evidence_ids: string[];
+            /** First Seen */
+            first_seen: string | null;
+            /** Last Seen */
+            last_seen: string | null;
+            /** N Sources */
+            n_sources: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "N/D" | "detectado";
+            /** Theme */
+            theme: string;
+        };
+        /** BottlenecksOut */
+        BottlenecksOut: {
+            /**
+             * Limitation
+             * @default Se requieren al menos dos autores o editores independientes; no implica una recomendación de inversión
+             */
+            limitation: string;
+            /**
+             * Method
+             * @default Extracción determinista de documentos y titulares almacenados
+             */
+            method: string;
+            /** Signals */
+            signals: components["schemas"]["BottleneckSignalOut"][];
         };
         /** CalculatedMetricOut */
         CalculatedMetricOut: {
@@ -5282,9 +5349,9 @@ export interface components {
             /**
              * Input Key
              * @default fcf_margin
-             * @constant
+             * @enum {string}
              */
-            input_key: "fcf_margin";
+            input_key: "fcf_margin" | "wacc" | "terminal_growth";
         };
         /** KPIExtractionAction */
         KPIExtractionAction: {
@@ -7551,6 +7618,44 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_bottlenecks_api_bottlenecks_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BottlenecksOut"];
                 };
             };
             /** @description Validation Error */
@@ -16765,6 +16870,50 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ValuationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    entry_price_api_valuation__ticker__entry_price_get: {
+        parameters: {
+            query?: {
+                target_mos?: number;
+            };
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path: {
+                ticker: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */

@@ -16,6 +16,7 @@ from app.workers.dramatiq_app import (
     reconcile_alert_analyses,
     reconcile_alert_deliveries,
     refresh_asts_catalog,
+    refresh_bottlenecks,
     refresh_ir_pages,
     refresh_macro_context,
     refresh_macro_news,
@@ -27,6 +28,7 @@ from app.workers.dramatiq_app import (
     refresh_propicks_prices,
     refresh_rss_feeds,
     refresh_sec_filings,
+    refresh_ticker_news,
     review_theses,
     run_daily_research,
     scan_contradictions,
@@ -115,6 +117,9 @@ def build_scheduler(*, background: bool = False) -> BlockingScheduler | Backgrou
         job_id="market_refresh_universe",
         hours=6,
     )
+    # Local-only reconciliation covers pre-existing ingested letters/chunks/news.
+    _register(scheduler, partial(enqueue_for_all_tenants, refresh_bottlenecks),
+              "interval", job_id="bottleneck_refresh", hours=1)
     _register(scheduler, refresh_macro_context.send, "cron", job_id="macro_context_refresh", hour=23, minute=10)
     # One global GP + SupGP fetch every 2 h, never per tenant or more often.
     _register(scheduler, refresh_asts_catalog.send, "interval", job_id="asts_celestrak_refresh", hours=2)
@@ -139,6 +144,23 @@ def build_scheduler(*, background: bool = False) -> BlockingScheduler | Backgrou
         partial(enqueue_for_all_tenants, refresh_news, scope="all"),
         "interval",
         job_id="news_refresh_universe",
+        hours=6,
+    )
+    # Carril de noticias por ticker sin GDELT (Yahoo Finance RSS + Google News
+    # RSS): GDELT devuelve 429 en la mayoria de las consultas y dejaba a ASTS
+    # y SPCX sin titulares. Tracked cada 30 min; universo US cada 6 h.
+    _register(
+        scheduler,
+        partial(enqueue_for_all_tenants, refresh_ticker_news, scope="tracked"),
+        "interval",
+        job_id="ticker_news_refresh",
+        minutes=30,
+    )
+    _register(
+        scheduler,
+        partial(enqueue_for_all_tenants, refresh_ticker_news, scope="all"),
+        "interval",
+        job_id="ticker_news_refresh_universe",
         hours=6,
     )
     # Carril macro (temas sin ticker: oro/bancos centrales, tipos, etc.);

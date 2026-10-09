@@ -173,3 +173,37 @@ def test_single_bar_company_keeps_null_change(db: Session):
     assert out["gainers"] == [] and out["losers"] == []
     mover = next(m for m in out["most_active"] if m["ticker"] == "ONE")
     assert mover["change_pct"] is None
+
+
+def test_bulk_load_day_does_not_freeze_the_session(db: Session):
+    """Una carga masiva puntual no puede dejar como unica sesion valida su fecha.
+
+    El 28/9 tiene 20 empresas y los dias siguientes 4: con el maximo como
+    referencia solo contaba el 28/9 y todo el ranking salia con fecha vieja y
+    cambio N/D. Con la mediana, la sesion es la ultima laborable real.
+    """
+    bulk = [_company(db, f"B{i}") for i in range(20)]
+    for company in bulk:
+        _price(db, company, date(2026, 9, 28), "50", volume=0)
+    daily = bulk[:4]
+    for day, close in ((date(2026, 9, 29), "51"), (date(2026, 9, 30), "52"),
+                       (date(2026, 10, 1), "53"), (date(2026, 10, 2), "54")):
+        for company in daily:
+            _price(db, company, day, close, volume=1_000)
+
+    out = market_movers(db, 10)
+
+    assert out["session_date"] == "2026-10-02"
+    assert {row["ticker"] for row in out["gainers"]} == {c.ticker for c in daily}
+    assert all(row["change_pct"] is not None for row in out["gainers"])
+
+
+def test_zero_volume_is_unknown_not_a_ranked_value(db: Session):
+    company = _company(db, "ZVOL")
+    _price(db, company, date(2026, 9, 24), "90", volume=0)
+    _price(db, company, date(2026, 9, 25), "100", volume=0)
+
+    out = market_movers(db, 10)
+
+    assert out["most_active"] == []
+    assert out["gainers"][0]["volume"] is None
