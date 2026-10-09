@@ -326,7 +326,9 @@ def test_mos_requires_dated_price(db, valued):
     target = payload["escenarios"]["base"]["precio_objetivo_5y"]
     assert target["precio_actual"] == pytest.approx(123.0)
     assert target["precio_fecha"] is None
-    assert target["valor"] is not None  # el objetivo no depende del precio
+    # Sin precio fechado no se puede acotar el multiplo: N/D con razon, nunca un 0.
+    assert target["valor"] is None and target["etiqueta"] == "N/D"
+    assert "sin precio fechado" in target["base"]
     assert target["mos"] is None
     model = ThesisProjectionService().persist(db, db.get(Company, 1), payload)
     assert model.status == "draft"
@@ -665,3 +667,23 @@ def test_guard_blanks_all_when_unordered_and_persist_has_no_outputs(db, monkeypa
     model = ThesisProjectionService().persist(db, db.get(Company, 1), payload)
     assert model.status == "draft"
     assert db.scalars(select(ValuationOutput)).all() == []
+
+
+def test_multiple_is_capped_at_current_market_multiple(db, monkeypatch):
+    # precio 100, ancla FCF/accion 2 -> multiplo de mercado 50x. El valor base de 500
+    # implica 250x: sin tope contaria el crecimiento dos veces.
+    _fixed_values(monkeypatch, 20.0, 500.0, 600.0)
+    payload = project(db)
+    base = payload["escenarios"]["base"]["precio_objetivo_5y"]
+    fcf5_ps = 100.0 * 1.25**5 * 0.20 / 10.0
+    assert base["valor"] == pytest.approx(fcf5_ps * 50.0)
+    assert "acotado al multiplo de mercado actual (50.0x" in base["base"]
+    assert "2026-10-08" in base["base"]
+    assert base["etiqueta"] == "INFERIDO"
+
+
+def test_multiple_below_market_is_not_changed(db, monkeypatch):
+    _fixed_values(monkeypatch, 20.0, 50.0, 60.0)  # 25x base, por debajo de 50x
+    base = project(db)["escenarios"]["base"]["precio_objetivo_5y"]
+    assert base["valor"] == pytest.approx(100.0 * 1.25**5 * 0.20 / 10.0 * 25.0)
+    assert "acotado" not in base["base"]
