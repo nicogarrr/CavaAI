@@ -1525,7 +1525,26 @@ def refresh_news(
                 if ticker
                 else (_tracked_companies(db) if scope == "tracked" else _companies(db))
             )
+            # El middleware TimeLimit mata el actor a los 10 min (TimeLimitExceeded
+            # no es Exception): con 429 y pacing de ~5 s el barrido alfabetico
+            # moria antes de llegar a ASTS. Prioritarias primero y corte limpio
+            # con resultado parcial bajo el limite.
+            from app.services.ticker_news_lane import (
+                PRIORITY_TICKERS,
+                Deadline,
+                finalize_status,
+                ingest_in_chunks,
+            )
+
+            companies = sorted(
+                companies, key=lambda c: (c.ticker.upper() not in PRIORITY_TICKERS, c.ticker)
+            )
+            # 300 s: el ultimo query puede entrar con 429+reintentos y 30 items;
+            # el margen real hasta los 600 s del TimeLimit es de 5 min.
+            deadline = Deadline(300)
             for company in companies:
+                if deadline.expired():
+                    break
                 try:
                     query = _gdelt_company_query(company)
                     result = _run(
@@ -1540,14 +1559,15 @@ def refresh_news(
                             {"ticker": company.ticker, "source": "gdelt", "message": error}
                             for error in result.errors
                         )
-                    ingestion = service.ingest_news_result(
-                        db,
+                    ingested += ingest_in_chunks(
+                        lambda part, _c=company: service.ingest_news_result(
+                            db, part, ticker=_c.ticker
+                        ),
                         result,
-                        ticker=company.ticker,
+                        deadline,
                     )
                     if result.status != "error":
                         processed += 1
-                    ingested += int(ingestion.get("created", 0))
                 except Exception as exc:
                     _rollback(db)
                     errors.append(
@@ -1558,12 +1578,14 @@ def refresh_news(
                             "message": str(exc),
                         }
                     )
+                deadline.expired()  # post-unidad: la ultima empresa tambien cuenta
             return {
-                "status": _batch_status(processed, errors),
+                "status": finalize_status(_batch_status(processed, errors), deadline.truncated),
                 "actor": actor_name,
                 "scope": scope,
                 "companies_processed": processed,
                 "news_ingested": ingested,
+                "truncated": deadline.truncated,
                 "errors": errors,
             }
         finally:
@@ -1577,6 +1599,99 @@ def refresh_news(
             ticker=ticker,
             max_records=max_records,
         )
+
+
+@dramatiq.actor(max_retries=1, min_backoff=15_000, time_limit=2 * 3600 * 1000)
+@_coalesce_on_success(
+    "refresh_ticker_news",
+    lambda scope="tracked", **_: 20 * 60 if scope == "tracked" else 5 * 3600,
+    ("tenant_id", "ticker", "scope"),
+)
+def refresh_ticker_news(
+    tenant_id: int | None = None,
+    user_id: str | None = None,
+    ticker: str | None = None,
+    scope: str = "tracked",
+) -> dict[str, Any]:
+    """Noticias por ticker desde Yahoo Finance RSS y Google News RSS (sin GDELT).
+
+    tracked: cartera + watchlist + ASTS/SPCX, Yahoo y Google. all: universo,
+    solo Yahoo y solo cotizadas en EEUU. Pacing 1,5 s entre peticiones.
+    """
+    actor_name = "refresh_ticker_news"
+    try:
+        from app.services.feed_ingestion_service import FeedIngestionService
+        from app.services.news_service import _ticker_evidence_level
+        from app.services.ticker_news_lane import (
+            PRIORITY_TICKERS,
+            Deadline,
+            finalize_status,
+            google_feed_url,
+            is_us_listed,
+            label_google,
+            label_yahoo,
+            sweep,
+            yahoo_feed_url,
+        )
+
+        db = _session(tenant_id, user_id)
+        try:
+            service = FeedIngestionService()
+            if ticker:
+                companies = _companies(db, ticker)
+            elif scope == "tracked":
+                found = {company.id: company for company in _tracked_companies(db)}
+                for company in _companies(db):
+                    if company.ticker.upper() in PRIORITY_TICKERS:
+                        found[company.id] = company
+                # Prioritarias primero: un fallo posterior no las deja sin barrer.
+                companies = sorted(
+                    found.values(),
+                    key=lambda c: (c.ticker.upper() not in PRIORITY_TICKERS, c.ticker),
+                )
+            else:
+                companies = [c for c in _companies(db) if is_us_listed(c)]
+            deadline = Deadline(6600)  # margen de 10 min bajo el time_limit de 2 h
+
+            def _lanes(company):
+                lanes = [("yahoo", yahoo_feed_url(company.ticker))] if is_us_listed(company) else []
+                if scope == "tracked" or ticker:
+                    lanes.append(("google-en", google_feed_url(company, lang="en")))
+                    if company.ticker.upper() in PRIORITY_TICKERS:
+                        lanes.append(("google-es", google_feed_url(company, lang="es")))
+                return lanes
+
+            def _fetch(company, lane, url):
+                result = _run(service.poll_rss(url, ticker=company.ticker, max_items=30))
+                if lane == "yahoo":
+                    return label_yahoo(result)
+                return label_google(result, company, _ticker_evidence_level)
+
+            outcome = sweep(
+                companies,
+                _lanes,
+                _fetch,
+                lambda company, part: service.ingest_news_result(db, part, ticker=company.ticker),
+                deadline,
+                pause=lambda: time.sleep(1.5),
+                on_error=lambda: _rollback(db),
+            )
+            processed, ingested, errors = (
+                outcome["processed"], outcome["ingested"], outcome["errors"],
+            )
+            return {
+                "status": finalize_status(_batch_status(processed, errors), deadline.truncated),
+                "actor": actor_name,
+                "scope": scope,
+                "feeds_processed": processed,
+                "news_ingested": ingested,
+                "truncated": deadline.truncated,
+                "errors": errors,
+            }
+        finally:
+            db.close()
+    except Exception as exc:
+        return _handle_actor_error(actor_name, exc, tenant_id=tenant_id, user_id=user_id, ticker=ticker)
 
 
 @dramatiq.actor(max_retries=2, min_backoff=15_000, queue_name=ALERT_QUEUE_NAME)
