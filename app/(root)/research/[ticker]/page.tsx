@@ -1,3 +1,4 @@
+import { healthText, listingStatus } from '@/lib/research/listing-status';
 import { formatPeerValue, peerMedianText } from '@/lib/research/peer-format';
 import { factDisplayAudit } from '@/lib/research/fact-display-audit';
 import { groupClaimsByVersion } from '@/lib/research/claim-groups';
@@ -831,7 +832,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     content = (
       <div className="space-y-6">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Stat label="Cobertura" value={`${snapshot.research_health.score}/100`} />
+          <Stat label="Cobertura" value={healthText(snapshot.research_health.score, listingStatus(company.exchange, headerMarket?.quote?.priceAsOf ?? null, new Date()))} />
           <Stat label="Hechos" value={snapshot.counts.facts} />
           <Stat label="Afirmaciones" value={snapshot.counts.claims} />
           <Stat label="Documentos" value={snapshot.counts.documents} />
@@ -1314,6 +1315,10 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
               <p className="mt-2 text-sm text-gray-400 sm:text-base">{company.name} · {sectorIndustryLine(company.sector, company.industry)}</p>
             </div>
           </div>
+          {(() => {
+            const listing = listingStatus(company.exchange, headerMarket?.quote?.priceAsOf ?? null, new Date());
+            return listing.stale ? <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200" role="status">{listing.message}</p> : null;
+          })()}
           {headerMarket ? <CompanyHeaderQuote snapshot={headerMarket} /> : null}
           <div className="flex flex-col gap-3 border-t border-gray-900 pt-4">
             <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500"><span className="inline-flex items-center gap-1"><Target className="h-4 w-4" />{holdingBadge}</span><Link className="inline-flex items-center gap-1 text-teal-300 transition hover:text-teal-200" href={`/research/assistant?mode=guide&ticker=${encodeURIComponent(ticker)}`}><BookOpen className="h-4 w-4" />Guía de investigación</Link><Link className="inline-flex items-center gap-1 text-gray-400 transition hover:text-teal-300" href={`/research/${encodeURIComponent(ticker)}?view=changes`}><History className="h-4 w-4" />Qué ha cambiado{recentChangeCount ? <span aria-hidden="true" className="rounded-full bg-gray-800 px-1.5 text-xs font-semibold text-gray-300">{recentChangeCount}</span> : null}</Link></div>
