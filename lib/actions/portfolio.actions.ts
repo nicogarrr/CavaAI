@@ -54,6 +54,8 @@ export type PortfolioHolding = {
     nativeCurrency: string;
     baseCurrency: string;
     fxMissing: boolean;
+    /** El valor en divisa base no está disponible (independiente del coste). */
+    valueMissing: boolean;
     firstBuyDate: string | null;
     holdingDays: number | null;
     fiscalBucket: 'corto_plazo' | 'largo_plazo' | null;
@@ -207,6 +209,7 @@ export async function getPortfolioSummary(userId: string): Promise<PortfolioSumm
             nativeCurrency: position.native_currency,
             baseCurrency: position.base_currency,
             fxMissing: position.market_value_base === null || position.cost_basis_base === null,
+            valueMissing: position.market_value_base === null,
             firstBuyDate: position.first_buy_date ?? null,
             holdingDays: position.holding_days ?? null,
             fiscalBucket: position.fiscal_bucket ?? null,
