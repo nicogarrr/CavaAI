@@ -125,7 +125,7 @@ async def run_feed(
         if index:
             await asyncio.sleep(pause)
         try:
-            row = await generate(db, ticker, now=clock())
+            row = await generate(db, ticker, clock=clock)
             outcome["guardadas"].append({"ticker": ticker, "id": row.id})
         except QuotaExceeded:
             db.rollback()

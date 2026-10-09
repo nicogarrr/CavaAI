@@ -1,7 +1,7 @@
 import asyncio
 import json
-from typing import Any
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 from fastapi import FastAPI
@@ -321,3 +321,26 @@ def test_guard_probe_is_the_real_request_not_a_pinned_model(db):
     with pytest.raises(ProposalRejected) as exc:
         run(db, provider)
     assert exc.value.reason == "modelo_no_gratuito" and provider.calls == 0
+
+
+def test_quote_received_after_start_is_fresh_against_the_post_fetch_clock(db):
+    ticks = iter([NOW, NOW + timedelta(seconds=5), NOW + timedelta(seconds=5)])
+
+    def late_quote(ticker):
+        # la cotizacion llega 2 s DESPUES del arranque: futura para un reloj congelado
+        return {"live_c": 100.0, "live_t": (NOW + timedelta(seconds=2)).timestamp(), "currency": "USD"}
+
+    row = asyncio.run(runner.generate_proposal(
+        db, "AAPL", provider=Provider(good()), fetch_quote=late_quote, clock=lambda: next(ticks),
+    ))
+    assert row.ticker == "AAPL"
+
+
+def test_quote_from_the_future_is_still_rejected_with_a_frozen_clock(db):
+    def late_quote(ticker):
+        return {"live_c": 100.0, "live_t": (NOW + timedelta(seconds=2)).timestamp(), "currency": "USD"}
+
+    with pytest.raises(ProposalRejected):
+        asyncio.run(runner.generate_proposal(
+            db, "AAPL", provider=Provider(good()), fetch_quote=late_quote, now=NOW,
+        ))

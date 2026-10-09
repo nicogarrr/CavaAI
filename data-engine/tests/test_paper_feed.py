@@ -86,7 +86,7 @@ def test_feed_saves_up_to_remaining_quota_and_never_more(db):
     db.commit()
     calls: list[str] = []
 
-    async def generate(session, ticker, *, now):  # noqa: ARG001
+    async def generate(session, ticker, *, clock):  # noqa: ARG001
         calls.append(ticker)
         return llm_trade(session, ticker, key=f"llm:{ticker}:20261009:g")
 
@@ -114,7 +114,7 @@ def test_rejection_of_one_ticker_does_not_stop_batch_but_budget_does(db):
         news(db, company(db, t), 8)
     db.commit()
 
-    async def generate(session, ticker, *, now):  # noqa: ARG001
+    async def generate(session, ticker, *, clock):  # noqa: ARG001
         if ticker == "AAA":
             raise ProposalRejected("sin_cotizacion")
         if ticker == "BBB":
@@ -132,7 +132,7 @@ def test_unexpected_error_in_one_ticker_is_isolated(db):
         news(db, company(db, t), 8)
     db.commit()
 
-    async def generate(session, ticker, *, now):  # noqa: ARG001
+    async def generate(session, ticker, *, clock):  # noqa: ARG001
         if ticker == "AAA":
             raise RuntimeError("boom")
         return llm_trade(session, ticker, key="llm:BBB:20261009:g")
@@ -147,7 +147,7 @@ def test_quota_exceeded_during_batch_stops_cleanly(db):
         news(db, company(db, t), 8)
     db.commit()
 
-    async def generate(session, ticker, *, now):  # noqa: ARG001
+    async def generate(session, ticker, *, clock):  # noqa: ARG001
         raise QuotaExceeded(DAILY_QUOTA)
 
     out = _feed(db, generate)
@@ -181,9 +181,9 @@ def test_each_call_gets_the_current_clock_not_a_frozen_one(db):
     ticks = iter(NOW + timedelta(minutes=i) for i in range(100))
     seen: list[datetime] = []
 
-    async def generate(session, ticker, *, now):  # noqa: ARG001
-        seen.append(now)
+    async def generate(session, ticker, *, clock):  # noqa: ARG001
+        seen.append(clock())
         return llm_trade(session, ticker, key=f"llm:{ticker}:20261009:g")
 
     asyncio.run(run_feed(db, clock=lambda: next(ticks), generate=generate, pause=0))
-    assert len(seen) == 2 and seen[0] < seen[1]
+    assert len(seen) == 2 and seen[0] < seen[1]  # el reloj avanza entre llamadas

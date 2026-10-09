@@ -11,6 +11,7 @@ import asyncio
 import hashlib
 import re
 import threading
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
@@ -137,8 +138,18 @@ async def generate_proposal(
     provider=None,
     fetch_quote=None,
     now: datetime | None = None,
+    clock: Callable[[], datetime] | None = None,
 ) -> PaperTrade:
-    now = now or datetime.now(UTC)
+    # Reloj: `clock` (inyectable) > `now` fijo (tests/replay) > reloj real. La frescura de
+    # la cotizacion se valida contra el reloj POSTERIOR al fetch, no el del inicio: una
+    # cotizacion recibida segundos despues de arrancar no es "futura".
+    fixed_now = now
+
+    def _real_clock() -> datetime:
+        return fixed_now if fixed_now is not None else datetime.now(UTC)
+
+    read_clock: Callable[[], datetime] = clock or _real_clock
+    now = read_clock()
     ticker = (ticker or "").strip().upper()
     if not _TICKER.match(ticker):
         raise ProposalRejected("ticker_invalido")
@@ -165,6 +176,7 @@ async def generate_proposal(
         quote = await asyncio.to_thread(fetch_quote, ticker)
     except Exception:  # noqa: BLE001 - sin cotizacion no hay propuesta
         quote = None
+    now = read_clock()  # recepcion de la cotizacion: base de frescura, cuota y fechas
 
     def _record(resp) -> None:
         # Cada respuesta del proveedor, tambien la que el validador descarta, consume presupuesto.
