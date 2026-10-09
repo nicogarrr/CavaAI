@@ -10,6 +10,11 @@ Design (approved by Nico 2026-09-25):
 - Ranking: percentile-ranked composite of quality/growth components with
   declared weights; missing components are excluded and weights renormalized
   (declared in the per-company coverage map, never imputed).
+- One entry per issuer: when several share classes of the same company pass
+  the gates (GOOG/GOOGL), only the class with the highest average volume in
+  market_prices (last 90 days) is ranked; the others fail with the gate
+  ``clase_duplicada:<canonical ticker>`` (explicit class map plus a
+  conservative name/exchange/ticker-root fallback).
 - Valuation and momentum are NOT part of v1: they need price series
   (phase F2). Everything here is reproducible from the DB.
 
@@ -20,12 +25,20 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
+from datetime import date, timedelta
 from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import CalculatedMetric, Company, FinancialFact, ProPickCandidate, ProPickRun
+from app.models import (
+    CalculatedMetric,
+    Company,
+    FinancialFact,
+    MarketPrice,
+    ProPickCandidate,
+    ProPickRun,
+)
 
 # --- Funnel constants (declared; tune only with an explicit decision) -------
 
@@ -70,6 +83,38 @@ SCORE_WEIGHTS: dict[str, float] = {
 FINANCIALS_EXCLUDED_COMPONENTS = ("spread_roic_wacc", "spread_cfroi_wacc")
 
 FUNNEL_VERSION = "propicks-funnel-v1"
+
+# One entry per company: several share classes of the same issuer (GOOG and
+# GOOGL) must not take several slots of the ranking. Explicit map first; for
+# anything not listed, classes are linked only when name AND exchange are
+# identical and the tickers share a root of 3+ characters (so "FWONA"/"LLYVA",
+# which carry the same name in the data, are never merged by accident).
+SHARE_CLASS_GROUPS: tuple[frozenset[str], ...] = tuple(
+    frozenset(group)
+    for group in (
+        ("GOOG", "GOOGL"),
+        ("BRK.A", "BRK.B", "BRK-A", "BRK-B"),
+        ("FOX", "FOXA"),
+        ("NWS", "NWSA"),
+        ("LEN", "LEN.B"),
+        ("BF.A", "BF.B", "BF-A", "BF-B"),
+        ("HEI", "HEI.A"),
+        ("LBRDA", "LBRDK"),
+        ("LBTYA", "LBTYB", "LBTYK"),
+        ("FWONA", "FWONK"),
+        ("LLYVA", "LLYVK"),
+        ("Z", "ZG"),
+        ("UA", "UAA"),
+        ("DISCA", "DISCK"),
+        ("CMCSA", "CMCSK"),
+        ("MOG.A", "MOG.B"),
+        ("RDS.A", "RDS.B"),
+        ("PARA", "PARAA"),
+        ("LSXMA", "LSXMK"),
+        ("QRTEA", "QRTEB"),
+    )
+)
+VOLUME_LOOKBACK_DAYS = 90
 
 
 @dataclass
@@ -211,6 +256,119 @@ def _is_financial(company: Company) -> bool:
     return (company.sector or "").strip().lower() == "financials"
 
 
+def _common_root(a: str, b: str) -> int:
+    root = 0
+    while root < min(len(a), len(b)) and a[root] == b[root]:
+        root += 1
+    return root
+
+
+def _group_share_classes(companies: list[Company]) -> dict[int, str]:
+    """company_id -> group key, only for companies that have a sibling class.
+
+    Union-find over every link (explicit map and name fallback), so a chain
+    like ABCDA-ABCDB-ABCDC is ONE component whatever the order of ``companies``.
+    """
+    parent: dict[int, int] = {c.id: c.id for c in companies}
+
+    def find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(x: int, y: int) -> None:
+        rx, ry = find(x), find(y)
+        if rx != ry:
+            parent[max(rx, ry)] = min(rx, ry)  # deterministic root: lowest id
+
+    mapped: dict[int, list[int]] = {}
+    by_name: dict[tuple[str, str], list[Company]] = {}
+    for company in companies:
+        index = next(
+            (i for i, group in enumerate(SHARE_CLASS_GROUPS) if (company.ticker or "").upper() in group),
+            None,
+        )
+        if index is not None:
+            mapped.setdefault(index, []).append(company.id)
+        name = (company.name or "").strip().lower()
+        if name:
+            by_name.setdefault((name, (company.exchange or "").strip().lower()), []).append(company)
+    for ids in mapped.values():
+        for other in ids[1:]:
+            union(ids[0], other)
+    for same in by_name.values():
+        for i, first in enumerate(same):
+            for other in same[i + 1 :]:
+                if _common_root(first.ticker.upper(), other.ticker.upper()) >= 3:
+                    union(first.id, other.id)
+    components: dict[int, list[int]] = {}
+    for company in companies:
+        components.setdefault(find(company.id), []).append(company.id)
+    return {
+        cid: f"group:{root}"
+        for root, ids in components.items()
+        if len(ids) > 1
+        for cid in ids
+    }
+
+
+def _average_volumes(db: Session, company_ids: list[int]) -> dict[int, float]:
+    """Mean positive volume over the lookback window; missing volume is absent
+    (N/D), never 0."""
+    if not company_ids:
+        return {}
+    since = date.today() - timedelta(days=VOLUME_LOOKBACK_DAYS)
+    rows = db.execute(
+        select(MarketPrice.company_id, func.avg(MarketPrice.volume))
+        .where(
+            MarketPrice.company_id.in_(company_ids),
+            MarketPrice.date >= since,
+            MarketPrice.volume.is_not(None),
+            MarketPrice.volume > 0,
+        )
+        .group_by(MarketPrice.company_id)
+    ).all()
+    return {int(cid): float(avg) for cid, avg in rows if avg is not None}
+
+
+def apply_share_class_dedupe(
+    db: Session, companies: list[Company], results: list[FunnelResult]
+) -> dict[int, str]:
+    """Keep ONE passing share class per issuer: the one with the highest average
+    volume in market_prices (tie or no volume data: lowest company id).
+
+    Only classes that passed every gate compete, so a class that fails its own
+    gates never hides a sibling that qualifies. The others are marked
+    passed=False with the gate ``clase_duplicada:<canonical ticker>``. Returns
+    {dropped company_id: canonical ticker}.
+    """
+    groups = _group_share_classes(companies)
+    if not groups:
+        return {}
+    by_id = {r.company_id: r for r in results}
+    ticker_of = {c.id: c.ticker for c in companies}
+    members: dict[str, list[int]] = {}
+    for company_id, key in groups.items():
+        result = by_id.get(company_id)
+        if result is not None and result.passed:
+            members.setdefault(key, []).append(company_id)
+    volumes = _average_volumes(db, [cid for ids in members.values() for cid in ids])
+    dropped: dict[int, str] = {}
+    for ids in members.values():
+        if len(ids) < 2:
+            continue
+        canonical = min(ids, key=lambda cid: (-volumes.get(cid, 0.0), cid))
+        for company_id in ids:
+            if company_id == canonical:
+                continue
+            result = by_id[company_id]
+            result.passed = False
+            result.failed_gates.append(f"clase_duplicada:{ticker_of[canonical]}")
+            dropped[company_id] = ticker_of[canonical]
+    return dropped
+
+
 def run_funnel(db: Session, *, top_n: int = 20) -> tuple[list[FunnelResult], dict[str, Any]]:
     """Evaluate every company; return ranked results (best first) + run stats."""
     started = time.monotonic()
@@ -316,6 +474,11 @@ def run_funnel(db: Session, *, top_n: int = 20) -> tuple[list[FunnelResult], dic
                 components=components,
             )
         )
+
+    # One entry per issuer (GOOG/GOOGL): dropped classes leave the ranking AND
+    # the percentile universe, so they do not weigh twice.
+    for dropped_id in apply_share_class_dedupe(db, companies, results):
+        raw.pop(dropped_id, None)
 
     # Percentile-rank each component across the universe, then weighted sum
     # with renormalization over available components per company.
