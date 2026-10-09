@@ -398,8 +398,14 @@ def test_peer_comparison_uses_traceable_metrics_and_multifactor_peers():
     assert payload["peer_count"] == 2
     assert payload["companies"][0]["is_target"] is True
     assert payload["companies"][0]["metrics"]["fcf_margin"]["source_fact_ids"]
-    assert Decimal(payload["benchmarks"]["fcf_margin"]["peer_median"]) == Decimal("0.20000000")
-    assert Decimal(payload["benchmarks"]["fcf_margin"]["target_vs_peer_median"]) == Decimal("0.05000000")
+    # F26: con 2 comparables con dato (n<3) no hay mediana; el target sigue visible.
+    fcf = payload["benchmarks"]["fcf_margin"]
+    assert fcf["peer_median"] is None and fcf["peer_average"] is None
+    assert fcf["insufficient_sample"] is True
+    assert fcf["note"] == "muestra insuficiente (n<3)"
+    assert fcf["target_vs_peer_median"] is None
+    assert Decimal(fcf["target_value"]) == Decimal("0.25000000")
+    assert payload["peer_count"] == 2 and payload["peers_without_data"] == []
 
     cleanup_metric_test_artifacts()
 
@@ -1060,7 +1066,8 @@ def test_peer_comparison_excludes_atypical_from_median_but_keeps_it_visible():
 
     bench = payload["benchmarks"]["net_margin"]
     # Solo TPEER1 (0,12) entra en la mediana; TPEER2 (2,0) queda fuera pero visible.
-    assert Decimal(bench["peer_median"]) == Decimal("0.12000000")
+    assert bench["peer_median"] is None  # F26: n=1 < 3, sin mediana
+    assert bench["insufficient_sample"] is True
     assert bench["peer_sample_size"] == 1
     assert len(bench["excluded_atypical"]) == 1
     excluded = bench["excluded_atypical"][0]
@@ -1078,3 +1085,50 @@ def test_peer_comparison_excludes_atypical_from_median_but_keeps_it_visible():
     assert metric_payload["calculation_trace"]["atypical"]
 
     cleanup_metric_test_artifacts()
+
+
+def test_peer_benchmark_with_three_peers_and_peer_without_data():
+    """F26: n>=3 calcula mediana; un comparable sin metricas no cuenta."""
+    cleanup_metric_test_artifacts()
+    extra = ["TPEER3", "TPEER4"]
+    db = SessionLocal()
+    try:
+        target = create_test_company(db)
+        peers = [create_test_company(db, t, f"Peer {t}") for t in ["TPEER1", "TPEER2", *extra]]
+        for company, revenue, fcf, net_income, operating_income, gross_profit in [
+            (target, "1000", "250", "180", "250", "650"),
+            (peers[0], "1000", "100", "120", "180", "500"),
+            (peers[1], "1000", "200", "220", "280", "700"),
+            (peers[2], "1000", "300", "320", "380", "800"),
+        ]:
+            add_fact(db, company, "revenue", revenue)
+            add_fact(db, company, "free_cash_flow", fcf)
+            add_fact(db, company, "net_income", net_income)
+            add_fact(db, company, "operating_income", operating_income)
+            add_fact(db, company, "gross_profit", gross_profit)
+        db.commit()
+    finally:
+        db.close()
+    try:
+        client = TestClient(main.app)
+        response = client.get(f"/api/companies/{TEST_TICKER}/peers/comparison?metrics=fcf_margin&limit=4")
+        assert response.status_code == 200
+        payload = response.json()
+        bench = payload["benchmarks"]["fcf_margin"]
+        assert payload["peer_count"] == 3
+        assert payload["peers_without_data"] == ["TPEER4"]
+        assert bench["insufficient_sample"] is False and bench["note"] is None
+        assert bench["peer_sample_size"] == 3
+        assert Decimal(bench["peer_median"]) == Decimal("0.20000000")
+        assert Decimal(bench["target_vs_peer_median"]) == Decimal("0.05000000")
+    finally:
+        db = SessionLocal()
+        try:
+            for company in db.scalars(select(Company).where(Company.ticker.in_(extra))).all():
+                db.execute(delete(CalculatedMetric).where(CalculatedMetric.company_id == company.id))
+                db.execute(delete(FinancialFact).where(FinancialFact.company_id == company.id))
+                db.delete(company)
+            db.commit()
+        finally:
+            db.close()
+        cleanup_metric_test_artifacts()
