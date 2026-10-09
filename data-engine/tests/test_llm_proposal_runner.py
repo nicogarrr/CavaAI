@@ -12,10 +12,12 @@ from sqlalchemy.pool import StaticPool
 
 from app.core.database import Base
 from app.llm import LLMResponse, Message, Usage
+from app.llm.errors import ProviderResponseError, ProviderTransportError
 from app.models import Tenant
 from app.models.entities import BudgetUsage, Company, NewsEvent
 from app.models.paper_trading import PaperTrade
 from app.services import llm_proposal_runner as runner
+from app.services import llm_proposal_service as proposal_service
 from app.services.llm_proposal_service import ProposalRejected
 
 NOW = datetime(2026, 10, 8, 12, tzinfo=UTC)
@@ -344,3 +346,58 @@ def test_quote_from_the_future_is_still_rejected_with_a_frozen_clock(db):
         asyncio.run(runner.generate_proposal(
             db, "AAPL", provider=Provider(good()), fetch_quote=late_quote, now=NOW,
         ))
+
+
+class Flaky(Provider):
+    """Falla con los errores indicados y luego responde segun `outs`."""
+
+    def __init__(self, errors, *outs):
+        super().__init__(*outs)
+        self.errors, self.attempts = list(errors), 0
+
+    async def complete(self, request):
+        self.attempts += 1
+        if self.errors:
+            raise self.errors.pop(0)
+        return await super().complete(request)
+
+
+@pytest.fixture
+def fast_retry(monkeypatch):
+    monkeypatch.setattr(proposal_service, "TRANSIENT_RETRY_PAUSE", 0)
+
+
+def test_empty_reply_is_retried_once_and_succeeds(db, fast_retry):
+    provider = Flaky([ProviderResponseError("opencode-go returned an empty assistant message")], good())
+    row = run(db, provider)
+    assert row.ticker == "AAPL" and provider.attempts == 2
+
+
+def test_timeout_is_retried_once_then_gives_up(db, fast_retry):
+    errors = [ProviderTransportError("opencode-go", "timeout", 1), ProviderTransportError("opencode-go", "timeout", 1)]
+    provider = Flaky(errors, good())
+    with pytest.raises(ProviderTransportError):
+        run(db, provider)
+    assert provider.attempts == 2  # una sola vez, nunca un bucle
+
+
+def test_non_transient_errors_are_not_retried(db, fast_retry):
+    provider = Flaky([ProviderResponseError("opencode-go returned a malformed tool call")], good())
+    with pytest.raises(ProviderResponseError):
+        run(db, provider)
+    assert provider.attempts == 1
+    provider = Flaky([ProviderTransportError("opencode-go", "connect_error", 1)], good())
+    with pytest.raises(ProviderTransportError):
+        run(db, provider)
+    assert provider.attempts == 1
+
+
+def test_retry_is_blocked_when_budget_is_exhausted_and_session_is_released(db, fast_retry, monkeypatch):
+    from app.services.budget import BudgetController
+
+    answers = iter([True, False])  # el primer chequeo pasa; el previo al reintento no
+    monkeypatch.setattr(BudgetController, "can_spend", lambda self, db, amount: next(answers))
+    provider = Flaky([ProviderResponseError("opencode-go returned no assistant message")], good())
+    with pytest.raises(ProposalRejected) as exc:
+        run(db, provider)
+    assert exc.value.reason == "presupuesto_agotado" and provider.attempts == 1

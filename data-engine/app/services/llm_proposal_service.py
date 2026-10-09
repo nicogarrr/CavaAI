@@ -15,6 +15,7 @@ La cantidad no la decide el modelo: es un nocional fijo, etiquetado supuesto.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 from datetime import UTC, datetime, timedelta
@@ -24,8 +25,23 @@ from typing import Any
 from pydantic import ValidationError
 
 from app.llm import LLMRequest, Message, ResponseFormat, parse_json_response
+from app.llm.errors import ProviderResponseError, ProviderTransportError
 from app.schemas.paper_trading import PaperProposal
 from app.services.llm_output_guard import LLMOutputRejected, complete_guarded
+
+TRANSIENT_RETRY_PAUSE = 3.0  # segundos antes del unico reintento por error transitorio
+_EMPTY_REPLY_MARKERS = ("returned no assistant message", "returned an empty assistant message")
+_TRANSIENT_TRANSPORT = {"read_timeout", "connect_timeout", "write_timeout", "pool_timeout", "timeout"}
+
+
+def _is_transient(exc: Exception) -> bool:
+    """Respuesta vacia/sin mensaje o timeout del proveedor. Nada de salidas invalidas."""
+    if isinstance(exc, ProviderTransportError):
+        return exc.reason in _TRANSIENT_TRANSPORT
+    if isinstance(exc, ProviderResponseError):
+        return any(marker in str(exc) for marker in _EMPTY_REPLY_MARKERS)
+    return False
+
 
 NOTIONAL = Decimal("1000")  # supuesto: importe simulado por propuesta, no capital real
 MAX_ENTRY_DEVIATION = Decimal("0.05")
@@ -204,12 +220,25 @@ async def propose(
     if not headlines:
         raise ProposalRejected("sin_titulares")
     request = build_request(ticker, price, currency, headlines, momentum)
-    try:
-        guarded = await complete_guarded(
-            provider, request, source="llm_proposal", on_response=on_response, before_retry=before_retry
-        )
-    except LLMOutputRejected as exc:
-        raise ProposalRejected(f"salida_rechazada:{','.join(exc.reasons)}") from exc
+    guarded = None
+    for attempt in (1, 2):
+        try:
+            guarded = await complete_guarded(
+                provider, request, source="llm_proposal", on_response=on_response, before_retry=before_retry
+            )
+            break
+        except LLMOutputRejected as exc:
+            raise ProposalRejected(f"salida_rechazada:{','.join(exc.reasons)}") from exc
+        except (ProviderResponseError, ProviderTransportError) as exc:
+            # UN reintento, solo ante respuesta vacia/sin mensaje o timeout del proveedor
+            # (modelo gratuito intermitente). El presupuesto se comprueba antes y la sesion
+            # se libera (before_retry de generate_proposal hace commit). El validador no se toca.
+            if attempt == 2 or not _is_transient(exc):
+                raise
+            if before_retry is not None:
+                before_retry()
+            await asyncio.sleep(TRANSIENT_RETRY_PAUSE)
+    assert guarded is not None
     try:
         raw = parse_json_response(guarded.response.text)
     except Exception as exc:  # noqa: BLE001 - JSON roto = rechazo, no excepcion al llamador
