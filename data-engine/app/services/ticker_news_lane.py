@@ -165,6 +165,9 @@ class Deadline:
         self._end = clock() + seconds
         self.truncated = False
 
+    def remaining(self) -> float:
+        return self._end - self._clock()
+
     def expired(self) -> bool:
         if self._clock() > self._end:
             self.truncated = True

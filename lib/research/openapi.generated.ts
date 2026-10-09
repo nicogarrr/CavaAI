@@ -282,6 +282,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bottlenecks/discoveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Listar candidatos inferidos por tema
+         * @description Solo lectura sobre lo persistido: no ingiere ni llama a ningun modelo.
+         */
+        get: operations["list_discoveries_api_bottlenecks_discoveries_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/calendar/dividends": {
         parameters: {
             query?: never;
@@ -4948,6 +4968,63 @@ export interface components {
              */
             taxonomy: "overestimating_TAM" | "underestimating_dilution" | "extrapolating_peak_margin" | "ignoring_balance_sheet" | "management_trust_error" | "valuation_anchoring" | "position_sizing_error" | "selling_too_early" | "ignoring_cyclicality" | "thesis_drift";
         };
+        /** DiscoveriesOut */
+        DiscoveriesOut: {
+            /** Has More */
+            has_more: boolean;
+            /** Items */
+            items: components["schemas"]["DiscoveryOut"][];
+            /** Limit */
+            limit: number;
+            /**
+             * Note
+             * @default Candidatos INFERIDOS por un modelo a partir de evidencias almacenadas; son hipotesis, no hechos ni recomendaciones. Las URLs proceden de la fuente guardada, nunca del modelo
+             */
+            note: string;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** DiscoveryEvidenceOut */
+        DiscoveryEvidenceOut: {
+            /** Id */
+            id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "verificada" | "N/D";
+            /** Title */
+            title: string | null;
+            /** Url */
+            url: string | null;
+        };
+        /** DiscoveryOut */
+        DiscoveryOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Evidence */
+            evidence: components["schemas"]["DiscoveryEvidenceOut"][];
+            /** Id */
+            id: number;
+            /**
+             * Label
+             * @constant
+             */
+            label: "INFERIDO";
+            /** Model */
+            model: string;
+            /** Reasoning */
+            reasoning: string;
+            /** Theme */
+            theme: string;
+            /** Ticker */
+            ticker: string;
+        };
         /**
          * DocType
          * @enum {string}
@@ -7656,6 +7733,47 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BottlenecksOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_discoveries_api_bottlenecks_discoveries_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoveriesOut"];
                 };
             };
             /** @description Validation Error */
