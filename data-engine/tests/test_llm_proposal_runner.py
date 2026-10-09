@@ -1,6 +1,7 @@
 import asyncio
 import json
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 from fastapi import FastAPI
@@ -32,11 +33,23 @@ def good(**over):
     return base
 
 
+class FreeRouter:
+    """Router del adaptador real: resuelve el modelo que se usaria de verdad."""
+
+    def __init__(self, resolved=None):
+        self.resolved = resolved
+
+    def resolve(self, request):
+        return self.resolved or request.model or "space-bunny-free"
+
+
 class Provider:
     name = "stub"
+    _fallback_model: Any = None
 
     def __init__(self, *outs):
         self.outs, self.calls = list(outs), 0
+        self.model_router: Any = FreeRouter()
 
     async def complete(self, request):
         self.calls += 1
@@ -265,3 +278,69 @@ def test_retry_budget_denial_keeps_first_cost_and_endpoint_returns_503(db, monke
     assert provider.calls == 1
     assert db.scalar(select(func.count(BudgetUsage.id)).where(BudgetUsage.workflow == "llm_proposal")) == 1
     assert db.scalar(select(func.count(PaperTrade.id))) == 0
+
+
+def test_paid_or_unverifiable_model_blocks_before_any_spend(db):
+    paid = Provider(good())
+    paid.model_router = FreeRouter("gpt-paid-model")
+    with pytest.raises(ProposalRejected) as exc:
+        run(db, paid)
+    assert exc.value.reason == "modelo_no_gratuito" and paid.calls == 0
+
+    paid_fallback = Provider(good())
+    paid_fallback._fallback_model = "gpt-paid-model"
+    with pytest.raises(ProposalRejected) as exc:
+        run(db, paid_fallback)
+    assert exc.value.reason == "fallback_no_gratuito" and paid_fallback.calls == 0
+
+    blind = Provider(good())
+    blind.model_router = None
+    with pytest.raises(ProposalRejected) as exc:
+        run(db, blind)
+    assert exc.value.reason == "modelo_no_verificable" and blind.calls == 0
+
+
+def test_future_dated_news_is_not_given_to_the_model(db):
+    db.add(NewsEvent(id=2, company_id=1, date=NOW + timedelta(days=1), title="Titular futuro", source="X"))
+    db.commit()
+    titles = [h["title"] for h in runner.load_headlines(db, "AAPL", NOW)]
+    assert "Titular futuro" not in titles and titles
+
+
+def test_guard_probe_is_the_real_request_not_a_pinned_model(db):
+    """Un override por tarea solo se ve si la sonda no fija modelo, como la peticion real."""
+
+    class TaskOverrideRouter:
+        def resolve(self, request):
+            if request.model is None and request.task == "main_financial_analysis":
+                return "paid-model"  # override de entorno por tarea
+            return request.model or "space-bunny-free"
+
+    provider = Provider(good())
+    provider.model_router = TaskOverrideRouter()
+    with pytest.raises(ProposalRejected) as exc:
+        run(db, provider)
+    assert exc.value.reason == "modelo_no_gratuito" and provider.calls == 0
+
+
+def test_quote_received_after_start_is_fresh_against_the_post_fetch_clock(db):
+    ticks = iter([NOW, NOW + timedelta(seconds=5), NOW + timedelta(seconds=5)])
+
+    def late_quote(ticker):
+        # la cotizacion llega 2 s DESPUES del arranque: futura para un reloj congelado
+        return {"live_c": 100.0, "live_t": (NOW + timedelta(seconds=2)).timestamp(), "currency": "USD"}
+
+    row = asyncio.run(runner.generate_proposal(
+        db, "AAPL", provider=Provider(good()), fetch_quote=late_quote, clock=lambda: next(ticks),
+    ))
+    assert row.ticker == "AAPL"
+
+
+def test_quote_from_the_future_is_still_rejected_with_a_frozen_clock(db):
+    def late_quote(ticker):
+        return {"live_c": 100.0, "live_t": (NOW + timedelta(seconds=2)).timestamp(), "currency": "USD"}
+
+    with pytest.raises(ProposalRejected):
+        asyncio.run(runner.generate_proposal(
+            db, "AAPL", provider=Provider(good()), fetch_quote=late_quote, now=NOW,
+        ))

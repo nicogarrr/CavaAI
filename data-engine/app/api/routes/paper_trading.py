@@ -41,7 +41,7 @@ async def llm_propose(body: LLMProposalRequest, db: Session = Depends(get_db)) -
         raise HTTPException(status_code=429, detail=str(exc)) from exc
     except ProposalRejected as exc:
         db.rollback()
-        status = 503 if exc.reason in {"llm_deshabilitado", "presupuesto_agotado"} else 422
+        status = 503 if exc.reason in {"llm_deshabilitado", "presupuesto_agotado", "modelo_no_gratuito", "modelo_no_verificable", "fallback_no_gratuito"} else 422
         raise HTTPException(status_code=status, detail=f"Propuesta rechazada: {exc.reason}") from exc
     except (ValueError, IntegrityError) as exc:
         db.rollback()
@@ -65,6 +65,15 @@ def refresh(db: Session = Depends(get_db)) -> dict:
     from app.workers.dramatiq_app import refresh_paper_trades
 
     message = refresh_paper_trades.send(db.info.get("tenant_id"), db.info.get("user_id"))
+    return {"status": "queued", "message_id": str(message.message_id)}
+
+
+@router.post("/feed", status_code=202)
+def feed(db: Session = Depends(get_db)) -> dict:
+    """Encola un lote de propuestas LLM (INFERIDO). Comparte la cuota diaria con /llm-proposals."""
+    from app.workers.dramatiq_app import propose_paper_trades
+
+    message = propose_paper_trades.send(db.info.get("tenant_id"), db.info.get("user_id"))
     return {"status": "queued", "message_id": str(message.message_id)}
 
 
