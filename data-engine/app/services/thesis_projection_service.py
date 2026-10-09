@@ -632,14 +632,31 @@ class ThesisProjectionService:
                 projected = projected_ps.get(scenario)
                 if scenario_value is None or projected is None:
                     base = "sin valor del escenario o sin proyeccion del ancla"
+                elif price is None or price <= 0 or price_date is None:
+                    base = (
+                        "sin precio fechado para acotar el multiplo (evita contar el "
+                        "crecimiento dos veces)"
+                    )
                 else:
                     multiple = scenario_value / anchor_base_ps
+                    # El valor actual del escenario ya descuenta su crecimiento; aplicar
+                    # ese multiplo al ancla ya crecida lo cuenta dos veces. Tope: el
+                    # multiplo de mercado actual (precio fechado / ancla por accion),
+                    # sin expansion de multiplo. Convencion declarada, INFERIDO.
+                    market_multiple = price / anchor_base_ps
+                    capped = multiple > market_multiple
+                    multiple = min(multiple, market_multiple)
                     target = projected * multiple
                     base = (
                         f"multiplo implicito del modelo ({anchor_kind} por accion): "
                         f"valor/accion actual del escenario / {anchor_kind} por accion "
                         f"actual, aplicado al {anchor_kind} por accion proyectado"
                     )
+                    if capped:
+                        base += (
+                            f"; acotado al multiplo de mercado actual ({market_multiple:.1f}x, "
+                            f"precio del {price_date}), sin expansion de multiplo"
+                        )
             # MOS solo contra precio FECHADO: un mark de Position sin fecha no
             # dice cuando era cierto, y comparar contra el seria silenciarlo.
             mos = (
