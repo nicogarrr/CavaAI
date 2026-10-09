@@ -17,11 +17,14 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.llm import create_llm_provider
+from app.llm.model_aliases import VERIFIED_FREE_MODELS
 from app.models.entities import Company, NewsEvent
 from app.models.paper_trading import PaperTrade
 from app.schemas.paper_trading import PaperProposal
+from app.services.bottleneck_discovery_service import paid_model_risk
 from app.services.budget import BudgetController, BudgetExceededError
-from app.services.llm_proposal_service import ProposalRejected, propose
+from app.services.llm_proposal_service import PROPOSAL_TASK, ProposalRejected, propose
+from app.services.llm_router import route_model
 from app.services.paper_trading_service import create_proposal
 
 DAILY_QUOTA = 5  # propuestas LLM guardadas por tenant y dia UTC
@@ -90,7 +93,10 @@ def load_headlines(db: Session, ticker: str, now: datetime) -> list[dict]:
         raise ProposalRejected("empresa_no_seguida")
     rows = db.scalars(
         select(NewsEvent)
-        .where(NewsEvent.company_id == company.id, NewsEvent.date >= _utc(now) - NEWS_WINDOW)
+        .where(NewsEvent.company_id == company.id,
+            NewsEvent.date >= _utc(now) - NEWS_WINDOW,
+            NewsEvent.date <= _utc(now),  # sin evidencia con fecha futura
+        )
         .order_by(NewsEvent.date.desc(), NewsEvent.id.desc())
         .limit(MAX_HEADLINES)
     ).all()
@@ -116,6 +122,14 @@ async def generate_proposal(
     provider = provider or create_llm_provider()
     if provider.name == "disabled":
         raise ProposalRejected("llm_deshabilitado")
+    # Solo modelos gratuitos (EUR 0): se resuelve el modelo REAL (con overrides de
+    # entorno) y el fallback del adaptador ANTES de gastar nada. Fail-closed.
+    route = route_model(PROPOSAL_TASK)
+    if route.model not in VERIFIED_FREE_MODELS:
+        raise ProposalRejected("modelo_no_gratuito")
+    blocked = paid_model_risk(provider, route.model, PROPOSAL_TASK)
+    if blocked:
+        raise ProposalRejected(blocked)
     budget = BudgetController()
     if not budget.can_spend(db, 0.02):
         raise ProposalRejected("presupuesto_agotado")

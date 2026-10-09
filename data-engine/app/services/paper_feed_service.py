@@ -41,9 +41,20 @@ MIN_MATERIALITY = 5  # escala 1-10 de news_events.materiality_score
 ATTEMPTS_PER_QUOTA_SLOT = 2  # rechazos (sin cotizacion, validador) no consumen cuota
 PAUSE_SECONDS = 2.0
 # Un rechazo de estos tipos afecta a TODO el lote: se corta, no se insiste.
-_BATCH_STOPPERS = {"llm_deshabilitado", "presupuesto_agotado"}
+_BATCH_STOPPERS = {
+    "llm_deshabilitado",
+    "presupuesto_agotado",
+    "modelo_no_gratuito",
+    "modelo_no_verificable",
+    "fallback_no_gratuito",
+}
 
 Generate = Callable[..., Awaitable[PaperTrade]]
+Clock = Callable[[], datetime]
+
+
+def _now() -> datetime:
+    return datetime.now(UTC)
 
 
 def select_candidates(db: Session, now: datetime, limit: int) -> list[str]:
@@ -60,7 +71,9 @@ def select_candidates(db: Session, now: datetime, limit: int) -> list[str]:
             func.count(NewsEvent.id).label("n"),
         )
         .join(NewsEvent, NewsEvent.company_id == Company.id)
-        .where(NewsEvent.date >= since, NewsEvent.materiality_score >= MIN_MATERIALITY)
+        .where(NewsEvent.date >= since,
+            NewsEvent.date <= _utc(now),  # nunca evidencia con fecha futura
+            NewsEvent.materiality_score >= MIN_MATERIALITY)
         .group_by(Company.ticker)
         .order_by(func.max(NewsEvent.materiality_score).desc(), func.count(NewsEvent.id).desc(), Company.ticker)
     ).all()
@@ -69,7 +82,7 @@ def select_candidates(db: Session, now: datetime, limit: int) -> list[str]:
         ticker
         for (ticker,) in db.execute(
             select(PaperTrade.ticker).where(
-                PaperTrade.proposal_key.like("llm:%"),
+                (PaperTrade.author == "LLM") | PaperTrade.proposal_key.like("llm:%"),
                 (PaperTrade.status.in_(("pending", "open"))) | (PaperTrade.created_at >= start),
             )
         ).all()
@@ -80,11 +93,14 @@ def select_candidates(db: Session, now: datetime, limit: int) -> list[str]:
 async def run_feed(
     db: Session,
     *,
-    now: datetime | None = None,
+    clock: Clock = _now,
     generate: Generate = generate_proposal,
     pause: float = PAUSE_SECONDS,
 ) -> dict[str, Any]:
-    now = now or datetime.now(UTC)
+    # El corte inicial solo sirve para elegir candidatos; cada llamada usa el reloj
+    # ACTUAL, porque tras las pausas una cotizacion fresca seria "futura" para un
+    # `now` congelado y se rechazaria como vieja.
+    now = clock()
     remaining = DAILY_QUOTA - todays_llm_proposals(db, now)
     outcome: dict[str, Any] = {
         "etiqueta": "INFERIDO",
@@ -109,7 +125,7 @@ async def run_feed(
         if index:
             await asyncio.sleep(pause)
         try:
-            row = await generate(db, ticker, now=now)
+            row = await generate(db, ticker, now=clock())
             outcome["guardadas"].append({"ticker": ticker, "id": row.id})
         except QuotaExceeded:
             db.rollback()

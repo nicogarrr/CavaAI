@@ -40,7 +40,7 @@ async def llm_propose(body: LLMProposalRequest, db: Session = Depends(get_db)) -
         raise HTTPException(status_code=429, detail=str(exc)) from exc
     except ProposalRejected as exc:
         db.rollback()
-        status = 503 if exc.reason in {"llm_deshabilitado", "presupuesto_agotado"} else 422
+        status = 503 if exc.reason in {"llm_deshabilitado", "presupuesto_agotado", "modelo_no_gratuito", "modelo_no_verificable", "fallback_no_gratuito"} else 422
         raise HTTPException(status_code=status, detail=f"Propuesta rechazada: {exc.reason}") from exc
     except (ValueError, IntegrityError) as exc:
         db.rollback()

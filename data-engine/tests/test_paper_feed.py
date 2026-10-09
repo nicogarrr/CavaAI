@@ -75,7 +75,7 @@ def test_candidates_exclude_live_or_today_llm_proposals(db):
 
 
 def _feed(db, generate, **kwargs):
-    return asyncio.run(run_feed(db, now=NOW, generate=generate, pause=0, **kwargs))
+    return asyncio.run(run_feed(db, clock=lambda: NOW, generate=generate, pause=0, **kwargs))
 
 
 def test_feed_saves_up_to_remaining_quota_and_never_more(db):
@@ -157,3 +157,33 @@ def test_quota_exceeded_during_batch_stops_cleanly(db):
 def test_no_candidates_and_label(db):
     out = _feed(db, None)
     assert out["status"] == "sin_candidatos" and out["etiqueta"] == "INFERIDO"
+
+
+def test_future_dated_news_is_never_a_candidate(db):
+    co = company(db, "AAA")
+    news(db, co, 9, days=-1)  # fecha de manana
+    db.commit()
+    assert select_candidates(db, NOW, 10) == []
+
+
+def test_candidate_exclusion_uses_author_not_only_key(db):
+    co = company(db, "AAA")
+    news(db, co, 8)
+    llm_trade(db, "AAA", status="open", created=NOW - timedelta(days=9), key="manual-otra-clave")
+    db.commit()
+    assert select_candidates(db, NOW, 10) == []
+
+
+def test_each_call_gets_the_current_clock_not_a_frozen_one(db):
+    for t in ("AAA", "BBB"):
+        news(db, company(db, t), 8)
+    db.commit()
+    ticks = iter(NOW + timedelta(minutes=i) for i in range(100))
+    seen: list[datetime] = []
+
+    async def generate(session, ticker, *, now):  # noqa: ARG001
+        seen.append(now)
+        return llm_trade(session, ticker, key=f"llm:{ticker}:20261009:g")
+
+    asyncio.run(run_feed(db, clock=lambda: next(ticks), generate=generate, pause=0))
+    assert len(seen) == 2 and seen[0] < seen[1]

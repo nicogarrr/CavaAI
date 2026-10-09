@@ -32,11 +32,23 @@ def good(**over):
     return base
 
 
+class FreeRouter:
+    """Router del adaptador real: resuelve el modelo que se usaria de verdad."""
+
+    def __init__(self, resolved=None):
+        self.resolved = resolved
+
+    def resolve(self, request):
+        return self.resolved or request.model
+
+
 class Provider:
     name = "stub"
+    _fallback_model = None
 
     def __init__(self, *outs):
         self.outs, self.calls = list(outs), 0
+        self.model_router: FreeRouter | None = FreeRouter()
 
     async def complete(self, request):
         self.calls += 1
@@ -265,3 +277,30 @@ def test_retry_budget_denial_keeps_first_cost_and_endpoint_returns_503(db, monke
     assert provider.calls == 1
     assert db.scalar(select(func.count(BudgetUsage.id)).where(BudgetUsage.workflow == "llm_proposal")) == 1
     assert db.scalar(select(func.count(PaperTrade.id))) == 0
+
+
+def test_paid_or_unverifiable_model_blocks_before_any_spend(db):
+    paid = Provider(good())
+    paid.model_router = FreeRouter("gpt-paid-model")
+    with pytest.raises(ProposalRejected) as exc:
+        run(db, paid)
+    assert exc.value.reason == "modelo_no_gratuito" and paid.calls == 0
+
+    paid_fallback = Provider(good())
+    paid_fallback._fallback_model = "gpt-paid-model"
+    with pytest.raises(ProposalRejected) as exc:
+        run(db, paid_fallback)
+    assert exc.value.reason == "fallback_no_gratuito" and paid_fallback.calls == 0
+
+    blind = Provider(good())
+    blind.model_router = None
+    with pytest.raises(ProposalRejected) as exc:
+        run(db, blind)
+    assert exc.value.reason == "modelo_no_verificable" and blind.calls == 0
+
+
+def test_future_dated_news_is_not_given_to_the_model(db):
+    db.add(NewsEvent(id=2, company_id=1, date=NOW + timedelta(days=1), title="Titular futuro", source="X"))
+    db.commit()
+    titles = [h["title"] for h in runner.load_headlines(db, "AAPL", NOW)]
+    assert "Titular futuro" not in titles and titles
