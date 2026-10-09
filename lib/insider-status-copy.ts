@@ -35,7 +35,7 @@ const REASON_COPY: Record<string, string> = {
  *  cadena (nombres de excepción, trazas) no se muestra nunca (F30). */
 export function reasonCopy(reason: unknown): string | null {
     if (typeof reason !== 'string' || !reason) return null;
-    return REASON_COPY[reason] ?? null;
+    return Object.hasOwn(REASON_COPY, reason) ? REASON_COPY[reason] : null;
 }
 
 export function degradedCopy(

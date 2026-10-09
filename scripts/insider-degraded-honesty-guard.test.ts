@@ -31,7 +31,7 @@ test('degraded con reason (catch global): cabecera que abarca consulta y lectura
 });
 
 test('F30: una excepción cruda nunca llega al usuario', () => {
-    for (const raw of ['HTTPStatusError: Client error 403 Forbidden for url sec.gov', 'TypeError: fetch failed']) {
+    for (const raw of ['HTTPStatusError: Client error 403 Forbidden for url sec.gov', 'TypeError: fetch failed', '__proto__', 'constructor', 'toString', 'hasOwnProperty']) {
         assert.equal(degradedCopy('AAPL', { reason: raw }, count).detail, null);
     }
 });
