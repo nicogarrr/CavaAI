@@ -226,3 +226,7 @@ __all__.append("PaperTrade")
 from app.models.bottleneck import BottleneckSignal as BottleneckSignal  # noqa: E402
 
 __all__.append("BottleneckSignal")
+
+from app.models.bottleneck_discovery import BottleneckDiscovery as BottleneckDiscovery  # noqa: E402
+
+__all__.append("BottleneckDiscovery")
