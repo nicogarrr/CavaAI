@@ -326,17 +326,10 @@ def _attr(element: ElementTree.Element, *names: str) -> str | None:
     return None
 
 
-def _snapshot_blockers(
-    root: ElementTree.Element,
-    *,
-    expected_account_id: str,
-    positions_imported: int,
-    position_rows_skipped: int,
-    cash_rows_skipped: int,
-    cash_imported: int,
-    max_age_days: int,
+def _statement_identity_blockers(
+    root: ElementTree.Element, *, expected_account_id: str, max_age_days: int
 ) -> list[str]:
-    """Motivos por los que el extracto NO prueba ser un snapshot completo de la cuenta."""
+    """Cuenta y fecha del extracto. Se evalua ANTES de escribir nada."""
     reasons: list[str] = []
     expected = expected_account_id.strip().upper()
     statements = [e for e in root.iter() if _tag_name(e) == "FlexStatement"]
@@ -362,6 +355,46 @@ def _snapshot_blockers(
             reasons.append("toDate esta en el futuro")
         elif to_date < today - timedelta(days=max_age_days):
             reasons.append(f"el extracto es mas antiguo de {max_age_days} dias")
+    for element in statement.iter():
+        if _tag_name(element) in ("OpenPosition", "CashReportCurrency"):
+            row_account = (element.attrib.get("accountId") or "").strip().upper()
+            if row_account and row_account != expected:
+                reasons.append("hay filas de otra cuenta")
+                break
+    return reasons
+
+
+def _snapshot_blockers(
+    root: ElementTree.Element,
+    *,
+    expected_account_id: str,
+    positions_imported: int,
+    position_rows_skipped: int,
+    cash_rows_skipped: int,
+    cash_imported: int,
+    max_age_days: int,
+    query_complete_attested: bool,
+) -> list[str]:
+    """Motivos por los que el extracto NO prueba ser un snapshot completo de la cuenta."""
+    reasons = _statement_identity_blockers(
+        root, expected_account_id=expected_account_id, max_age_days=max_age_days
+    )
+    if not query_complete_attested:
+        reasons.append(
+            "la consulta Flex no esta declarada como completa (sin filtros, todas las secciones)"
+        )
+    statements = [e for e in root.iter() if _tag_name(e) == "FlexStatement"]
+    if len(statements) != 1:
+        return reasons
+    statement = statements[0]
+    raw_to = (statement.attrib.get("toDate") or "").split(";", 1)[0].strip()
+    to_date: date | None = None
+    for fmt in ("%Y%m%d", "%Y-%m-%d"):
+        try:
+            to_date = datetime.strptime(raw_to, fmt).date()
+            break
+        except ValueError:
+            continue
     tags = {_tag_name(e) for e in statement.iter()}
     if "OpenPositions" not in tags:
         reasons.append("falta la seccion OpenPositions")
@@ -375,13 +408,6 @@ def _snapshot_blockers(
         reasons.append("hay filas de caja omitidas")
     if not cash_imported:
         reasons.append("el extracto no trae saldos de caja")
-    for element in statement.iter():
-        if _tag_name(element) not in ("OpenPosition", "CashReportCurrency"):
-            continue
-        row_account = (element.attrib.get("accountId") or "").strip().upper()
-        if row_account and row_account != expected:
-            reasons.append("hay filas de otra cuenta")
-            break
     if to_date is not None:
         for element in statement.iter():
             if _tag_name(element) != "OpenPosition":
@@ -403,6 +429,7 @@ class IBKRImportService:
         expected_account_id: str | None = None,
         reconcile_sources: tuple[str, ...] = ("ibkr_flex",),
         dry_run: bool = False,
+        query_complete_attested: bool = False,
         max_statement_age_days: int = 5,
     ) -> dict:
         """Importa un Flex Query.
@@ -418,7 +445,10 @@ class IBKRImportService:
         anterior a ``max_statement_age_days``, todas las filas de esa cuenta y con
         fecha del statement, secciones OpenPositions y CashReport presentes sin filas
         omitidas. Solo se borran filas cuyo ``source`` este en ``reconcile_sources``
-        (por defecto ``ibkr_flex``): lo manual u otras fuentes no se tocan.
+        (por defecto ``ibkr_flex``) y solo si ``query_complete_attested`` (la consulta
+        Flex esta declarada sin filtros y con todas las secciones; el XML no puede
+        probarlo). Con ``expected_account_id`` una cuenta/fecha incorrecta se rechaza
+        antes de escribir. Lo manual u otras fuentes no se tocan.
         ``dry_run=True`` calcula lo que cerraria y hace rollback de todo.
         """
         # Los errores de fila ("se omite…", "excluye la fila") no bloquean:
@@ -438,6 +468,16 @@ class IBKRImportService:
             raise IBKRImportError(
                 "reconcile exige expected_account_id: sin cuenta esperada no se puede probar que el extracto es completo."
             )
+        if expected_account_id and expected_account_id.strip():
+            # Cuenta equivocada, varias cuentas o statement antiguo: se rechaza ANTES
+            # de escribir nada (tambien en modo merge).
+            identity = _statement_identity_blockers(
+                root,
+                expected_account_id=expected_account_id,
+                max_age_days=max_statement_age_days,
+            )
+            if identity:
+                raise IBKRImportError("Extracto Flex rechazado: " + "; ".join(identity) + ".")
         # Batch: all external ids referenced by this report, one existence query
         # instead of one per row.
         report_ids = {
@@ -745,6 +785,7 @@ class IBKRImportService:
                 cash_rows_skipped=cash_rows_skipped,
                 cash_imported=cash_imported,
                 max_age_days=max_statement_age_days,
+                query_complete_attested=query_complete_attested,
             )
             if not reconcile_blocked:
                 allowed = set(reconcile_sources)

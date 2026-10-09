@@ -162,6 +162,7 @@ services:
       - IBKR_FLEX_QUERY_ID=${IBKR_FLEX_QUERY_ID:-}
       - IBKR_FLEX_TENANT_ID=${IBKR_FLEX_TENANT_ID:-}
       - IBKR_FLEX_ACCOUNT_ID=${IBKR_FLEX_ACCOUNT_ID:-}
+      - IBKR_FLEX_COMPLETE_QUERY_ID=${IBKR_FLEX_COMPLETE_QUERY_ID:-}
       - APP_ENV=production
       # Version desplegada que expone /api/health (la imagen no lleva git):
       # se exporta al desplegar, p. ej. APP_VERSION=main-$(git rev-parse --short HEAD).
@@ -254,6 +255,7 @@ services:
       - IBKR_FLEX_QUERY_ID=${IBKR_FLEX_QUERY_ID:-}
       - IBKR_FLEX_TENANT_ID=${IBKR_FLEX_TENANT_ID:-}
       - IBKR_FLEX_ACCOUNT_ID=${IBKR_FLEX_ACCOUNT_ID:-}
+      - IBKR_FLEX_COMPLETE_QUERY_ID=${IBKR_FLEX_COMPLETE_QUERY_ID:-}
       - PYTHONUNBUFFERED=1
       # Solo adiciones de mapeo: el worker ejecuta los actores (refresh de
       # mercado, feeds, alertas) y necesita las mismas claves que el backend.
@@ -581,6 +583,7 @@ services:
       - IBKR_FLEX_QUERY_ID=${IBKR_FLEX_QUERY_ID:-}
       - IBKR_FLEX_TENANT_ID=${IBKR_FLEX_TENANT_ID:-}
       - IBKR_FLEX_ACCOUNT_ID=${IBKR_FLEX_ACCOUNT_ID:-}
+      - IBKR_FLEX_COMPLETE_QUERY_ID=${IBKR_FLEX_COMPLETE_QUERY_ID:-}
       - PYTHONUNBUFFERED=1
       - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-portfolio}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cavaai_research}
       - REDIS_URL=redis://redis:6379/0

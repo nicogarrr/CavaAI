@@ -1033,7 +1033,14 @@ def sync_ibkr_flex() -> dict[str, Any]:
     db = _session(tenant_id, user_id)
     try:
         result = IBKRImportService().import_flex_xml(
-            db, xml_text, reconcile=True, expected_account_id=account_id
+            db,
+            xml_text,
+            reconcile=True,
+            expected_account_id=account_id,
+            query_complete_attested=bool(
+                get_settings().ibkr_flex_complete_query_id
+                and get_settings().ibkr_flex_complete_query_id == get_settings().ibkr_flex_query_id
+            ),
         )
         return {
             "actor": "sync_ibkr_flex",

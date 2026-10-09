@@ -176,6 +176,7 @@ def _tickers(db):
 
 def _rc(service, db, xml, **kw):
     kw.setdefault("expected_account_id", ACCT)
+    kw.setdefault("query_complete_attested", True)
     return service.import_flex_xml(db, xml, reconcile=True, **kw)
 
 
@@ -216,19 +217,8 @@ def test_reconcile_sources_must_be_explicit_to_close_other_sources():
 @pytest.mark.parametrize(
     "xml,reason",
     [
-        (lambda: _fresh(CASH + POSITION, account="U2"), "cuenta"),
-        (lambda: _fresh(CASH + POSITION, days_ago=30), "antiguo"),
-        (lambda: _fresh(CASH + POSITION, days_ago=-3), "futuro"),
         (lambda: _fresh(POSITION), "CashReport"),
         (lambda: _fresh(CASH), "OpenPositions"),
-        (lambda: _fresh(CASH + POSITION).replace('toDate="', 'x="'), "toDate"),
-        (
-            lambda: _fresh(CASH + POSITION).replace(
-                "</FlexStatement>", "</FlexStatement><FlexStatement accountId=\"U1\"/>"
-            ),
-            "FlexStatement",
-        ),
-        (lambda: _fresh(CASH + POSITION).replace("<OpenPosition ", '<OpenPosition accountId="U9" ', 1), "otra cuenta"),
     ],
 )
 def test_reconcile_blocked_without_completeness_proof_keeps_everything(xml, reason):
@@ -288,3 +278,46 @@ def test_flex_server_error_text_is_never_reflected(monkeypatch):
         assert "SYNTHETIC-SECRET" not in str(info.value)
         assert "Bad token" not in str(info.value)
         assert "1012" in str(info.value)
+
+
+def test_wrong_account_or_old_statement_is_rejected_before_any_write():
+    for xml in (_fresh(CASH + POSITION, account="U2"), _fresh(CASH + POSITION, days_ago=30)):
+        db, service = _seeded()
+        before = db.query(Position).count()
+        with pytest.raises(Exception, match="rechazado"):
+            service.import_flex_xml(db, xml, expected_account_id=ACCT)  # incluso sin reconcile
+        db.rollback()
+        assert db.query(Position).count() == before
+        asts = [p for p in db.query(Position).all()]
+        assert all(p.source == "ibkr_flex" for p in asts)
+        db.close()
+
+
+def test_reconcile_blocked_without_query_attestation():
+    db, service = _seeded()
+    result = _rc(service, db, _fresh(CASH + POSITION), query_complete_attested=False)
+    assert any("declarada como completa" in r for r in result["reconcile_blocked"])
+    assert _tickers(db) == ["ASTS", "NVDA"]
+    db.close()
+
+
+@pytest.mark.parametrize(
+    "xml",
+    [
+        lambda: _fresh(CASH + POSITION, account="U2"),
+        lambda: _fresh(CASH + POSITION, days_ago=30),
+        lambda: _fresh(CASH + POSITION, days_ago=-3),
+        lambda: _fresh(CASH + POSITION).replace('toDate="', 'x="'),
+        lambda: _fresh(CASH + POSITION).replace(
+            "</FlexStatement>", '</FlexStatement><FlexStatement accountId="U1"/>'
+        ),
+        lambda: _fresh(CASH + POSITION).replace("<OpenPosition ", '<OpenPosition accountId="U9" ', 1),
+    ],
+)
+def test_identity_failures_reject_before_any_write(xml):
+    db, service = _seeded()
+    with pytest.raises(Exception, match="rechazado"):
+        _rc(service, db, xml())
+    db.rollback()
+    assert _tickers(db) == ["ASTS", "NVDA"]
+    db.close()
