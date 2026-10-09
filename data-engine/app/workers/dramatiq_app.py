@@ -1031,7 +1031,7 @@ def sync_ibkr_flex() -> dict[str, Any]:
         return _handle_actor_error("sync_ibkr_flex", exc)
     db = _session(tenant_id, user_id)
     try:
-        result = IBKRImportService().import_flex_xml(db, xml_text)
+        result = IBKRImportService().import_flex_xml(db, xml_text, reconcile=True)
         return {
             "actor": "sync_ibkr_flex",
             "status": result["status"],
@@ -1040,6 +1040,8 @@ def sync_ibkr_flex() -> dict[str, Any]:
             "trades_imported": result["trades_imported"],
             "rows_skipped": result["rows_skipped"],
             "row_errors": len(result["row_errors"]),
+            "positions_closed": result["positions_closed"],
+            "cash_removed": result["cash_removed"],
         }
     except IBKRImportError as exc:
         _rollback(db)

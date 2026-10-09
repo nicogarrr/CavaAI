@@ -327,7 +327,14 @@ def _attr(element: ElementTree.Element, *names: str) -> str | None:
 
 
 class IBKRImportService:
-    def import_flex_xml(self, db: Session, xml_text: str) -> dict:
+    def import_flex_xml(self, db: Session, xml_text: str, *, reconcile: bool = False) -> dict:
+        """Importa un Flex Query.
+
+        ``reconcile=True`` hace IBKR fuente de verdad: tras importar un extracto
+        completo se eliminan las posiciones y saldos de caja que ya no vienen en el
+        (las operaciones del libro no se tocan). Solo actua si el extracto trae
+        posiciones y ninguna se omitio; un extracto vacio o roto nunca vacia la cartera.
+        """
         # Los errores de fila ("se omite…", "excluye la fila") no bloquean:
         # se importan las filas válidas y se devuelven en row_errors. Solo los
         # errores fatales (XML ilegible, raíz incorrecta) interrumpen.
@@ -374,6 +381,10 @@ class IBKRImportService:
         cash_transactions_imported = 0
         rows_skipped = 0
         unattributed = 0
+        imported_company_ids: set[int] = set()
+        imported_cash_currencies: set[str] = set()
+        position_rows_skipped = 0
+        cash_rows_skipped = 0
 
         for element in root.iter():
             tag = _tag_name(element)
@@ -381,9 +392,11 @@ class IBKRImportService:
                 symbol = _attr(element, "symbol", "underlyingSymbol")
                 if not symbol:
                     rows_skipped += 1
+                    position_rows_skipped += 1
                     continue
                 if _missing_position_fields(element):
                     rows_skipped += 1
+                    position_rows_skipped += 1
                     continue
                 raw_quantity = _attr(element, "position", "quantity")
                 raw_price = _attr(element, "markPrice", "marketPrice", "price")
@@ -394,6 +407,7 @@ class IBKRImportService:
                     for raw in (raw_quantity, raw_price, raw_value, raw_cost)
                 ):
                     rows_skipped += 1
+                    position_rows_skipped += 1
                     continue
                 company = self._company(db, companies, symbol)
                 self._capture_isin(company, element)
@@ -436,6 +450,7 @@ class IBKRImportService:
                     else None
                 )
                 position.source = "ibkr_flex"
+                imported_company_ids.add(company.id)
                 positions_imported += 1
 
             elif tag in ("CashReport", "CashReportCurrency"):
@@ -444,12 +459,15 @@ class IBKRImportService:
                 currency = _attr(element, "currency")
                 if not currency:
                     rows_skipped += 1
+                    cash_rows_skipped += 1
                     continue
                 raw_cash = _attr(element, "endingCash", "cash", "balance")
                 if raw_cash is not None and not _is_number(raw_cash):
                     rows_skipped += 1
+                    cash_rows_skipped += 1
                     continue
                 cash = db.scalar(select(CashBalance).where(CashBalance.currency == currency))
+                imported_cash_currencies.add(currency)
                 if cash is None and abs(_decimal(_attr(element, "endingCash", "cash", "balance"))) < Decimal("0.005"):
                     # Polvo de redondeo (1e-5): no crea una divisa fantasma.
                     continue
@@ -624,6 +642,23 @@ class IBKRImportService:
                 db.add(transaction)
                 dividends_imported += 1
 
+        positions_closed: list[str] = []
+        cash_removed: list[str] = []
+        if reconcile:
+            db.flush()
+            if positions_imported and not position_rows_skipped:
+                for stale in db.scalars(select(Position)).all():
+                    if stale.company_id not in imported_company_ids:
+                        company = db.get(Company, stale.company_id)
+                        positions_closed.append(company.ticker if company else str(stale.company_id))
+                        db.delete(stale)
+            if cash_imported and not cash_rows_skipped:
+                for stale_cash in db.scalars(select(CashBalance)).all():
+                    if stale_cash.currency not in imported_cash_currencies:
+                        cash_removed.append(stale_cash.currency)
+                        db.delete(stale_cash)
+            db.flush()
+
         from app.services.portfolio_snapshot_service import PortfolioSnapshotService
 
         # SessionLocal usa autoflush=False: sin flush las filas importadas no se ven.
@@ -648,6 +683,8 @@ class IBKRImportService:
             "rows_skipped": rows_skipped,
             "unattributed_cash_rows": unattributed,
             "row_errors": row_errors,
+            "positions_closed": sorted(positions_closed),
+            "cash_removed": sorted(cash_removed),
             "portfolio_snapshot_id": snapshot.id,
         }
 

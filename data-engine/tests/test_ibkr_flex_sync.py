@@ -127,3 +127,57 @@ def test_http_error_message_never_contains_token():
         module.httpx.AsyncClient = original
     assert "SECRET-TOKEN" not in str(info.value)
     assert info.value.__cause__ is None
+
+
+def _seeded():
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    db: Session = _tenant_session(engine)
+    service = IBKRImportService()
+    old = (
+        '<OpenPosition symbol="NVDA" position="4" markPrice="190" positionValue="760" costBasisPrice="100" currency="USD" reportDate="20261001"/>'
+        '<CashReportCurrency currency="GBP" endingCash="50.00"/>'
+    )
+    service.import_flex_xml(db, _xml(old + POSITION))
+    return db, service
+
+
+def _tickers(db):
+    from app.models import Company
+
+    names = {c.id: c.ticker for c in db.query(Company).all()}
+    return sorted(names[p.company_id] for p in db.query(Position).all())
+
+
+def test_reconcile_closes_positions_and_cash_missing_from_statement():
+    db, service = _seeded()
+    result = service.import_flex_xml(db, _xml(CASH + POSITION), reconcile=True)
+    assert _tickers(db) == ["ASTS"]
+    assert result["positions_closed"] == ["NVDA"]
+    assert result["cash_removed"] == ["GBP"]
+    assert {c.currency for c in db.query(CashBalance).all()} == {"EUR", "USD"}
+    db.close()
+
+
+def test_default_import_keeps_absent_positions():
+    db, service = _seeded()
+    service.import_flex_xml(db, _xml(CASH + POSITION))
+    assert _tickers(db) == ["ASTS", "NVDA"]
+    db.close()
+
+
+def test_reconcile_never_empties_portfolio_on_statement_without_positions():
+    db, service = _seeded()
+    result = service.import_flex_xml(db, _xml(CASH), reconcile=True)
+    assert _tickers(db) == ["ASTS", "NVDA"]
+    assert result["positions_closed"] == []
+    db.close()
+
+
+def test_reconcile_skips_when_any_position_row_was_rejected():
+    db, service = _seeded()
+    bad = '<OpenPosition symbol="TSLA" markPrice="1" positionValue="1" reportDate="20261008"/>'
+    result = service.import_flex_xml(db, _xml(CASH + POSITION + bad), reconcile=True)
+    assert "NVDA" in _tickers(db)
+    assert result["positions_closed"] == []
+    db.close()
