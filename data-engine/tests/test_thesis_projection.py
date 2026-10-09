@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import date
+import threading
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
@@ -16,10 +17,14 @@ from app.api.routes.thesis_projection import router
 from app.core.database import Base, get_db
 from app.models import (
     Company,
+    Document,
     FinancialFact,
+    InferredInput,
     MarketPrice,
+    Position,
     Tenant,
     ThesisProjectionYear,
+    ValuationAssumption,
     ValuationModel,
     ValuationOutput,
 )
@@ -29,7 +34,13 @@ from app.services.valuation_service import ValuationService
 from app.valuation.point_in_time import LookaheadError
 
 AS_OF = date(2026, 10, 9)
-FAKE_VALUATION = {"bear_value": 40.0, "base_value": 50.0, "bull_value": 65.0}
+FAKE_VALUATION = {
+    "bear_value": 40.0,
+    "base_value": 50.0,
+    "bull_value": 65.0,
+    "publishable": True,
+    "publication_blockers": [],
+}
 
 
 def fake_value_company(self, db, company, *, as_of=None):  # noqa: ARG001
@@ -76,7 +87,7 @@ def db():
                     metric="revenue",
                     value=Decimal(str(revenue)),
                     unit="USD",
-                    period=f"{year}-FY",
+                    period=f"{year}-12-31:FY",
                     fiscal_year=year,
                     source_type="SEC",
                 )
@@ -92,7 +103,7 @@ def db():
                     metric=metric,
                     value=Decimal(str(value)),
                     unit="USD",
-                    period="2024-FY",
+                    period="2024-12-31:FY",
                     fiscal_year=2024,
                     source_type="SEC",
                 )
@@ -147,8 +158,67 @@ def test_projection_is_deterministic_and_labelled(db, valued):
         "bps": "INFERIDO",
     }
     assert "CAGR de ingresos FY2022-FY2024" in base[0]["crecimiento"]["base"]
-    assert payload["base"]["ingresos"]["etiqueta"] == "OFICIAL"
-    assert payload["base"]["ingresos"]["fuente"] == "SEC FY2024"
+
+
+def test_official_requires_verified_document(db, valued):
+    # Facts SEC sin documento enlazado: fail-closed a INFERIDO, nunca OFICIAL.
+    payload = project(db)
+    ingresos = payload["base"]["ingresos"]
+    assert ingresos["etiqueta"] == "INFERIDO"
+    assert "sin documento con url y fecha" in ingresos["fuente"]
+
+    # Con documento persistido con url + fecha: OFICIAL verificado.
+    doc = Document(
+        company_id=1,
+        title="10-K FY2024",
+        source_type="primary_official",
+        source_url="https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany",
+        published_at=datetime(2025, 2, 15, tzinfo=UTC),
+    )
+    db.add(doc)
+    db.flush()
+    fact = db.scalar(
+        select(FinancialFact).where(
+            FinancialFact.company_id == 1,
+            FinancialFact.metric == "revenue",
+            FinancialFact.fiscal_year == 2024,
+        )
+    )
+    fact.source_id = doc.id
+    db.commit()
+    ingresos = project(db)["base"]["ingresos"]
+    assert ingresos["etiqueta"] == "OFICIAL"
+    assert ingresos["fuente_url"] == doc.source_url
+    assert ingresos["fuente_fecha"] == "2025-02-15"
+
+    # Documento sin url: la oficialidad no se verifica -> INFERIDO.
+    doc.source_url = None
+    db.commit()
+    assert project(db)["base"]["ingresos"]["etiqueta"] == "INFERIDO"
+
+
+def test_stored_assumption_labeling_is_fail_closed(db, valued):
+    model = ValuationModel(
+        company_id=1, model_type="dcf", version=1, status="final"
+    )
+    db.add(model)
+    db.flush()
+    db.add(
+        ValuationAssumption(
+            valuation_model_id=model.id,
+            name="revenue_growth",
+            value=Decimal("0.50"),
+            scenario="base",
+            year=2025,
+            source_type="SEC",
+        )
+    )
+    db.commit()
+    growth = project(db)["escenarios"]["base"]["proyecciones"][0]["crecimiento"]
+    assert growth["valor"] == pytest.approx(0.50)
+    # source_type SEC sin documento verificable: INFERIDO, no OFICIAL.
+    assert growth["etiqueta"] == "INFERIDO"
+    assert "sin documento con url y fecha" in growth["base"]
 
 
 def test_scenario_spread_and_burn_rule(db, valued):
@@ -180,6 +250,54 @@ def test_target_price_uses_valuation_service_and_dated_price(db, valued):
     assert targets["bear"]["valor"] < targets["base"]["valor"] < targets["bull"]["valor"]
 
 
+def test_blocked_engine_is_never_rescaled_to_final(db, monkeypatch):
+    def blocked(self, db, company, *, as_of=None):  # noqa: ARG001
+        return {
+            "bear_value": 40.0,
+            "base_value": 50.0,
+            "bull_value": 65.0,
+            "publishable": False,
+            "status": "blocked",
+            "publication_blockers": ["source_missing"],
+        }
+
+    monkeypatch.setattr(ValuationService, "value_company", blocked)
+    payload = project(db)
+    for scenario in ("bear", "base", "bull"):
+        target = payload["escenarios"][scenario]["precio_objetivo_5y"]
+        assert target["valor"] is None and target["etiqueta"] == "N/D"
+        assert target["mos"] is None
+        assert target["bloqueos"] == ["source_missing"]
+        assert "no publicable" in target["base"]
+    # Y no se persiste como final ni con ValuationOutput.
+    model = ThesisProjectionService().persist(db, db.get(Company, 1), payload)
+    assert model.status == "draft"
+    assert db.scalars(select(ValuationOutput)).all() == []
+
+
+def test_mos_requires_dated_price(db, valued):
+    # Un mark de Position no tiene fecha de precio: MOS queda N/D y la
+    # comparacion no se persiste como final.
+    db.add(
+        Position(
+            company_id=1,
+            quantity=Decimal("5"),
+            average_cost=Decimal("80"),
+            market_price=Decimal("123"),
+        )
+    )
+    db.commit()
+    payload = project(db)
+    target = payload["escenarios"]["base"]["precio_objetivo_5y"]
+    assert target["precio_actual"] == pytest.approx(123.0)
+    assert target["precio_fecha"] is None
+    assert target["valor"] is not None  # el objetivo no depende del precio
+    assert target["mos"] is None
+    model = ThesisProjectionService().persist(db, db.get(Company, 1), payload)
+    assert model.status == "draft"
+    assert db.scalars(select(ValuationOutput)).all() == []
+
+
 def test_missing_inputs_are_nd_never_zero(db):
     payload = project(db, ticker_id=2)
     assert payload["ejercicio_base"] is None
@@ -192,6 +310,80 @@ def test_missing_inputs_are_nd_never_zero(db):
     assert payload["ancla_precio_objetivo"] is None
 
 
+def test_no_lookahead_on_period_close_beyond_as_of(db):
+    # FY2026 cierra 2026-12-31: con as_of 2026-10-09 ese cierre es futuro,
+    # aunque el ejercicio coincida con el ano del corte.
+    db.add(
+        FinancialFact(
+            company_id=1,
+            metric="revenue",
+            value=Decimal("999"),
+            unit="USD",
+            period="2026-12-31:FY",
+            fiscal_year=2026,
+            source_type="SEC",
+        )
+    )
+    db.commit()
+    with pytest.raises(LookaheadError):
+        project(db)
+
+
+def test_no_lookahead_on_document_publication_date(db):
+    doc = Document(
+        company_id=1,
+        title="10-K FY2024",
+        source_type="primary_official",
+        source_url="https://www.sec.gov/x",
+        published_at=datetime(2027, 2, 1, tzinfo=UTC),
+    )
+    db.add(doc)
+    db.flush()
+    fact = db.scalar(
+        select(FinancialFact).where(
+            FinancialFact.company_id == 1,
+            FinancialFact.metric == "revenue",
+            FinancialFact.fiscal_year == 2024,
+        )
+    )
+    fact.source_id = doc.id
+    db.commit()
+    with pytest.raises(LookaheadError):
+        project(db)
+
+
+def test_no_lookahead_on_future_assumption_versions(db):
+    model = ValuationModel(
+        company_id=1, model_type="dcf", version=1, status="final"
+    )
+    db.add(model)
+    db.flush()
+    db.add(
+        ValuationAssumption(
+            valuation_model_id=model.id,
+            name="revenue_growth",
+            value=Decimal("0.50"),
+            scenario="base",
+            year=2025,
+            source_type="model",
+            created_at=datetime(2099, 1, 1, tzinfo=UTC),
+        )
+    )
+    db.add(
+        InferredInput(
+            company_id=1,
+            input_key="fcf_margin",
+            value=Decimal("0.30"),
+            base="dado el margen historico, inferimos un margen normalizado",
+            source_urls=["https://www.sec.gov/x"],
+            created_at=datetime(2099, 1, 1, tzinfo=UTC),
+        )
+    )
+    db.commit()
+    with pytest.raises(LookaheadError):
+        project(db)
+
+
 def test_no_lookahead_raises_on_future_facts(db):
     db.add(
         FinancialFact(
@@ -199,7 +391,7 @@ def test_no_lookahead_raises_on_future_facts(db):
             metric="revenue",
             value=Decimal("999"),
             unit="USD",
-            period="2099-FY",
+            period="2099-12-31:FY",
             fiscal_year=2099,
             source_type="SEC",
         )
@@ -207,6 +399,30 @@ def test_no_lookahead_raises_on_future_facts(db):
     db.commit()
     with pytest.raises(LookaheadError):
         project(db)
+
+
+def test_non_positive_cagr_anchor_is_nd_never_exception(db, valued):
+    # Repro del auditor: revenue2022=64 y revenue2024=-100. El CAGR no esta
+    # definido (base negativa -> complejo): N/D, nunca TypeError.
+    fact = db.scalar(
+        select(FinancialFact).where(
+            FinancialFact.company_id == 1,
+            FinancialFact.metric == "revenue",
+            FinancialFact.fiscal_year == 2024,
+        )
+    )
+    fact.value = Decimal("-100")
+    db.commit()
+    payload = project(db)
+    assert payload["base"]["crecimiento_base"]["etiqueta"] == "N/D"
+    for scenario in ("bear", "base", "bull"):
+        for row in payload["escenarios"][scenario]["proyecciones"]:
+            assert row["ingresos"] is None and row["etiqueta"] == "N/D"
+        assert payload["escenarios"][scenario]["precio_objetivo_5y"]["valor"] is None
+    with client_for(db) as client:
+        response = client.get("/companies/TEST/thesis-5y")
+        assert response.status_code == 200
+        assert response.json()["escenarios"]["base"]["proyecciones"][-1]["ingresos"] is None
 
 
 def test_tenant_isolation(db, valued):
@@ -220,7 +436,13 @@ def test_tenant_isolation(db, valued):
 
 def test_coherence_warning_when_scenarios_invert(db, monkeypatch):
     def inverted(self, db, company, *, as_of=None):  # noqa: ARG001
-        return {"bear_value": 900.0, "base_value": 50.0, "bull_value": 40.0}
+        return {
+            "bear_value": 900.0,
+            "base_value": 50.0,
+            "bull_value": 40.0,
+            "publishable": True,
+            "publication_blockers": [],
+        }
 
     monkeypatch.setattr(ValuationService, "value_company", inverted)
     payload = project(db)
@@ -262,13 +484,12 @@ def test_post_persists_and_is_idempotent_per_day(db, valued):
     assert all(row.revenue is not None for row in rows)
 
 
-def test_post_quota_per_tenant(db, valued, monkeypatch):
-    monkeypatch.setattr(
-        "app.api.routes.thesis_projection.DAILY_RECALC_QUOTA", 1
-    )
+def test_post_quota_is_tenant_wide_across_companies(db, valued, monkeypatch):
+    # Repro del auditor: cuota=1, POST a DOS empresas del mismo tenant.
+    monkeypatch.setattr(svc_module, "DAILY_RECALC_QUOTA", 1)
     with client_for(db) as client:
         assert client.post("/companies/TEST/thesis-5y/recalcular").status_code == 201
-        blocked = client.post("/companies/TEST/thesis-5y/recalcular")
+        blocked = client.post("/companies/EMPTY/thesis-5y/recalcular")
         assert blocked.status_code == 429
         assert "cuota diaria" in blocked.json()["detail"]
 
@@ -279,11 +500,71 @@ def test_post_requires_tenant(db, valued):
         assert client.post("/companies/TEST/thesis-5y/recalcular").status_code == 403
 
 
+def test_quota_is_atomic_under_concurrent_recalcs(tmp_path, monkeypatch):
+    """Check+persist serializado: N POST simultaneos con cuota 1 -> 1 ok, N-1 429."""
+    monkeypatch.setattr(svc_module, "DAILY_RECALC_QUOTA", 1)
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'q.db'}", connect_args={"check_same_thread": False}
+    )
+    Base.metadata.create_all(engine)
+    with Session(engine) as setup:
+        setup.add(Tenant(id=1, external_id="q-1"))
+        setup.commit()
+        setup.info["tenant_id"] = 1
+        setup.add(
+            Company(
+                id=1,
+                ticker="TEST",
+                name="Test Co",
+                exchange="NASDAQ",
+                company_type="large_cap",
+                valuation_model="dcf",
+            )
+        )
+        for year, revenue in ((2023, 80.0), (2024, 100.0)):
+            setup.add(
+                FinancialFact(
+                    company_id=1,
+                    metric="revenue",
+                    value=Decimal(str(revenue)),
+                    unit="USD",
+                    period=f"{year}-12-31:FY",
+                    fiscal_year=year,
+                    source_type="SEC",
+                )
+            )
+        setup.commit()
+
+    outcomes: list[str] = []
+
+    def recalc():
+        with Session(engine, expire_on_commit=False) as session:
+            session.info["tenant_id"] = 1
+            try:
+                ThesisProjectionService().recalculate_within_quota(
+                    session, session.get(Company, 1), as_of=AS_OF
+                )
+                outcomes.append("ok")
+            except svc_module.ProjectionQuotaExceeded:
+                outcomes.append("quota")
+
+    threads = [threading.Thread(target=recalc) for _ in range(6)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert sorted(outcomes) == ["ok"] + ["quota"] * 5
+    with Session(engine) as session:
+        session.info["tenant_id"] = 1
+        assert session.scalar(select(func.count(ValuationModel.id))) == 1
+    engine.dispose()
+
+
 def test_persist_skips_outputs_without_target_or_mos(db):
     # Sin ValuationService mockeado el DCF real no tiene inputs suficientes:
-    # objetivo N/D -> no se graba ValuationOutput con un 0 silencioso.
+    # no publicable -> objetivo N/D -> no se graba ValuationOutput ni final.
     payload = project(db)
-    model = ThesisProjectionService().persist(db, 1 and db.get(Company, 1), payload)
+    model = ThesisProjectionService().persist(db, db.get(Company, 1), payload)
     assert model.status == "draft"
     assert db.scalars(select(ValuationOutput)).all() == []
     rows = db.scalars(select(ThesisProjectionYear)).all()
