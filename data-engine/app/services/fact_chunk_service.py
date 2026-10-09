@@ -10,14 +10,38 @@ despues (ingest_document / rebuild_tenant).
 """
 from __future__ import annotations
 
+import re
 from decimal import Decimal
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Company, Document, DocumentChunk, FinancialFact
+from app.models.entities import ClaimEvidence, EvidenceSuggestion, KPIExtractionCandidate
 
 FACT_SOURCES = ("SEC", "ESEF")
+_YEAR_RE = re.compile(r"ejercicio fiscal (\d{4})")
+
+
+def _tombstone_text(company: Company, source: str, year: int | None) -> str:
+    label = f"ejercicio fiscal {year}" if year is not None else "ejercicio sin determinar"
+    return (
+        f"{company.name} ({company.ticker}) - {label} (fuente {source}): "
+        "hechos retirados, ya no vigentes. Sin cifras."
+    )
+
+
+def _referenced_chunk_ids(db: Session, chunk_ids: list[int]) -> set[int]:
+    """Ids de chunk citados por evidencia o candidatos KPI (FK sin ON DELETE)."""
+    if not chunk_ids:
+        return set()
+    refs: set[int] = set()
+    for model in (ClaimEvidence, EvidenceSuggestion, KPIExtractionCandidate):
+        rows = db.scalars(
+            select(model.document_chunk_id).where(model.document_chunk_id.in_(chunk_ids))
+        ).all()
+        refs.update(row for row in rows if row is not None)
+    return refs
 
 METRIC_LABELS: dict[str, str] = {
     "revenue": "ingresos",
@@ -104,7 +128,6 @@ def sync_company_fact_chunks(db: Session, company: Company) -> dict[str, int]:
         )
         if document is None:
             continue
-        db.execute(delete(DocumentChunk).where(DocumentChunk.document_id == document.id))
         facts = list(
             db.scalars(
                 select(FinancialFact).where(
@@ -117,17 +140,47 @@ def sync_company_fact_chunks(db: Session, company: Company) -> dict[str, int]:
         for fact in facts:
             if fact.fiscal_year is not None and fact.value is not None:
                 by_year.setdefault(fact.fiscal_year, []).append(fact)
-        for index, (year, year_facts) in enumerate(sorted(by_year.items(), reverse=True)):
-            text = _render_chunk(company, source, year, year_facts)
-            db.add(
-                DocumentChunk(
-                    document_id=document.id,
-                    chunk_index=index,
-                    text=text,
-                    token_count=len(text.split()),
+        texts = {
+            year: _render_chunk(company, source, year, year_facts)
+            for year, year_facts in by_year.items()
+        }
+        # Reconcilia POR EJERCICIO y en sitio: un chunk citado por evidencia no
+        # se puede borrar sin romper su FK; conserva su id al refrescar sus cifras
+        # y, si su ejercicio desaparece, queda como lapida sin cifras.
+        existing = list(
+            db.scalars(select(DocumentChunk).where(DocumentChunk.document_id == document.id)).all()
+        )
+        referenced = _referenced_chunk_ids(db, [chunk.id for chunk in existing])
+        matched: set[int] = set()
+        kept: list[tuple[int, DocumentChunk]] = []
+        for chunk in existing:
+            match = _YEAR_RE.search(chunk.text or "")
+            year = int(match.group(1)) if match else None
+            if year is not None and year in texts and year not in matched:
+                matched.add(year)
+                chunk.text = texts[year]
+                chunk.token_count = len(texts[year].split())
+                kept.append((year, chunk))
+            elif chunk.id in referenced:
+                # Citado pero sin hechos vigentes: lapida SIN cifras. La FK
+                # impide borrarlo; el RAG no debe recuperar cifras retiradas.
+                chunk.text = _tombstone_text(company, source, year)
+                chunk.token_count = len(chunk.text.split())
+                chunk.metadata_ = {**(chunk.metadata_ or {}), "obsolete": True}
+                kept.append((year if year is not None else -1, chunk))
+            else:
+                db.delete(chunk)
+        db.flush()
+        for year, text in texts.items():
+            if year not in matched:
+                new_chunk = DocumentChunk(
+                    document_id=document.id, chunk_index=0, text=text, token_count=len(text.split())
                 )
-            )
-            stats["chunks"] += 1
+                db.add(new_chunk)
+                kept.append((year, new_chunk))
+        for index, (_year, chunk) in enumerate(sorted(kept, key=lambda item: item[0], reverse=True)):
+            chunk.chunk_index = index
+        stats["chunks"] += len(texts)
         stats["sources"] += 1
     db.flush()
     return stats
