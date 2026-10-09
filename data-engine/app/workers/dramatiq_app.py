@@ -1484,6 +1484,7 @@ def analyze_tracked_news_alert(alert_id: int, *, tenant_id: int | None = None,
 @dramatiq.actor(max_retries=1, min_backoff=30_000, queue_name=ALERT_QUEUE_NAME)
 def dispatch_tracked_news_alerts(tenant_id: int | None = None, user_id: str | None = None) -> dict[str, Any]:
     """Evaluate persisted, cited news for one tenant; no upstream request."""
+    from app.services.asts_spacex_signal import evaluate as evaluate_asts_signal
     from app.services.tracked_news_alerts import evaluate
 
     db = _session(tenant_id, user_id)
@@ -1500,6 +1501,7 @@ def dispatch_tracked_news_alerts(tenant_id: int | None = None, user_id: str | No
         return {"actor": "dispatch_tracked_news_alerts", "status": "skipped", "reason": "lease_held"}
     try:
         result = evaluate(db)
+        result["asts_spacex_signal"] = evaluate_asts_signal(db)
         # A broker outage between alert commit and send leaves a pending row.
         # Requeue a bounded backlog on the next normal dispatch cycle.
         from sqlalchemy import select
