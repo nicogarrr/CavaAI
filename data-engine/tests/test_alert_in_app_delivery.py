@@ -49,3 +49,17 @@ def test_creators_record_in_app_delivery():
     for name in ("asts_spacex_signal", "filing_intelligence", "jev_availability", "review_alert_service"):
         src = pathlib.Path(f"app/services/{name}.py").read_text()
         assert "record_in_app_delivery(db, alert)" in src, name
+
+
+def test_backfill_migration_is_safe_for_postgres():
+    import importlib.util
+    import pathlib
+
+    path = pathlib.Path("alembic/versions/0059_alert_in_app_delivery.py")
+    spec = importlib.util.spec_from_file_location("m0059", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    # alembic_version.version_num es VARCHAR(32)
+    assert len(mod.revision) <= 32 and path.stem == mod.revision
+    # Un creador concurrente no debe abortar la migracion (UNIQUE alert_id+canal)
+    assert "ON CONFLICT (alert_id, channel) DO NOTHING" in path.read_text()

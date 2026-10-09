@@ -1,7 +1,7 @@
 """Backfill de entregas in_app de alertas creadas sin dispatch (idempotente)."""
 from alembic import op
 
-revision = "0059_alert_in_app_delivery_backfill"
+revision = "0059_alert_in_app_delivery"
 down_revision = "0058_thesis_projection"
 branch_labels = None
 depends_on = None
@@ -21,6 +21,7 @@ def upgrade() -> None:
               SELECT 1 FROM alert_deliveries d
               WHERE d.alert_id = a.id AND d.channel = 'in_app'
           )
+        ON CONFLICT (alert_id, channel) DO NOTHING
         """
     )
 
