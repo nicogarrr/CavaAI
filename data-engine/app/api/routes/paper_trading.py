@@ -11,6 +11,7 @@ from app.models.paper_trading import PaperTrade
 from app.schemas.paper_trading import PaperProposal
 from app.services.llm_proposal_runner import QuotaExceeded, generate_proposal
 from app.services.llm_proposal_service import ProposalRejected
+from app.services.paper_calibration_service import calibration
 from app.services.paper_trading_service import create_proposal, refresh_trades, scoreboard, trade_out
 
 router = APIRouter()
@@ -55,7 +56,8 @@ def proposals(limit: int = Query(100, ge=1, le=500), db: Session = Depends(get_d
 
 @router.get("/scoreboard")
 def score(db: Session = Depends(get_db)) -> dict:
-    return scoreboard(list(db.scalars(select(PaperTrade)).all()))
+    rows = list(db.scalars(select(PaperTrade)).all())
+    return {**scoreboard(rows), "calibracion": calibration(rows)}
 
 
 @router.post("/refresh", status_code=202)

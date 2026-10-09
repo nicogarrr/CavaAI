@@ -294,3 +294,15 @@ def test_non_numeric_decimal_rejected_by_precision_normalizer():
 def test_short_target_at_entry_rejected_by_level_validator():
     with pytest.raises(ValidationError, match="Short: objetivo < entrada propuesta < stop"):
         PaperProposal(**body(direction="short", target="100", stop="110"))
+
+
+def test_scoreboard_endpoint_exposes_calibration_block_nd_when_empty(db):
+    app = FastAPI()
+    app.include_router(router, prefix="/paper-trading")
+    app.dependency_overrides[get_db] = lambda: db
+    with TestClient(app) as client:
+        data = client.get("/paper-trading/scoreboard").json()
+    assert data["groups"] == [] and data["conviction_bins"]
+    cal = data["calibracion"]
+    assert cal["brier"] is None and cal["muestra_insuficiente"] is True
+    assert cal["etiqueta"] == "INFERIDO"
