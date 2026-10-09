@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.services.company_resolver import resolve_company
 from app.services.thesis_projection_service import (
-    DAILY_RECALC_QUOTA,
+    ProjectionQuotaExceeded,
     ThesisProjectionService,
 )
 
@@ -31,20 +31,17 @@ def get_thesis_5y(ticker: str, db: Session = Depends(get_db)) -> dict:
 
 @router.post("/{ticker}/thesis-5y/recalcular", status_code=201)
 def recalcular_thesis_5y(ticker: str, db: Session = Depends(get_db)) -> dict:
-    """Recalcula y persiste la proyeccion. Cuota diaria por tenant."""
+    """Recalcula y persiste la proyeccion. Cuota diaria por tenant, serializada."""
     company = resolve_company(db, ticker)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     if db.info.get("tenant_id") is None:
         raise HTTPException(status_code=403, detail="Tenant context required")
     service = ThesisProjectionService()
-    if service.recalcs_today(db, company) >= DAILY_RECALC_QUOTA:
-        raise HTTPException(
-            status_code=429,
-            detail=f"cuota diaria de {DAILY_RECALC_QUOTA} recalculos agotada",
-        )
-    payload = service.project(db, company)
-    model = service.persist(db, company, payload)
+    try:
+        payload, model = service.recalculate_within_quota(db, company)
+    except ProjectionQuotaExceeded as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
     payload["persistido"] = {
         "valuation_model_id": model.id,
         "version": model.version,

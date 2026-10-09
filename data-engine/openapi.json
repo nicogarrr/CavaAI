@@ -20907,7 +20907,7 @@
     },
     "/api/companies/{ticker}/thesis-5y/recalcular": {
       "post": {
-        "description": "Recalcula y persiste la proyeccion. Cuota diaria por tenant.",
+        "description": "Recalcula y persiste la proyeccion. Cuota diaria por tenant, serializada.",
         "operationId": "recalcular_thesis_5y_api_companies__ticker__thesis_5y_recalcular_post",
         "parameters": [
           {
