@@ -1,8 +1,10 @@
 import asyncio
 import importlib.util
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 from fastapi import FastAPI
@@ -339,8 +341,8 @@ def test_migration_upgrade_downgrade():
 
 # --- actor ------------------------------------------------------------------
 
-def _fn():
-    return getattr(dramatiq_app.discover_bottlenecks, "fn", dramatiq_app.discover_bottlenecks)
+def _fn() -> Callable[..., dict[str, Any]]:
+    return cast(Callable[..., dict[str, Any]], getattr(dramatiq_app.discover_bottlenecks, "fn", dramatiq_app.discover_bottlenecks))
 
 
 @pytest.fixture
