@@ -23,6 +23,9 @@ def _decimal_string(value: Decimal | None) -> str | None:
     return str(value) if value is not None else None
 
 
+MIN_PEER_SAMPLE = 3
+
+
 class PeerComparisonService:
     def __init__(self) -> None:
         self.metric_service = MetricCalculationService()
@@ -40,11 +43,20 @@ class PeerComparisonService:
         participants = [company, *peers]
         rows = [self._company_row(db, participant, metric_names, participant.id == company.id, refresh) for participant in participants]
 
+        # F26: un comparable sin ninguna metrica calculada (status ok) no es
+        # muestra. peer_count solo cuenta los que aportan dato; el resto se
+        # lista aparte para que la ausencia sea visible, nunca un 0.
+        peer_rows = [row for row in rows if not row["is_target"]]
+        with_data = [row for row in peer_rows if self._has_data(row)]
+        without_data = [row["ticker"] for row in peer_rows if not self._has_data(row)]
         return {
             "ticker": company.ticker,
             "basis": basis,
             "selection_trace": selection_trace,
-            "peer_count": len(peers),
+            "peer_count": len(with_data),
+            "peer_count_selected": len(peers),
+            "peers_without_data": without_data,
+            "min_peer_sample": MIN_PEER_SAMPLE,
             "metrics": metric_names,
             "benchmarks": self._benchmarks(rows, metric_names),
             "companies": rows,
@@ -269,6 +281,13 @@ class PeerComparisonService:
             "calculation_trace": trace,
         }
 
+    @staticmethod
+    def _has_data(row: dict) -> bool:
+        return any(
+            payload["status"] == "ok" and payload["value"] is not None
+            for payload in row["metrics"].values()
+        )
+
     def _benchmarks(self, rows: list[dict], metric_names: list[str]) -> dict:
         target = next((row for row in rows if row["is_target"]), None)
         benchmarks = {}
@@ -296,11 +315,18 @@ class PeerComparisonService:
                 if target_payload and target_payload["status"] == "ok" and target_payload["value"] is not None
                 else None
             )
-            peer_median = self._median(peer_values)
+            # F26: con n<3 una mediana es un unico comparable disfrazado de
+            # estadistico. Se omite; el valor del target sigue visible.
+            insufficient = len(peer_values) < MIN_PEER_SAMPLE
+            peer_median = None if insufficient else self._median(peer_values)
             benchmarks[metric] = {
                 "peer_median": _decimal_string(peer_median),
-                "peer_average": _decimal_string(sum(peer_values) / len(peer_values)) if peer_values else None,
+                "peer_average": None
+                if insufficient
+                else _decimal_string(sum(peer_values) / len(peer_values)),
                 "peer_sample_size": len(peer_values),
+                "insufficient_sample": insufficient,
+                "note": f"muestra insuficiente (n<{MIN_PEER_SAMPLE})" if insufficient else None,
                 "excluded_atypical": excluded_atypical,
                 "target_value": _decimal_string(target_value),
                 "target_atypical": (target_payload or {}).get("atypical"),

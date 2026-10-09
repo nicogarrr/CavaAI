@@ -106,6 +106,9 @@ type ResearchPeerComparison = {
   basis: string;
   selection_trace?: Record<string, unknown>;
   peer_count: number;
+  peer_count_selected?: number;
+  peers_without_data?: string[];
+  min_peer_sample?: number;
   metrics: string[];
   benchmarks: Record<
     string,
@@ -113,6 +116,8 @@ type ResearchPeerComparison = {
       peer_median: string | null;
       peer_average: string | null;
       peer_sample_size: number;
+      insufficient_sample?: boolean;
+      note?: string | null;
       // F153: valores atipicos etiquetados por el motor - visibles con su
       // etiqueta, excluidos de la mediana/promedio.
       excluded_atypical?: Array<{ ticker: string; value: string | null; atypical: string | null }>;
