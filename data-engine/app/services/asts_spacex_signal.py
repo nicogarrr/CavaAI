@@ -17,12 +17,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import Company, NewsEvent, Position, ResearchAlert, WatchItem
+from app.services.tracked_news_alerts import _valid_source_url
 
 VERSION = "asts-spacex-mno-v1"
 ALERT_TYPE = "asts_spacex_mno_signal"
 MAX_AGE = timedelta(hours=72)
 # Listas cerradas. Un termino fuera de ellas no dispara nada.
-_SPACEX = r"(?:spacex|starlink(?:\s+mobile)?|direct[\s-]to[\s-]cell)"
+_SPACEX = r"(?:spacex|starlink(?:\s+mobile)?)"
 _MNOS = (
     r"(?:at&t|verizon|t-mobile|tmobile|vodafone|orange\s+(?:sa|france)|telef[oó]nica|movistar|"
     r"deutsche\s+telekom|telstra|optus|rogers|bell\s+canada|rakuten|kddi|ntt|softbank|"
@@ -30,19 +31,35 @@ _MNOS = (
     r"liberty\s+global|echostar|bouygues|iliad|telecom\s+italia|tim\s+brasil|telus)"
 )
 _DEAL = (
-    r"(?:agreement|agrees?|deal|partner(?:s|ship|ed)?|signs?|signed|contract|"
-    r"acuerdo|alianza|firma(?:n|do)?|socio)"
+    r"(?:agreement|agrees?|agreed|deal|partner(?:s|ship|ed)?|signs?|signed|contract|"
+    r"acuerdo|alianza|firma(?:n|do)?)"
 )
-_RE_SPACEX = re.compile(rf"\b{_SPACEX}\b", re.IGNORECASE)
-_RE_MNO = re.compile(rf"(?<![\w]){_MNOS}(?![\w])", re.IGNORECASE)
-_RE_DEAL = re.compile(rf"\b{_DEAL}\b", re.IGNORECASE)
+# Hueco corto sin puntuacion de frase: actor y operadora en la misma oracion,
+# con el verbo de acuerdo entre ambos (en cualquiera de los dos ordenes).
+_GAP = r"[^.;:!?]{0,80}?"
+_RE_FORWARD = re.compile(rf"\b{_SPACEX}\b{_GAP}\b{_DEAL}\b{_GAP}(?<![\w]){_MNOS}(?![\w])", re.IGNORECASE)
+_RE_REVERSE = re.compile(rf"(?<![\w]){_MNOS}(?![\w]){_GAP}\b{_DEAL}\b{_GAP}\b{_SPACEX}\b", re.IGNORECASE)
+# Negaciones, cancelaciones, planes o rumores: no son un acuerdo cerrado.
+_RE_NOT_CLOSED = re.compile(
+    r"\b(?:den(?:y|ies|ied)|no|not|never|cancel(?:s|led|ed|ls)?|terminat\w*|collaps\w*|"
+    r"talks?|negotiat\w*|plans?|planning|could|may|might|would|reportedly|rumou?rs?|"
+    r"seeks?|eyes?|considers?|considering|fails?|failed|rejects?|rejected|drops?|dropped|ends?|ended|"
+    r"niega|negó|cancela|cancelad[oa]|rechaza|conversaciones|negocia\w*|planea|podr[ií]a|rumor\w*|"
+    r"sin acuerdo)\b",
+    re.IGNORECASE,
+)
+# Acuerdos de la propia AST: no son la senal (es el argumento que se vigila).
+_RE_AST = re.compile(r"\b(?:ast\s+spacemobile|ast\s+space\s+mobile|asts|ast)\b", re.IGNORECASE)
 
 
 def matches(headline: str | None) -> bool:
-    """SpaceX/Starlink + operadora de la lista + verbo de acuerdo, los tres."""
+    """Actor SpaceX/Starlink + operadora de la lista con verbo de acuerdo entre
+    ambos, sin negaciones/cancelaciones/planes y sin AST en el titular."""
     if not headline or not isinstance(headline, str):
         return False
-    return bool(_RE_SPACEX.search(headline) and _RE_MNO.search(headline) and _RE_DEAL.search(headline))
+    if _RE_AST.search(headline) or _RE_NOT_CLOSED.search(headline):
+        return False
+    return bool(_RE_FORWARD.search(headline) or _RE_REVERSE.search(headline))
 
 
 def _aware(value: datetime) -> datetime:
@@ -72,14 +89,21 @@ def evaluate(db: Session, *, now: datetime | None = None) -> dict:
     for event in rows:
         stats["examined"] += 1
         meta = event.metadata_ or {}
-        headline = meta.get("source_headline") or event.title
-        url = (event.url or "").strip()
+        # Solo el titular textual del conector: sin fallback a event.title
+        # (puede ser un resumen del pipeline no verificable).
+        headline = meta.get("source_headline")
+        url = _valid_source_url(event.url)
         # Misma procedencia que tracked_news: solo conectores de confianza y
         # fecha de la fuente o primera deteccion de GDELT.
-        if (not url.lower().startswith(("https://", "http://")) or not (event.source or "").strip()
+        date_source = meta.get("date_source")
+        # Filas GDELT antiguas dicen `source` aunque seendate es primera
+        # deteccion, no publicacion: no se mezclan (igual que tracked_news).
+        if meta.get("connector") == "gdelt" and date_source == "source":
+            date_source = "gdelt_first_seen"
+        if (not url or not (event.source or "").strip()
                 or meta.get("connector") not in {"gdelt", "rss", "ir", "sec"}
-                or meta.get("date_source") not in {"source", "gdelt_first_seen"}
-                or not matches(headline)):
+                or date_source not in {"source", "gdelt_first_seen"}
+                or not isinstance(headline, str) or not matches(headline)):
             stats["skipped"] += 1
             continue
         fp = hashlib.sha256(f"{VERSION}|{tenant_id}|{url}".encode()).hexdigest()
@@ -89,17 +113,20 @@ def evaluate(db: Session, *, now: datetime | None = None) -> dict:
             continue
         published = _aware(event.date)
         headline = headline.strip()
+        date_phrase = (f"detectado por GDELT el {published.date().isoformat()}" if date_source == "gdelt_first_seen"
+                       else f"fechado el {published.date().isoformat()} por la fuente")
         alert = ResearchAlert(
             tenant_id=tenant_id, company_id=asts.id, severity="high", status="open",
             alert_type=ALERT_TYPE, title=f"Señal ASTS: {headline}"[:300],
-            message=(f"Artículo de {event.source}, {published.date().isoformat()}: {headline}. "
+            message=(f"Artículo de {event.source}, {date_phrase}: {headline}. "
                      "Señal de vigilancia: si SpaceX cierra acuerdos con operadoras grandes, "
                      "el argumento de que el foso de AST son sus acuerdos con operadoras se debilita. "
                      "Revisa la fuente; el titular no confirma por sí solo los hechos."),
             fingerprint=fp, channels=["in_app"], last_triggered_at=now,
             metadata_={"news_event_id": event.id, "source_url": url, "source": event.source,
                        "published_at": published.isoformat(), "rule_version": VERSION,
-                       "date_source": meta.get("date_source"), "source_headline": headline},
+                       "date_label": "detectada por GDELT" if date_source == "gdelt_first_seen" else "fechada por la fuente",
+                       "date_source": date_source, "source_headline": headline},
         )
         try:
             with db.begin_nested():

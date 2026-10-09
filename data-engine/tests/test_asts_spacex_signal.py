@@ -20,14 +20,27 @@ def db():
     engine.dispose()
 
 
-def test_matches_requires_spacex_operator_and_deal():
+def test_matches_requires_spacex_actor_and_positive_closed_deal():
     assert matches("SpaceX signs agreement with Verizon for Starlink Mobile")
     assert matches("Starlink Mobile alcanza un acuerdo con Telefónica")
+    assert matches("Vodafone signs deal with Starlink")
     assert not matches("SpaceX launches Starlink satellites")
     assert not matches("Verizon signs agreement with AST SpaceMobile")
     assert not matches("SpaceX deal with a small regional carrier")
     assert not matches(None)
     assert not matches("Tim Cook signs agreement with SpaceX")
+
+
+def test_matches_rejects_denials_cancellations_plans_and_ast_deals():
+    assert not matches("SpaceX denies agreement with Verizon")
+    assert not matches("SpaceX deal with Verizon cancelled")
+    assert not matches("SpaceX and T-Mobile talks on a direct-to-cell deal")
+    assert not matches("SpaceX plans agreement with Vodafone")
+    assert not matches("SpaceX may sign deal with AT&T, sources say")
+    assert not matches("SpaceX niega un acuerdo con Telefónica")
+    assert not matches("Verizon signs agreement with AST SpaceMobile as SpaceX faces delays")
+    assert not matches("Direct-to-cell agreement signed with Verizon")  # sin actor SpaceX
+    assert not matches("SpaceX launches rockets. Verizon signs agreement with Nokia")  # otra oracion
 
 
 def _setup(db, *, watch=True):
@@ -85,3 +98,24 @@ def test_holder_without_watchlist_is_tracked(db):
     _news(db, t1, a, "Starlink Mobile partners with Telstra", "https://publisher.example/z")
     db.info["tenant_id"] = t1.id
     assert evaluate(db, now=NOW)["created"] == 1
+
+
+def test_title_fallback_is_not_used(db):
+    t1, _, a, s = _setup(db)
+    title = "SpaceX signs agreement with Verizon"
+    # Sin source_headline textual del conector: aunque el titulo coincida, no hay senal.
+    _news(db, t1, s, title, "https://publisher.example/nosrc", meta={"connector": "rss", "date_source": "source"})
+    db.info["tenant_id"] = t1.id
+    assert evaluate(db, now=NOW)["created"] == 0
+
+
+def test_url_without_host_and_gdelt_distinction(db):
+    t1, _, a, s = _setup(db)
+    title = "SpaceX signs agreement with Verizon"
+    _news(db, t1, s, title, "https://", meta={"connector": "rss", "date_source": "source", "source_headline": title})
+    _news(db, t1, s, title, "https://publisher.example/g", meta={"connector": "gdelt", "date_source": "source", "source_headline": title})
+    db.info["tenant_id"] = t1.id
+    assert evaluate(db, now=NOW)["created"] == 1
+    alert = db.scalars(select(ResearchAlert)).one()
+    assert "detectado por GDELT" in alert.message and alert.metadata_["date_source"] == "gdelt_first_seen"
+    assert alert.metadata_["source_url"] == "https://publisher.example/g"
