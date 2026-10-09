@@ -422,6 +422,8 @@ type ResearchAlert = {
   channels: string[];
   snoozed_until: string | null;
   created_at: string;
+  // URL ya validada por el backend (http/https con host); la UI la vuelve a validar.
+  source_url?: string | null;
 };
 
 type ResearchThesisGraph = {
