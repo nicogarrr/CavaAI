@@ -27,8 +27,8 @@ describe('procedencia OHLC', () => {
         assert.match(action, /metricsSession: metrics.timestamp \? sessionDateEt\(metrics.timestamp\)/);
         assert.doesNotMatch(action, /open: quote\?\.o/);
         const ui = readFileSync('components/research/CompanyHeaderQuote.tsx', 'utf8');
-        assert.match(ui, /hasDatedMetrics \? quote.open : null/);
-        assert.match(ui, /Fuente: \{quote.metricsSource\} · Sesión del/);
-        assert.match(ui, /\['Cierre anterior', null\]/);
+        assert.match(ui, /hasDatedMetrics \? quote!.open : null/);
+        assert.match(ui, /quote!\.source[\s\S]*Sesión regular del/);
+        assert.match(ui, /\['Cierre anterior', quote\?\.previous_close_timestamp \? quote.previous_close : null\]/);
     });
 });

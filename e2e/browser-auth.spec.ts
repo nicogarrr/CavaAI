@@ -61,7 +61,7 @@ test.describe("company research workspace", () => {
     const quote = page.getByTestId('company-header-quote');
     await expect(quote.getByText('336,56 US$', { exact: true })).toBeVisible();
     await expect(quote.getByTestId('company-metric-strip')).toBeVisible();
-    await expect(quote.getByText('Fuente: Fixture local · Sesión del 9 sept')).toBeVisible();
+    await expect(quote.getByText('Fixture local · Sesión regular del 2026-09-09 · 17:00 (Madrid)')).toBeVisible();
     await expect(page.getByRole("heading", { name: "Modelo fundamental a largo plazo" })).toBeVisible();
 
     await page.getByRole("link", { name: "Modelo a largo plazo", exact: true }).click();
