@@ -30,7 +30,8 @@ from app.services.number_format import format_compact_es
 from app.services.source_auditor import SourceAuditor
 from app.services.source_hierarchy_service import classify_source
 from app.services.thesis_context import retrieve_thesis_context
-from app.services.thesis_narrative_llm import evidence_sections, maybe_narrative, maybe_narrative_sections
+from app.services.thesis_narrative_llm import evidence_sections
+from app.services.thesis_news_narrative import prepare_news_narrative, sin_datos
 from app.services.thesis_provenance import (
     build_inputs_provenance,
     classify_origin,
@@ -316,10 +317,13 @@ class ThesisService:
         escrito por esta generación (nunca ``db.rollback()`` global, que
         descartaría trabajo ajeno pendiente en la sesión).
         """
+        # La narrativa se prepara sin transacción de tesis ni sesión en red.
+        narrative_sections = prepare_news_narrative(db, ticker)
         savepoint = db.begin_nested()
         try:
             thesis = self._generate_atomic(
-                db, ticker, force_new_version, phase_callback, savepoint=savepoint
+                db, ticker, force_new_version, phase_callback, savepoint=savepoint,
+                prepared_narrative=narrative_sections,
             )
         except Exception as exc:
             # Guard the savepoint: the phase callback and _generate_atomic both
@@ -347,6 +351,7 @@ class ThesisService:
         force_new_version: bool = False,
         phase_callback=None,
         savepoint=None,
+        prepared_narrative=None,
     ) -> ThesisVersion:
         def _phase(name: str) -> None:
             if phase_callback is not None:
@@ -444,19 +449,13 @@ class ThesisService:
         scenario_probabilities = self._scenario_probabilities(long_term_model)
 
         summary = self._card_summary(company, valuation, hypothesis, news_items)
-        # Capa 2 (opcional, THESIS_NARRATIVE_LLM_ENABLED=1): narrativa LLM
-        # verificada. Fail-closed: cualquier problema devuelve la capa 1.
-        summary = maybe_narrative(
-            db, company, valuation, hypothesis, news_items, summary
-        )
-        # Analisis narrativo por secciones (misma capa y mismas garantias;
-        # None = sin seccion, nunca bloquea la publicacion).
+        # El resumen conserva los datos deterministas; el LLM redacta el
+        # análisis de noticias debajo, sin otra llamada de selección de plantillas.
+        # Narrativa libre INFERIDA desde noticias reales; fallo => "Sin datos".
+        # Usa solo el modelo gratuito configurado, sin scheduler.
         filing_items = ((evidence.get("sources") or {}).get("filings") or {}).get("items") or []
         rag_context = retrieve_thesis_context(db, company)
-        narrative_sections = maybe_narrative_sections(
-            db, company, valuation, hypothesis, news_items,
-            filing_items=filing_items, rag_context=rag_context,
-        )
+        narrative_sections = prepared_narrative or sin_datos()
         thesis_markdown = self._render_markdown(
             company,
             valuation,
@@ -484,6 +483,11 @@ class ThesisService:
 
         thesis_markdown += "\n\n## 23. Contexto y citas documentales\n"
         for section in evidence_sections(filing_items, rag_context).values():
+            thesis_markdown += f"\n### {section['titulo']}\n"
+            thesis_markdown += "\n\n".join(section["parrafos"]) + "\n"
+
+        thesis_markdown += "\n\n## 24. Análisis narrativo INFERIDO\n"
+        for section in narrative_sections:
             thesis_markdown += f"\n### {section['titulo']}\n"
             thesis_markdown += "\n\n".join(section["parrafos"]) + "\n"
 
