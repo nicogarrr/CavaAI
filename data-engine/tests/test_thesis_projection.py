@@ -221,6 +221,41 @@ def test_stored_assumption_labeling_is_fail_closed(db, valued):
     assert "sin documento con url y fecha" in growth["base"]
 
 
+def test_official_rate_exposes_url_and_date(db, valued):
+    # Rama OFICIAL completa: la url y la fecha verificadas llegan al payload.
+    doc = Document(
+        company_id=1,
+        title="Guidance FY2025",
+        source_type="primary_official",
+        source_url="https://www.sec.gov/guidance",
+        published_at=datetime(2025, 2, 1, tzinfo=UTC),
+    )
+    db.add(doc)
+    db.flush()
+    model = ValuationModel(
+        company_id=1, model_type="dcf", version=1, status="final"
+    )
+    db.add(model)
+    db.flush()
+    db.add(
+        ValuationAssumption(
+            valuation_model_id=model.id,
+            name="revenue_growth",
+            value=Decimal("0.50"),
+            scenario="base",
+            year=2025,
+            source_type="SEC",
+            source_id=doc.id,
+        )
+    )
+    db.commit()
+    growth = project(db)["escenarios"]["base"]["proyecciones"][0]["crecimiento"]
+    assert growth["valor"] == pytest.approx(0.50)
+    assert growth["etiqueta"] == "OFICIAL"
+    assert growth["fuente_url"] == "https://www.sec.gov/guidance"
+    assert growth["fuente_fecha"] == "2025-02-01"
+
+
 def test_scenario_spread_and_burn_rule(db, valued):
     payload = project(db)
     first = {

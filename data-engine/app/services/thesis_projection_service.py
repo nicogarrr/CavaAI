@@ -136,12 +136,16 @@ class RateAssumption:
     label: str
     base: str | None
     source_urls: tuple[str, ...] = ()
+    source_url: str | None = None
+    source_date: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
             "valor": self.value,
             "etiqueta": self.label,
             "base": self.base,
+            "fuente_url": self.source_url,
+            "fuente_fecha": self.source_date,
         }
         if self.source_urls:
             out["source_urls"] = list(self.source_urls)
@@ -383,18 +387,24 @@ class ThesisProjectionService:
             as_of=as_of,
             label=f"asuncion {company.ticker} {stored.name}",
         )
+        # La url y la fecha verificadas viajan al contrato: afirmar la
+        # oficialidad sin exponer su procedencia la haria inspeccionable.
         if verified.verified_official:
             return RateAssumption(
                 _num(stored.value),
                 LABEL_OFICIAL,
                 f"asuncion de valoracion persistida (tipo {stored.source_type}, "
                 f"documento verificado con url y fecha)",
+                source_url=verified.url,
+                source_date=verified.fecha,
             )
         return RateAssumption(
             _num(stored.value),
             LABEL_INFERIDO,
             f"asuncion de valoracion persistida (tipo {stored.source_type}, "
             f"sin documento con url y fecha verificables)",
+            source_url=verified.url,
+            source_date=verified.fecha,
         )
 
     @staticmethod
