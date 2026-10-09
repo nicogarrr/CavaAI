@@ -10,6 +10,7 @@ from app.core.config import get_settings
 from app.core.database import SessionLocal
 from app.models import ResearchAlert, Tenant
 from app.models.entities import TypeSafeStatus
+from app.services.notification_service import record_in_app_delivery
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +59,7 @@ def mark_credit_exhausted() -> None:
             tenants = db.scalars(select(Tenant).where(Tenant.status == "active")).all()
             mode = get_settings().typesafe_fallback
             for tenant in tenants:
-                db.add(ResearchAlert(
+                alert = ResearchAlert(
                     tenant_id=tenant.id, alert_type="typesafe_credit_exhausted",
                     severity="medium", status="open", title="Crédito de TypeSafe agotado",
                     message=("JEV usa el proveedor alternativo configurado para las etiquetas "
@@ -67,8 +68,10 @@ def mark_credit_exhausted() -> None:
                              "JEV está desactivado; se usa el flujo habitual sin sus etiquetas."),
                     fingerprint=f"typesafe_credit_exhausted:{tenant.id}",
                     channels=["in_app"], metadata_={"changed_at": now.isoformat()},
-                ))
+                )
+                db.add(alert)
                 db.flush()
+                record_in_app_delivery(db, alert)
             db.commit()
     except Exception:  # noqa: BLE001
         global _PERSISTENCE_BROKEN

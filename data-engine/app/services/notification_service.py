@@ -20,6 +20,41 @@ STALE_CLAIM_SECONDS = 600
 RETRY_AFTER_CAP_SECONDS = 3600
 
 
+def record_in_app_delivery(db: Session, alert: ResearchAlert) -> None:
+    """Registra la entrega del canal in_app de una alerta creada sin dispatch.
+
+    Una alerta in_app esta entregada en cuanto existe en la app: la fila deja el
+    estado real y la UI no muestra "sin registro de entrega". No envia nada
+    externo (telegram/correo/push siguen su propio camino) y es idempotente
+    (UNIQUE alert_id+canal). No hace commit: va en la transaccion del creador.
+    """
+    if "in_app" not in (alert.channels or []):
+        return
+    if alert.id is None:
+        db.flush()
+    exists = db.scalar(
+        select(AlertDelivery.id).where(
+            AlertDelivery.alert_id == alert.id, AlertDelivery.channel == "in_app"
+        )
+    )
+    if exists is not None:
+        return
+    try:
+        with db.begin_nested():
+            db.add(
+                AlertDelivery(
+                    tenant_id=alert.tenant_id,
+                    alert_id=alert.id,
+                    channel="in_app",
+                    status="delivered",
+                    attempts=1,
+                )
+            )
+            db.flush()
+    except IntegrityError:
+        pass
+
+
 class NotificationService:
     """Dispatch alert channels without coupling research logic to one vendor."""
 
