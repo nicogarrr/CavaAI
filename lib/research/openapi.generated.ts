@@ -1213,7 +1213,7 @@ export interface paths {
         put?: never;
         /**
          * Recalcular Thesis 5Y
-         * @description Recalcula y persiste la proyeccion. Cuota diaria por tenant.
+         * @description Recalcula y persiste la proyeccion. Cuota diaria por tenant, serializada.
          */
         post: operations["recalcular_thesis_5y_api_companies__ticker__thesis_5y_recalcular_post"];
         delete?: never;
