@@ -321,3 +321,26 @@ def test_identity_failures_reject_before_any_write(xml):
     db.rollback()
     assert _tickers(db) == ["ASTS", "NVDA"]
     db.close()
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        '<Trades><Trade accountId="U2" tradeID="FOREIGN1" symbol="ZETA" quantity="1" tradePrice="1" tradeDate="20261008" buySell="BUY"/></Trades>',
+        '<CashTransactions><CashTransaction accountId="U2" transactionID="FOREIGN2" type="Dividends" amount="5" currency="USD" symbol="ASTS" dateTime="20261008"/></CashTransactions>',
+        '<CashReport><CashReportCurrency accountId="U2" currency="EUR" endingCash="1"/></CashReport>',
+        '<CashReport accountId="U2" currency="EUR" endingCash="1"/>',
+    ],
+)
+def test_foreign_account_rows_of_any_type_reject_before_any_write(row):
+    from app.models import Transaction
+
+    db, service = _seeded()
+    xml = _fresh(CASH + POSITION).replace("</FlexStatement>", row + "</FlexStatement>")
+    before_tx = db.query(Transaction).count()
+    with pytest.raises(Exception, match="rechazado"):
+        service.import_flex_xml(db, xml, expected_account_id=ACCT)
+    db.rollback()
+    assert db.query(Transaction).count() == before_tx
+    assert _tickers(db) == ["ASTS", "NVDA"]
+    db.close()

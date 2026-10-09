@@ -355,12 +355,13 @@ def _statement_identity_blockers(
             reasons.append("toDate esta en el futuro")
         elif to_date < today - timedelta(days=max_age_days):
             reasons.append(f"el extracto es mas antiguo de {max_age_days} dias")
-    for element in statement.iter():
-        if _tag_name(element) in ("OpenPosition", "CashReportCurrency"):
-            row_account = (element.attrib.get("accountId") or "").strip().upper()
-            if row_account and row_account != expected:
-                reasons.append("hay filas de otra cuenta")
-                break
+    # Cualquier fila con accountId (Trade, CashTransaction, CashReport, ...) debe ser
+    # de la cuenta esperada: no entra nada de otra cuenta.
+    for element in root.iter():
+        row_account = (element.attrib.get("accountId") or "").strip().upper()
+        if row_account and row_account != expected:
+            reasons.append("hay filas de otra cuenta")
+            break
     return reasons
 
 
