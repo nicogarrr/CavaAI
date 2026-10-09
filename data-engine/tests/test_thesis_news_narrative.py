@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
+from sqlalchemy import select
 
 from app.llm import LLMRequest, Message
 from app.llm.errors import ProviderResponseError
@@ -287,13 +288,44 @@ def test_real_session_snapshot_budget_and_retry_release_connections(context, mon
         assert provider.calls == 2
         assert not db.in_transaction()
         assert not checked_out
+    engine.dispose()
+
+
+def test_open_caller_transaction_is_untouched_and_narrative_still_runs(context, monkeypatch, tmp_path):
+    """El camino habitual (get_db ya en transaccion) NO salta la narrativa y no se toca su trabajo."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    from app.models.entities import Base, Company, NewsEvent
+    from app.services.budget import BudgetController
+    monkeypatch.setattr(svc, "BudgetController", BudgetController)
+    engine = create_engine(f"sqlite:///{tmp_path / 'n.db'}")
+    Base.metadata.create_all(engine)
+    with Session(engine) as seed:
+        company = Company(ticker="META", name="Meta", exchange="NASDAQ",
+                          company_type="holding", valuation_model="unassigned")
+        seed.add(company)
+        seed.flush()
+        seed.add(NewsEvent(id=17, company_id=company.id, title=ITEM["source_headline"],
+                           date=datetime(2026, 10, 8, 10, tzinfo=UTC), source="Medio",
+                           url=ITEM["url"], metadata_={"source_headline": ITEM["source_headline"]}))
+        seed.commit()
+    with Session(engine) as db:
+        db.scalar(select(Company).where(Company.ticker == "META"))  # abre la transaccion, como get_db
+        assert db.in_transaction()
         db.begin_nested()
-        provider.calls = 0
-        # No commit/rollback de trabajo ajeno, tampoco red dentro de savepoint.
-        assert svc.prepare_news_narrative(db, "META", provider=provider, now=NOW) == svc.sin_datos()
-        assert provider.calls == 0
-        assert db.in_nested_transaction()
+        pending = Company(ticker="PEND", name="Pendiente", exchange="NASDAQ",
+                          company_type="holding", valuation_model="unassigned")
+        db.add(pending)  # pendiente sin flush: SQLite no admite 2 escritores (Postgres si)
+        provider = Provider()
+        result = svc.prepare_news_narrative(db, "META", provider=provider, now=NOW)
+        assert result != svc.sin_datos() and provider.calls == 1
+        # El trabajo pendiente del llamador sigue ahi, sin commit ni rollback ajenos.
+        assert db.in_nested_transaction() and db.in_transaction()
+        assert pending in db.new
         db.rollback()
+    with Session(engine) as check:
+        assert check.scalar(select(Company).where(Company.ticker == "PEND")) is None
     engine.dispose()
 
 

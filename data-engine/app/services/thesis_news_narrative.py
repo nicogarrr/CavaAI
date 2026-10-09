@@ -184,9 +184,11 @@ def maybe_news_narrative_sections(db, company, news_items, *, provider=None, now
     if os.getenv("THESIS_NARRATIVE_LLM_ENABLED") != "1":
         return sin_datos()
     try:
-        # Nunca finaliza ni mueve una transacción del llamador a otro hilo.
-        if isinstance(db, Session) and db.in_transaction():
-            return sin_datos()
+        # Nunca finaliza ni mueve la transacción del llamador: lectura y
+        # presupuesto usan sesiones cortas propias (otra conexión) y la red solo
+        # recibe escalares. Si el llamador ya tiene transacción abierta, su
+        # conexión queda retenida (sin tocar) durante la llamada, acotada a
+        # NETWORK_TIMEOUT_SECONDS.
         headlines = news_context(list(news_items or []), now or datetime.now(UTC))
         if not headlines:
             return sin_datos()
@@ -242,10 +244,11 @@ def maybe_news_narrative_sections(db, company, news_items, *, provider=None, now
 def prepare_news_narrative(db: Session, ticker: str, *, provider=None, now=None) -> list[dict]:
     """Snapshot de escalares antes de abrir el savepoint de generación.
 
-    Si existe una transacción del llamador, no se altera y no se hace red.
-    La sesión de lectura se cierra antes de presupuesto/LLM.
+    La transacción del llamador, si existe, no se toca: se lee con una sesión
+    corta independiente (solo datos ya persistidos) y se cierra antes de
+    presupuesto/LLM.
     """
-    if db.in_transaction() or os.getenv("THESIS_NARRATIVE_LLM_ENABLED") != "1":
+    if os.getenv("THESIS_NARRATIVE_LLM_ENABLED") != "1":
         return sin_datos()
     try:
         with Session(bind=db.get_bind()) as short:
