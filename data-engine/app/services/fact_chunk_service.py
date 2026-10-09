@@ -23,6 +23,14 @@ FACT_SOURCES = ("SEC", "ESEF")
 _YEAR_RE = re.compile(r"ejercicio fiscal (\d{4})")
 
 
+def _tombstone_text(company: Company, source: str, year: int | None) -> str:
+    label = f"ejercicio fiscal {year}" if year is not None else "ejercicio sin determinar"
+    return (
+        f"{company.name} ({company.ticker}) - {label} (fuente {source}): "
+        "hechos retirados, ya no vigentes. Sin cifras."
+    )
+
+
 def _referenced_chunk_ids(db: Session, chunk_ids: list[int]) -> set[int]:
     """Ids de chunk citados por evidencia o candidatos KPI (FK sin ON DELETE)."""
     if not chunk_ids:
@@ -137,7 +145,8 @@ def sync_company_fact_chunks(db: Session, company: Company) -> dict[str, int]:
             for year, year_facts in by_year.items()
         }
         # Reconcilia POR EJERCICIO y en sitio: un chunk citado por evidencia no
-        # se puede borrar sin romper su FK; conserva su id al refrescar sus cifras.
+        # se puede borrar sin romper su FK; conserva su id al refrescar sus cifras
+        # y, si su ejercicio desaparece, queda como lapida sin cifras.
         existing = list(
             db.scalars(select(DocumentChunk).where(DocumentChunk.document_id == document.id)).all()
         )
@@ -153,6 +162,11 @@ def sync_company_fact_chunks(db: Session, company: Company) -> dict[str, int]:
                 chunk.token_count = len(texts[year].split())
                 kept.append((year, chunk))
             elif chunk.id in referenced:
+                # Citado pero sin hechos vigentes: lapida SIN cifras. La FK
+                # impide borrarlo; el RAG no debe recuperar cifras retiradas.
+                chunk.text = _tombstone_text(company, source, year)
+                chunk.token_count = len(chunk.text.split())
+                chunk.metadata_ = {**(chunk.metadata_ or {}), "obsolete": True}
                 kept.append((year if year is not None else -1, chunk))
             else:
                 db.delete(chunk)

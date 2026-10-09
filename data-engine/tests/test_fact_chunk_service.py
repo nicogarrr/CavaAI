@@ -3,8 +3,8 @@
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import create_engine, select
-from sqlalchemy.orm import Session
+from sqlalchemy import create_engine, event, select
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.models.entities import (
     Base,
@@ -132,3 +132,56 @@ def test_sync_keeps_chunk_ids_cited_by_evidence(db):
     assert [c.id for c in chunks] == [cited_id]
     assert "beneficio neto" in chunks[0].text
     assert chunks[0].chunk_index == 0
+
+
+@pytest.fixture
+def fk_db():
+    """FK ON y sin ON DELETE, como el esquema real de prod (alembic 0004)."""
+    saved = []
+    for table in Base.metadata.tables.values():
+        for fk in table.foreign_keys:
+            saved.append((fk, fk.ondelete))
+            fk.ondelete = None
+            if fk.constraint is not None:
+                fk.constraint.ondelete = None
+    engine = create_engine("sqlite:///:memory:")
+
+    @event.listens_for(engine, "connect")
+    def _fk_on(conn, _rec):  # pragma: no cover - trivial
+        conn.execute("PRAGMA foreign_keys=ON")
+
+    try:
+        Base.metadata.create_all(engine)
+    finally:
+        for fk, action in saved:
+            fk.ondelete = action
+            if fk.constraint is not None:
+                fk.constraint.ondelete = action
+    with sessionmaker(bind=engine, expire_on_commit=False)() as session:
+        yield session
+    engine.dispose()
+
+
+def test_cited_chunk_of_removed_year_becomes_figureless_tombstone(fk_db):
+    db = fk_db
+    company = _company(db)
+    db.add(Document(company_id=company.id, title="SEC XBRL facts - TEF", source_type="SEC"))
+    db.flush()
+    _fact(db, company, "revenue", 100, 2024, source="SEC")
+    sync_company_fact_chunks(db, company)
+    chunk = db.scalars(select(DocumentChunk)).one()
+    db.add(EvidenceSuggestion(document_chunk_id=chunk.id, statement="x"))
+    db.flush()
+    cited_id = chunk.id
+
+    db.query(FinancialFact).delete()
+    stats = sync_company_fact_chunks(db, company)
+
+    assert stats["chunks"] == 0
+    kept = db.scalars(select(DocumentChunk)).one()
+    assert kept.id == cited_id
+    assert "100" not in kept.text and "ingresos" not in kept.text
+    assert "ya no vigentes" in kept.text
+    assert kept.metadata_.get("obsolete") is True
+    sync_company_fact_chunks(db, company)
+    assert db.scalars(select(DocumentChunk)).one().text == kept.text
