@@ -30,10 +30,14 @@ def news_events(
     limit: Annotated[int, Query(ge=1, le=100)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
     lane: Literal["empresa", "macro"] | None = None,
+    ticker: Annotated[str | None, Query(max_length=20)] = None,
 ) -> list[dict]:
     """Eventos por pagina (scroll infinito). ``lane`` filtra en SQL:
-    ``empresa`` = atribuido a una empresa real; ``macro`` = carril macro GDELT."""
+    ``empresa`` = atribuido a una empresa real; ``macro`` = carril macro GDELT.
+    ``ticker`` limita a los eventos de esa empresa (ficha de accion)."""
     stmt = select(NewsEvent, Company).outerjoin(Company, NewsEvent.company_id == Company.id)
+    if ticker:
+        stmt = stmt.where(Company.ticker == ticker.strip().upper())
     if lane == "empresa":
         stmt = stmt.where(NewsEvent.company_id.is_not(None))
     elif lane == "macro":

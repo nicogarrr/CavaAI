@@ -2283,6 +2283,7 @@ export interface paths {
          * News Events
          * @description Eventos por pagina (scroll infinito). ``lane`` filtra en SQL:
          *     ``empresa`` = atribuido a una empresa real; ``macro`` = carril macro GDELT.
+         *     ``ticker`` limita a los eventos de esa empresa (ficha de accion).
          */
         get: operations["news_events_api_news_get"];
         put?: never;
@@ -12847,6 +12848,7 @@ export interface operations {
                 limit?: number;
                 offset?: number;
                 lane?: ("empresa" | "macro") | null;
+                ticker?: string | null;
             };
             header?: {
                 "x-cavaai-user"?: string | null;
