@@ -1,4 +1,7 @@
-import type { PortfolioForecast } from '@/lib/actions/portfolio.actions';
+import type {
+  PortfolioForecast,
+  PortfolioForecastExcluded,
+} from '@/lib/actions/portfolio.actions';
 import { Panel } from '@/components/ui/panel';
 
 const SCENARIO_LABELS: Record<string, string> = {
@@ -7,36 +10,98 @@ const SCENARIO_LABELS: Record<string, string> = {
   bull: 'Toro',
 };
 
+function fmtNumber(digits: number) {
+  return new Intl.NumberFormat('es-ES', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
 function pct(value: number | null | undefined, digits = 1): string {
-  if (value === null || value === undefined || Number.isNaN(value)) return 'Sin datos';
-  return `${(value * 100).toFixed(digits)}%`;
+  if (value === null || value === undefined || !Number.isFinite(value)) return 'Sin datos';
+  return `${fmtNumber(digits).format(value * 100)}%`;
 }
 
 function signedPct(value: number | null | undefined, digits = 1): string {
-  if (value === null || value === undefined || Number.isNaN(value)) return 'Sin datos';
-  const rendered = (value * 100).toFixed(digits);
+  if (value === null || value === undefined || !Number.isFinite(value)) return 'Sin datos';
+  const rendered = fmtNumber(digits).format(value * 100);
   return value > 0 ? `+${rendered}%` : `${rendered}%`;
 }
 
+function Veracity({ value }: { value: string }) {
+  if (value === 'OFICIAL') {
+    return <span className="text-gray-500">{value}</span>;
+  }
+  return <span className="text-amber-400">{value}</span>;
+}
+
+function ExcludedList({ items }: { items: PortfolioForecastExcluded[] }) {
+  return (
+    <div className="rounded-lg border border-amber-900/70 bg-amber-950/20 p-3">
+      <p className="text-sm font-medium text-amber-200">Excluidas del cálculo:</p>
+      <ul className="mt-1 space-y-1 text-sm text-amber-100/80">
+        {items.map((item) => (
+          <li key={item.ticker}>
+            {item.ticker} — {pct(item.weight)} de la cartera. {item.reason}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function AssumptionList({ items }: { items: string[] }) {
+  return (
+    <ul className="list-disc space-y-1 pl-5 text-xs leading-5 text-gray-500">
+      {items.map((assumption) => (
+        <li key={assumption}>{assumption}</li>
+      ))}
+    </ul>
+  );
+}
+
 /**
- * Prevision de rentabilidad a ~5 anos desde el valor intrinseco.
- * Toda cifra viene del endpoint determinista /api/portfolio/forecast:
- * los precios son OFICIALES (fuente + fecha por posicion) y los valores
- * intrinsecos INFERIDOS (tesis/modelo vigente, version visible). Lo que
- * no tiene tesis se lista aparte con su peso; nunca se inventa un cero.
+ * Hipótesis de convergencia: proxy anual de cuánto aporta cada posición si su
+ * tesis converge al valor intrínseco en su propio horizonte. NO es una
+ * previsión de rentabilidad de la cartera: son contribuciones ponderadas del
+ * subset valorado. Toda cifra viene del endpoint determinista
+ * /api/portfolio/forecast; la veracidad del precio se rotula por fila
+ * (OFICIAL / MANUAL / NO VERIFICADA, con fuente y fecha) y los valores
+ * intrínsecos son INFERIDOS (tesis/modelo vigente, versión visible). Lo que no
+ * entra en el cálculo se lista aparte con su motivo; nunca se inventa un cero.
  */
 export default function PortfolioForecast({ forecast }: { forecast: PortfolioForecast }) {
   const portfolio = forecast.portfolio;
   if (!portfolio) {
+    const hasInput = forecast.positions.length > 0 || forecast.excluded.length > 0;
     return (
-      <Panel title="Prevision a 5 anos">
-        <p className="text-sm text-gray-400">Sin posiciones: no hay prevision que calcular.</p>
+      <Panel title="Hipótesis de convergencia">
+        {hasInput ? (
+          <div className="space-y-3">
+            <p className="text-sm text-amber-200">
+              No calculable como cartera: hay posiciones sin conversión a una moneda base
+              común o sin precio convertible. Sin agregado fiable no se muestra ninguno.
+            </p>
+            {forecast.excluded.length > 0 ? <ExcludedList items={forecast.excluded} /> : null}
+            {forecast.assumptions.length > 0 ? (
+              <AssumptionList items={forecast.assumptions} />
+            ) : null}
+          </div>
+        ) : (
+          <p className="text-sm text-gray-400">
+            Sin posiciones: no hay hipótesis de convergencia que agregar.
+          </p>
+        )}
       </Panel>
     );
   }
   const scenarioOrder = ['bear', 'base', 'bull'] as const;
   return (
     <div className="space-y-6">
+      <p className="text-xs text-gray-500">
+        Contribuciones del subset valorado (proxy anual: cada tesis converge en su propio
+        horizonte). No es la rentabilidad total de la cartera.
+      </p>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {scenarioOrder.map((key) => {
           const scenario = portfolio.scenarios?.[key];
@@ -47,39 +112,44 @@ export default function PortfolioForecast({ forecast }: { forecast: PortfolioFor
                 {scenario ? signedPct(scenario.contribution_cagr) : 'Sin datos'}
               </p>
               <p className="mt-1 text-xs text-gray-500">
-                Contribucion anual · aporte total {scenario ? signedPct(scenario.contribution_total_return) : 'Sin datos'}
+                Contribución anual · aporte total {scenario ? signedPct(scenario.contribution_total_return) : 'Sin datos'}
+              </p>
+              <p className="mt-1 text-xs text-gray-500">
+                {scenario
+                  ? `Cobertura ${pct(scenario.coverage)} del subset valorado`
+                  : 'Cobertura Sin datos'}
                 {scenario?.horizon_scope === 'mixed' ? ' · horizontes mezclados (proxy anual)' : ''}
               </p>
             </div>
           );
         })}
         <div className="rounded-lg border border-teal-900/60 bg-teal-950/20 p-4">
-          <p className="text-xs uppercase tracking-wide text-teal-300">Esperado ponderado</p>
+          <p className="text-xs uppercase tracking-wide text-teal-300">Esperado del CAGR</p>
           <p className="mt-1 text-2xl font-semibold text-teal-100">
             {signedPct(portfolio.expected_cagr)}
           </p>
           <p className="mt-1 text-xs text-gray-500">
             {portfolio.expected_cagr !== null
-              ? 'Probabilidades propias de cada tesis, ponderadas por tu peso real.'
-              : 'Solo se emite con cobertura completa de la cartera valorada; abajo van las contribuciones por posicion.'}
+              ? 'Media ponderada por probabilidad de los CAGR por escenario (esperado del CAGR, no el CAGR del valor esperado). Solo con masa completa y cobertura total.'
+              : 'Solo se emite con masa completa y cobertura total de la cartera valorada; abajo van las contribuciones y esperados parciales con su masa.'}
           </p>
         </div>
       </div>
       <Panel
-        title="Por posicion"
-        description={`Cobertura: ${portfolio.covered_weight !== null ? pct(portfolio.covered_weight) : 'Sin datos (hay posiciones sin conversion; pesos sobre el subset valorado)'} de la cartera con tesis computable (${portfolio.covered_count} de ${portfolio.position_count} posiciones). Precios OFICIALES con fuente y fecha; valores intrinsecos INFERIDOS del modelo vigente.`}
+        title="Por posición"
+        description={`Cobertura: ${portfolio.covered_weight !== null ? pct(portfolio.covered_weight) : 'Sin datos (hay posiciones sin conversión; pesos sobre el subset valorado)'} de la cartera con tesis computable (${portfolio.covered_count} de ${portfolio.position_count} posiciones). Veracidad del precio rotulada por fila con fuente y fecha; valores intrínsecos INFERIDOS del modelo vigente.`}
       >
-        <div className="overflow-x-auto" role="region" aria-label="Prevision por posicion" tabIndex={0}>
+        <div className="overflow-x-auto" role="region" aria-label="Contribuciones por posición" tabIndex={0}>
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-gray-800 text-xs uppercase tracking-wide text-gray-500">
-                <th className="py-2 pr-4">Posicion</th>
+                <th className="py-2 pr-4">Posición</th>
                 <th className="py-2 pr-4">Peso</th>
                 <th className="py-2 pr-4">Oso</th>
                 <th className="py-2 pr-4">Base</th>
                 <th className="py-2 pr-4">Toro</th>
-                <th className="py-2 pr-4">Esperado</th>
-                <th className="py-2">Base del calculo</th>
+                <th className="py-2 pr-4">Esperado del CAGR</th>
+                <th className="py-2">Base del cálculo</th>
               </tr>
             </thead>
             <tbody>
@@ -99,12 +169,12 @@ export default function PortfolioForecast({ forecast }: { forecast: PortfolioFor
                     {item.expected_cagr !== null
                       ? signedPct(item.expected_cagr)
                       : item.partial_expected_cagr !== null
-                        ? `Parcial ${signedPct(item.partial_expected_cagr)}`
+                        ? `Parcial ${signedPct(item.partial_expected_cagr)} · masa ${pct(item.probability_mass, 0)}`
                         : 'Sin datos'}
                   </td>
                   <td className="py-2 text-xs text-gray-500">
-                    Precio {item.price_source} · {item.price_as_of} · tesis v{item.thesis_version} ({item.thesis_status})
-                    {item.model_version !== null ? ` · modelo v${item.model_version}` : ''} · {item.horizon_years} anos
+                    Precio {item.price_source} · <Veracity value={item.price_veracity} /> · {item.price_as_of} · tesis v{item.thesis_version} ({item.thesis_status})
+                    {item.model_version !== null ? ` · modelo v${item.model_version}` : ''} · {item.horizon_years} años
                   </td>
                 </tr>
               ))}
@@ -112,24 +182,13 @@ export default function PortfolioForecast({ forecast }: { forecast: PortfolioFor
           </table>
         </div>
         {forecast.excluded.length > 0 ? (
-          <div className="mt-4 rounded-lg border border-amber-900/70 bg-amber-950/20 p-3">
-            <p className="text-sm font-medium text-amber-200">Fuera de la prevision (sin tesis computable):</p>
-            <ul className="mt-1 space-y-1 text-sm text-amber-100/80">
-              {forecast.excluded.map((item) => (
-                <li key={item.ticker}>
-                  {item.ticker} — {pct(item.weight)} de la cartera. {item.reason}
-                </li>
-              ))}
-            </ul>
+          <div className="mt-4">
+            <ExcludedList items={forecast.excluded} />
           </div>
         ) : null}
       </Panel>
       <Panel title="Supuestos" density="compact">
-        <ul className="list-disc space-y-1 pl-5 text-xs leading-5 text-gray-500">
-          {forecast.assumptions.map((assumption) => (
-            <li key={assumption}>{assumption}</li>
-          ))}
-        </ul>
+        <AssumptionList items={forecast.assumptions} />
       </Panel>
     </div>
   );

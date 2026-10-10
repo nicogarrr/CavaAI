@@ -744,7 +744,8 @@ export type PortfolioForecastPosition = {
   partial_expected_cagr: number | null;
   contribution_expected: number | null;
   weight_scope: 'total_portfolio' | 'valued_subset';
-  price_veracity?: string;
+  price_veracity: 'OFICIAL' | 'MANUAL/NO OFICIAL' | 'NO VERIFICADA';
+  probability_mass: number | null;
   comparison_basis?: string;
 };
 
