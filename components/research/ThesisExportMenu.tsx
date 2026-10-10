@@ -24,18 +24,18 @@ export default function ThesisExportMenu({ ticker }: { ticker: string }) {
         Exportar
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start">
-        <DropdownMenuItem asChild>
+        <DropdownMenuItem asChild className="min-h-[44px] sm:min-h-0">
           <a href="/export">Journal (.zip)</a>
         </DropdownMenuItem>
-        <DropdownMenuItem asChild>
+        <DropdownMenuItem asChild className="min-h-[44px] sm:min-h-0">
           <a href={`/api/thesis-memo/${encoded}`}>Memo de la tesis</a>
         </DropdownMenuItem>
-        <DropdownMenuItem asChild>
+        <DropdownMenuItem asChild className="min-h-[44px] sm:min-h-0">
           <a href={`/api/thesis/${encoded}/epub`} download>
             EPUB
           </a>
         </DropdownMenuItem>
-        <DropdownMenuItem asChild>
+        <DropdownMenuItem asChild className="min-h-[44px] sm:min-h-0">
           <a href={`/api/thesis/${encoded}/obsidian.zip`} download>
             Obsidian (.zip)
           </a>

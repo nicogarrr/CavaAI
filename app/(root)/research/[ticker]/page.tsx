@@ -173,6 +173,16 @@ function moduleHref(ticker: string, module: (typeof MODULES)[number]): string {
   return 'path' in module ? `${base}/${module.path}` : `${base}?view=${module.key}`;
 }
 
+
+/** Fecha de la noticia con su provenance: nunca afirmar fecha de publicacion
+ *  cuando es el fallback de ingesta o no hay metadato. */
+function newsDateLabel(event: { date: string; date_source?: string | null }): string {
+  const day = event.date.slice(0, 10);
+  if (event.date_source === 'ingested_at_fallback') return `detectado el ${day}`;
+  if (!event.date_source) return `fecha no verificada (${day})`;
+  return day;
+}
+
 function number(value: number | string | null | undefined): number | null {
   if (value === null || value === undefined) return null;
   const parsed = Number(value);
@@ -831,13 +841,19 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     // documento entero. Dos copias del mismo memo en dos URLs era lo que hacía
     // que las dos pestañas parecieran la misma.
     // Al entrar en una accion lo primero es precio (header, ya en todas
-    // las vistas) y las ultimas noticias. Fallo de noticias = lista vacia,
-    // nunca rompe el resumen.
+    // las vistas) y las noticias importantes: las 5 de mayor materialidad
+    // entre las 25 mas recientes de la empresa, pintadas por fecha.
     let overviewNews: Awaited<ReturnType<typeof getResearchNews>> = [];
+    let overviewNewsError = false;
     try {
-      overviewNews = await getResearchNews(null, 0, 5, ticker);
+      const recent = await getResearchNews(null, 0, 25, ticker);
+      overviewNews = recent
+        .slice()
+        .sort((a, b) => (b.materiality_score ?? 0) - (a.materiality_score ?? 0))
+        .slice(0, 5)
+        .sort((a, b) => b.date.localeCompare(a.date));
     } catch {
-      overviewNews = [];
+      overviewNewsError = true;
     }
     content = (
       <div className="space-y-6">
@@ -859,7 +875,11 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
           description="Lo último que ha pasado en esta empresa, con fuente y fecha."
           title="Últimas noticias"
         >
-          {overviewNews.length === 0 ? (
+          {overviewNewsError ? (
+            <p className="rounded-lg border border-amber-900/70 bg-amber-950/20 p-3 text-sm text-amber-200" role="status">
+              No se pudieron cargar las noticias. Reintenta en unos segundos.
+            </p>
+          ) : overviewNews.length === 0 ? (
             <EmptyState title="Sin noticias recientes de esta empresa." />
           ) : (
             <ul className="space-y-3">
@@ -867,7 +887,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
                 <li className="text-sm" key={event.id}>
                   <NewsHeadline event={event} />
                   <p className="mt-1 text-xs text-gray-500">
-                    {event.source} · {event.date.slice(0, 10)}
+                    {event.source} · {newsDateLabel(event)}
                   </p>
                 </li>
               ))}
