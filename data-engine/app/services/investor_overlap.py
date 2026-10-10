@@ -55,8 +55,15 @@ def portfolio_overlap(db: Session) -> dict:
              "report_dates": [], "message": "Cartera sin posiciones abiertas."}
     if tenant is None:
         return empty
-    companies = list(db.scalars(select(Company).join(Position, Position.company_id == Company.id)
-                              .where(Position.tenant_id == tenant, Position.quantity > 0).distinct()).all())
+    # Sin DISTINCT sobre la entidad: companies tiene columnas JSON y postgres
+    # no define operador de igualdad para json (500 en prod). La
+    # deduplicacion va en la subquery de ids.
+    company_ids = (
+        select(Position.company_id)
+        .where(Position.tenant_id == tenant, Position.quantity > 0)
+        .distinct()
+    )
+    companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids))).all())
     if not companies:
         return empty
     refs = {r.ticker_normalized: r for r in db.scalars(select(InstrumentReference).where(
