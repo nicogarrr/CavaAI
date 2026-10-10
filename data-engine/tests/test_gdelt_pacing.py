@@ -34,6 +34,24 @@ def _reset_gdelt_class_state():
     GDELTClient._blocked_until = 0.0
 
 
+@pytest.fixture()
+def fake_clock(monkeypatch):
+    """Reloj falso compartido: ``time.monotonic`` y ``asyncio.sleep`` (los
+    que usa el conector) avanzan el clock SIN espera real. Las ventanas de
+    45/60/3600s se verifican al instante en lugar de añadir ~390s de pacing
+    real a la suite (el auditor necesita corridas rapidas y reproducibles)."""
+    import app.services.connectors.gdelt as gdelt_mod
+
+    now = [10_000.0]
+    monkeypatch.setattr(gdelt_mod.time, "monotonic", lambda: now[0])
+
+    async def _fake_sleep(seconds: float) -> None:
+        now[0] += max(0.0, seconds)
+
+    monkeypatch.setattr(gdelt_mod.asyncio, "sleep", _fake_sleep)
+    yield now
+
+
 def test_throttle_enforces_min_interval():
     stub = _StubClient([_resp(200), _resp(200), _resp(200)])
     client = GDELTClient(client=stub, min_interval=0.05)
@@ -92,7 +110,7 @@ def test_throttle_holds_the_spacing_under_load():
     assert all(gap >= 0.045 for gap in gaps), gaps
 
 
-def test_429_retry_after_then_success():
+def test_429_retry_after_then_success(fake_clock):
     stub = _StubClient([_resp(429, retry_after="0"), _resp(200, {"articles": [{"url": "u"}]})])
     client = GDELTClient(client=stub, min_interval=0, max_429_retries=2)
     GDELTClient._next_allowed_at = 0.0
@@ -110,7 +128,7 @@ def test_429_retry_after_beyond_max_raises_without_retry():
     assert excinfo.value.retry_after == 3600.0  # la ventana real sube al actor
 
 
-def test_429_exhaustion_raises():
+def test_429_exhaustion_raises(fake_clock):
     stub = _StubClient([_resp(429, retry_after="45"), _resp(429, retry_after="45"), _resp(429, retry_after="45")])
     client = GDELTClient(client=stub, min_interval=0, max_429_retries=2)
     GDELTClient._next_allowed_at = 0.0
@@ -120,7 +138,7 @@ def test_429_exhaustion_raises():
     assert excinfo.value.retry_after == 45.0  # ventana acotada (min(raw, MAX))
 
 
-def test_429_exhaustion_con_ventana_cero_paga_el_suelo():
+def test_429_exhaustion_con_ventana_cero_paga_el_suelo(fake_clock):
     stub = _StubClient([_resp(429, retry_after="0"), _resp(429, retry_after="0"), _resp(429, retry_after="0")])
     client = GDELTClient(client=stub, min_interval=0, max_429_retries=2)
     GDELTClient._next_allowed_at = 0.0
@@ -206,7 +224,7 @@ def test_gdelt_lane_backoff_config():
         assert actor.options["max_retries"] == 6
 
 
-def test_429_marks_ip_wide_blocked_until_for_the_whole_lane():
+def test_429_marks_ip_wide_blocked_until_for_the_whole_lane(fake_clock):
     """El cooldown del 429 es POR IP: lo respetan TODOS los clientes del carril."""
     stub = _StubClient([_resp(429, retry_after="3")])
     client = GDELTClient(client=stub, min_interval=0, max_429_retries=0)
@@ -268,7 +286,7 @@ def test_raw_retry_after_no_finito_cae_al_default():
     assert GDELTClient._retry_after_seconds(_resp(429, retry_after="1e999")) == GDELTClient.DEFAULT_RETRY_AFTER
 
 
-def test_429_sin_cabecera_usa_suelo_60_en_excepcion_y_cooldown():
+def test_429_sin_cabecera_usa_suelo_60_en_excepcion_y_cooldown(fake_clock):
     """Sin Retry-After: excepcion e IP-wide cooldown usan la misma ventana
     (el suelo), no un default distinto mas corto."""
     stub = _StubClient([_resp(429), _resp(429), _resp(429)])
