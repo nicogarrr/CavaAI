@@ -42,7 +42,11 @@ function ExcludedList({ items }: { items: PortfolioForecastExcluded[] }) {
       <ul className="mt-1 space-y-1 text-sm text-amber-100/80">
         {items.map((item) => (
           <li key={item.ticker}>
-            {item.ticker} — {pct(item.weight)} de la cartera. {item.reason}
+            {item.ticker} —{' '}
+            {item.weight === null
+              ? 'peso N/D (divisa sin conversión)'
+              : `${pct(item.weight)} de la cartera`}
+            . {item.reason}
           </li>
         ))}
       </ul>
@@ -73,25 +77,27 @@ function AssumptionList({ items }: { items: string[] }) {
 export default function PortfolioForecast({ forecast }: { forecast: PortfolioForecast }) {
   const portfolio = forecast.portfolio;
   if (!portfolio) {
-    const hasInput = forecast.positions.length > 0 || forecast.excluded.length > 0;
+    // Sin agregado: el MOTIVO lo da siempre el backend en assumptions
+    // (vacio real, monedas base mezcladas, todo FX N/D...). Nunca se infiere
+    // por arrays vacios: se muestra su razón verbatim y las excluidas.
     return (
       <Panel title="Hipótesis de convergencia">
-        {hasInput ? (
-          <div className="space-y-3">
-            <p className="text-sm text-amber-200">
-              No calculable como cartera: hay posiciones sin conversión a una moneda base
-              común o sin precio convertible. Sin agregado fiable no se muestra ninguno.
+        <div className="space-y-3">
+          {forecast.assumptions.length > 0 ? (
+            <div className="rounded-lg border border-amber-900/70 bg-amber-950/20 p-3">
+              {forecast.assumptions.map((assumption) => (
+                <p className="text-sm text-amber-100/90" key={assumption}>
+                  {assumption}
+                </p>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400">
+              Sin datos: el backend no devolvió agregado ni motivo.
             </p>
-            {forecast.excluded.length > 0 ? <ExcludedList items={forecast.excluded} /> : null}
-            {forecast.assumptions.length > 0 ? (
-              <AssumptionList items={forecast.assumptions} />
-            ) : null}
-          </div>
-        ) : (
-          <p className="text-sm text-gray-400">
-            Sin posiciones: no hay hipótesis de convergencia que agregar.
-          </p>
-        )}
+          )}
+          {forecast.excluded.length > 0 ? <ExcludedList items={forecast.excluded} /> : null}
+        </div>
       </Panel>
     );
   }
@@ -116,8 +122,8 @@ export default function PortfolioForecast({ forecast }: { forecast: PortfolioFor
               </p>
               <p className="mt-1 text-xs text-gray-500">
                 {scenario
-                  ? `Cobertura ${pct(scenario.coverage)} del subset valorado`
-                  : 'Cobertura Sin datos'}
+                  ? `Cobertura ${pct(scenario.coverage)} de la cartera valorada`
+                  : 'Sin datos'}
                 {scenario?.horizon_scope === 'mixed' ? ' · horizontes mezclados (proxy anual)' : ''}
               </p>
             </div>
