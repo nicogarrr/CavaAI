@@ -707,3 +707,62 @@ export async function getPortfolioTearsheet(userId: string): Promise<PortfolioTe
         return null;
     }
 }
+
+// Tipos + fetcher para lib/actions/portfolio.actions.ts
+
+export type PortfolioForecastScenario = { cagr: number; total_return: number };
+
+export type PortfolioForecastPosition = {
+  ticker: string;
+  name: string;
+  weight: number;
+  currency: string;
+  price: number;
+  price_as_of: string;
+  price_source: string;
+  intrinsic: { bear: number | null; base: number | null; bull: number | null };
+  probabilities: Record<string, number> | null;
+  horizon_years: number;
+  thesis_version: number;
+  thesis_status: string;
+  model_version: number | null;
+  cagr: Partial<Record<'bear' | 'base' | 'bull', number>>;
+  total_return: Partial<Record<'bear' | 'base' | 'bull', number>>;
+  expected_cagr: number | null;
+  contribution_expected: number | null;
+};
+
+export type PortfolioForecastExcluded = {
+  ticker: string;
+  name: string;
+  weight: number;
+  currency: string;
+  reason: string;
+};
+
+export type PortfolioForecast = {
+  as_of: string | null;
+  base_currency: string | null;
+  portfolio: {
+    total_value_base: number;
+    position_count: number;
+    covered_count: number;
+    excluded_count: number;
+    covered_weight: number;
+    scenarios: Partial<Record<'bear' | 'base' | 'bull', PortfolioForecastScenario>>;
+    expected_cagr: number | null;
+    covered_only: {
+      scenarios: Partial<Record<'bear' | 'base' | 'bull', PortfolioForecastScenario>>;
+      expected_cagr: number | null;
+    };
+  } | null;
+  positions: PortfolioForecastPosition[];
+  excluded: PortfolioForecastExcluded[];
+  assumptions: string[];
+};
+
+export async function getPortfolioForecast(): Promise<PortfolioForecast> {
+  // Sin cache: la prevision depende de la ultima sincronizacion IBKR y de
+  // las versiones vigentes de tesis/modelos, que cambian con cada sync.
+  return researchRequest<PortfolioForecast>('/api/portfolio/forecast', { fast: true });
+}
