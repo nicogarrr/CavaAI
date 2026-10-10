@@ -15,6 +15,7 @@ navegador, de ahi las cabeceras por defecto.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import date, timedelta
 from typing import Any
 
@@ -24,6 +25,9 @@ EARNINGS_URL = "https://api.nasdaq.com/api/calendar/earnings"
 DIVIDENDS_URL = "https://api.nasdaq.com/api/calendar/dividends"
 
 MAX_DAYS_PER_REQUEST = 31
+# Concurrencia acotada entre dias: secuencial eran ~2.4s x dia (17s para la
+# semana por defecto en prod); sin tope, 31 dias a la vez martirizan NASDAQ.
+RANGE_CONCURRENCY = 4
 
 BROWSER_HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; CavaAI/0.1) CavaAI Research",
@@ -126,6 +130,41 @@ def _check_range(desde: date, hasta: date) -> None:
         raise ValueError(f"rango maximo: {MAX_DAYS_PER_REQUEST} dias")
 
 
+async def _fetch_days(
+    fetch_day: Any,
+    desde: date,
+    hasta: date,
+    client: httpx.AsyncClient | None,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Consulta los dias del rango en paralelo acotado.
+
+    ``asyncio.gather`` conserva el orden de los dias en el resultado, asi el
+    orden por dia de ``events`` y ``errors`` es identico al bucle secuencial
+    original, y cada dia que falla sigue yendo a ``errors`` sin abortar el
+    rango.
+    """
+    days: list[date] = []
+    current = desde
+    while current <= hasta:
+        days.append(current)
+        current += timedelta(days=1)
+    semaphore = asyncio.Semaphore(RANGE_CONCURRENCY)
+
+    async def _one(day: date) -> list[dict[str, Any]] | None:
+        async with semaphore:
+            return await fetch_day(day, client)
+
+    per_day = await asyncio.gather(*(_one(day) for day in days))
+    events: list[dict[str, Any]] = []
+    errors: list[str] = []
+    for day, day_events in zip(days, per_day, strict=True):
+        if day_events is None:
+            errors.append(f"{day.isoformat()}: calendario no disponible")
+        else:
+            events.extend(day_events)
+    return events, errors
+
+
 async def fetch_earnings_range(
     desde: date,
     hasta: date,
@@ -137,16 +176,7 @@ async def fetch_earnings_range(
     ``[]``; si solo fallan algunos, ``status`` es ``"partial"``.
     """
     _check_range(desde, hasta)
-    events: list[dict[str, Any]] = []
-    errors: list[str] = []
-    current = desde
-    while current <= hasta:
-        day_events = await fetch_earnings_day(current, client)
-        if day_events is None:
-            errors.append(f"{current.isoformat()}: calendario no disponible")
-        else:
-            events.extend(day_events)
-        current += timedelta(days=1)
+    events, errors = await _fetch_days(fetch_earnings_day, desde, hasta, client)
     if errors and not events:
         status = "unavailable"
     elif errors:
@@ -170,16 +200,7 @@ async def fetch_dividends_range(
 ) -> dict[str, Any]:
     """Agrega dividendos dia a dia con la misma semantica de degradacion."""
     _check_range(desde, hasta)
-    events: list[dict[str, Any]] = []
-    errors: list[str] = []
-    current = desde
-    while current <= hasta:
-        day_events = await fetch_dividends_day(current, client)
-        if day_events is None:
-            errors.append(f"{current.isoformat()}: calendario no disponible")
-        else:
-            events.extend(day_events)
-        current += timedelta(days=1)
+    events, errors = await _fetch_days(fetch_dividends_day, desde, hasta, client)
     if errors and not events:
         status = "unavailable"
     elif errors:
