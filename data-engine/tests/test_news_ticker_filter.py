@@ -87,3 +87,70 @@ def test_news_events_filter_by_ticker():
         assert response.status_code == 200, response.text
         assert response.json() == []
     engine.dispose()
+
+
+def test_ticker_filter_paginates_within_ticker(client, db):
+    """limit/offset recortan despues del filtro: paginas dentro del ticker."""
+    tenant_id = _seed(db, "MSFT")
+    db.add_all(
+        [
+            NewsEvent(
+                tenant_id=tenant_id,
+                company_id=None,
+                ticker=None,
+                category="general",
+                headline=f"MSFT noticia {i}",
+                url=f"https://example.com/msft-{i}",
+                source="Reuters",
+                language="en",
+                published_at=datetime(2026, 10, 1, 12 - i, tzinfo=UTC),
+                ingested_at=datetime(2026, 10, 1, 12 - i, tzinfo=UTC),
+                date_source="gdelt",
+                materiality_score=1.0,
+            )
+            for i in range(2)
+        ]
+    )
+    db.commit()
+
+    page1 = client.get("/api/news?ticker=msft&limit=1&offset=0")
+    page2 = client.get("/api/news?ticker=msft&limit=1&offset=1")
+    assert page1.status_code == 200 and page2.status_code == 200
+    ids1 = [item["id"] for item in page1.json()]
+    ids2 = [item["id"] for item in page2.json()]
+    assert len(ids1) == 1 and len(ids2) == 1
+    assert ids1 != ids2
+
+
+def test_ticker_filter_tenant_isolation(client, db):
+    """El join no fuga eventos de otro tenant aunque compartan empresa."""
+    from app.db.models import Tenant
+
+    tenant1 = _seed(db, "AAPL")
+    other = Tenant(name="otro")
+    db.add(other)
+    db.flush()
+    other_ticker = "AAPL"  # mismo ticker, evento de otro tenant
+    db.add(
+        NewsEvent(
+            tenant_id=other.id,
+            company_id=None,
+            ticker=other_ticker,
+            category="general",
+            headline="AAPL noticia ajena",
+            url="https://example.com/ajena",
+            source="Reuters",
+            language="en",
+            published_at=datetime(2026, 10, 2, 11, tzinfo=UTC),
+            ingested_at=datetime(2026, 10, 2, 11, tzinfo=UTC),
+            date_source="gdelt",
+            materiality_score=9.0,
+        )
+    )
+    db.commit()
+
+    resp = client.get("/api/news?ticker=AAPL")
+    assert resp.status_code == 200
+    headlines = [item["headline"] for item in resp.json()]
+    assert any("propia" in h for h in headlines)
+    assert not any("ajena" in h for h in headlines)
