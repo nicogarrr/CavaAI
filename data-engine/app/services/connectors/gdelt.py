@@ -44,6 +44,12 @@ class GDELTClient:
 
     _rate_lock = threading.Lock()
     _next_allowed_at = 0.0  # time.monotonic()
+    # Ventana 429 POR IP compartida por TODOS los jobs del carril (un solo
+    # proceso consume la cola gdelt por diseño: el estado de clase ES el
+    # cooldown global). Sin esto, tras reencolar un lote los demás mensajes
+    # (macro/empresa/backlog) entraban con el pacing de 5s y violaban la
+    # ventana de 45/3600s que GDELT acababa de imponer.
+    _blocked_until = 0.0  # time.monotonic()
 
     DEFAULT_MIN_INTERVAL = 5.0
     DEFAULT_MAX_429_RETRIES = 2
@@ -67,6 +73,18 @@ class GDELTClient:
             else max_429_retries
         )
 
+    @classmethod
+    def _block_for(cls, seconds: float) -> None:
+        """Marca la ventana 429 como POR IP: todo el carril espera hasta ella.
+
+        Solo extiende, nunca acorta una ventana ya marcada (dos 429 seguidos
+        se quedan con la ventana mayor).
+        """
+        with GDELTClient._rate_lock:
+            until = time.monotonic() + max(0.0, seconds)
+            if until > GDELTClient._blocked_until:
+                GDELTClient._blocked_until = until
+
     async def _throttle(self) -> None:
         """Guarantee at least ``min_interval`` between two real requests.
 
@@ -80,14 +98,17 @@ class GDELTClient:
         next slot is measured from the real current time, so an overrun pushes
         the following request out instead of letting it through.
         """
-        if self.min_interval <= 0:
-            return
         while True:
             with GDELTClient._rate_lock:
                 now = time.monotonic()
-                wait = GDELTClient._next_allowed_at - now
-                if wait <= 0:
+                wait = max(
+                    GDELTClient._next_allowed_at - now,
+                    GDELTClient._blocked_until - now,
+                )
+                if wait <= 0 and self.min_interval > 0:
                     GDELTClient._next_allowed_at = now + self.min_interval
+                    return
+                if wait <= 0:
                     return
             await asyncio.sleep(wait)
 
@@ -126,6 +147,11 @@ class GDELTClient:
                     response = await client.get(self.base_url, params=params)
             if response.status_code == 429:
                 raw_retry_after = self._raw_retry_after(response)
+                # El 429 es POR IP: la ventana la respetan TODOS los jobs del
+                # carril, no solo este mensaje.
+                self._block_for(
+                    raw_retry_after if raw_retry_after is not None else self.DEFAULT_RETRY_AFTER
+                )
                 if raw_retry_after is not None and raw_retry_after > self.MAX_RETRY_AFTER:
                     # Ventana prohibida demasiado larga para esta corrida:
                     # no se trunca ni se reintenta inline; sube tipada con la

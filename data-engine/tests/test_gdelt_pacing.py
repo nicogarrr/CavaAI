@@ -24,6 +24,16 @@ def _resp(status: int, payload: dict | None = None, retry_after: str | None = No
     return httpx.Response(status, json=payload or {"articles": []}, headers=headers, request=httpx.Request("GET", "https://api.gdeltproject.org/api/v2/doc/doc"))
 
 
+@pytest.fixture(autouse=True)
+def _reset_gdelt_class_state():
+    """El pacing y el cooldown 429 son estado de CLASE: aislar cada test."""
+    GDELTClient._next_allowed_at = 0.0
+    GDELTClient._blocked_until = 0.0
+    yield
+    GDELTClient._next_allowed_at = 0.0
+    GDELTClient._blocked_until = 0.0
+
+
 def test_throttle_enforces_min_interval():
     stub = _StubClient([_resp(200), _resp(200), _resp(200)])
     client = GDELTClient(client=stub, min_interval=0.05)
@@ -150,23 +160,31 @@ def test_connector_still_degrades_other_errors():
     assert result.errors
 
 
-def test_gdelt_retry_helper_caps_delay_and_raises_dramatiq_retry():
-    """El actor reencola el lote con delay = ventana del servidor, acotada."""
+def test_gdelt_retry_helper_never_retries_before_the_window():
+    """Nunca antes de la ventana real; suelo de 60s si viene 0 o ausente."""
     import dramatiq
 
-    from app.workers.dramatiq_app import GDELT_RETRY_CAP_SECONDS, _raise_gdelt_retry
+    from app.workers.dramatiq_app import GDELT_RETRY_FLOOR_SECONDS, _raise_gdelt_retry
 
+    # Ventana normal: se honra exacta.
     with pytest.raises(dramatiq.Retry) as excinfo:
         _raise_gdelt_retry(GdeltRateLimited(45.0))
     assert excinfo.value.delay == 45_000
 
+    # Ventana larga: NO se trunca a ningun cap (truncar = reintentar antes).
     with pytest.raises(dramatiq.Retry) as excinfo:
-        _raise_gdelt_retry(GdeltRateLimited(99_999.0))
-    assert excinfo.value.delay == int(GDELT_RETRY_CAP_SECONDS * 1000)
+        _raise_gdelt_retry(GdeltRateLimited(3_600.0))
+    assert excinfo.value.delay == 3_600_000
 
+    # Ventana 0 o ausente: suelo de 60s para no buclear contra el 429.
     with pytest.raises(dramatiq.Retry) as excinfo:
         _raise_gdelt_retry(GdeltRateLimited(0.0))
-    assert excinfo.value.delay == 0
+    assert excinfo.value.delay == int(GDELT_RETRY_FLOOR_SECONDS * 1000)
+
+    # Ventana presente aunque sea corta: se honra exacta (el suelo no la pisa).
+    with pytest.raises(dramatiq.Retry) as excinfo:
+        _raise_gdelt_retry(GdeltRateLimited(30.0))
+    assert excinfo.value.delay == 30_000
 
 
 def test_gdelt_lane_backoff_config():
@@ -177,3 +195,24 @@ def test_gdelt_lane_backoff_config():
         assert actor.options["min_backoff"] == 60_000
         assert actor.options["max_backoff"] == 900_000
         assert actor.options["max_retries"] == 6
+
+
+def test_429_marks_ip_wide_blocked_until_for_the_whole_lane():
+    """El cooldown del 429 es POR IP: lo respetan TODOS los clientes del carril."""
+    stub = _StubClient([_resp(429, retry_after="3")])
+    client = GDELTClient(client=stub, min_interval=0, max_429_retries=0)
+    with pytest.raises(GdeltRateLimited):
+        asyncio.run(client.news_search("q"))
+    assert GDELTClient._blocked_until > time.monotonic() + 2  # ~3s de ventana
+    # otro job (otra instancia) del carril hereda la espera
+    other = GDELTClient(client=_StubClient([_resp(200, {"articles": []})]), min_interval=5)
+    started = time.monotonic()
+    asyncio.run(other._throttle())
+    assert time.monotonic() - started >= 2  # esperó la ventana, no los 5s de pacing
+
+
+def test_block_for_only_extends_never_shortens():
+    GDELTClient._block_for(100.0)
+    first = GDELTClient._blocked_until
+    GDELTClient._block_for(1.0)
+    assert GDELTClient._blocked_until == first

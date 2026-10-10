@@ -183,21 +183,26 @@ def _status_from_message(text: str) -> int | None:
     return None
 
 
-# Ventana maxima que un lote GDELT espera tras un 429 antes de reintentarse:
-# por encima, el lote muere al deadletter y el siguiente tick del scheduler
-# (coalesce) lo retoma. Nunca se espera mas de lo que el sistema tolera.
-GDELT_RETRY_CAP_SECONDS = 900.0
+# Suelo de espera cuando GDELT no da ventana (0 o ausente): sin el, un
+# Retry(delay=0) eludiria el min_backoff del actor y el lote podria buclear
+# contra el 429. La regla es NUNCA reintentar antes de la ventana real.
+GDELT_RETRY_FLOOR_SECONDS = 60.0
 
 
 def _raise_gdelt_retry(exc: Exception) -> None:
-    """Reencola el lote GDELT tras la ventana 429 del servidor (acotada).
+    """Reencola el lote GDELT ni un segundo ANTES de la ventana del servidor.
 
-    Sin esto el barrido seguia empresa a empresa contra una ventana cerrada,
-    quemando la cuota por IP en 429; con ``Retry(delay)`` el mensaje vuelve
-    cuando GDELT dice y el carril queda libre para otros mensajes.
+    La ventana real NO se trunca: si GDELT pide 3600s, el lote espera 3600s
+    en la cola de diferidos (truncar a un cap reintentaria antes de tiempo y
+    quemaria cuota contra la ventana aun cerrada). El suelo de 60s solo
+    aplica cuando la ventana viene a 0 o ausente (un Retry(delay=0) elude el
+    min_backoff del actor y buclearia contra el 429). Sin este freno el
+    barrido seguia empresa a empresa contra una ventana cerrada, quemando
+    la cuota por IP.
     """
     retry_after = float(getattr(exc, "retry_after", 0.0) or 0.0)
-    delay_ms = int(min(max(retry_after, 0.0), GDELT_RETRY_CAP_SECONDS) * 1000)
+    delay_seconds = retry_after if retry_after > 0 else GDELT_RETRY_FLOOR_SECONDS
+    delay_ms = int(delay_seconds * 1000)
     raise dramatiq.Retry(
         f"GDELT cerro la ventana (429): lote reencolado tras {delay_ms // 1000}s",
         delay=delay_ms,
