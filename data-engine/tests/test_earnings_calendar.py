@@ -188,3 +188,48 @@ def test_calendar_earnings_route_rejects_inverted_range(monkeypatch):
     client = TestClient(main.app, raise_server_exceptions=False)
     response = client.get("/api/calendar/earnings?desde=2026-09-18&hasta=2026-09-17")
     assert response.status_code == 400
+
+
+def test_fetch_range_no_es_secuencial_y_conserva_errores(monkeypatch):
+    """NASDAQ tarda ~2.4s por dia: 7 dias en serie = ~17s por peticion
+    (observado en prod: "slow request 17.1s"). El rango debe consultar los
+    dias en paralelo acotado, manteniendo el orden por dia y los errores
+    por dia."""
+    import asyncio
+    import time
+
+    from app.services.connectors import earnings_calendar as cal
+
+    days_queried: list[str] = []
+    in_flight = 0
+    max_in_flight = 0
+
+    async def fake_day(day, client=None):
+        nonlocal in_flight, max_in_flight
+        in_flight += 1
+        max_in_flight = max(max_in_flight, in_flight)
+        await asyncio.sleep(0.05)
+        in_flight -= 1
+        days_queried.append(day.isoformat())
+        if day.day % 2 == 0:
+            return None  # este dia falla
+        return [{"symbol": f"T{day.day}", "date": day.isoformat()}]
+
+    monkeypatch.setattr(cal, "fetch_earnings_day", fake_day)
+    start = date(2026, 10, 1)
+    end = date(2026, 10, 10)  # 10 dias
+
+    t0 = time.monotonic()
+    result = asyncio.run(cal.fetch_earnings_range(start, end))
+    elapsed = time.monotonic() - t0
+
+    assert elapsed < 0.45, f"10 dias en {elapsed:.2f}s: sigue siendo secuencial"
+    assert max_in_flight >= 2, "no hubo concurrencia real"
+    # orden por dia conservado en eventos y errores, semantica intacta
+    assert result["status"] == "partial"
+    assert [e["date"] for e in result["events"]] == [
+        f"2026-10-{d:02d}" for d in range(1, 11) if d % 2 == 1
+    ]
+    assert result["errors"] == [
+        f"2026-10-{d:02d}: calendario no disponible" for d in range(1, 11) if d % 2 == 0
+    ]
