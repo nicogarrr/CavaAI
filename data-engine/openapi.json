@@ -37074,6 +37074,170 @@
         ]
       }
     },
+    "/api/portfolio/forecast": {
+      "get": {
+        "description": "Prevision de rentabilidad de la cartera desde el valor intrinseco.\n\nDeterminista (ningun numero lo escribe un LLM). Reglas de veracidad:\n- Solo tesis PUBLICADAS y modelos publicables (un draft no es vigente).\n- Solo se suman valores en moneda base (market_value_base): sin\n  conversion la posicion es N/D y queda excluida, nunca suma silenciosa.\n- Probabilidades validadas en [0, 1] y SIN renormalizar huecos: el\n  esperado usa masa explicita y etiquetada.\n- Cada escenario agregado lleva su cobertura; covered_only divide por la\n  cobertura DE ESE escenario, nunca presenta parciales como cartera\n  completa.\n- ADR: se comparan valores por accion cotizada; sin ellos, N/D.\n- El CAGR de convergencia es HIPOTESIS etiquetada (los intrinsecos son\n  valores presentes descontados), no un objetivo a 5 anos.",
+        "operationId": "portfolio_forecast_api_portfolio_forecast_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-cavaai-user",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-User"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-cavaai-tenant",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-Tenant"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-cavaai-timestamp",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-Timestamp"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-cavaai-signature",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-Signature"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-cavaai-nonce",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-Nonce"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-cavaai-method",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-Method"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-cavaai-path",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-Path"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-cavaai-body-hash",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cavaai-Body-Hash"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Portfolio Forecast Api Portfolio Forecast Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Portfolio Forecast",
+        "tags": [
+          "portfolio"
+        ]
+      }
+    },
     "/api/portfolio/fx-rates": {
       "get": {
         "operationId": "list_fx_rates_api_portfolio_fx_rates_get",

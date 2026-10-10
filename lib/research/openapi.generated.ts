@@ -2728,6 +2728,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/portfolio/forecast": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Portfolio Forecast
+         * @description Prevision de rentabilidad de la cartera desde el valor intrinseco.
+         *
+         *     Determinista (ningun numero lo escribe un LLM). Reglas de veracidad:
+         *     - Solo tesis PUBLICADAS y modelos publicables (un draft no es vigente).
+         *     - Solo se suman valores en moneda base (market_value_base): sin
+         *       conversion la posicion es N/D y queda excluida, nunca suma silenciosa.
+         *     - Probabilidades validadas en [0, 1] y SIN renormalizar huecos: el
+         *       esperado usa masa explicita y etiquetada.
+         *     - Cada escenario agregado lleva su cobertura; covered_only divide por la
+         *       cobertura DE ESE escenario, nunca presenta parciales como cartera
+         *       completa.
+         *     - ADR: se comparan valores por accion cotizada; sin ellos, N/D.
+         *     - El CAGR de convergencia es HIPOTESIS etiquetada (los intrinsecos son
+         *       valores presentes descontados), no un objetivo a 5 anos.
+         */
+        get: operations["portfolio_forecast_api_portfolio_forecast_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/portfolio/fx-rates": {
         parameters: {
             query?: never;
@@ -13966,6 +13999,46 @@ export interface operations {
         };
     };
     sync_portfolio_dividends_api_portfolio_dividends_sync_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    portfolio_forecast_api_portfolio_forecast_get: {
         parameters: {
             query?: never;
             header?: {

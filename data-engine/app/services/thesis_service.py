@@ -819,8 +819,15 @@ class ThesisService:
             return None
         listed = valuation.get("listed_share_values")
         extra = {"inferred_inputs_used": used} if used else {}
+        # Liga verificable modelo<->tesis: el forecast solo usa horizonte y
+        # probabilidades del modelo cuando ESTE fingerprint coincide. Se omite
+        # la clave cuando no hay modelo ligado (contrato sin ruido).
+        model_fp = (
+            (valuation.get("long_term_model") or {}).get("persistence") or {}
+        ).get("input_fingerprint")
         return {
             **extra,
+            **({"model_input_fingerprint": model_fp} if model_fp else {}),
             "value_per_share_basis": str(basis) if basis else None,
             "adr_ratio": valuation.get("adr_ratio"),
             "listed_share_values": (
