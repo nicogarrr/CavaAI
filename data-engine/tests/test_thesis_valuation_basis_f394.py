@@ -42,3 +42,19 @@ def test_no_basis_evidence_gives_none():
 
 def test_thesis_out_exposes_valuation_basis():
     assert "valuation_basis" in ThesisOut.model_fields
+
+def test_basis_stores_fingerprint_of_the_model_used_not_latest():
+    """La liga modelo-tesis guarda el fingerprint del modelo QUE GENERO esta
+    tesis (long_term_model.persistence), nunca el ultimo modelo persistido."""
+    valuation = {
+        "value_per_share_basis": "ordinary_share",
+        "long_term_model": {"persistence": {"input_fingerprint": "fp-modelo-usado-v3"}},
+    }
+    basis = ThesisService._valuation_basis(valuation)
+    assert basis["model_input_fingerprint"] == "fp-modelo-usado-v3"
+
+
+def test_basis_omits_fingerprint_key_without_model():
+    """Sin modelo ligado la clave no aparece (contrato sin ruido)."""
+    basis = ThesisService._valuation_basis({"value_per_share_basis": "ordinary_share"})
+    assert "model_input_fingerprint" not in basis
