@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import threading
 import time
 from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 
 import httpx
 
@@ -54,7 +56,12 @@ class GDELTClient:
     DEFAULT_MIN_INTERVAL = 5.0
     DEFAULT_MAX_429_RETRIES = 2
     MAX_RETRY_AFTER = 120.0
-    DEFAULT_RETRY_AFTER = 30.0
+    # Suelo para ventana 0/ausente: un 429 sin Retry-After (o con 0) no
+    # puede reintentar en menos de 60s — ni inline, ni el mensaje
+    # reencolado, ni el cooldown global POR IP. Un Retry(delay=0) eludiria
+    # el min_backoff del actor y buclearia contra la ventana cerrada.
+    RETRY_AFTER_FLOOR = 60.0
+    DEFAULT_RETRY_AFTER = RETRY_AFTER_FLOOR
 
     def __init__(
         self,
@@ -80,8 +87,13 @@ class GDELTClient:
         Solo extiende, nunca acorta una ventana ya marcada (dos 429 seguidos
         se quedan con la ventana mayor).
         """
+        if not math.isfinite(seconds) or seconds <= 0:
+            # Ventana 0/ausente/no finita: el cooldown global tambien paga
+            # el suelo (sin el, tras reencolar el mensaje los demas jobs del
+            # carril entraban a los 5s contra una ventana aun cerrada).
+            seconds = GDELTClient.RETRY_AFTER_FLOOR
         with GDELTClient._rate_lock:
-            until = time.monotonic() + max(0.0, seconds)
+            until = time.monotonic() + seconds
             if until > GDELTClient._blocked_until:
                 GDELTClient._blocked_until = until
 
@@ -105,6 +117,12 @@ class GDELTClient:
                     GDELTClient._next_allowed_at - now,
                     GDELTClient._blocked_until - now,
                 )
+                if wait > self.MAX_RETRY_AFTER:
+                    # Ventana POR IP mas larga de lo que esta corrida puede
+                    # pagar (el time_limit del actor mataria al worker
+                    # durmiendo dentro): el mensaje va a diferidos con la
+                    # ventana restante en vez de ocupar el carril.
+                    raise GdeltRateLimited(wait)
                 if wait <= 0 and self.min_interval > 0:
                     GDELTClient._next_allowed_at = now + self.min_interval
                     return
@@ -117,16 +135,33 @@ class GDELTClient:
         raw = response.headers.get("Retry-After")
         if raw:
             try:
-                return max(0.0, float(raw))
+                value = float(raw)
             except ValueError:
-                pass
+                # Retry-After tambien admite HTTP-date (RFC 9110): una fecha
+                # futura marca el fin de la ventana; ignorarla devolvia el
+                # default (30s) y violaba la ventana real.
+                try:
+                    parsed = parsedate_to_datetime(raw)
+                except (TypeError, ValueError, IndexError, OverflowError):
+                    return None
+                if parsed is None:
+                    return None
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=UTC)
+                value = (parsed - datetime.now(UTC)).total_seconds()
+            if not math.isfinite(value):
+                # Inf/NaN bloquearian indefinido (y desbordan el delay en
+                # ms al reencolar): cae al default acotado.
+                return None
+            return max(0.0, value)
         return None
 
     @classmethod
     def _retry_after_seconds(cls, response: httpx.Response) -> float:
         raw = cls._raw_retry_after(response)
-        if raw is not None:
+        if raw is not None and raw > 0:
             return min(raw, cls.MAX_RETRY_AFTER)
+        # 0/ausente: la misma ventana que el suelo del mensaje reencolado.
         return cls.DEFAULT_RETRY_AFTER
 
     async def news_search(self, query: str, max_records: int = 50) -> dict:

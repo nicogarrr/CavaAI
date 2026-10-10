@@ -111,13 +111,22 @@ def test_429_retry_after_beyond_max_raises_without_retry():
 
 
 def test_429_exhaustion_raises():
-    stub = _StubClient([_resp(429, retry_after="0"), _resp(429, retry_after="0"), _resp(429, retry_after="0")])
+    stub = _StubClient([_resp(429, retry_after="45"), _resp(429, retry_after="45"), _resp(429, retry_after="45")])
     client = GDELTClient(client=stub, min_interval=0, max_429_retries=2)
     GDELTClient._next_allowed_at = 0.0
     with pytest.raises(GdeltRateLimited) as excinfo:
         asyncio.run(client.news_search("apple"))
     assert len(stub.calls) == 3
-    assert excinfo.value.retry_after == 0.0  # ventana acotada (min(raw, MAX))
+    assert excinfo.value.retry_after == 45.0  # ventana acotada (min(raw, MAX))
+
+
+def test_429_exhaustion_con_ventana_cero_paga_el_suelo():
+    stub = _StubClient([_resp(429, retry_after="0"), _resp(429, retry_after="0"), _resp(429, retry_after="0")])
+    client = GDELTClient(client=stub, min_interval=0, max_429_retries=2)
+    GDELTClient._next_allowed_at = 0.0
+    with pytest.raises(GdeltRateLimited) as excinfo:
+        asyncio.run(client.news_search("apple"))
+    assert excinfo.value.retry_after == GDELTClient.RETRY_AFTER_FLOOR  # 0 nunca reintenta al instante
 
 
 def test_retry_after_default_when_header_missing():
@@ -216,3 +225,56 @@ def test_block_for_only_extends_never_shortens():
     first = GDELTClient._blocked_until
     GDELTClient._block_for(1.0)
     assert GDELTClient._blocked_until == first
+
+
+def test_block_for_suelo_60_en_ventana_cero():
+    """Ventana 0/ausente: el cooldown global POR IP paga el suelo de 60s."""
+    GDELTClient._block_for(0.0)
+    remaining = GDELTClient._blocked_until - time.monotonic()
+    assert 55.0 < remaining <= GDELTClient.RETRY_AFTER_FLOOR
+
+
+def test_throttle_defiere_ventana_ip_mas_larga_que_la_corrida():
+    """Un cooldown POR IP > MAX_RETRY_AFTER no puede dormirse en el worker:
+    el time_limit del actor lo mataria dentro. Sube tipada con la ventana
+    restante para que el mensaje vaya a diferidos."""
+    GDELTClient._blocked_until = time.monotonic() + 3600.0
+    client = GDELTClient(client=_StubClient([_resp(200, {"articles": []})]))
+    started = time.monotonic()
+    with pytest.raises(GdeltRateLimited) as excinfo:
+        asyncio.run(client.news_search("q"))
+    elapsed = time.monotonic() - started
+    assert elapsed < 5.0  # no durmio la ventana dentro del worker
+    assert excinfo.value.retry_after > 3500.0  # ventana restante, no truncada
+
+
+def test_raw_retry_after_http_date():
+    """Retry-After como HTTP-date: fecha futura = segundos restantes; fecha
+    pasada = 0 (cae al suelo en los consumidores)."""
+    from datetime import UTC, datetime, timedelta
+    from email.utils import format_datetime
+
+    future = format_datetime(datetime.now(UTC) + timedelta(seconds=3600))
+    past = format_datetime(datetime.now(UTC) - timedelta(seconds=30))
+    value = GDELTClient._raw_retry_after(_resp(429, retry_after=future))
+    assert value is not None and 3500.0 < value <= 3600.0
+    assert GDELTClient._raw_retry_after(_resp(429, retry_after=past)) == 0.0
+
+
+def test_raw_retry_after_no_finito_cae_al_default():
+    """Inf/NaN/enormes no pueden bloquear indefinido ni desbordar el delay."""
+    for raw in ("inf", "-inf", "nan", "1e999"):
+        assert GDELTClient._raw_retry_after(_resp(429, retry_after=raw)) is None
+    assert GDELTClient._retry_after_seconds(_resp(429, retry_after="1e999")) == GDELTClient.DEFAULT_RETRY_AFTER
+
+
+def test_429_sin_cabecera_usa_suelo_60_en_excepcion_y_cooldown():
+    """Sin Retry-After: excepcion e IP-wide cooldown usan la misma ventana
+    (el suelo), no un default distinto mas corto."""
+    stub = _StubClient([_resp(429), _resp(429), _resp(429)])
+    client = GDELTClient(client=stub, max_429_retries=2)
+    with pytest.raises(GdeltRateLimited) as excinfo:
+        asyncio.run(client.news_search("q"))
+    assert excinfo.value.retry_after == GDELTClient.RETRY_AFTER_FLOOR
+    remaining = GDELTClient._blocked_until - time.monotonic()
+    assert remaining > 50.0
