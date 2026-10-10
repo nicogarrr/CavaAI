@@ -1,9 +1,33 @@
 import asyncio
+import logging
+import re
 from xml.etree import ElementTree
 
 import httpx
 
 from app.core.config import get_settings
+
+
+
+_FLEX_URL_TOKEN_RE = re.compile(r"(ndcdyn\.interactivebrokers\.com[^\s\"']*[?&]t=)[^&\s\"']+")
+
+
+class _FlexTokenRedactor(logging.Filter):
+    """Redacta el token Flex en los logs de httpx: su request logging incluye la URL completa."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            message = record.getMessage()
+        except Exception:  # defensivo: un record roto no debe romper el logging
+            return True
+        redacted = _FLEX_URL_TOKEN_RE.sub(r"\1***", message)
+        if redacted != message:
+            record.msg = redacted
+            record.args = ()
+        return True
+
+
+logging.getLogger("httpx").addFilter(_FlexTokenRedactor())
 
 
 def _safe_code(code: str | None) -> str:
