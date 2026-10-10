@@ -114,9 +114,12 @@ def test_429_retry_after_then_success(fake_clock):
     stub = _StubClient([_resp(429, retry_after="0"), _resp(200, {"articles": [{"url": "u"}]})])
     client = GDELTClient(client=stub, min_interval=0, max_429_retries=2)
     GDELTClient._next_allowed_at = 0.0
+    started = fake_clock[0]
     out = asyncio.run(client.news_search("apple"))
     assert out == {"articles": [{"url": "u"}]}
     assert len(stub.calls) == 2
+    # ventana 0 -> el reintento inline espera exactamente el suelo de 60s
+    assert fake_clock[0] - started == GDELTClient.RETRY_AFTER_FLOOR
 
 
 def test_429_retry_after_beyond_max_raises_without_retry():
@@ -132,19 +135,25 @@ def test_429_exhaustion_raises(fake_clock):
     stub = _StubClient([_resp(429, retry_after="45"), _resp(429, retry_after="45"), _resp(429, retry_after="45")])
     client = GDELTClient(client=stub, min_interval=0, max_429_retries=2)
     GDELTClient._next_allowed_at = 0.0
+    started = fake_clock[0]
     with pytest.raises(GdeltRateLimited) as excinfo:
         asyncio.run(client.news_search("apple"))
     assert len(stub.calls) == 3
     assert excinfo.value.retry_after == 45.0  # ventana acotada (min(raw, MAX))
+    # dos reintentos inline de 45s exactos: la ventana nunca se pisa ni se infla
+    assert fake_clock[0] - started == 90.0
 
 
 def test_429_exhaustion_con_ventana_cero_paga_el_suelo(fake_clock):
     stub = _StubClient([_resp(429, retry_after="0"), _resp(429, retry_after="0"), _resp(429, retry_after="0")])
     client = GDELTClient(client=stub, min_interval=0, max_429_retries=2)
     GDELTClient._next_allowed_at = 0.0
+    started = fake_clock[0]
     with pytest.raises(GdeltRateLimited) as excinfo:
         asyncio.run(client.news_search("apple"))
     assert excinfo.value.retry_after == GDELTClient.RETRY_AFTER_FLOOR  # 0 nunca reintenta al instante
+    # dos reintentos inline, cada uno pagando el suelo: 120s de espera exacta
+    assert fake_clock[0] - started == 2 * GDELTClient.RETRY_AFTER_FLOOR
 
 
 def test_retry_after_default_when_header_missing():
@@ -291,8 +300,11 @@ def test_429_sin_cabecera_usa_suelo_60_en_excepcion_y_cooldown(fake_clock):
     (el suelo), no un default distinto mas corto."""
     stub = _StubClient([_resp(429), _resp(429), _resp(429)])
     client = GDELTClient(client=stub, max_429_retries=2)
+    started = fake_clock[0]
     with pytest.raises(GdeltRateLimited) as excinfo:
         asyncio.run(client.news_search("q"))
     assert excinfo.value.retry_after == GDELTClient.RETRY_AFTER_FLOOR
+    # dos reintentos inline de 60s (el pacing de 5s queda absorbido por el suelo)
+    assert fake_clock[0] - started == 2 * GDELTClient.RETRY_AFTER_FLOOR
     remaining = GDELTClient._blocked_until - time.monotonic()
     assert remaining > 50.0
