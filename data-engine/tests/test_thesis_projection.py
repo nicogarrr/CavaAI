@@ -211,6 +211,10 @@ def test_stored_assumption_labeling_is_fail_closed(db, valued):
             scenario="base",
             year=2025,
             source_type="SEC",
+            # created_at fijado: la guardia anti-look-ahead compara con
+            # AS_OF (2026-10-09) y el default "ahora" romperia el test en
+            # cuanto el calendario lo superara.
+            created_at=datetime(2026, 10, 8, tzinfo=UTC),
         )
     )
     db.commit()
@@ -246,6 +250,10 @@ def test_official_rate_exposes_url_and_date(db, valued):
             year=2025,
             source_type="SEC",
             source_id=doc.id,
+            # created_at fijado: la guardia anti-look-ahead compara con
+            # AS_OF (2026-10-09) y el default "ahora" romperia el test en
+            # cuanto el calendario lo superara.
+            created_at=datetime(2026, 10, 8, tzinfo=UTC),
         )
     )
     db.commit()
