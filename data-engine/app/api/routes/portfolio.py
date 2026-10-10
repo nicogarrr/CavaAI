@@ -1,3 +1,4 @@
+import math
 from datetime import date
 from decimal import Decimal
 from typing import Annotated, Literal
@@ -8,7 +9,15 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.models import CashBalance, Company, FXRate, Position, Transaction
+from app.models import (
+    CashBalance,
+    Company,
+    FundamentalModelVersion,
+    FXRate,
+    Position,
+    ThesisVersion,
+    Transaction,
+)
 from app.services.company_resolver import resolve_company
 from app.services.connectors.ibkr import IBKRFlexClient
 from app.services.dividend_ingestion_service import DividendIngestionService
@@ -654,3 +663,401 @@ def import_ibkr_csv(payload: IBKRCsvImportRequest, db: Session = Depends(get_db)
         return IBKRImportService().import_ibkr_csv(db, payload.csv)
     except IBKRImportError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+_SCENARIO_KEYS = ("bear", "base", "bull")
+_DEFAULT_HORIZON_YEARS = 5
+
+
+def _published_thesis_by_company(db: Session, company_ids: list[int]) -> tuple[dict[int, ThesisVersion], set[int]]:
+    """Tesis vigente = ultima PUBLICADA por empresa. Un draft no es verdad vigente."""
+    rows = db.execute(
+        select(ThesisVersion)
+        .where(ThesisVersion.company_id.in_(company_ids))
+        .order_by(ThesisVersion.company_id, ThesisVersion.version.desc())
+    ).scalars().all()
+    published: dict[int, ThesisVersion] = {}
+    draft_only: set[int] = set()
+    for row in rows:
+        if row.status == "published":
+            published.setdefault(row.company_id, row)
+        elif row.company_id not in published:
+            draft_only.add(row.company_id)
+    return published, draft_only
+
+
+def _publishable_model_by_company(db: Session, company_ids: list[int]) -> dict[int, FundamentalModelVersion]:
+    """Modelo vigente = ultima version publicable; un no-publicable no fija horizonte."""
+    rows = db.execute(
+        select(FundamentalModelVersion)
+        .where(FundamentalModelVersion.company_id.in_(company_ids))
+        .order_by(FundamentalModelVersion.company_id, FundamentalModelVersion.version.desc())
+    ).scalars().all()
+    publishable: dict[int, FundamentalModelVersion] = {}
+    for row in rows:
+        if row.publishable:
+            publishable.setdefault(row.company_id, row)
+    return publishable
+
+
+def _validated_probabilities(raw: dict | None) -> tuple[dict[str, float] | None, float | None, bool]:
+    """Probabilidades por escenario, validadas y SIN renormalizar huecos.
+
+    Solo entradas finitas en [0, 1]; la masa devuelta es su suma y debe ser
+    <= 1. Renormalizar un hueco (p.ej. solo bull=0.5 -> bull 100%) ocultaria
+    el escenario desconocido: el esperado se calcula con masa explicita.
+    """
+    if not raw:
+        return None, None, False
+    probs: dict[str, float] = {}
+    invalid = False
+    for key in _SCENARIO_KEYS:
+        value = raw.get(key)
+        if value is None:
+            continue
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            invalid = True
+            continue
+        if not math.isfinite(parsed) or parsed < 0.0 or parsed > 1.0:
+            invalid = True
+            continue
+        probs[key] = parsed
+    if not probs:
+        return None, None, invalid
+    mass = sum(probs.values())
+    if mass <= 0.0 or mass > 1.0 + 1e-9:
+        return None, None, True
+    return probs, mass, invalid
+
+
+_OFFICIAL_PRICE_SOURCES = frozenset({"ibkr_flex", "market_refresh"})
+
+
+def _price_veracity(source: str | None) -> str:
+    """OFICIAL solo con procedencia conocida; manual y desconocidas se rotulan."""
+    if source == "manual":
+        return "MANUAL/NO OFICIAL"
+    if source in _OFFICIAL_PRICE_SOURCES:
+        return "OFICIAL"
+    return "NO VERIFICADA"
+
+
+def _scenario_returns(intrinsic: float | None, price: float, horizon: int) -> tuple[float, float] | None:
+    """(CAGR, retorno total) del valor intrinseco contra precio. None si no computable."""
+    if intrinsic is None or not math.isfinite(intrinsic) or price <= 0 or intrinsic <= 0 or horizon <= 0:
+        return None
+    total_return = intrinsic / price - 1.0
+    cagr = (intrinsic / price) ** (1.0 / horizon) - 1.0
+    return cagr, total_return
+
+
+def _intrinsic_for_comparison(
+    thesis: ThesisVersion, position: Position, company: Company
+) -> tuple[dict[str, float | None] | None, str]:
+    """Valores intrinsecos en terminos COMPARABLES con el precio cotizado.
+
+    Comparar exige evidencia:
+    - listed_share_values (ADR con ratio aplicado por el motor): comparables.
+    - value_per_share_basis == "ordinary_share" informado por el motor y sin
+      adr_ratio: accion ordinaria, comparable.
+    - Tesis legacy sin base informada: NUNCA se asume la base (un ADR no
+      identificado quedaria mezclado): N/D.
+    - Moneda de la posicion distinta de la de la compania: sin conversion
+      verificada, comparar seria un mismatch silencioso: N/D.
+    """
+    if company.currency and position.currency and company.currency != position.currency:
+        return None, "currency_mismatch"
+    basis = thesis.valuation_basis if isinstance(thesis.valuation_basis, dict) else {}
+    listed = basis.get("listed_share_values") if isinstance(basis, dict) else None
+    if isinstance(listed, dict) and any(listed.get(key) is not None for key in _SCENARIO_KEYS):
+        return (
+            {key: (float(listed[key]) if listed.get(key) is not None else None) for key in _SCENARIO_KEYS},
+            "listed_share",
+        )
+    if basis.get("adr_ratio"):
+        return None, "adr_without_listed_values"
+    if basis.get("value_per_share_basis") == "ordinary_share":
+        return (
+            {
+                "bear": float(thesis.bear_value) if thesis.bear_value is not None else None,
+                "base": float(thesis.base_value) if thesis.base_value is not None else None,
+                "bull": float(thesis.bull_value) if thesis.bull_value is not None else None,
+            },
+            "ordinary_share",
+        )
+    return None, "legacy_basis_unverified"
+
+
+@router.get("/forecast")
+def portfolio_forecast(db: Session = Depends(get_db)) -> dict:
+    """Prevision de rentabilidad de la cartera desde el valor intrinseco.
+
+    Determinista (ningun numero lo escribe un LLM). Reglas de veracidad:
+    - Solo tesis PUBLICADAS y modelos publicables (un draft no es vigente).
+    - Solo se suman valores en moneda base (market_value_base): sin
+      conversion la posicion es N/D y queda excluida, nunca suma silenciosa.
+    - Probabilidades validadas en [0, 1] y SIN renormalizar huecos: el
+      esperado usa masa explicita y etiquetada.
+    - Cada escenario agregado lleva su cobertura; covered_only divide por la
+      cobertura DE ESE escenario, nunca presenta parciales como cartera
+      completa.
+    - ADR: se comparan valores por accion cotizada; sin ellos, N/D.
+    - El CAGR de convergencia es HIPOTESIS etiquetada (los intrinsecos son
+      valores presentes descontados), no un objetivo a 5 anos.
+    """
+    rows = db.execute(
+        select(Position, Company)
+        .join(Company, Position.company_id == Company.id)
+        .order_by(Company.ticker)
+    ).all()
+    empty = {
+        "as_of": None,
+        "base_currency": None,
+        "portfolio": None,
+        "positions": [],
+        "excluded": [],
+        "assumptions": ["Sin posiciones: no hay prevision que calcular."],
+    }
+    if not rows:
+        return empty
+
+    valued: list[tuple[Position, Company, float]] = []
+    fx_excluded: list[dict] = []
+    for position, company in rows:
+        if position.market_value_base is None:
+            fx_excluded.append(
+                {
+                    "ticker": company.ticker,
+                    "name": company.name,
+                    "weight": None,
+                    "currency": position.currency,
+                    "reason": "Sin valor en moneda base (conversion N/D): no se suma a la cartera.",
+                }
+            )
+            continue
+        valued.append((position, company, float(position.market_value_base)))
+    base_currencies = {position.base_currency for position, _, _ in valued if position.base_currency}
+    if len(base_currencies) > 1:
+        out = dict(empty)
+        out["excluded"] = fx_excluded
+        out["assumptions"] = [
+            "Monedas base mezcladas entre posiciones: agregados de cartera N/D (no se suman monedas distintas)."
+        ]
+        return out
+    if not valued:
+        out = dict(empty)
+        out["excluded"] = fx_excluded
+        out["assumptions"] = ["Ninguna posicion tiene valor en moneda base: agregados N/D."]
+        return out
+
+    base_currency = base_currencies.pop() if base_currencies else valued[0][0].base_currency
+    total_value = sum(value for _, _, value in valued)
+    if total_value <= 0:
+        return empty
+
+    company_ids = [company.id for _, company, _ in valued]
+    theses, draft_only = _published_thesis_by_company(db, company_ids)
+    models = _publishable_model_by_company(db, company_ids)
+
+    positions_out: list[dict] = []
+    excluded_out: list[dict] = list(fx_excluded)
+    any_invalid_probs = False
+    for position, company, value in valued:
+        weight = value / total_value
+        thesis = theses.get(company.id)
+        model = models.get(company.id)
+        base_info = {
+            "ticker": company.ticker,
+            "name": company.name,
+            "weight": weight,
+            "currency": position.currency,
+        }
+        if thesis is None:
+            suffix = " (hay borrador sin publicar)" if company.id in draft_only else ""
+            excluded_out.append({**base_info, "reason": f"Sin tesis publicada vigente{suffix}: excluida de la prevision."})
+            continue
+        intrinsic, basis_label = _intrinsic_for_comparison(thesis, position, company)
+        if intrinsic is None:
+            reason = {
+                "adr_without_listed_values": "ADR sin valores por accion cotizada: comparacion con el precio no verificada (N/D).",
+                "currency_mismatch": "Moneda de la posicion distinta de la moneda de cotizacion de la compania: comparacion sin conversion verificada (N/D).",
+            }.get(basis_label, "Base de valoracion no verificada (tesis sin value_per_share_basis del motor): comparacion con el precio N/D, nunca asumida.")
+            excluded_out.append({**base_info, "reason": reason})
+            continue
+        if model is not None:
+            basis_dict = thesis.valuation_basis if isinstance(thesis.valuation_basis, dict) else {}
+            if basis_dict.get("model_input_fingerprint") != model.input_fingerprint:
+                # Modelo no ligado a ESTA tesis publicada: su horizonte y sus
+                # probabilidades podrian ser de otra epoca de inputs. N/D.
+                model = None
+        price = float(position.market_price)
+        horizon = model.horizon_years if model is not None else _DEFAULT_HORIZON_YEARS
+        cagrs: dict[str, float] = {}
+        total_returns: dict[str, float] = {}
+        for key in _SCENARIO_KEYS:
+            result = _scenario_returns(intrinsic[key], price, horizon)
+            if result is not None:
+                cagrs[key], total_returns[key] = result
+        if not cagrs:
+            excluded_out.append({**base_info, "reason": "Tesis sin valores intrinsecos computables."})
+            continue
+        raw_probs = thesis.scenario_probabilities or (
+            model.scenario_probabilities if model is not None else None
+        )
+        probabilities, mass, invalid = _validated_probabilities(raw_probs)
+        any_invalid_probs = any_invalid_probs or invalid
+        expected_cagr: float | None = None
+        used_mass: float | None = None
+        partial_expected: float | None = None
+        if probabilities is not None and mass is not None:
+            terms = [
+                (probabilities[key], cagrs[key])
+                for key in _SCENARIO_KEYS
+                if key in probabilities and key in cagrs
+            ]
+            if terms:
+                # SIN renormalizar: el hueco de probabilidad queda visible
+                # en used_mass, nunca repartido entre los demas escenarios.
+                # El esperado solo existe con masa completa (==1): con masa
+                # parcial el resultado se expone como partial_expected_cagr y
+                # el esperado queda N/D (el resto nunca es cero implicito).
+                partial_expected = sum(prob * cagr for prob, cagr in terms)
+                used_mass = sum(prob for prob, _ in terms)
+                # Esperado completo solo con masa 1 SIN entradas invalidas
+                # descartadas y con valor en todo escenario con masa>0
+                # (used_mass solo suma escenarios con CAGR computable).
+                if abs(used_mass - 1.0) <= 1e-9 and not invalid:
+                    expected_cagr = partial_expected
+        positions_out.append(
+            {
+                **base_info,
+                "weight_scope": "valued_subset" if fx_excluded else "total_portfolio",
+                "price": price,
+                "price_as_of": position.as_of.isoformat(),
+                "price_source": position.source,
+                "price_veracity": _price_veracity(position.source),
+                "intrinsic": intrinsic,
+                "comparison_basis": basis_label,
+                "probabilities": probabilities,
+                "probability_mass": used_mass,
+                "horizon_years": horizon,
+                "thesis_version": thesis.version,
+                "thesis_status": thesis.status,
+                "model_version": model.version if model is not None else None,
+                "cagr": cagrs,
+                "total_return": total_returns,
+                "expected_cagr": expected_cagr,
+                "partial_expected_cagr": partial_expected,
+                "contribution_expected": (
+                    weight * expected_cagr if expected_cagr is not None else None
+                ),
+            }
+        )
+
+    covered_weight = sum(item["weight"] for item in positions_out)
+    if fx_excluded:
+        # El denominador real de la cartera es desconocido (hay posiciones sin
+        # conversion a moneda base): los agregados de cartera total son N/D,
+        # nunca "100% del subset valorado" vendido como cartera completa.
+        covered_weight = None
+    # Agregados por escenario: CONTRIBUCIONES ponderadas del subset cubierto
+    # (suma peso x CAGR), NUNCA "rentabilidad de cartera". horizon_scope
+    # etiqueta mezcla de horizontes (proxy anual, no CAGR buy-and-hold).
+    portfolio_scenarios: dict[str, dict] | None = {}
+    covered_scenarios: dict[str, dict] = {}
+    for key in _SCENARIO_KEYS:
+        with_scenario = [item for item in positions_out if key in item["cagr"]]
+        if not with_scenario:
+            continue
+        coverage = sum(item["weight"] for item in with_scenario)
+        contrib_cagr = sum(item["weight"] * item["cagr"][key] for item in with_scenario)
+        contrib_total = sum(
+            item["weight"] * item["total_return"][key] for item in with_scenario
+        )
+        scenario_horizons = {item["horizon_years"] for item in with_scenario}
+        horizon_scope = "uniform" if len(scenario_horizons) == 1 else "mixed"
+        portfolio_scenarios[key] = {
+            "contribution_cagr": contrib_cagr,
+            "contribution_total_return": contrib_total,
+            "coverage": coverage,
+            "horizon_scope": horizon_scope,
+        }
+        if coverage > 0:
+            covered_scenarios[key] = {
+                "cagr": contrib_cagr / coverage,
+                "total_return": contrib_total / coverage,
+                "coverage": coverage,
+                "horizon_scope": horizon_scope,
+            }
+    if fx_excluded:
+        # Denominador de cartera desconocido: agregados de cartera N/D (el
+        # subset explícito sigue disponible en covered_only).
+        portfolio_scenarios = None
+    with_expected = [item for item in positions_out if item["expected_cagr"] is not None]
+    expected_coverage = (
+        (sum(item["weight"] for item in with_expected) if with_expected else None)
+        if not fx_excluded
+        else None
+    )
+    # Esperado de cartera TOTAL: solo si cubre el 100% de la cartera valorada
+    # y no hay FX ausente. Con cobertura parcial, sumar parciales y llamarlo
+    # esperado de cartera seria una etiqueta falsa: N/D.
+    expected_cagr = (
+        sum(item["contribution_expected"] for item in with_expected)
+        if (
+            with_expected
+            and not fx_excluded
+            and expected_coverage is not None
+            and abs(expected_coverage - 1.0) <= 1e-9
+        )
+        else None
+    )
+    covered_expected = (
+        sum(item["contribution_expected"] for item in with_expected) / expected_coverage
+        if with_expected and expected_coverage
+        else None
+    )
+
+    dates = sorted({item["price_as_of"] for item in positions_out} | {p.as_of.isoformat() for p, _, _ in valued})
+    manual = [item["ticker"] for item in positions_out if item["price_veracity"] == "MANUAL/NO OFICIAL"]
+    unverified = [item["ticker"] for item in positions_out if item["price_veracity"] == "NO VERIFICADA"]
+    assumptions = [
+        "Precios: ultima sincronizacion de cada posicion (ver price_source y price_as_of). OFICIAL solo con procedencia conocida (ibkr_flex, market_refresh)."
+        + (f" MANUAL/NO OFICIAL en: {', '.join(manual)}." if manual else "")
+        + (f" NO VERIFICADA en: {', '.join(unverified)}." if unverified else ""),
+        "Valores intrinsecos y probabilidades: solo tesis PUBLICADAS y modelos publicables (INFERIDO; los borradores nunca son vigencia).",
+        "HIPOTESIS etiquetada (INFERENCIA, no objetivo del modelo): los intrinsecos son valores presentes descontados; el CAGR supone convergencia del precio al intrinseco en el horizonte del modelo vigente (5 anos sin modelo).",
+        "Escenarios: 'scenarios' son CONTRIBUCIONES ponderadas del subset cubierto (suma peso x CAGR), NUNCA la rentabilidad total de la cartera; 'coverage' es la fraccion de cartera usada y 'covered_only' normaliza por ESA cobertura por escenario. 'horizon_scope' mixed etiqueta horizontes de convergencia mezclados (proxy anual ponderado, no CAGR buy-and-hold de cartera). Nunca esperado de cartera completa con huecos.",
+        "'expected_cagr' es la media ponderada por probabilidad de los CAGR por escenario (esperado DEL CAGR, NO el CAGR del valor esperado: no coinciden por no linealidad). Solo se emite con masa completa (==1) y sin entradas invalidas descartadas; el parcial va en 'partial_expected_cagr' y 'probability_mass' indica la masa usada."
+        + (" Probabilidades invalidas (fuera de [0, 1] o no finitas) descartadas en alguna posicion." if any_invalid_probs else ""),
+        (
+            f"Cobertura de cartera N/D: {len(fx_excluded)} posicion(es) sin conversion a moneda base; "
+            "pesos y agregados cubiertos usan SOLO el subset valorado, nunca la cartera completa."
+            if fx_excluded
+            else f"Cobertura con tesis publicada: {covered_weight:.1%} de la cartera; el resto se lista en excluded."
+        ),
+        "El esperado de cartera TOTAL ('portfolio.expected_cagr') solo se emite cuando cubre el 100% de la cartera valorada y no hay posiciones sin conversion; con cobertura parcial es N/D y las contribuciones por posicion llevan scope.",
+    ]
+    return {
+        "as_of": dates[-1],
+        "base_currency": base_currency,
+        "portfolio": {
+            "total_value_base": total_value,
+            "position_count": len(valued),
+            "covered_count": len(positions_out),
+            "excluded_count": len(excluded_out),
+            "covered_weight": covered_weight,
+            "scenarios": portfolio_scenarios,
+            "expected_cagr": expected_cagr,
+            "expected_coverage": expected_coverage,
+            "covered_only": {
+                "scenarios": covered_scenarios,
+                "expected_cagr": covered_expected,
+            },
+        },
+        "positions": positions_out,
+        "excluded": excluded_out,
+        "assumptions": assumptions,
+    }
