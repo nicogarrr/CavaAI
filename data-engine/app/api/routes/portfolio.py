@@ -8,7 +8,15 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.models import CashBalance, Company, FXRate, Position, Transaction
+from app.models import (
+    CashBalance,
+    Company,
+    FundamentalModelVersion,
+    FXRate,
+    Position,
+    ThesisVersion,
+    Transaction,
+)
 from app.services.company_resolver import resolve_company
 from app.services.connectors.ibkr import IBKRFlexClient
 from app.services.dividend_ingestion_service import DividendIngestionService
@@ -654,3 +662,231 @@ def import_ibkr_csv(payload: IBKRCsvImportRequest, db: Session = Depends(get_db)
         return IBKRImportService().import_ibkr_csv(db, payload.csv)
     except IBKRImportError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+_SCENARIO_KEYS = ("bear", "base", "bull")
+_DEFAULT_HORIZON_YEARS = 5
+
+
+def _latest_thesis_by_company(db: Session, company_ids: list[int]) -> dict[int, ThesisVersion]:
+    rows = db.execute(
+        select(ThesisVersion)
+        .where(ThesisVersion.company_id.in_(company_ids))
+        .order_by(ThesisVersion.company_id, ThesisVersion.version.desc())
+    ).scalars().all()
+    latest: dict[int, ThesisVersion] = {}
+    published: dict[int, ThesisVersion] = {}
+    for row in rows:
+        latest.setdefault(row.company_id, row)
+        if row.status == "published":
+            published.setdefault(row.company_id, row)
+    return {cid: published.get(cid) or latest[cid] for cid in latest}
+
+
+def _latest_model_by_company(db: Session, company_ids: list[int]) -> dict[int, FundamentalModelVersion]:
+    rows = db.execute(
+        select(FundamentalModelVersion)
+        .where(FundamentalModelVersion.company_id.in_(company_ids))
+        .order_by(FundamentalModelVersion.company_id, FundamentalModelVersion.version.desc())
+    ).scalars().all()
+    latest: dict[int, FundamentalModelVersion] = {}
+    publishable: dict[int, FundamentalModelVersion] = {}
+    for row in rows:
+        latest.setdefault(row.company_id, row)
+        if row.publishable:
+            publishable.setdefault(row.company_id, row)
+    return {cid: publishable.get(cid) or latest[cid] for cid in latest}
+
+
+def _normalized_probabilities(raw: dict | None) -> dict[str, float] | None:
+    if not raw:
+        return None
+    probs = {key: float(raw[key]) for key in _SCENARIO_KEYS if raw.get(key) is not None}
+    total = sum(probs.values())
+    if not probs or total <= 0:
+        return None
+    return {key: value / total for key, value in probs.items()}
+
+
+def _scenario_returns(intrinsic: float | None, price: float, horizon: int) -> tuple[float, float] | None:
+    """(CAGR, retorno total) del valor intrinseco contra precio. None si no computable."""
+    if intrinsic is None or price <= 0 or intrinsic <= 0 or horizon <= 0:
+        return None
+    total_return = intrinsic / price - 1.0
+    cagr = (intrinsic / price) ** (1.0 / horizon) - 1.0
+    return cagr, total_return
+
+
+@router.get("/forecast")
+def portfolio_forecast(db: Session = Depends(get_db)) -> dict:
+    """Prevision de rentabilidad de la cartera desde el valor intrinseco.
+
+    Calculo determinista (ningun numero lo escribe un LLM): por posicion,
+    CAGR y retorno total por escenario desde el valor intrinseco de la tesis
+    vigente (published preferida) contra el precio de la posicion, con el
+    horizonte del modelo vigente (5 anos por defecto). Cartera: esperado
+    ponderado por probabilidades propias + escenarios coherentes oso/base/
+    toro. Posiciones sin tesis: excluidas del calculo y listadas con su
+    peso; ninguna cifra inventada como cero.
+    """
+    rows = db.execute(
+        select(Position, Company)
+        .join(Company, Position.company_id == Company.id)
+        .order_by(Company.ticker)
+    ).all()
+    empty = {
+        "as_of": None,
+        "base_currency": None,
+        "portfolio": None,
+        "positions": [],
+        "excluded": [],
+        "assumptions": ["Sin posiciones: no hay prevision que calcular."],
+    }
+    if not rows:
+        return empty
+
+    entries: list[tuple[Position, Company, float]] = []
+    total_value = 0.0
+    for position, company in rows:
+        raw_value = (
+            position.market_value_base
+            if position.market_value_base is not None
+            else position.market_value
+        )
+        value = float(raw_value)
+        total_value += value
+        entries.append((position, company, value))
+    if total_value <= 0:
+        return empty
+
+    company_ids = [company.id for _, company, _ in entries]
+    theses = _latest_thesis_by_company(db, company_ids)
+    models = _latest_model_by_company(db, company_ids)
+
+    positions_out: list[dict] = []
+    excluded_out: list[dict] = []
+    for position, company, value in entries:
+        weight = value / total_value
+        thesis = theses.get(company.id)
+        model = models.get(company.id)
+        base_info = {
+            "ticker": company.ticker,
+            "name": company.name,
+            "weight": weight,
+            "currency": position.currency,
+        }
+        if thesis is None:
+            excluded_out.append({**base_info, "reason": "Sin tesis vigente: excluida de la prevision."})
+            continue
+        price = float(position.market_price)
+        horizon = model.horizon_years if model is not None else _DEFAULT_HORIZON_YEARS
+        intrinsic = {
+            "bear": float(thesis.bear_value) if thesis.bear_value is not None else None,
+            "base": float(thesis.base_value) if thesis.base_value is not None else None,
+            "bull": float(thesis.bull_value) if thesis.bull_value is not None else None,
+        }
+        cagrs: dict[str, float] = {}
+        total_returns: dict[str, float] = {}
+        for key in _SCENARIO_KEYS:
+            result = _scenario_returns(intrinsic[key], price, horizon)
+            if result is not None:
+                cagrs[key], total_returns[key] = result
+        if not cagrs:
+            excluded_out.append({**base_info, "reason": "Tesis sin valores intrinsecos computables."})
+            continue
+        raw_probs = thesis.scenario_probabilities or (
+            model.scenario_probabilities if model is not None else None
+        )
+        probabilities = _normalized_probabilities(raw_probs)
+        expected_cagr: float | None = None
+        if probabilities is not None:
+            terms = [
+                probabilities[key] * cagrs[key]
+                for key in _SCENARIO_KEYS
+                if key in probabilities and key in cagrs
+            ]
+            weight_check = sum(
+                probabilities[key]
+                for key in _SCENARIO_KEYS
+                if key in probabilities and key in cagrs
+            )
+            if terms and weight_check > 0:
+                expected_cagr = sum(terms) / weight_check
+        positions_out.append(
+            {
+                **base_info,
+                "price": price,
+                "price_as_of": position.as_of.isoformat(),
+                "price_source": position.source,
+                "intrinsic": intrinsic,
+                "probabilities": probabilities,
+                "horizon_years": horizon,
+                "thesis_version": thesis.version,
+                "thesis_status": thesis.status,
+                "model_version": model.version if model is not None else None,
+                "cagr": cagrs,
+                "total_return": total_returns,
+                "expected_cagr": expected_cagr,
+                "contribution_expected": (
+                    weight * expected_cagr if expected_cagr is not None else None
+                ),
+            }
+        )
+
+    covered_weight = sum(item["weight"] for item in positions_out)
+    portfolio_scenarios: dict[str, dict] = {}
+    covered_scenarios: dict[str, dict] = {}
+    for key in _SCENARIO_KEYS:
+        with_scenario = [item for item in positions_out if key in item["cagr"]]
+        if not with_scenario:
+            continue
+        cagr = sum(item["weight"] * item["cagr"][key] for item in with_scenario)
+        total_return = sum(
+            item["weight"] * item["total_return"][key] for item in with_scenario
+        )
+        portfolio_scenarios[key] = {"cagr": cagr, "total_return": total_return}
+        if covered_weight > 0:
+            covered_scenarios[key] = {
+                "cagr": cagr / covered_weight,
+                "total_return": total_return / covered_weight,
+            }
+    with_expected = [item for item in positions_out if item["expected_cagr"] is not None]
+    expected_cagr = (
+        sum(item["contribution_expected"] for item in with_expected)
+        if with_expected
+        else None
+    )
+    covered_expected = (
+        expected_cagr / covered_weight
+        if expected_cagr is not None and covered_weight > 0
+        else None
+    )
+
+    dates = sorted({item["price_as_of"] for item in positions_out} | {p.as_of.isoformat() for p, _, _ in entries})
+    base_currency = entries[0][0].base_currency
+    return {
+        "as_of": dates[-1],
+        "base_currency": base_currency,
+        "portfolio": {
+            "total_value_base": total_value,
+            "position_count": len(entries),
+            "covered_count": len(positions_out),
+            "excluded_count": len(excluded_out),
+            "covered_weight": covered_weight,
+            "scenarios": portfolio_scenarios,
+            "expected_cagr": expected_cagr,
+            "covered_only": {
+                "scenarios": covered_scenarios,
+                "expected_cagr": covered_expected,
+            },
+        },
+        "positions": positions_out,
+        "excluded": excluded_out,
+        "assumptions": [
+            "Precios: los de la ultima sincronizacion de cada posicion (OFICIAL, ver price_source y price_as_of).",
+            "Valores intrinsecos y probabilidades: tesis/modelo vigentes (INFERIDO, ver thesis_version y model_version).",
+            "Horizonte: el del modelo vigente de cada posicion; 5 anos cuando no hay modelo.",
+            "El esperado de cartera pondera por peso real; los escenarios oso/base/toro son coherentes (todas las posiciones en el mismo escenario).",
+            f"Cobertura: {covered_weight:.1%} de la cartera con tesis computable; el resto se lista en excluded.",
+        ],
+    }
