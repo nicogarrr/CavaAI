@@ -79,10 +79,13 @@ test.describe("research thesis workspace", () => {
       page.getByRole("button", { name: "Generar tesis" }),
     ).toBeVisible();
 
-    // Memo export link targets the per-ticker markdown endpoint.
+    // Memo export link targets the per-ticker markdown endpoint; since the
+    // export actions live in the "Exportar" menu, open it before asserting.
+    await page.getByRole("button", { name: "Exportar" }).click();
     await expect(
-      page.getByRole("link", { name: "Exportar memo" }),
+      page.getByRole("menuitem", { name: "Memo de la tesis" }),
     ).toHaveAttribute("href", "/api/thesis-memo/MSFT");
+    await page.keyboard.press("Escape");
 
     // Without a persisted thesis the workspace says so - nothing invented.
     await expect(page.getByText("Aún no existe ninguna tesis.")).toBeVisible();

@@ -1195,9 +1195,11 @@ export async function getResearchNews(
   lane: 'empresa' | 'macro' | null = null,
   offset = 0,
   limit = 30,
+  ticker: string | null = null,
 ): Promise<ResearchNewsEvent[]> {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (lane) params.set('lane', lane);
+  if (ticker) params.set('ticker', ticker);
   return getJson<ResearchNewsEvent[]>(`/api/news?${params.toString()}`, []);
 }
 
