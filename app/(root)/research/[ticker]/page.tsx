@@ -178,9 +178,12 @@ function moduleHref(ticker: string, module: (typeof MODULES)[number]): string {
  *  cuando es el fallback de ingesta o no hay metadato. */
 function newsDateLabel(event: { date: string; date_source?: string | null }): string {
   const day = event.date.slice(0, 10);
-  if (event.date_source === 'ingested_at_fallback') return `detectado el ${day}`;
-  if (!event.date_source) return `fecha no verificada (${day})`;
-  return day;
+  // Mismo criterio que NewsEventsFlow y ResearchAssistant: solo 'source' es
+  // fecha de publicacion verificada; el resto se etiqueta, nunca se afirma.
+  if (event.date_source === 'source') return day;
+  if (event.date_source === 'gdelt_first_seen') return `Detectada el ${day}`;
+  if (event.date_source === 'ingested_at_fallback') return `Incorporada el ${day}`;
+  return `Fecha no verificada (${day})`;
 }
 
 function number(value: number | string | null | undefined): number | null {
@@ -872,7 +875,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
           {researchValuability(snapshot)}
         </p>
         <Panel
-          description="Lo último que ha pasado en esta empresa, con fuente y fecha."
+          description="Las 5 noticias de mayor materialidad entre las 25 más recientes de esta empresa, con fuente y fecha."
           title="Últimas noticias"
         >
           {overviewNewsError ? (
