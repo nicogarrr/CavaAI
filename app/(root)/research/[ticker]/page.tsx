@@ -12,7 +12,6 @@ import { cache } from 'react';
 import {
   ArrowLeft,
   BookOpen,
-  FileDown,
   FileText,
   History,
   RefreshCcw,
@@ -71,6 +70,7 @@ import {
   type ResearchLongTermModel,
   type ResearchValuation,
   getMoatQualityScore,
+  getResearchNews,
 } from '@/lib/actions/research.actions';
 import { getCompanyMarketSnapshot } from '@/lib/actions/market-workspace.actions';
 import { getWatchlist } from '@/lib/actions/watchlist.actions';
@@ -79,7 +79,8 @@ import { isBackendUnavailableError } from '@/lib/backend-offline';
 import QuickAlertButton from '@/components/research/QuickAlertButton';
 import ThesisMemo from '@/components/research/ThesisMemo';
 import { valuationScenarioDisplay } from '@/lib/research/listed-share-values';
-import ThesisExportButtons from '@/components/research/ThesisExportButtons';
+import ThesisExportMenu from '@/components/research/ThesisExportMenu';
+import { NewsHeadline } from '@/components/research/NewsHeadline';
 import ThesisApproveButton from '@/components/research/ThesisApproveButton';
 import CitationsList from '@/components/chat/CitationsList';
 import FollowButton from '@/components/screener/FollowButton';
@@ -829,6 +830,15 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     // Aquí solo la versión vigente, en versión corta, con salida explícita al
     // documento entero. Dos copias del mismo memo en dos URLs era lo que hacía
     // que las dos pestañas parecieran la misma.
+    // Al entrar en una accion lo primero es precio (header, ya en todas
+    // las vistas) y las ultimas noticias. Fallo de noticias = lista vacia,
+    // nunca rompe el resumen.
+    let overviewNews: Awaited<ReturnType<typeof getResearchNews>> = [];
+    try {
+      overviewNews = await getResearchNews(null, 0, 5, ticker);
+    } catch {
+      overviewNews = [];
+    }
     content = (
       <div className="space-y-6">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -845,6 +855,25 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
         <p role="status" className="rounded-lg border border-amber-900/70 bg-amber-950/20 p-3 text-sm text-amber-200">
           {researchValuability(snapshot)}
         </p>
+        <Panel
+          description="Lo último que ha pasado en esta empresa, con fuente y fecha."
+          title="Últimas noticias"
+        >
+          {overviewNews.length === 0 ? (
+            <EmptyState title="Sin noticias recientes de esta empresa." />
+          ) : (
+            <ul className="space-y-3">
+              {overviewNews.map((event) => (
+                <li className="text-sm" key={event.id}>
+                  <NewsHeadline event={event} />
+                  <p className="mt-1 text-xs text-gray-500">
+                    {event.source} · {event.date.slice(0, 10)}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
           <Panel title="Última tesis">
             {snapshot.latest_thesis ? (
@@ -1001,19 +1030,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
         <div className="flex flex-wrap items-center gap-3">
           <ThesisGenerateButton ticker={ticker} />
           <ThesisApproveButton ticker={ticker} disabled={data.history.length === 0} />
-          <Link
-            className="inline-flex items-center gap-2 rounded-md border border-gray-700 px-4 py-2 text-sm font-medium text-gray-200 transition hover:border-teal-700 hover:text-teal-200"
-            href="/export"
-          >
-            <FileDown className="h-4 w-4" />Exportar journal
-          </Link>
-          <a
-            className="inline-flex items-center gap-2 rounded-md border border-gray-700 px-4 py-2 text-sm font-medium text-gray-200 transition hover:border-teal-700 hover:text-teal-200"
-            href={`/api/thesis-memo/${encodeURIComponent(ticker)}`}
-          >
-            <FileDown className="h-4 w-4" />Exportar memo
-          </a>
-          <ThesisExportButtons ticker={ticker} />
+          <ThesisExportMenu ticker={ticker} />
           <Badge variant="outline">{data.history.length} versiones</Badge>
           <Badge variant="outline">{data.claims.length} afirmaciones</Badge>
         </div>
