@@ -89,68 +89,94 @@ def test_news_events_filter_by_ticker():
     engine.dispose()
 
 
-def test_ticker_filter_paginates_within_ticker(client, db):
+def test_ticker_filter_paginates_within_ticker():
     """limit/offset recortan despues del filtro: paginas dentro del ticker."""
-    tenant_id = _seed(db, "MSFT")
-    db.add_all(
-        [
-            NewsEvent(
-                tenant_id=tenant_id,
-                company_id=None,
-                ticker=None,
-                category="general",
-                headline=f"MSFT noticia {i}",
-                url=f"https://example.com/msft-{i}",
-                source="Reuters",
-                language="en",
-                published_at=datetime(2026, 10, 1, 12 - i, tzinfo=UTC),
-                ingested_at=datetime(2026, 10, 1, 12 - i, tzinfo=UTC),
-                date_source="gdelt",
-                materiality_score=1.0,
-            )
-            for i in range(2)
-        ]
+    engine = create_engine(
+        "sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool
     )
-    db.commit()
-
-    page1 = client.get("/api/news?ticker=msft&limit=1&offset=0")
-    page2 = client.get("/api/news?ticker=msft&limit=1&offset=1")
-    assert page1.status_code == 200 and page2.status_code == 200
-    ids1 = [item["id"] for item in page1.json()]
-    ids2 = [item["id"] for item in page2.json()]
-    assert len(ids1) == 1 and len(ids2) == 1
-    assert ids1 != ids2
-
-
-def test_ticker_filter_tenant_isolation(client, db):
-    """El join no fuga eventos de otro tenant aunque compartan empresa."""
-    from app.db.models import Tenant
-
-    tenant1 = _seed(db, "AAPL")
-    other = Tenant(name="otro")
-    db.add(other)
-    db.flush()
-    other_ticker = "AAPL"  # mismo ticker, evento de otro tenant
-    db.add(
-        NewsEvent(
-            tenant_id=other.id,
-            company_id=None,
-            ticker=other_ticker,
-            category="general",
-            headline="AAPL noticia ajena",
-            url="https://example.com/ajena",
-            source="Reuters",
-            language="en",
-            published_at=datetime(2026, 10, 2, 11, tzinfo=UTC),
-            ingested_at=datetime(2026, 10, 2, 11, tzinfo=UTC),
-            date_source="gdelt",
-            materiality_score=9.0,
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(engine)
+    with factory() as db:
+        db.add(Tenant(id=1, external_id="t"))
+        msft = _company("MSFT")
+        db.add(msft)
+        db.flush()
+        db.add_all(
+            [
+                NewsEvent(
+                    tenant_id=1, company_id=msft.id, title=f"msft news {i}", source="rss",
+                    url=f"https://publisher.example/msft-{i}",
+                    date=datetime(2026, 10, 9, 12 - i, tzinfo=UTC),
+                    metadata_={"connector": "rss", "date_source": "source"},
+                )
+                for i in range(2)
+            ]
         )
-    )
-    db.commit()
+        db.commit()
 
-    resp = client.get("/api/news?ticker=AAPL")
-    assert resp.status_code == 200
-    headlines = [item["headline"] for item in resp.json()]
-    assert any("propia" in h for h in headlines)
-    assert not any("ajena" in h for h in headlines)
+        app = FastAPI()
+        app.include_router(news_module.router, prefix="/api/news")
+
+        def _override_db():
+            yield db
+
+        app.dependency_overrides[get_db] = _override_db
+        client = TestClient(app)
+
+        page1 = client.get("/api/news?ticker=msft&limit=1&offset=0")
+        page2 = client.get("/api/news?ticker=msft&limit=1&offset=1")
+        assert page1.status_code == 200, page1.text
+        assert page2.status_code == 200, page2.text
+        titles1 = [row["title"] for row in page1.json()]
+        titles2 = [row["title"] for row in page2.json()]
+        assert len(titles1) == 1 and len(titles2) == 1
+        assert titles1 != titles2
+    engine.dispose()
+
+
+def test_ticker_filter_does_not_leak_other_tenants():
+    """Misma empresa, evento de otro tenant: el guard de tenant lo excluye."""
+    engine = create_engine(
+        "sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(engine)
+    with factory() as db:
+        db.add_all([Tenant(id=1, external_id="t"), Tenant(id=2, external_id="u")])
+        aapl = _company("AAPL")
+        db.add(aapl)
+        db.flush()
+        db.add_all(
+            [
+                NewsEvent(
+                    tenant_id=1, company_id=aapl.id, title="aapl propia", source="rss",
+                    url="https://publisher.example/propia", date=NOW,
+                    metadata_={"connector": "rss", "date_source": "source"},
+                ),
+                NewsEvent(
+                    tenant_id=2, company_id=aapl.id, title="aapl ajena", source="rss",
+                    url="https://publisher.example/ajena", date=NOW,
+                    metadata_={"connector": "rss", "date_source": "source"},
+                ),
+            ]
+        )
+        db.commit()
+
+        # El guard de tenant lee session.info["tenant_id"] (ver app.core.database).
+        db.info["tenant_id"] = 1
+
+        app = FastAPI()
+        app.include_router(news_module.router, prefix="/api/news")
+
+        def _override_db():
+            yield db
+
+        app.dependency_overrides[get_db] = _override_db
+        client = TestClient(app)
+
+        response = client.get("/api/news?ticker=AAPL")
+        assert response.status_code == 200, response.text
+        titles = [row["title"] for row in response.json()]
+        assert "aapl propia" in titles
+        assert "aapl ajena" not in titles
+    engine.dispose()
