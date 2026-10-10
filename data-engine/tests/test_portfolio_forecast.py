@@ -154,11 +154,16 @@ def test_forecast_weights_cagrs_and_exclusion(db_session):
     assert by_ticker["BBB"]["expected_cagr"] is None
     assert by_ticker["BBB"]["cagr"]["base"] == pytest.approx(1.2**0.1 - 1)
     portfolio_base = 0.7 * (1.5**0.2 - 1) + 0.2 * (1.2**0.1 - 1)
-    assert result["portfolio"]["scenarios"]["base"]["cagr"] == pytest.approx(portfolio_base)
+    assert result["portfolio"]["scenarios"]["base"]["contribution_cagr"] == pytest.approx(portfolio_base)
+    assert result["portfolio"]["scenarios"]["base"]["horizon_scope"] == "mixed"
     assert result["portfolio"]["covered_only"]["scenarios"]["base"]["cagr"] == pytest.approx(
         portfolio_base / 0.9
     )
-    assert result["portfolio"]["expected_cagr"] == pytest.approx(0.7 * expected_aaa)
+    # Cobertura 0.9 < 1: el esperado de cartera TOTAL es N/D (contribuciones por posicion)
+    assert result["portfolio"]["expected_cagr"] is None
+    # expected_coverage = peso de posiciones CON esperado (AAA=0.7), no covered_weight
+    assert result["portfolio"]["covered_only"]["expected_cagr"] == pytest.approx(expected_aaa)
+    assert by_ticker["AAA"]["weight_scope"] == "total_portfolio"
     assert [item["ticker"] for item in result["excluded"]] == ["CCC"]
     assert result["excluded"][0]["weight"] == pytest.approx(0.1)
 
@@ -361,6 +366,7 @@ def test_forecast_scenario_coverage_is_per_scenario(db_session):
     result = portfolio_forecast(db=db_session)
     scenarios = result["portfolio"]["scenarios"]
     assert scenarios["bull"]["coverage"] == pytest.approx(0.5)
+    assert scenarios["bull"]["horizon_scope"] == "uniform"
     covered_bull = result["portfolio"]["covered_only"]["scenarios"]["bull"]
     assert covered_bull["cagr"] == pytest.approx(2**0.2 - 1)
     assert covered_bull["coverage"] == pytest.approx(0.5)
@@ -383,6 +389,8 @@ def test_forecast_fx_missing_makes_total_coverage_nd(db_session):
     assert result["portfolio"]["covered_weight"] is None
     assert result["portfolio"]["expected_cagr"] is None
     assert result["portfolio"]["expected_coverage"] is None
+    assert result["portfolio"]["scenarios"] is None
+    assert result["positions"][0]["weight_scope"] == "valued_subset"
     assert [item["ticker"] for item in result["excluded"]] == ["BBB"]
     assert result["excluded"][0]["weight"] is None
     assert any("subset valorado" in a for a in result["assumptions"])
@@ -478,3 +486,19 @@ def test_forecast_full_degenerate_distribution_is_complete(db_session):
     item = result["positions"][0]
     assert item["probability_mass"] == pytest.approx(1.0)
     assert item["expected_cagr"] == pytest.approx(2**0.2 - 1)
+
+def test_forecast_full_coverage_emits_total_expected(db_session):
+    """Cobertura 100% de la cartera valorada y masa completa: el esperado total SI se emite."""
+    aaa = _company(db_session, "AAA")
+    _position(db_session, aaa, price=100, value=1000)
+    _thesis(
+        db_session, aaa, version=1, status="published",
+        bear=100, base=100, bull=200,
+        probs={"bear": 0.0, "base": 0.0, "bull": 1.0},
+    )
+    db_session.commit()
+
+    result = portfolio_forecast(db=db_session)
+    assert result["portfolio"]["expected_coverage"] == pytest.approx(1.0)
+    assert result["portfolio"]["expected_cagr"] == pytest.approx(2**0.2 - 1)
+    assert result["portfolio"]["scenarios"]["bull"]["horizon_scope"] == "uniform"

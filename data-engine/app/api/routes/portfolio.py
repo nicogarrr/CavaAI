@@ -933,6 +933,7 @@ def portfolio_forecast(db: Session = Depends(get_db)) -> dict:
         positions_out.append(
             {
                 **base_info,
+                "weight_scope": "valued_subset" if fx_excluded else "total_portfolio",
                 "price": price,
                 "price_as_of": position.as_of.isoformat(),
                 "price_source": position.source,
@@ -961,38 +962,61 @@ def portfolio_forecast(db: Session = Depends(get_db)) -> dict:
         # conversion a moneda base): los agregados de cartera total son N/D,
         # nunca "100% del subset valorado" vendido como cartera completa.
         covered_weight = None
-    portfolio_scenarios: dict[str, dict] = {}
+    # Agregados por escenario: CONTRIBUCIONES ponderadas del subset cubierto
+    # (suma peso x CAGR), NUNCA "rentabilidad de cartera". horizon_scope
+    # etiqueta mezcla de horizontes (proxy anual, no CAGR buy-and-hold).
+    portfolio_scenarios: dict[str, dict] | None = {}
     covered_scenarios: dict[str, dict] = {}
     for key in _SCENARIO_KEYS:
         with_scenario = [item for item in positions_out if key in item["cagr"]]
         if not with_scenario:
             continue
         coverage = sum(item["weight"] for item in with_scenario)
-        cagr = sum(item["weight"] * item["cagr"][key] for item in with_scenario)
-        total_return = sum(
+        contrib_cagr = sum(item["weight"] * item["cagr"][key] for item in with_scenario)
+        contrib_total = sum(
             item["weight"] * item["total_return"][key] for item in with_scenario
         )
-        portfolio_scenarios[key] = {"cagr": cagr, "total_return": total_return, "coverage": coverage}
+        scenario_horizons = {item["horizon_years"] for item in with_scenario}
+        horizon_scope = "uniform" if len(scenario_horizons) == 1 else "mixed"
+        portfolio_scenarios[key] = {
+            "contribution_cagr": contrib_cagr,
+            "contribution_total_return": contrib_total,
+            "coverage": coverage,
+            "horizon_scope": horizon_scope,
+        }
         if coverage > 0:
             covered_scenarios[key] = {
-                "cagr": cagr / coverage,
-                "total_return": total_return / coverage,
+                "cagr": contrib_cagr / coverage,
+                "total_return": contrib_total / coverage,
                 "coverage": coverage,
+                "horizon_scope": horizon_scope,
             }
+    if fx_excluded:
+        # Denominador de cartera desconocido: agregados de cartera N/D (el
+        # subset explícito sigue disponible en covered_only).
+        portfolio_scenarios = None
     with_expected = [item for item in positions_out if item["expected_cagr"] is not None]
-    expected_cagr = (
-        sum(item["contribution_expected"] for item in with_expected)
-        if with_expected and not fx_excluded
-        else None
-    )
     expected_coverage = (
         (sum(item["weight"] for item in with_expected) if with_expected else None)
         if not fx_excluded
         else None
     )
+    # Esperado de cartera TOTAL: solo si cubre el 100% de la cartera valorada
+    # y no hay FX ausente. Con cobertura parcial, sumar parciales y llamarlo
+    # esperado de cartera seria una etiqueta falsa: N/D.
+    expected_cagr = (
+        sum(item["contribution_expected"] for item in with_expected)
+        if (
+            with_expected
+            and not fx_excluded
+            and expected_coverage is not None
+            and abs(expected_coverage - 1.0) <= 1e-9
+        )
+        else None
+    )
     covered_expected = (
-        expected_cagr / expected_coverage
-        if expected_cagr is not None and expected_coverage
+        sum(item["contribution_expected"] for item in with_expected) / expected_coverage
+        if with_expected and expected_coverage
         else None
     )
 
@@ -1005,7 +1029,7 @@ def portfolio_forecast(db: Session = Depends(get_db)) -> dict:
         + (f" NO VERIFICADA en: {', '.join(unverified)}." if unverified else ""),
         "Valores intrinsecos y probabilidades: solo tesis PUBLICADAS y modelos publicables (INFERIDO; los borradores nunca son vigencia).",
         "HIPOTESIS etiquetada (INFERENCIA, no objetivo del modelo): los intrinsecos son valores presentes descontados; el CAGR supone convergencia del precio al intrinseco en el horizonte del modelo vigente (5 anos sin modelo).",
-        "Escenarios de cartera: ponderan solo posiciones CON ese escenario; 'coverage' es la fraccion de cartera usada y covered_only normaliza por ESA cobertura por escenario. Nunca esperado de cartera completa con huecos.",
+        "Escenarios: 'scenarios' son CONTRIBUCIONES ponderadas del subset cubierto (suma peso x CAGR), NUNCA la rentabilidad total de la cartera; 'coverage' es la fraccion de cartera usada y 'covered_only' normaliza por ESA cobertura por escenario. 'horizon_scope' mixed etiqueta horizontes de convergencia mezclados (proxy anual ponderado, no CAGR buy-and-hold de cartera). Nunca esperado de cartera completa con huecos.",
         "'expected_cagr' es la media ponderada por probabilidad de los CAGR por escenario (esperado DEL CAGR, NO el CAGR del valor esperado: no coinciden por no linealidad). Solo se emite con masa completa (==1) y sin entradas invalidas descartadas; el parcial va en 'partial_expected_cagr' y 'probability_mass' indica la masa usada."
         + (" Probabilidades invalidas (fuera de [0, 1] o no finitas) descartadas en alguna posicion." if any_invalid_probs else ""),
         (
@@ -1014,6 +1038,7 @@ def portfolio_forecast(db: Session = Depends(get_db)) -> dict:
             if fx_excluded
             else f"Cobertura con tesis publicada: {covered_weight:.1%} de la cartera; el resto se lista en excluded."
         ),
+        "El esperado de cartera TOTAL ('portfolio.expected_cagr') solo se emite cuando cubre el 100% de la cartera valorada y no hay posiciones sin conversion; con cobertura parcial es N/D y las contribuciones por posicion llevan scope.",
     ]
     return {
         "as_of": dates[-1],
