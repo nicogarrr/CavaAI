@@ -57,9 +57,9 @@ def _thesis(
     *,
     version: int,
     status: str,
-    bear: float,
-    base: float,
-    bull: float,
+    bear: float | None,
+    base: float | None,
+    bull: float | None,
     probs: dict | None = None,
 ) -> ThesisVersion:
     thesis = ThesisVersion(
@@ -204,3 +204,154 @@ def test_forecast_empty_portfolio(db_session):
     assert result["portfolio"] is None
     assert result["positions"] == []
     assert result["excluded"] == []
+
+def test_forecast_never_sums_unconverted_native_value(db_session):
+    """market_value_base None (JPY): N/D y excluida, nunca suma silenciosa."""
+    aaa = _company(db_session, "AAA")
+    jpy = _company(db_session, "JPY1")
+    _position(db_session, aaa, price=100, value=1000)
+    _thesis(db_session, aaa, version=1, status="published", bear=90, base=150, bull=200)
+    unconverted = Position(
+        company_id=jpy.id, quantity=1, average_cost=1000, market_price=1000,
+        market_value=1000, market_value_base=None, currency="JPY",
+        base_currency="EUR", source="ibkr_flex", as_of=date(2026, 10, 9),
+    )
+    db_session.add(unconverted)
+    db_session.commit()
+
+    result = portfolio_forecast(db=db_session)
+    assert result["portfolio"]["total_value_base"] == 1000
+    excluded = {item["ticker"]: item for item in result["excluded"]}
+    assert "JPY1" in excluded
+    assert excluded["JPY1"]["weight"] is None
+    assert "N/D" in excluded["JPY1"]["reason"]
+
+
+def test_forecast_mixed_base_currency_is_nd(db_session):
+    """Dos monedas base distintas: agregados N/D, nunca suma mezclada."""
+    aaa = _company(db_session, "AAA")
+    bbb = _company(db_session, "BBB")
+    _position(db_session, aaa, price=100, value=1000)
+    other = Position(
+        company_id=bbb.id, quantity=1, average_cost=50, market_price=50,
+        market_value=500, market_value_base=500, currency="USD",
+        base_currency="USD", source="ibkr_flex", as_of=date(2026, 10, 9),
+    )
+    db_session.add(other)
+    db_session.commit()
+
+    result = portfolio_forecast(db=db_session)
+    assert result["portfolio"] is None
+    assert any("mezcladas" in a for a in result["assumptions"])
+
+
+def test_forecast_manual_source_is_labeled_not_official(db_session):
+    """Fuente manual = MANUAL/NO OFICIAL, nunca OFICIAL."""
+    aaa = _company(db_session, "AAA")
+    manual = Position(
+        company_id=aaa.id, quantity=1, average_cost=100, market_price=100,
+        market_value=1000, market_value_base=1000, currency="USD",
+        base_currency="EUR", source="manual", as_of=date(2026, 10, 9),
+    )
+    db_session.add(manual)
+    _thesis(db_session, aaa, version=1, status="published", bear=90, base=150, bull=200)
+    db_session.commit()
+
+    result = portfolio_forecast(db=db_session)
+    assert result["positions"][0]["price_veracity"] == "MANUAL/NO OFICIAL"
+    assert any("MANUAL/NO OFICIAL" in a for a in result["assumptions"])
+
+
+def test_forecast_draft_only_thesis_is_excluded(db_session):
+    """Draft sin published: no es vigencia, se excluye y se dice."""
+    aaa = _company(db_session, "AAA")
+    _position(db_session, aaa, price=100, value=1000)
+    _thesis(db_session, aaa, version=1, status="draft", bear=90, base=150, bull=200)
+    db_session.commit()
+
+    result = portfolio_forecast(db=db_session)
+    assert result["positions"] == []
+    assert "borrador" in result["excluded"][0]["reason"]
+
+
+def test_forecast_invalid_probabilities_discarded(db_session):
+    """Probabilidades {-1, 2} o NaN: descartadas, esperado N/D."""
+    aaa = _company(db_session, "AAA")
+    _position(db_session, aaa, price=100, value=1000)
+    _thesis(
+        db_session, aaa, version=1, status="published",
+        bear=90, base=150, bull=200,
+        probs={"bear": -1, "base": 2, "bull": float("nan")},
+    )
+    db_session.commit()
+
+    result = portfolio_forecast(db=db_session)
+    item = result["positions"][0]
+    assert item["probabilities"] is None
+    assert item["expected_cagr"] is None
+    assert any("invalidas" in a for a in result["assumptions"])
+
+
+def test_forecast_missing_scenario_keeps_mass_visible(db_session):
+    """Solo bull=0.5: esperado = 0.5*cagr_bull, masa 0.5 visible, nunca bull 100%."""
+    aaa = _company(db_session, "AAA")
+    _position(db_session, aaa, price=100, value=1000)
+    _thesis(
+        db_session, aaa, version=1, status="published",
+        bear=100, base=100, bull=200,
+        probs={"bull": 0.5},
+    )
+    db_session.commit()
+
+    result = portfolio_forecast(db=db_session)
+    item = result["positions"][0]
+    assert item["expected_cagr"] == pytest.approx(0.5 * (2**0.2 - 1))
+    assert item["probability_mass"] == pytest.approx(0.5)
+
+
+def test_forecast_adr_uses_listed_share_values(db_session):
+    """ADR con listed_share_values: compara en terminos de la accion cotizada."""
+    aaa = _company(db_session, "AAA")
+    _position(db_session, aaa, price=100, value=1000)
+    thesis = _thesis(db_session, aaa, version=1, status="published", bear=360, base=600, bull=800)
+    thesis.valuation_basis = {
+        "adr_ratio": 0.25,
+        "listed_share_values": {"bear": 90, "base": 150, "bull": 200},
+    }
+    db_session.commit()
+
+    result = portfolio_forecast(db=db_session)
+    item = result["positions"][0]
+    assert item["comparison_basis"] == "listed_share"
+    assert item["cagr"]["base"] == pytest.approx(1.5**0.2 - 1)
+
+
+def test_forecast_adr_without_listed_values_is_nd(db_session):
+    """ADR sin valores por accion cotizada: N/D, nunca mismatch silencioso."""
+    aaa = _company(db_session, "AAA")
+    _position(db_session, aaa, price=100, value=1000)
+    thesis = _thesis(db_session, aaa, version=1, status="published", bear=360, base=600, bull=800)
+    thesis.valuation_basis = {"adr_ratio": 0.25}
+    db_session.commit()
+
+    result = portfolio_forecast(db=db_session)
+    assert result["positions"] == []
+    assert "N/D" in result["excluded"][0]["reason"]
+
+
+def test_forecast_scenario_coverage_is_per_scenario(db_session):
+    """Cobertura por escenario: covered_only divide por la cobertura DE ESE escenario."""
+    aaa = _company(db_session, "AAA")
+    bbb = _company(db_session, "BBB")
+    _position(db_session, aaa, price=100, value=5000)
+    _position(db_session, bbb, price=50, value=5000)
+    _thesis(db_session, aaa, version=1, status="published", bear=90, base=150, bull=200)
+    _thesis(db_session, bbb, version=1, status="published", bear=None, base=60, bull=None)
+    db_session.commit()
+
+    result = portfolio_forecast(db=db_session)
+    scenarios = result["portfolio"]["scenarios"]
+    assert scenarios["bull"]["coverage"] == pytest.approx(0.5)
+    covered_bull = result["portfolio"]["covered_only"]["scenarios"]["bull"]
+    assert covered_bull["cagr"] == pytest.approx(2**0.2 - 1)
+    assert covered_bull["coverage"] == pytest.approx(0.5)

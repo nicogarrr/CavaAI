@@ -1,3 +1,4 @@
+import math
 from datetime import date
 from decimal import Decimal
 from typing import Annotated, Literal
@@ -668,66 +669,121 @@ _SCENARIO_KEYS = ("bear", "base", "bull")
 _DEFAULT_HORIZON_YEARS = 5
 
 
-def _latest_thesis_by_company(db: Session, company_ids: list[int]) -> dict[int, ThesisVersion]:
+def _published_thesis_by_company(db: Session, company_ids: list[int]) -> tuple[dict[int, ThesisVersion], set[int]]:
+    """Tesis vigente = ultima PUBLICADA por empresa. Un draft no es verdad vigente."""
     rows = db.execute(
         select(ThesisVersion)
         .where(ThesisVersion.company_id.in_(company_ids))
         .order_by(ThesisVersion.company_id, ThesisVersion.version.desc())
     ).scalars().all()
-    latest: dict[int, ThesisVersion] = {}
     published: dict[int, ThesisVersion] = {}
+    draft_only: set[int] = set()
     for row in rows:
-        latest.setdefault(row.company_id, row)
         if row.status == "published":
             published.setdefault(row.company_id, row)
-    return {cid: published.get(cid) or latest[cid] for cid in latest}
+        elif row.company_id not in published:
+            draft_only.add(row.company_id)
+    return published, draft_only
 
 
-def _latest_model_by_company(db: Session, company_ids: list[int]) -> dict[int, FundamentalModelVersion]:
+def _publishable_model_by_company(db: Session, company_ids: list[int]) -> dict[int, FundamentalModelVersion]:
+    """Modelo vigente = ultima version publicable; un no-publicable no fija horizonte."""
     rows = db.execute(
         select(FundamentalModelVersion)
         .where(FundamentalModelVersion.company_id.in_(company_ids))
         .order_by(FundamentalModelVersion.company_id, FundamentalModelVersion.version.desc())
     ).scalars().all()
-    latest: dict[int, FundamentalModelVersion] = {}
     publishable: dict[int, FundamentalModelVersion] = {}
     for row in rows:
-        latest.setdefault(row.company_id, row)
         if row.publishable:
             publishable.setdefault(row.company_id, row)
-    return {cid: publishable.get(cid) or latest[cid] for cid in latest}
+    return publishable
 
 
-def _normalized_probabilities(raw: dict | None) -> dict[str, float] | None:
+def _validated_probabilities(raw: dict | None) -> tuple[dict[str, float] | None, float | None, bool]:
+    """Probabilidades por escenario, validadas y SIN renormalizar huecos.
+
+    Solo entradas finitas en [0, 1]; la masa devuelta es su suma y debe ser
+    <= 1. Renormalizar un hueco (p.ej. solo bull=0.5 -> bull 100%) ocultaria
+    el escenario desconocido: el esperado se calcula con masa explicita.
+    """
     if not raw:
-        return None
-    probs = {key: float(raw[key]) for key in _SCENARIO_KEYS if raw.get(key) is not None}
-    total = sum(probs.values())
-    if not probs or total <= 0:
-        return None
-    return {key: value / total for key, value in probs.items()}
+        return None, None, False
+    probs: dict[str, float] = {}
+    invalid = False
+    for key in _SCENARIO_KEYS:
+        value = raw.get(key)
+        if value is None:
+            continue
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            invalid = True
+            continue
+        if not math.isfinite(parsed) or parsed < 0.0 or parsed > 1.0:
+            invalid = True
+            continue
+        probs[key] = parsed
+    if not probs:
+        return None, None, invalid
+    mass = sum(probs.values())
+    if mass <= 0.0 or mass > 1.0 + 1e-9:
+        return None, None, True
+    return probs, mass, invalid
 
 
 def _scenario_returns(intrinsic: float | None, price: float, horizon: int) -> tuple[float, float] | None:
     """(CAGR, retorno total) del valor intrinseco contra precio. None si no computable."""
-    if intrinsic is None or price <= 0 or intrinsic <= 0 or horizon <= 0:
+    if intrinsic is None or not math.isfinite(intrinsic) or price <= 0 or intrinsic <= 0 or horizon <= 0:
         return None
     total_return = intrinsic / price - 1.0
     cagr = (intrinsic / price) ** (1.0 / horizon) - 1.0
     return cagr, total_return
 
 
+def _intrinsic_for_comparison(thesis: ThesisVersion) -> tuple[dict[str, float | None] | None, str]:
+    """Valores intrinsecos en terminos COMPARABLES con el precio cotizado.
+
+    ADR: valuation_basis.listed_share_values ya trae bear/base/bull con el
+    adr_ratio aplicado (terminos de la accion cotizada). Con adr_ratio pero
+    sin esos valores, comparar el valor ordinary crudo con el precio listado
+    seria un mismatch silencioso: N/D (el llamador excluye la posicion).
+    """
+    basis = thesis.valuation_basis if isinstance(thesis.valuation_basis, dict) else {}
+    listed = basis.get("listed_share_values") if isinstance(basis, dict) else None
+    if isinstance(listed, dict) and any(listed.get(key) is not None for key in _SCENARIO_KEYS):
+        return (
+            {key: (float(listed[key]) if listed.get(key) is not None else None) for key in _SCENARIO_KEYS},
+            "listed_share",
+        )
+    if basis.get("adr_ratio"):
+        return None, "adr_without_listed_values"
+    return (
+        {
+            "bear": float(thesis.bear_value) if thesis.bear_value is not None else None,
+            "base": float(thesis.base_value) if thesis.base_value is not None else None,
+            "bull": float(thesis.bull_value) if thesis.bull_value is not None else None,
+        },
+        "listed_share_assumed",
+    )
+
+
 @router.get("/forecast")
 def portfolio_forecast(db: Session = Depends(get_db)) -> dict:
     """Prevision de rentabilidad de la cartera desde el valor intrinseco.
 
-    Calculo determinista (ningun numero lo escribe un LLM): por posicion,
-    CAGR y retorno total por escenario desde el valor intrinseco de la tesis
-    vigente (published preferida) contra el precio de la posicion, con el
-    horizonte del modelo vigente (5 anos por defecto). Cartera: esperado
-    ponderado por probabilidades propias + escenarios coherentes oso/base/
-    toro. Posiciones sin tesis: excluidas del calculo y listadas con su
-    peso; ninguna cifra inventada como cero.
+    Determinista (ningun numero lo escribe un LLM). Reglas de veracidad:
+    - Solo tesis PUBLICADAS y modelos publicables (un draft no es vigente).
+    - Solo se suman valores en moneda base (market_value_base): sin
+      conversion la posicion es N/D y queda excluida, nunca suma silenciosa.
+    - Probabilidades validadas en [0, 1] y SIN renormalizar huecos: el
+      esperado usa masa explicita y etiquetada.
+    - Cada escenario agregado lleva su cobertura; covered_only divide por la
+      cobertura DE ESE escenario, nunca presenta parciales como cartera
+      completa.
+    - ADR: se comparan valores por accion cotizada; sin ellos, N/D.
+    - El CAGR de convergencia es HIPOTESIS etiquetada (los intrinsecos son
+      valores presentes descontados), no un objetivo a 5 anos.
     """
     rows = db.execute(
         select(Position, Company)
@@ -745,27 +801,48 @@ def portfolio_forecast(db: Session = Depends(get_db)) -> dict:
     if not rows:
         return empty
 
-    entries: list[tuple[Position, Company, float]] = []
-    total_value = 0.0
+    valued: list[tuple[Position, Company, float]] = []
+    fx_excluded: list[dict] = []
     for position, company in rows:
-        raw_value = (
-            position.market_value_base
-            if position.market_value_base is not None
-            else position.market_value
-        )
-        value = float(raw_value)
-        total_value += value
-        entries.append((position, company, value))
+        if position.market_value_base is None:
+            fx_excluded.append(
+                {
+                    "ticker": company.ticker,
+                    "name": company.name,
+                    "weight": None,
+                    "currency": position.currency,
+                    "reason": "Sin valor en moneda base (conversion N/D): no se suma a la cartera.",
+                }
+            )
+            continue
+        valued.append((position, company, float(position.market_value_base)))
+    base_currencies = {position.base_currency for position, _, _ in valued if position.base_currency}
+    if len(base_currencies) > 1:
+        out = dict(empty)
+        out["excluded"] = fx_excluded
+        out["assumptions"] = [
+            "Monedas base mezcladas entre posiciones: agregados de cartera N/D (no se suman monedas distintas)."
+        ]
+        return out
+    if not valued:
+        out = dict(empty)
+        out["excluded"] = fx_excluded
+        out["assumptions"] = ["Ninguna posicion tiene valor en moneda base: agregados N/D."]
+        return out
+
+    base_currency = base_currencies.pop() if base_currencies else valued[0][0].base_currency
+    total_value = sum(value for _, _, value in valued)
     if total_value <= 0:
         return empty
 
-    company_ids = [company.id for _, company, _ in entries]
-    theses = _latest_thesis_by_company(db, company_ids)
-    models = _latest_model_by_company(db, company_ids)
+    company_ids = [company.id for _, company, _ in valued]
+    theses, draft_only = _published_thesis_by_company(db, company_ids)
+    models = _publishable_model_by_company(db, company_ids)
 
     positions_out: list[dict] = []
-    excluded_out: list[dict] = []
-    for position, company, value in entries:
+    excluded_out: list[dict] = list(fx_excluded)
+    any_invalid_probs = False
+    for position, company, value in valued:
         weight = value / total_value
         thesis = theses.get(company.id)
         model = models.get(company.id)
@@ -776,15 +853,15 @@ def portfolio_forecast(db: Session = Depends(get_db)) -> dict:
             "currency": position.currency,
         }
         if thesis is None:
-            excluded_out.append({**base_info, "reason": "Sin tesis vigente: excluida de la prevision."})
+            suffix = " (hay borrador sin publicar)" if company.id in draft_only else ""
+            excluded_out.append({**base_info, "reason": f"Sin tesis publicada vigente{suffix}: excluida de la prevision."})
+            continue
+        intrinsic, basis_label = _intrinsic_for_comparison(thesis)
+        if intrinsic is None:
+            excluded_out.append({**base_info, "reason": "ADR sin valores por accion cotizada: comparacion con el precio no verificada (N/D)."})
             continue
         price = float(position.market_price)
         horizon = model.horizon_years if model is not None else _DEFAULT_HORIZON_YEARS
-        intrinsic = {
-            "bear": float(thesis.bear_value) if thesis.bear_value is not None else None,
-            "base": float(thesis.base_value) if thesis.base_value is not None else None,
-            "bull": float(thesis.bull_value) if thesis.bull_value is not None else None,
-        }
         cagrs: dict[str, float] = {}
         total_returns: dict[str, float] = {}
         for key in _SCENARIO_KEYS:
@@ -797,29 +874,32 @@ def portfolio_forecast(db: Session = Depends(get_db)) -> dict:
         raw_probs = thesis.scenario_probabilities or (
             model.scenario_probabilities if model is not None else None
         )
-        probabilities = _normalized_probabilities(raw_probs)
+        probabilities, mass, invalid = _validated_probabilities(raw_probs)
+        any_invalid_probs = any_invalid_probs or invalid
         expected_cagr: float | None = None
-        if probabilities is not None:
+        used_mass: float | None = None
+        if probabilities is not None and mass is not None:
             terms = [
-                probabilities[key] * cagrs[key]
+                (probabilities[key], cagrs[key])
                 for key in _SCENARIO_KEYS
                 if key in probabilities and key in cagrs
             ]
-            weight_check = sum(
-                probabilities[key]
-                for key in _SCENARIO_KEYS
-                if key in probabilities and key in cagrs
-            )
-            if terms and weight_check > 0:
-                expected_cagr = sum(terms) / weight_check
+            if terms:
+                # SIN renormalizar: el hueco de probabilidad queda visible
+                # en used_mass, nunca repartido entre los demas escenarios.
+                expected_cagr = sum(prob * cagr for prob, cagr in terms)
+                used_mass = sum(prob for prob, _ in terms)
         positions_out.append(
             {
                 **base_info,
                 "price": price,
                 "price_as_of": position.as_of.isoformat(),
                 "price_source": position.source,
+                "price_veracity": "MANUAL/NO OFICIAL" if position.source == "manual" else "OFICIAL",
                 "intrinsic": intrinsic,
+                "comparison_basis": basis_label,
                 "probabilities": probabilities,
+                "probability_mass": used_mass,
                 "horizon_years": horizon,
                 "thesis_version": thesis.version,
                 "thesis_status": thesis.status,
@@ -840,15 +920,17 @@ def portfolio_forecast(db: Session = Depends(get_db)) -> dict:
         with_scenario = [item for item in positions_out if key in item["cagr"]]
         if not with_scenario:
             continue
+        coverage = sum(item["weight"] for item in with_scenario)
         cagr = sum(item["weight"] * item["cagr"][key] for item in with_scenario)
         total_return = sum(
             item["weight"] * item["total_return"][key] for item in with_scenario
         )
-        portfolio_scenarios[key] = {"cagr": cagr, "total_return": total_return}
-        if covered_weight > 0:
+        portfolio_scenarios[key] = {"cagr": cagr, "total_return": total_return, "coverage": coverage}
+        if coverage > 0:
             covered_scenarios[key] = {
-                "cagr": cagr / covered_weight,
-                "total_return": total_return / covered_weight,
+                "cagr": cagr / coverage,
+                "total_return": total_return / coverage,
+                "coverage": coverage,
             }
     with_expected = [item for item in positions_out if item["expected_cagr"] is not None]
     expected_cagr = (
@@ -856,25 +938,40 @@ def portfolio_forecast(db: Session = Depends(get_db)) -> dict:
         if with_expected
         else None
     )
+    expected_coverage = (
+        sum(item["weight"] for item in with_expected) if with_expected else None
+    )
     covered_expected = (
-        expected_cagr / covered_weight
-        if expected_cagr is not None and covered_weight > 0
+        expected_cagr / expected_coverage
+        if expected_cagr is not None and expected_coverage
         else None
     )
 
-    dates = sorted({item["price_as_of"] for item in positions_out} | {p.as_of.isoformat() for p, _, _ in entries})
-    base_currency = entries[0][0].base_currency
+    dates = sorted({item["price_as_of"] for item in positions_out} | {p.as_of.isoformat() for p, _, _ in valued})
+    manual = [item["ticker"] for item in positions_out if item["price_veracity"] == "MANUAL/NO OFICIAL"]
+    assumptions = [
+        "Precios: ultima sincronizacion de cada posicion (ver price_source y price_as_of). OFICIAL salvo fuente manual."
+        + (f" MANUAL/NO OFICIAL en: {', '.join(manual)}." if manual else ""),
+        "Valores intrinsecos y probabilidades: solo tesis PUBLICADAS y modelos publicables (INFERIDO; los borradores nunca son vigencia).",
+        "HIPOTESIS etiquetada (INFERENCIA, no objetivo del modelo): los intrinsecos son valores presentes descontados; el CAGR supone convergencia del precio al intrinseco en el horizonte del modelo vigente (5 anos sin modelo).",
+        "Escenarios de cartera: ponderan solo posiciones CON ese escenario; 'coverage' es la fraccion de cartera usada y covered_only normaliza por ESA cobertura por escenario. Nunca esperado de cartera completa con huecos.",
+        "Esperado por posicion: suma probabilidad x CAGR sin renormalizar huecos; 'probability_mass' indica la masa usada."
+        + (" Probabilidades invalidas (fuera de [0, 1] o no finitas) descartadas en alguna posicion." if any_invalid_probs else ""),
+        f"Cobertura con tesis publicada: {covered_weight:.1%} de la cartera; el resto se lista en excluded."
+        + (f" {len(fx_excluded)} posicion(es) sin conversion a moneda base (N/D)." if fx_excluded else ""),
+    ]
     return {
         "as_of": dates[-1],
         "base_currency": base_currency,
         "portfolio": {
             "total_value_base": total_value,
-            "position_count": len(entries),
+            "position_count": len(valued),
             "covered_count": len(positions_out),
             "excluded_count": len(excluded_out),
             "covered_weight": covered_weight,
             "scenarios": portfolio_scenarios,
             "expected_cagr": expected_cagr,
+            "expected_coverage": expected_coverage,
             "covered_only": {
                 "scenarios": covered_scenarios,
                 "expected_cagr": covered_expected,
@@ -882,11 +979,5 @@ def portfolio_forecast(db: Session = Depends(get_db)) -> dict:
         },
         "positions": positions_out,
         "excluded": excluded_out,
-        "assumptions": [
-            "Precios: los de la ultima sincronizacion de cada posicion (OFICIAL, ver price_source y price_as_of).",
-            "Valores intrinsecos y probabilidades: tesis/modelo vigentes (INFERIDO, ver thesis_version y model_version).",
-            "Horizonte: el del modelo vigente de cada posicion; 5 anos cuando no hay modelo.",
-            "El esperado de cartera pondera por peso real; los escenarios oso/base/toro son coherentes (todas las posiciones en el mismo escenario).",
-            f"Cobertura: {covered_weight:.1%} de la cartera con tesis computable; el resto se lista en excluded.",
-        ],
+        "assumptions": assumptions,
     }
