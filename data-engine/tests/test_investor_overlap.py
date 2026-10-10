@@ -135,3 +135,33 @@ def test_identity_conflict_never_matches_or_claims_not_owned(monkeypatch):
     assert result["positions"][0]["status"] == "sin_identificador"
     assert "conflicto" in result["positions"][0]["identity_source"]
     assert result["not_owned"] == []
+
+
+def test_portfolio_companies_query_no_distinct_sobre_entidad():
+    """Postgres no tiene operador de igualdad para json: SELECT DISTINCT
+    companies.* revienta en prod (500 en /api/investors/portfolio-overlap)
+    aunque sqlite lo tolera. La deduplicacion debe vivir en una subquery de
+    ids, no sobre la entidad con columnas JSON."""
+    from sqlalchemy.dialects import postgresql
+
+    db = setup_portfolio()
+    statements = []
+    original = db.scalars
+
+    def recording_scalars(statement, *args, **kwargs):
+        statements.append(statement)
+        return original(statement, *args, **kwargs)
+
+    db.scalars = recording_scalars  # type: ignore[method-assign]
+    try:
+        portfolio_overlap(db)
+    finally:
+        db.scalars = original  # type: ignore[method-assign]
+
+    assert statements, "portfolio_overlap no consulto la base de datos"
+    outer_sql = str(statements[0].compile(dialect=postgresql.dialect())).upper()
+    companies_select = outer_sql.split("FROM COMPANIES")[0]
+    assert "DISTINCT" not in companies_select, (
+        "SELECT DISTINCT sobre companies.* es invalido en postgres (columnas json): "
+        + companies_select
+    )
