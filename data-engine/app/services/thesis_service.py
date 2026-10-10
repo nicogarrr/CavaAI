@@ -823,6 +823,11 @@ class ThesisService:
             **extra,
             "value_per_share_basis": str(basis) if basis else None,
             "adr_ratio": valuation.get("adr_ratio"),
+            # Liga verificable modelo<->tesis: el forecast solo usa horizonte y
+            # probabilidades del modelo cuando ESTE fingerprint coincide.
+            "model_input_fingerprint": (
+                (valuation.get("long_term_model") or {}).get("persistence") or {}
+            ).get("input_fingerprint"),
             "listed_share_values": (
                 {key: float(value) for key, value in listed.items() if value is not None}
                 if isinstance(listed, dict)

@@ -732,6 +732,18 @@ def _validated_probabilities(raw: dict | None) -> tuple[dict[str, float] | None,
     return probs, mass, invalid
 
 
+_OFFICIAL_PRICE_SOURCES = frozenset({"ibkr_flex", "market_refresh"})
+
+
+def _price_veracity(source: str | None) -> str:
+    """OFICIAL solo con procedencia conocida; manual y desconocidas se rotulan."""
+    if source == "manual":
+        return "MANUAL/NO OFICIAL"
+    if source in _OFFICIAL_PRICE_SOURCES:
+        return "OFICIAL"
+    return "NO VERIFICADA"
+
+
 def _scenario_returns(intrinsic: float | None, price: float, horizon: int) -> tuple[float, float] | None:
     """(CAGR, retorno total) del valor intrinseco contra precio. None si no computable."""
     if intrinsic is None or not math.isfinite(intrinsic) or price <= 0 or intrinsic <= 0 or horizon <= 0:
@@ -741,14 +753,22 @@ def _scenario_returns(intrinsic: float | None, price: float, horizon: int) -> tu
     return cagr, total_return
 
 
-def _intrinsic_for_comparison(thesis: ThesisVersion) -> tuple[dict[str, float | None] | None, str]:
+def _intrinsic_for_comparison(
+    thesis: ThesisVersion, position: Position, company: Company
+) -> tuple[dict[str, float | None] | None, str]:
     """Valores intrinsecos en terminos COMPARABLES con el precio cotizado.
 
-    ADR: valuation_basis.listed_share_values ya trae bear/base/bull con el
-    adr_ratio aplicado (terminos de la accion cotizada). Con adr_ratio pero
-    sin esos valores, comparar el valor ordinary crudo con el precio listado
-    seria un mismatch silencioso: N/D (el llamador excluye la posicion).
+    Comparar exige evidencia:
+    - listed_share_values (ADR con ratio aplicado por el motor): comparables.
+    - value_per_share_basis == "ordinary_share" informado por el motor y sin
+      adr_ratio: accion ordinaria, comparable.
+    - Tesis legacy sin base informada: NUNCA se asume la base (un ADR no
+      identificado quedaria mezclado): N/D.
+    - Moneda de la posicion distinta de la de la compania: sin conversion
+      verificada, comparar seria un mismatch silencioso: N/D.
     """
+    if company.currency and position.currency and company.currency != position.currency:
+        return None, "currency_mismatch"
     basis = thesis.valuation_basis if isinstance(thesis.valuation_basis, dict) else {}
     listed = basis.get("listed_share_values") if isinstance(basis, dict) else None
     if isinstance(listed, dict) and any(listed.get(key) is not None for key in _SCENARIO_KEYS):
@@ -758,14 +778,16 @@ def _intrinsic_for_comparison(thesis: ThesisVersion) -> tuple[dict[str, float | 
         )
     if basis.get("adr_ratio"):
         return None, "adr_without_listed_values"
-    return (
-        {
-            "bear": float(thesis.bear_value) if thesis.bear_value is not None else None,
-            "base": float(thesis.base_value) if thesis.base_value is not None else None,
-            "bull": float(thesis.bull_value) if thesis.bull_value is not None else None,
-        },
-        "listed_share_assumed",
-    )
+    if basis.get("value_per_share_basis") == "ordinary_share":
+        return (
+            {
+                "bear": float(thesis.bear_value) if thesis.bear_value is not None else None,
+                "base": float(thesis.base_value) if thesis.base_value is not None else None,
+                "bull": float(thesis.bull_value) if thesis.bull_value is not None else None,
+            },
+            "ordinary_share",
+        )
+    return None, "legacy_basis_unverified"
 
 
 @router.get("/forecast")
@@ -856,10 +878,20 @@ def portfolio_forecast(db: Session = Depends(get_db)) -> dict:
             suffix = " (hay borrador sin publicar)" if company.id in draft_only else ""
             excluded_out.append({**base_info, "reason": f"Sin tesis publicada vigente{suffix}: excluida de la prevision."})
             continue
-        intrinsic, basis_label = _intrinsic_for_comparison(thesis)
+        intrinsic, basis_label = _intrinsic_for_comparison(thesis, position, company)
         if intrinsic is None:
-            excluded_out.append({**base_info, "reason": "ADR sin valores por accion cotizada: comparacion con el precio no verificada (N/D)."})
+            reason = {
+                "adr_without_listed_values": "ADR sin valores por accion cotizada: comparacion con el precio no verificada (N/D).",
+                "currency_mismatch": "Moneda de la posicion distinta de la moneda de cotizacion de la compania: comparacion sin conversion verificada (N/D).",
+            }.get(basis_label, "Base de valoracion no verificada (tesis sin value_per_share_basis del motor): comparacion con el precio N/D, nunca asumida.")
+            excluded_out.append({**base_info, "reason": reason})
             continue
+        if model is not None:
+            basis_dict = thesis.valuation_basis if isinstance(thesis.valuation_basis, dict) else {}
+            if basis_dict.get("model_input_fingerprint") != model.input_fingerprint:
+                # Modelo no ligado a ESTA tesis publicada: su horizonte y sus
+                # probabilidades podrian ser de otra epoca de inputs. N/D.
+                model = None
         price = float(position.market_price)
         horizon = model.horizon_years if model is not None else _DEFAULT_HORIZON_YEARS
         cagrs: dict[str, float] = {}
@@ -878,6 +910,7 @@ def portfolio_forecast(db: Session = Depends(get_db)) -> dict:
         any_invalid_probs = any_invalid_probs or invalid
         expected_cagr: float | None = None
         used_mass: float | None = None
+        partial_expected: float | None = None
         if probabilities is not None and mass is not None:
             terms = [
                 (probabilities[key], cagrs[key])
@@ -887,15 +920,23 @@ def portfolio_forecast(db: Session = Depends(get_db)) -> dict:
             if terms:
                 # SIN renormalizar: el hueco de probabilidad queda visible
                 # en used_mass, nunca repartido entre los demas escenarios.
-                expected_cagr = sum(prob * cagr for prob, cagr in terms)
+                # El esperado solo existe con masa completa (==1): con masa
+                # parcial el resultado se expone como partial_expected_cagr y
+                # el esperado queda N/D (el resto nunca es cero implicito).
+                partial_expected = sum(prob * cagr for prob, cagr in terms)
                 used_mass = sum(prob for prob, _ in terms)
+                # Esperado completo solo con masa 1 SIN entradas invalidas
+                # descartadas y con valor en todo escenario con masa>0
+                # (used_mass solo suma escenarios con CAGR computable).
+                if abs(used_mass - 1.0) <= 1e-9 and not invalid:
+                    expected_cagr = partial_expected
         positions_out.append(
             {
                 **base_info,
                 "price": price,
                 "price_as_of": position.as_of.isoformat(),
                 "price_source": position.source,
-                "price_veracity": "MANUAL/NO OFICIAL" if position.source == "manual" else "OFICIAL",
+                "price_veracity": _price_veracity(position.source),
                 "intrinsic": intrinsic,
                 "comparison_basis": basis_label,
                 "probabilities": probabilities,
@@ -907,6 +948,7 @@ def portfolio_forecast(db: Session = Depends(get_db)) -> dict:
                 "cagr": cagrs,
                 "total_return": total_returns,
                 "expected_cagr": expected_cagr,
+                "partial_expected_cagr": partial_expected,
                 "contribution_expected": (
                     weight * expected_cagr if expected_cagr is not None else None
                 ),
@@ -914,6 +956,11 @@ def portfolio_forecast(db: Session = Depends(get_db)) -> dict:
         )
 
     covered_weight = sum(item["weight"] for item in positions_out)
+    if fx_excluded:
+        # El denominador real de la cartera es desconocido (hay posiciones sin
+        # conversion a moneda base): los agregados de cartera total son N/D,
+        # nunca "100% del subset valorado" vendido como cartera completa.
+        covered_weight = None
     portfolio_scenarios: dict[str, dict] = {}
     covered_scenarios: dict[str, dict] = {}
     for key in _SCENARIO_KEYS:
@@ -935,11 +982,13 @@ def portfolio_forecast(db: Session = Depends(get_db)) -> dict:
     with_expected = [item for item in positions_out if item["expected_cagr"] is not None]
     expected_cagr = (
         sum(item["contribution_expected"] for item in with_expected)
-        if with_expected
+        if with_expected and not fx_excluded
         else None
     )
     expected_coverage = (
-        sum(item["weight"] for item in with_expected) if with_expected else None
+        (sum(item["weight"] for item in with_expected) if with_expected else None)
+        if not fx_excluded
+        else None
     )
     covered_expected = (
         expected_cagr / expected_coverage
@@ -949,16 +998,22 @@ def portfolio_forecast(db: Session = Depends(get_db)) -> dict:
 
     dates = sorted({item["price_as_of"] for item in positions_out} | {p.as_of.isoformat() for p, _, _ in valued})
     manual = [item["ticker"] for item in positions_out if item["price_veracity"] == "MANUAL/NO OFICIAL"]
+    unverified = [item["ticker"] for item in positions_out if item["price_veracity"] == "NO VERIFICADA"]
     assumptions = [
-        "Precios: ultima sincronizacion de cada posicion (ver price_source y price_as_of). OFICIAL salvo fuente manual."
-        + (f" MANUAL/NO OFICIAL en: {', '.join(manual)}." if manual else ""),
+        "Precios: ultima sincronizacion de cada posicion (ver price_source y price_as_of). OFICIAL solo con procedencia conocida (ibkr_flex, market_refresh)."
+        + (f" MANUAL/NO OFICIAL en: {', '.join(manual)}." if manual else "")
+        + (f" NO VERIFICADA en: {', '.join(unverified)}." if unverified else ""),
         "Valores intrinsecos y probabilidades: solo tesis PUBLICADAS y modelos publicables (INFERIDO; los borradores nunca son vigencia).",
         "HIPOTESIS etiquetada (INFERENCIA, no objetivo del modelo): los intrinsecos son valores presentes descontados; el CAGR supone convergencia del precio al intrinseco en el horizonte del modelo vigente (5 anos sin modelo).",
         "Escenarios de cartera: ponderan solo posiciones CON ese escenario; 'coverage' es la fraccion de cartera usada y covered_only normaliza por ESA cobertura por escenario. Nunca esperado de cartera completa con huecos.",
-        "Esperado por posicion: suma probabilidad x CAGR sin renormalizar huecos; 'probability_mass' indica la masa usada."
+        "'expected_cagr' es la media ponderada por probabilidad de los CAGR por escenario (esperado DEL CAGR, NO el CAGR del valor esperado: no coinciden por no linealidad). Solo se emite con masa completa (==1) y sin entradas invalidas descartadas; el parcial va en 'partial_expected_cagr' y 'probability_mass' indica la masa usada."
         + (" Probabilidades invalidas (fuera de [0, 1] o no finitas) descartadas en alguna posicion." if any_invalid_probs else ""),
-        f"Cobertura con tesis publicada: {covered_weight:.1%} de la cartera; el resto se lista en excluded."
-        + (f" {len(fx_excluded)} posicion(es) sin conversion a moneda base (N/D)." if fx_excluded else ""),
+        (
+            f"Cobertura de cartera N/D: {len(fx_excluded)} posicion(es) sin conversion a moneda base; "
+            "pesos y agregados cubiertos usan SOLO el subset valorado, nunca la cartera completa."
+            if fx_excluded
+            else f"Cobertura con tesis publicada: {covered_weight:.1%} de la cartera; el resto se lista en excluded."
+        ),
     ]
     return {
         "as_of": dates[-1],
