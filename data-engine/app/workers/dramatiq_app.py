@@ -183,6 +183,27 @@ def _status_from_message(text: str) -> int | None:
     return None
 
 
+# Ventana maxima que un lote GDELT espera tras un 429 antes de reintentarse:
+# por encima, el lote muere al deadletter y el siguiente tick del scheduler
+# (coalesce) lo retoma. Nunca se espera mas de lo que el sistema tolera.
+GDELT_RETRY_CAP_SECONDS = 900.0
+
+
+def _raise_gdelt_retry(exc: Exception) -> None:
+    """Reencola el lote GDELT tras la ventana 429 del servidor (acotada).
+
+    Sin esto el barrido seguia empresa a empresa contra una ventana cerrada,
+    quemando la cuota por IP en 429; con ``Retry(delay)`` el mensaje vuelve
+    cuando GDELT dice y el carril queda libre para otros mensajes.
+    """
+    retry_after = float(getattr(exc, "retry_after", 0.0) or 0.0)
+    delay_ms = int(min(max(retry_after, 0.0), GDELT_RETRY_CAP_SECONDS) * 1000)
+    raise dramatiq.Retry(
+        f"GDELT cerro la ventana (429): lote reencolado tras {delay_ms // 1000}s",
+        delay=delay_ms,
+    ) from exc
+
+
 def _handle_actor_error(actor: str, exc: Exception, **context: Any) -> dict[str, Any]:
     """Re-raise transient errors so Dramatiq retries; record permanent ones.
 
@@ -1597,7 +1618,7 @@ def _gdelt_company_query(company) -> str:
     return f'("{company.name}" OR {company.ticker})'
 
 
-@dramatiq.actor(max_retries=2, min_backoff=15_000, queue_name=GDELT_QUEUE_NAME)
+@dramatiq.actor(max_retries=6, min_backoff=60_000, max_backoff=900_000, queue_name=GDELT_QUEUE_NAME)
 @_coalesce_on_success(
     "refresh_news",
     lambda scope="all", **_: 25 * 60 if scope == "tracked" else 5 * 3600,
@@ -1669,6 +1690,13 @@ def refresh_news(
                         processed += 1
                 except Exception as exc:
                     _rollback(db)
+                    from app.services.connectors.gdelt import GdeltRateLimited
+
+                    if isinstance(exc, GdeltRateLimited):
+                        # Ventana cerrada: se para el barrido aqui (no se
+                        # quema cuota en las empresas restantes) y el lote se
+                        # reencola tras el Retry-After del servidor.
+                        _raise_gdelt_retry(exc)
                     errors.append(
                         {
                             "ticker": company.ticker,
@@ -1689,6 +1717,8 @@ def refresh_news(
             }
         finally:
             db.close()
+    except dramatiq.Retry:
+        raise
     except Exception as exc:
         return _handle_actor_error(
             actor_name,
@@ -1829,7 +1859,7 @@ def reconcile_alert_analyses(tenant_id: int | None = None, user_id: str | None =
         db.close()
 
 
-@dramatiq.actor(max_retries=2, min_backoff=15_000, queue_name=GDELT_QUEUE_NAME)
+@dramatiq.actor(max_retries=6, min_backoff=60_000, max_backoff=900_000, queue_name=GDELT_QUEUE_NAME)
 @_coalesce_on_success("refresh_macro_news", 50 * 60, ("tenant_id",))
 def refresh_macro_news(
     tenant_id: int | None = None,
@@ -1887,6 +1917,10 @@ def refresh_macro_news(
                     ingested += int(ingestion.get("created", 0))
                 except Exception as exc:
                     _rollback(db)
+                    from app.services.connectors.gdelt import GdeltRateLimited
+
+                    if isinstance(exc, GdeltRateLimited):
+                        _raise_gdelt_retry(exc)
                     errors.append(
                         {
                             "theme": theme,
@@ -1907,6 +1941,8 @@ def refresh_macro_news(
                 f"refresh_macro_news:{tenant_id}", lease, redis_url=_lease_redis_url(),
             )
             db.close()
+    except dramatiq.Retry:
+        raise
     except Exception as exc:
         return _handle_actor_error(actor_name, exc, tenant_id=tenant_id, user_id=user_id)
 

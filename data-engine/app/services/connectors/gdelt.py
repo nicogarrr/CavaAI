@@ -10,6 +10,21 @@ import httpx
 from app.services.connectors.base import ConnectorItem, ConnectorResult
 
 
+class GdeltRateLimited(Exception):
+    """GDELT cerro la ventana (429): sube tipada con el Retry-After.
+
+    El cliente honra la ventana inline un numero acotado de veces; agotados
+    los reintentos inline (o ventana mayor que la que una corrida puede
+    pagar), el 429 sube con la ventana real para que el actor dramatiq
+    reencole el LOTE tras ella en vez de seguir quemando cuota por IP
+    contra una ventana cerrada.
+    """
+
+    def __init__(self, retry_after: float) -> None:
+        super().__init__(f"GDELT 429: ventana cerrada, reintentar tras {retry_after:.0f}s")
+        self.retry_after = retry_after
+
+
 class GDELTClient:
     """Cliente GDELT DOC 2.0 con pacing global y respeto a 429.
 
@@ -19,10 +34,10 @@ class GDELTClient:
     clase (proceso): todas las instancias comparten la misma ventana.
 
     429: se honra ``Retry-After`` (acotado) hasta ``max_429_retries`` veces;
-    después se deja subir el error y el conector degrada a ``failed``. Una
-    cabecera por encima de ``MAX_RETRY_AFTER`` pide una espera que esta
-    corrida no puede pagar: NO se trunca ni se reintenta inline, el error
-    sube de inmediato.
+    después el 429 sube TIPADO (``GdeltRateLimited``, con la ventana) y el
+    actor reencola el lote tras ella. Una cabecera por encima de
+    ``MAX_RETRY_AFTER`` pide una espera que esta corrida no puede pagar: NO
+    se trunca ni se reintenta inline, sube tipada con la ventana real.
     """
 
     base_url = "https://api.gdeltproject.org/api/v2/doc/doc"
@@ -113,12 +128,16 @@ class GDELTClient:
                 raw_retry_after = self._raw_retry_after(response)
                 if raw_retry_after is not None and raw_retry_after > self.MAX_RETRY_AFTER:
                     # Ventana prohibida demasiado larga para esta corrida:
-                    # no se trunca ni se reintenta inline, el 429 sube.
-                    response.raise_for_status()
+                    # no se trunca ni se reintenta inline; sube tipada con la
+                    # ventana real para que el actor decida la espera.
+                    raise GdeltRateLimited(raw_retry_after)
                 if attempt < self.max_429_retries:
                     attempt += 1
                     await asyncio.sleep(self._retry_after_seconds(response))
                     continue
+                # Reintentos inline agotados: sube tipada con la ventana
+                # acotada; el actor reencola el lote tras ella.
+                raise GdeltRateLimited(self._retry_after_seconds(response))
             response.raise_for_status()
             return response.json()
 
@@ -181,5 +200,9 @@ class GDELTConnector:
                 )
             metadata["article_count"] = len(articles)
             return ConnectorResult(source="gdelt", items=items, metadata=metadata)
+        except GdeltRateLimited:
+            # El 429 NO degrada a failed: sube al actor, que reencola el lote
+            # tras la ventana del servidor en vez de barrer contra ella.
+            raise
         except Exception as exc:
             return ConnectorResult.failed("gdelt", exc, metadata=metadata)
