@@ -710,7 +710,19 @@ export async function getPortfolioTearsheet(userId: string): Promise<PortfolioTe
 
 // Tipos + fetcher para lib/actions/portfolio.actions.ts
 
-export type PortfolioForecastScenario = { cagr: number; total_return: number };
+export type PortfolioForecastScenario = {
+  contribution_cagr: number;
+  contribution_total_return: number;
+  coverage: number;
+  horizon_scope: 'uniform' | 'mixed';
+};
+
+export type PortfolioForecastCoveredScenario = {
+  cagr: number;
+  total_return: number;
+  coverage: number;
+  horizon_scope: 'uniform' | 'mixed';
+};
 
 export type PortfolioForecastPosition = {
   ticker: string;
@@ -729,13 +741,17 @@ export type PortfolioForecastPosition = {
   cagr: Partial<Record<'bear' | 'base' | 'bull', number>>;
   total_return: Partial<Record<'bear' | 'base' | 'bull', number>>;
   expected_cagr: number | null;
+  partial_expected_cagr: number | null;
   contribution_expected: number | null;
+  weight_scope: 'total_portfolio' | 'valued_subset';
+  price_veracity?: string;
+  comparison_basis?: string;
 };
 
 export type PortfolioForecastExcluded = {
   ticker: string;
   name: string;
-  weight: number;
+  weight: number | null;
   currency: string;
   reason: string;
 };
@@ -748,11 +764,12 @@ export type PortfolioForecast = {
     position_count: number;
     covered_count: number;
     excluded_count: number;
-    covered_weight: number;
-    scenarios: Partial<Record<'bear' | 'base' | 'bull', PortfolioForecastScenario>>;
+    covered_weight: number | null;
+    scenarios: Partial<Record<'bear' | 'base' | 'bull', PortfolioForecastScenario>> | null;
     expected_cagr: number | null;
+    expected_coverage: number | null;
     covered_only: {
-      scenarios: Partial<Record<'bear' | 'base' | 'bull', PortfolioForecastScenario>>;
+      scenarios: Partial<Record<'bear' | 'base' | 'bull', PortfolioForecastCoveredScenario>>;
       expected_cagr: number | null;
     };
   } | null;

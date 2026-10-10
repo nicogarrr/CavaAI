@@ -39,15 +39,16 @@ export default function PortfolioForecast({ forecast }: { forecast: PortfolioFor
     <div className="space-y-6">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {scenarioOrder.map((key) => {
-          const scenario = portfolio.scenarios[key];
+          const scenario = portfolio.scenarios?.[key];
           return (
             <div className="rounded-lg border border-gray-800 p-4" key={key}>
               <p className="text-xs uppercase tracking-wide text-gray-500">{SCENARIO_LABELS[key]}</p>
               <p className="mt-1 text-2xl font-semibold text-gray-100">
-                {scenario ? signedPct(scenario.cagr) : 'Sin datos'}
+                {scenario ? signedPct(scenario.contribution_cagr) : 'Sin datos'}
               </p>
               <p className="mt-1 text-xs text-gray-500">
-                CAGR anual · total {scenario ? signedPct(scenario.total_return) : 'Sin datos'}
+                Contribucion anual · aporte total {scenario ? signedPct(scenario.contribution_total_return) : 'Sin datos'}
+                {scenario?.horizon_scope === 'mixed' ? ' · horizontes mezclados (proxy anual)' : ''}
               </p>
             </div>
           );
@@ -58,13 +59,15 @@ export default function PortfolioForecast({ forecast }: { forecast: PortfolioFor
             {signedPct(portfolio.expected_cagr)}
           </p>
           <p className="mt-1 text-xs text-gray-500">
-            Probabilidades propias de cada tesis, ponderadas por tu peso real.
+            {portfolio.expected_cagr !== null
+              ? 'Probabilidades propias de cada tesis, ponderadas por tu peso real.'
+              : 'Solo se emite con cobertura completa de la cartera valorada; abajo van las contribuciones por posicion.'}
           </p>
         </div>
       </div>
       <Panel
         title="Por posicion"
-        description={`Cobertura: ${pct(portfolio.covered_weight)} de la cartera con tesis computable (${portfolio.covered_count} de ${portfolio.position_count} posiciones). Precios OFICIALES con fuente y fecha; valores intrinsecos INFERIDOS del modelo vigente.`}
+        description={`Cobertura: ${portfolio.covered_weight !== null ? pct(portfolio.covered_weight) : 'Sin datos (hay posiciones sin conversion; pesos sobre el subset valorado)'} de la cartera con tesis computable (${portfolio.covered_count} de ${portfolio.position_count} posiciones). Precios OFICIALES con fuente y fecha; valores intrinsecos INFERIDOS del modelo vigente.`}
       >
         <div className="overflow-x-auto" role="region" aria-label="Prevision por posicion" tabIndex={0}>
           <table className="w-full text-left text-sm">
@@ -83,11 +86,22 @@ export default function PortfolioForecast({ forecast }: { forecast: PortfolioFor
               {forecast.positions.map((item) => (
                 <tr className="border-b border-gray-900 text-gray-300" key={item.ticker}>
                   <td className="py-2 pr-4 font-medium text-gray-100">{item.ticker}</td>
-                  <td className="py-2 pr-4">{pct(item.weight)}</td>
+                  <td className="py-2 pr-4">
+                    {pct(item.weight)}
+                    {item.weight_scope === 'valued_subset' ? (
+                      <span className="block text-xs text-amber-400/80">sobre subset valorado</span>
+                    ) : null}
+                  </td>
                   <td className="py-2 pr-4">{signedPct(item.cagr.bear)}</td>
                   <td className="py-2 pr-4">{signedPct(item.cagr.base)}</td>
                   <td className="py-2 pr-4">{signedPct(item.cagr.bull)}</td>
-                  <td className="py-2 pr-4">{signedPct(item.expected_cagr)}</td>
+                  <td className="py-2 pr-4">
+                    {item.expected_cagr !== null
+                      ? signedPct(item.expected_cagr)
+                      : item.partial_expected_cagr !== null
+                        ? `Parcial ${signedPct(item.partial_expected_cagr)}`
+                        : 'Sin datos'}
+                  </td>
                   <td className="py-2 text-xs text-gray-500">
                     Precio {item.price_source} · {item.price_as_of} · tesis v{item.thesis_version} ({item.thesis_status})
                     {item.model_version !== null ? ` · modelo v${item.model_version}` : ''} · {item.horizon_years} anos
