@@ -7,20 +7,27 @@ import httpx
 
 from app.core.config import get_settings
 
-
-
-_FLEX_URL_TOKEN_RE = re.compile(r"(ndcdyn\.interactivebrokers\.com[^\s\"']*[?&]t=)[^&\s\"']+")
+_FLEX_URL_RE = re.compile(r"https://ndcdyn\.interactivebrokers\.com[^\s\"']+")
+_FLEX_T_PARAM_RE = re.compile(r"([?&]t=)[^&\s\"']+")
 
 
 class _FlexTokenRedactor(logging.Filter):
-    """Redacta el token Flex en los logs de httpx: su request logging incluye la URL completa."""
+    """Redacta el token Flex en los logs de httpx: su request logging incluye la URL completa.
+
+    Cubre TODAS las apariciones del parametro t= dentro de la URL del Flex
+    Web Service (una URL con ?t=A&t=B no deja ninguna copia en claro).
+    """
+
+    @staticmethod
+    def _redact_url(match: "re.Match[str]") -> str:
+        return _FLEX_T_PARAM_RE.sub(r"\1***", match.group(0))
 
     def filter(self, record: logging.LogRecord) -> bool:
         try:
             message = record.getMessage()
         except Exception:  # defensivo: un record roto no debe romper el logging
             return True
-        redacted = _FLEX_URL_TOKEN_RE.sub(r"\1***", message)
+        redacted = _FLEX_URL_RE.sub(self._redact_url, message)
         if redacted != message:
             record.msg = redacted
             record.args = ()

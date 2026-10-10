@@ -37,3 +37,15 @@ def test_leaves_unrelated_urls_untouched() -> None:
 
 def test_filter_installed_on_httpx_logger() -> None:
     assert any(isinstance(f, _FlexTokenRedactor) for f in logging.getLogger("httpx").filters)
+
+
+def test_redacts_every_t_param_when_duplicated() -> None:
+    rec = _record(
+        "GET https://ndcdyn.interactivebrokers.com/FlexWebService/SendRequest"
+        "?v=3&t=FIRSTSECRET&t=SECONDSECRET&q=1 \"HTTP/1.1\" 200 OK"
+    )
+    _FlexTokenRedactor().filter(rec)
+    out = rec.getMessage()
+    assert "FIRSTSECRET" not in out
+    assert "SECONDSECRET" not in out
+    assert out.count("t=***") == 2
