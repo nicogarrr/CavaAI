@@ -12,7 +12,6 @@ import { cache } from 'react';
 import {
   ArrowLeft,
   BookOpen,
-  FileDown,
   FileText,
   History,
   RefreshCcw,
@@ -71,6 +70,7 @@ import {
   type ResearchLongTermModel,
   type ResearchValuation,
   getMoatQualityScore,
+  getResearchNews,
 } from '@/lib/actions/research.actions';
 import { getCompanyMarketSnapshot } from '@/lib/actions/market-workspace.actions';
 import { getWatchlist } from '@/lib/actions/watchlist.actions';
@@ -79,7 +79,8 @@ import { isBackendUnavailableError } from '@/lib/backend-offline';
 import QuickAlertButton from '@/components/research/QuickAlertButton';
 import ThesisMemo from '@/components/research/ThesisMemo';
 import { valuationScenarioDisplay } from '@/lib/research/listed-share-values';
-import ThesisExportButtons from '@/components/research/ThesisExportButtons';
+import ThesisExportMenu from '@/components/research/ThesisExportMenu';
+import { NewsHeadline } from '@/components/research/NewsHeadline';
 import ThesisApproveButton from '@/components/research/ThesisApproveButton';
 import CitationsList from '@/components/chat/CitationsList';
 import FollowButton from '@/components/screener/FollowButton';
@@ -91,6 +92,7 @@ import {
   pick,
   settleResearchBatch,
 } from '@/lib/research/parallel-fetch';
+import type { ResearchSettled } from '@/lib/research/parallel-fetch';
 import { withResearchTelemetry } from '@/lib/research/fetch-telemetry';
 
 export const dynamic = 'force-dynamic';
@@ -170,6 +172,19 @@ function asView(value: string | undefined): View {
 function moduleHref(ticker: string, module: (typeof MODULES)[number]): string {
   const base = `/research/${encodeURIComponent(ticker)}`;
   return 'path' in module ? `${base}/${module.path}` : `${base}?view=${module.key}`;
+}
+
+
+/** Fecha de la noticia con su provenance: nunca afirmar fecha de publicacion
+ *  cuando es el fallback de ingesta o no hay metadato. */
+function newsDateLabel(event: { date: string; date_source?: string | null }): string {
+  const day = event.date.slice(0, 10);
+  // Mismo criterio que NewsEventsFlow y ResearchAssistant: solo 'source' es
+  // fecha de publicacion verificada; el resto se etiqueta, nunca se afirma.
+  if (event.date_source === 'source') return day;
+  if (event.date_source === 'gdelt_first_seen') return `Detectada el ${day}`;
+  if (event.date_source === 'ingested_at_fallback') return `Incorporada el ${day}`;
+  return `Fecha no verificada (${day})`;
 }
 
 function number(value: number | string | null | undefined): number | null {
@@ -691,6 +706,14 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
   const marketPromise = withResearchTelemetry('market-snapshot', () => getCompanyMarketSnapshot(ticker));
   // MOAT V2: solo lectura del score persistido; su fallo degrada a omitir el panel.
   const moatPromise = activeView === 'overview' ? withResearchTelemetry('moat-score', () => getMoatQualityScore(ticker)) : undefined;
+  // Noticias del resumen: mismo lote con presupuesto que el resto de lecturas
+  // (guard D2a). Su fallo degrada a aviso en el panel, nunca rompe la pagina.
+  const newsPromise = activeView === 'overview'
+    ? settleResearchBatch(
+        [{ key: 'overview-news', promise: getResearchNews(null, 0, 25, ticker) }],
+        RESEARCH_RENDER_BUDGET_MS,
+      )
+    : Promise.resolve<ResearchSettled<Awaited<ReturnType<typeof getResearchNews>>>[]>([]);
   // "Estado seguido" real del usuario. Antes esperaba al snapshot para pedirlo,
   // y no hay NINGÚN motivo: el watchlist es del tenant, no depende del ticker.
   const watchlistPromise = withResearchTelemetry('watchlist', () => getWatchlist()).catch(() => null);
@@ -714,6 +737,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
   // no cambia (el catch devuelve una promesa nueva que se descarta).
   drainRejection(marketPromise);
   drainRejection(moatPromise);
+  drainRejection(newsPromise);
   drainRejection(viewPromise);
   drainRejection(chatPromise);
   let snapshot: Awaited<typeof snapshotPromise>;
@@ -829,6 +853,18 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     // Aquí solo la versión vigente, en versión corta, con salida explícita al
     // documento entero. Dos copias del mismo memo en dos URLs era lo que hacía
     // que las dos pestañas parecieran la misma.
+    // Al entrar en una accion lo primero es precio (header, ya en todas
+    // las vistas) y las noticias importantes: las 5 de mayor materialidad
+    // entre las 25 mas recientes de la empresa, pintadas por fecha.
+    const newsEntry = (await newsPromise).find((entry) => entry.key === 'overview-news');
+    const overviewNewsError = !newsEntry || !newsEntry.ok;
+    const overviewNews: Awaited<ReturnType<typeof getResearchNews>> = newsEntry && newsEntry.ok
+      ? newsEntry.value
+          .slice()
+          .sort((a, b) => (b.materiality_score ?? 0) - (a.materiality_score ?? 0))
+          .slice(0, 5)
+          .sort((a, b) => b.date.localeCompare(a.date))
+      : [];
     content = (
       <div className="space-y-6">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -845,6 +881,29 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
         <p role="status" className="rounded-lg border border-amber-900/70 bg-amber-950/20 p-3 text-sm text-amber-200">
           {researchValuability(snapshot)}
         </p>
+        <Panel
+          description="Las 5 noticias de mayor materialidad entre las 25 más recientes de esta empresa, con fuente y fecha."
+          title="Últimas noticias"
+        >
+          {overviewNewsError ? (
+            <p className="rounded-lg border border-amber-900/70 bg-amber-950/20 p-3 text-sm text-amber-200" role="status">
+              No se pudieron cargar las noticias. Reintenta en unos segundos.
+            </p>
+          ) : overviewNews.length === 0 ? (
+            <EmptyState title="Sin noticias recientes de esta empresa." />
+          ) : (
+            <ul className="space-y-3">
+              {overviewNews.map((event) => (
+                <li className="text-sm" key={event.id}>
+                  <NewsHeadline event={event} />
+                  <p className="mt-1 text-xs text-gray-500">
+                    {event.source} · {newsDateLabel(event)}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
           <Panel title="Última tesis">
             {snapshot.latest_thesis ? (
@@ -1001,19 +1060,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
         <div className="flex flex-wrap items-center gap-3">
           <ThesisGenerateButton ticker={ticker} />
           <ThesisApproveButton ticker={ticker} disabled={data.history.length === 0} />
-          <Link
-            className="inline-flex items-center gap-2 rounded-md border border-gray-700 px-4 py-2 text-sm font-medium text-gray-200 transition hover:border-teal-700 hover:text-teal-200"
-            href="/export"
-          >
-            <FileDown className="h-4 w-4" />Exportar journal
-          </Link>
-          <a
-            className="inline-flex items-center gap-2 rounded-md border border-gray-700 px-4 py-2 text-sm font-medium text-gray-200 transition hover:border-teal-700 hover:text-teal-200"
-            href={`/api/thesis-memo/${encodeURIComponent(ticker)}`}
-          >
-            <FileDown className="h-4 w-4" />Exportar memo
-          </a>
-          <ThesisExportButtons ticker={ticker} />
+          <ThesisExportMenu ticker={ticker} />
           <Badge variant="outline">{data.history.length} versiones</Badge>
           <Badge variant="outline">{data.claims.length} afirmaciones</Badge>
         </div>
