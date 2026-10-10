@@ -32281,7 +32281,7 @@
     },
     "/api/news": {
       "get": {
-        "description": "Eventos por pagina (scroll infinito). ``lane`` filtra en SQL:\n``empresa`` = atribuido a una empresa real; ``macro`` = carril macro GDELT.",
+        "description": "Eventos por pagina (scroll infinito). ``lane`` filtra en SQL:\n``empresa`` = atribuido a una empresa real; ``macro`` = carril macro GDELT.\n``ticker`` limita a los eventos de esa empresa (ficha de accion).",
         "operationId": "news_events_api_news_get",
         "parameters": [
           {
@@ -32325,6 +32325,23 @@
                 }
               ],
               "title": "Lane"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ticker",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 20,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ticker"
             }
           },
           {
