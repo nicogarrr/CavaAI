@@ -92,6 +92,7 @@ import {
   pick,
   settleResearchBatch,
 } from '@/lib/research/parallel-fetch';
+import type { ResearchSettled } from '@/lib/research/parallel-fetch';
 import { withResearchTelemetry } from '@/lib/research/fetch-telemetry';
 
 export const dynamic = 'force-dynamic';
@@ -705,6 +706,14 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
   const marketPromise = withResearchTelemetry('market-snapshot', () => getCompanyMarketSnapshot(ticker));
   // MOAT V2: solo lectura del score persistido; su fallo degrada a omitir el panel.
   const moatPromise = activeView === 'overview' ? withResearchTelemetry('moat-score', () => getMoatQualityScore(ticker)) : undefined;
+  // Noticias del resumen: mismo lote con presupuesto que el resto de lecturas
+  // (guard D2a). Su fallo degrada a aviso en el panel, nunca rompe la pagina.
+  const newsPromise = activeView === 'overview'
+    ? settleResearchBatch(
+        [{ key: 'overview-news', promise: getResearchNews(null, 0, 25, ticker) }],
+        RESEARCH_RENDER_BUDGET_MS,
+      )
+    : Promise.resolve<ResearchSettled<Awaited<ReturnType<typeof getResearchNews>>>[]>([]);
   // "Estado seguido" real del usuario. Antes esperaba al snapshot para pedirlo,
   // y no hay NINGÚN motivo: el watchlist es del tenant, no depende del ticker.
   const watchlistPromise = withResearchTelemetry('watchlist', () => getWatchlist()).catch(() => null);
@@ -728,6 +737,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
   // no cambia (el catch devuelve una promesa nueva que se descarta).
   drainRejection(marketPromise);
   drainRejection(moatPromise);
+  drainRejection(newsPromise);
   drainRejection(viewPromise);
   drainRejection(chatPromise);
   let snapshot: Awaited<typeof snapshotPromise>;
@@ -846,18 +856,15 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     // Al entrar en una accion lo primero es precio (header, ya en todas
     // las vistas) y las noticias importantes: las 5 de mayor materialidad
     // entre las 25 mas recientes de la empresa, pintadas por fecha.
-    let overviewNews: Awaited<ReturnType<typeof getResearchNews>> = [];
-    let overviewNewsError = false;
-    try {
-      const recent = await getResearchNews(null, 0, 25, ticker);
-      overviewNews = recent
-        .slice()
-        .sort((a, b) => (b.materiality_score ?? 0) - (a.materiality_score ?? 0))
-        .slice(0, 5)
-        .sort((a, b) => b.date.localeCompare(a.date));
-    } catch {
-      overviewNewsError = true;
-    }
+    const newsEntry = (await newsPromise).find((entry) => entry.key === 'overview-news');
+    const overviewNewsError = !newsEntry || !newsEntry.ok;
+    const overviewNews: Awaited<ReturnType<typeof getResearchNews>> = newsEntry && newsEntry.ok
+      ? newsEntry.value
+          .slice()
+          .sort((a, b) => (b.materiality_score ?? 0) - (a.materiality_score ?? 0))
+          .slice(0, 5)
+          .sort((a, b) => b.date.localeCompare(a.date))
+      : [];
     content = (
       <div className="space-y-6">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
