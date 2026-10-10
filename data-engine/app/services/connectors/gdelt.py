@@ -1,13 +1,30 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import threading
 import time
 from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 
 import httpx
 
 from app.services.connectors.base import ConnectorItem, ConnectorResult
+
+
+class GdeltRateLimited(Exception):
+    """GDELT cerro la ventana (429): sube tipada con el Retry-After.
+
+    El cliente honra la ventana inline un numero acotado de veces; agotados
+    los reintentos inline (o ventana mayor que la que una corrida puede
+    pagar), el 429 sube con la ventana real para que el actor dramatiq
+    reencole el LOTE tras ella en vez de seguir quemando cuota por IP
+    contra una ventana cerrada.
+    """
+
+    def __init__(self, retry_after: float) -> None:
+        super().__init__(f"GDELT 429: ventana cerrada, reintentar tras {retry_after:.0f}s")
+        self.retry_after = retry_after
 
 
 class GDELTClient:
@@ -19,21 +36,32 @@ class GDELTClient:
     clase (proceso): todas las instancias comparten la misma ventana.
 
     429: se honra ``Retry-After`` (acotado) hasta ``max_429_retries`` veces;
-    después se deja subir el error y el conector degrada a ``failed``. Una
-    cabecera por encima de ``MAX_RETRY_AFTER`` pide una espera que esta
-    corrida no puede pagar: NO se trunca ni se reintenta inline, el error
-    sube de inmediato.
+    después el 429 sube TIPADO (``GdeltRateLimited``, con la ventana) y el
+    actor reencola el lote tras ella. Una cabecera por encima de
+    ``MAX_RETRY_AFTER`` pide una espera que esta corrida no puede pagar: NO
+    se trunca ni se reintenta inline, sube tipada con la ventana real.
     """
 
     base_url = "https://api.gdeltproject.org/api/v2/doc/doc"
 
     _rate_lock = threading.Lock()
     _next_allowed_at = 0.0  # time.monotonic()
+    # Ventana 429 POR IP compartida por TODOS los jobs del carril (un solo
+    # proceso consume la cola gdelt por diseño: el estado de clase ES el
+    # cooldown global). Sin esto, tras reencolar un lote los demás mensajes
+    # (macro/empresa/backlog) entraban con el pacing de 5s y violaban la
+    # ventana de 45/3600s que GDELT acababa de imponer.
+    _blocked_until = 0.0  # time.monotonic()
 
     DEFAULT_MIN_INTERVAL = 5.0
     DEFAULT_MAX_429_RETRIES = 2
     MAX_RETRY_AFTER = 120.0
-    DEFAULT_RETRY_AFTER = 30.0
+    # Suelo para ventana 0/ausente: un 429 sin Retry-After (o con 0) no
+    # puede reintentar en menos de 60s — ni inline, ni el mensaje
+    # reencolado, ni el cooldown global POR IP. Un Retry(delay=0) eludiria
+    # el min_backoff del actor y buclearia contra la ventana cerrada.
+    RETRY_AFTER_FLOOR = 60.0
+    DEFAULT_RETRY_AFTER = RETRY_AFTER_FLOOR
 
     def __init__(
         self,
@@ -52,6 +80,23 @@ class GDELTClient:
             else max_429_retries
         )
 
+    @classmethod
+    def _block_for(cls, seconds: float) -> None:
+        """Marca la ventana 429 como POR IP: todo el carril espera hasta ella.
+
+        Solo extiende, nunca acorta una ventana ya marcada (dos 429 seguidos
+        se quedan con la ventana mayor).
+        """
+        if not math.isfinite(seconds) or seconds <= 0:
+            # Ventana 0/ausente/no finita: el cooldown global tambien paga
+            # el suelo (sin el, tras reencolar el mensaje los demas jobs del
+            # carril entraban a los 5s contra una ventana aun cerrada).
+            seconds = GDELTClient.RETRY_AFTER_FLOOR
+        with GDELTClient._rate_lock:
+            until = time.monotonic() + seconds
+            if until > GDELTClient._blocked_until:
+                GDELTClient._blocked_until = until
+
     async def _throttle(self) -> None:
         """Guarantee at least ``min_interval`` between two real requests.
 
@@ -65,14 +110,23 @@ class GDELTClient:
         next slot is measured from the real current time, so an overrun pushes
         the following request out instead of letting it through.
         """
-        if self.min_interval <= 0:
-            return
         while True:
             with GDELTClient._rate_lock:
                 now = time.monotonic()
-                wait = GDELTClient._next_allowed_at - now
-                if wait <= 0:
+                wait = max(
+                    GDELTClient._next_allowed_at - now,
+                    GDELTClient._blocked_until - now,
+                )
+                if wait > self.MAX_RETRY_AFTER:
+                    # Ventana POR IP mas larga de lo que esta corrida puede
+                    # pagar (el time_limit del actor mataria al worker
+                    # durmiendo dentro): el mensaje va a diferidos con la
+                    # ventana restante en vez de ocupar el carril.
+                    raise GdeltRateLimited(wait)
+                if wait <= 0 and self.min_interval > 0:
                     GDELTClient._next_allowed_at = now + self.min_interval
+                    return
+                if wait <= 0:
                     return
             await asyncio.sleep(wait)
 
@@ -81,16 +135,33 @@ class GDELTClient:
         raw = response.headers.get("Retry-After")
         if raw:
             try:
-                return max(0.0, float(raw))
+                value = float(raw)
             except ValueError:
-                pass
+                # Retry-After tambien admite HTTP-date (RFC 9110): una fecha
+                # futura marca el fin de la ventana; ignorarla devolvia el
+                # default (30s) y violaba la ventana real.
+                try:
+                    parsed = parsedate_to_datetime(raw)
+                except (TypeError, ValueError, IndexError, OverflowError):
+                    return None
+                if parsed is None:
+                    return None
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=UTC)
+                value = (parsed - datetime.now(UTC)).total_seconds()
+            if not math.isfinite(value):
+                # Inf/NaN bloquearian indefinido (y desbordan el delay en
+                # ms al reencolar): cae al default acotado.
+                return None
+            return max(0.0, value)
         return None
 
     @classmethod
     def _retry_after_seconds(cls, response: httpx.Response) -> float:
         raw = cls._raw_retry_after(response)
-        if raw is not None:
+        if raw is not None and raw > 0:
             return min(raw, cls.MAX_RETRY_AFTER)
+        # 0/ausente: la misma ventana que el suelo del mensaje reencolado.
         return cls.DEFAULT_RETRY_AFTER
 
     async def news_search(self, query: str, max_records: int = 50) -> dict:
@@ -111,14 +182,23 @@ class GDELTClient:
                     response = await client.get(self.base_url, params=params)
             if response.status_code == 429:
                 raw_retry_after = self._raw_retry_after(response)
+                # El 429 es POR IP: la ventana la respetan TODOS los jobs del
+                # carril, no solo este mensaje.
+                self._block_for(
+                    raw_retry_after if raw_retry_after is not None else self.DEFAULT_RETRY_AFTER
+                )
                 if raw_retry_after is not None and raw_retry_after > self.MAX_RETRY_AFTER:
                     # Ventana prohibida demasiado larga para esta corrida:
-                    # no se trunca ni se reintenta inline, el 429 sube.
-                    response.raise_for_status()
+                    # no se trunca ni se reintenta inline; sube tipada con la
+                    # ventana real para que el actor decida la espera.
+                    raise GdeltRateLimited(raw_retry_after)
                 if attempt < self.max_429_retries:
                     attempt += 1
                     await asyncio.sleep(self._retry_after_seconds(response))
                     continue
+                # Reintentos inline agotados: sube tipada con la ventana
+                # acotada; el actor reencola el lote tras ella.
+                raise GdeltRateLimited(self._retry_after_seconds(response))
             response.raise_for_status()
             return response.json()
 
@@ -181,5 +261,9 @@ class GDELTConnector:
                 )
             metadata["article_count"] = len(articles)
             return ConnectorResult(source="gdelt", items=items, metadata=metadata)
+        except GdeltRateLimited:
+            # El 429 NO degrada a failed: sube al actor, que reencola el lote
+            # tras la ventana del servidor en vez de barrer contra ella.
+            raise
         except Exception as exc:
             return ConnectorResult.failed("gdelt", exc, metadata=metadata)
