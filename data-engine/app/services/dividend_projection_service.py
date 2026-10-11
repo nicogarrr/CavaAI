@@ -110,9 +110,14 @@ class DividendProjectionService:
     def project(self, db: Session, months: int = 12) -> dict[str, Any]:
         today = date.today()
         cutoff = _shift_year(today, -1)
+        # Horizonte exacto por fechas: [today, today + months meses], ambos
+        # inclusive. Los buckets mensuales cubren desde el mes actual hasta
+        # el mes del fin (pueden ser months+1 buckets en la frontera).
+        end_month = today.month + months
+        end = date(today.year + (end_month - 1) // 12, (end_month - 1) % 12 + 1, today.day)
         window: list[str] = []
         y, m = today.year, today.month
-        for _ in range(months):
+        while (y, m) <= (end.year, end.month):
             window.append(f"{y:04d}-{m:02d}")
             m += 1
             if m > 12:
@@ -169,6 +174,7 @@ class DividendProjectionService:
         yearly_position_gross: dict[tuple[int, str], Decimal] = defaultdict(lambda: Decimal("0"))
         yearly_source: dict[tuple[int, str], Decimal] = defaultdict(lambda: Decimal("0"))
         yearly_foreign_gross: dict[tuple[int, str], Decimal] = defaultdict(lambda: Decimal("0"))
+        yearly_a_cuenta: dict[tuple[int, str], Decimal] = defaultdict(lambda: Decimal("0"))
 
         for position, company in rows:
             records = [
@@ -176,7 +182,7 @@ class DividendProjectionService:
                 for r in records_by_company.get(company.id, [])
                 if r.currency == position.currency
             ]
-            trailing = [r for r in records if cutoff <= r.ex_date <= today]
+            trailing = [r for r in records if cutoff < r.ex_date <= today]
             future = [r for r in records if r.ex_date > today]
             for record in future:
                 declared_future.append(
@@ -186,9 +192,11 @@ class DividendProjectionService:
                         "pay_date": record.pay_date.isoformat() if record.pay_date else None,
                         "amount_per_share": float(record.amount),
                         "currency": record.currency,
-                        "label": "OFICIAL",
+                        "label": "INGESTADO",
                         "source": record.source,
-                        "note": "Declarado con ex_date futura; no alimenta la réplica.",
+                        "ingested_as_of": today.isoformat(),
+                        "note": "Declarado con ex_date futura según el proveedor de datos "
+                                "(no verificado contra fuente primaria); no alimenta la réplica.",
                     }
                 )
             if not trailing:
@@ -207,7 +215,7 @@ class DividendProjectionService:
 
             country = (company.domicile_country or "").upper() or None
             source_rate = _SOURCE_WITHHOLDING.get(country) if country else None
-            if country and country not in _SOURCE_WITHHOLDING:
+            if country not in _SOURCE_WITHHOLDING:
                 unknown_country.append(company.ticker)
             fiscally_covered = rate is not None and source_rate is not None
 
@@ -215,7 +223,7 @@ class DividendProjectionService:
             for record in trailing:
                 for year_offset in range(1, years_in_horizon + 1):
                     projected = _shift_year(record.pay_date or record.ex_date, year_offset)
-                    if projected < today:
+                    if projected < today or projected > end:
                         continue
                     key = _month_key(projected)
                     if key in window_set:
@@ -228,21 +236,22 @@ class DividendProjectionService:
                 gross_base_total = gross_native_total * rate
                 if source_rate is not None:
                     source_base_total = gross_base_total * source_rate
-                for key, amount_native in month_entries.items():
+            for key, amount_native in month_entries.items():
+                bucket = month_totals[key]
+                if fiscally_covered and rate is not None:
                     gross_base = amount_native * rate
                     year = int(key[:4])
                     yearly_position_gross[(year, company.ticker)] += gross_base
-                    if source_rate is not None:
+                    if country in _FOREIGN_WITHHOLDING:
+                        yearly_foreign_gross[(year, company.ticker)] += gross_base
                         yearly_source[(year, company.ticker)] += gross_base * source_rate
-                        if country in _FOREIGN_WITHHOLDING:
-                            yearly_foreign_gross[(year, company.ticker)] += gross_base
-                    bucket = month_totals[key]
-                    if fiscally_covered:
-                        bucket["gross_base"] += gross_base
-                        bucket["source_base"] += gross_base * source_rate
-                        bucket["covered"].add(company.ticker)
-                    else:
-                        bucket["excluded"].add(company.ticker)
+                    elif country == "ES":
+                        yearly_a_cuenta[(year, company.ticker)] += gross_base * source_rate
+                    bucket["gross_base"] += gross_base
+                    bucket["source_base"] += gross_base * source_rate
+                    bucket["covered"].add(company.ticker)
+                else:
+                    bucket["excluded"].add(company.ticker)
 
             per_position.append(
                 {
@@ -267,19 +276,36 @@ class DividendProjectionService:
                 }
             )
 
-        # Escenario fiscal anual: IRPF progresivo por año natural sobre la
-        # cartera y deducción por doble imposición por posición.
+        # Escenario fiscal anual: IRPF progresivo por ano natural sobre la
+        # cartera y deduccion por doble imposicion por posicion. Solo
+        # posiciones fiscalmente cubiertas; excluidas se listan y su parte
+        # queda N/D, nunca agregada como cero.
         fiscal_years: dict[int, dict[str, Any]] = {}
-        for year in sorted({year for year, _ in yearly_position_gross}):
+        all_years = sorted(
+            {year for year, _ in yearly_position_gross}
+            | {year for year, _ in yearly_a_cuenta}
+        )
+        # Tickers excluidos por ano (con dividendo proyectado pero sin fx o
+        # sin retencion verificada): se recogen de los buckets mensuales.
+        excluded_by_year: dict[int, set] = defaultdict(set)
+        for key, bucket in month_totals.items():
+            for t in bucket["excluded"]:
+                excluded_by_year[int(key[:4])].add(t)
+        for year in all_years:
             tickers = [t for y, t in yearly_position_gross if y == year]
             year_gross = sum(yearly_position_gross[(year, t)] for t in tickers)
+            excluded = sorted(excluded_by_year.get(year, set()))
             if not fiscal_ok or year_gross <= 0:
                 fiscal_years[year] = {
                     "gross_base": float(year_gross),
                     "irpf_scenario": None,
-                    "source_withheld": None,
+                    "source_withheld_foreign": None,
+                    "retencion_a_cuenta_es": None,
                     "double_tax_deduction": None,
+                    "cuota_pendiente_estimada": None,
                     "net_scenario": None,
+                    "covered_tickers": sorted(tickers),
+                    "excluded_tickers": excluded,
                     "note": "Sin datos" if year_gross <= 0 else
                             "Escenario fiscal no disponible: la divisa base no es EUR.",
                 }
@@ -288,14 +314,18 @@ class DividendProjectionService:
             avg_rate = irpf_total / year_gross
             deduction_total = Decimal("0")
             source_total = Decimal("0")
+            a_cuenta_total = Decimal("0")
             per_position_fiscal = {}
             for t in tickers:
                 gross_t = yearly_position_gross[(year, t)]
                 source_t = yearly_source.get((year, t), Decimal("0"))
+                a_cuenta_t = yearly_a_cuenta.get((year, t), Decimal("0"))
                 foreign_gross_t = yearly_foreign_gross.get((year, t), Decimal("0"))
                 source_total += source_t
-                # Deducción: menor entre impuesto extranjero y tipo medio sobre
-                # la base extranjera de ESA posición (AEAT, separando rentas).
+                a_cuenta_total += a_cuenta_t
+                # Deduccion DI: menor entre impuesto extranjero soportado y
+                # tipo medio efectivo sobre la base extranjera de ESA posicion
+                # (AEAT, separando rentas). ES no aplica: es pago a cuenta.
                 deduction_t = min(
                     source_t if foreign_gross_t > 0 else Decimal("0"),
                     (avg_rate * foreign_gross_t).quantize(Decimal("0.0001")),
@@ -303,19 +333,34 @@ class DividendProjectionService:
                 deduction_total += deduction_t
                 per_position_fiscal[t] = {
                     "gross_base": float(gross_t),
-                    "source_withheld_base": float(source_t),
+                    "source_withheld_foreign_base": float(source_t),
+                    "retencion_a_cuenta_base": float(a_cuenta_t),
                     "double_tax_deduction_base": float(deduction_t),
                 }
-            net = year_gross - source_total - irpf_total + deduction_total
+            # Cuota pendiente: el IRPF menos lo ya retenido a cuenta (ES).
+            # Puede salir negativo (devolucion estimada).
+            cuota_pendiente = irpf_total - a_cuenta_total
+            # Neto = bruto - impuesto total soportado. El pago a cuenta ES no
+            # es un impuesto adicional: es anticipo de la cuota IRPF, asi que
+            # el coste fiscal total es IRPF + extranjero - deduccion DI.
+            net = year_gross - irpf_total - source_total + deduction_total
+            note = "Escenario condicionado (ver `fiscal_conditions`); no es el neto final."
+            if excluded:
+                note = ("Subconjunto cubierto: hay posiciones excluidas sin fx o sin "
+                        "retencion verificada (sin datos, no cero). " + note)
             fiscal_years[year] = {
                 "gross_base": float(year_gross),
                 "irpf_scenario": float(irpf_total),
-                "source_withheld": float(source_total),
+                "source_withheld_foreign": float(source_total),
+                "retencion_a_cuenta_es": float(a_cuenta_total),
                 "double_tax_deduction": float(deduction_total),
+                "cuota_pendiente_estimada": float(cuota_pendiente),
                 "net_scenario": float(net),
                 "effective_avg_rate": float(avg_rate),
                 "per_position": per_position_fiscal,
-                "note": "Escenario condicionado (ver `fiscal_conditions`); no es el neto final.",
+                "covered_tickers": sorted(tickers),
+                "excluded_tickers": excluded,
+                "note": note,
             }
 
         months_out = []

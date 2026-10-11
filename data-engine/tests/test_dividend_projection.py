@@ -142,9 +142,10 @@ def test_fiscal_scenario_progressive_irpf_and_double_taxation(db):
     # asi que la deduccion cubre todo el impuesto extranjero (30.000).
     assert fiscal["gross_base"] == pytest.approx(200000.0)
     assert fiscal["irpf_scenario"] == pytest.approx(44880.0)
-    assert fiscal["source_withheld"] == pytest.approx(30000.0)
+    assert fiscal["source_withheld_foreign"] == pytest.approx(30000.0)
     assert fiscal["double_tax_deduction"] == pytest.approx(30000.0)
     assert fiscal["net_scenario"] == pytest.approx(200000.0 - 44880.0)
+    assert fiscal["covered_tickers"] == ["AAPL"]
     assert "condicionado" in fiscal["note"]
 
 
@@ -191,6 +192,8 @@ def test_missing_fx_excludes_base_aggregation(db):
     assert out["coverage"]["fx_missing"] == ["NOFX"]
     assert out["positions"][0]["gross_base"] is None
     assert all(m["gross_base"] == 0.0 for m in out["months"])
+    excluded = [m for m in out["months"] if m["excluded_tickers"]]
+    assert excluded and all("Subconjunto cubierto" in m["note"] for m in excluded)
 
 
 def test_horizon_24_replicates_both_years(db):
@@ -227,7 +230,8 @@ def test_future_declared_dividend_is_reported_not_replicated(db):
     assert len(out["declared_future"]) == 1
     future = out["declared_future"][0]
     assert future["amount_per_share"] == pytest.approx(100.0)
-    assert future["label"] == "OFICIAL"
+    assert future["label"] == "INGESTADO"
+    assert future["source"] == "yahoo"
 
 
 def test_zero_and_short_positions_ignored(db):
@@ -258,3 +262,58 @@ def test_non_eur_base_disables_fiscal_scenario(db):
     assert fiscal["irpf_scenario"] is None
     assert fiscal["net_scenario"] is None
     assert "no es EUR" in fiscal["note"]
+
+
+def test_spanish_withholding_is_prepayment_not_double_charge(db):
+    company = _company(db, ticker="ESPCO", currency="EUR", country="ES")
+    _position(db, company, quantity="100", currency="EUR")
+    today = date.today()
+    _dividend(db, company, today - timedelta(days=90), "1.00", currency="EUR")
+    _fx(db, quote="EUR", base="EUR", rate="1.0")
+
+    out = DividendProjectionService().project(db, months=12)
+
+    year = str(today.year + 1)
+    fiscal = out["fiscal_by_year"][year]
+    # 100 EUR brutos: retencion a cuenta 19 (anticipo), cuota IRPF 19 (19%).
+    # Neto = 100 - 19 de impuesto total = 81, NO 62 (sin doble cargo).
+    assert fiscal["gross_base"] == pytest.approx(100.0)
+    assert fiscal["retencion_a_cuenta_es"] == pytest.approx(19.0)
+    assert fiscal["source_withheld_foreign"] == pytest.approx(0.0)
+    assert fiscal["irpf_scenario"] == pytest.approx(19.0)
+    assert fiscal["double_tax_deduction"] == pytest.approx(0.0)
+    assert fiscal["cuota_pendiente_estimada"] == pytest.approx(0.0)
+    assert fiscal["net_scenario"] == pytest.approx(81.0)
+
+
+def test_unknown_country_excluded_from_fiscal_year(db):
+    company = _company(db, ticker="NSR", country=None)
+    _position(db, company)
+    today = date.today()
+    _dividend(db, company, today - timedelta(days=100), "1.00")
+    _fx(db, rate="1.0")
+
+    out = DividendProjectionService().project(db, months=12)
+
+    assert out["coverage"]["unknown_source_withholding"] == ["NSR"]
+    for fiscal in out["fiscal_by_year"].values():
+        assert fiscal["gross_base"] == 0.0
+        assert fiscal["irpf_scenario"] is None or "NSR" not in fiscal["covered_tickers"]
+        assert "NSR" in fiscal["excluded_tickers"] or fiscal["gross_base"] == 0.0
+
+
+def test_annual_cycle_not_duplicated_at_boundaries(db):
+    company = _company(db)
+    _position(db, company)
+    today = date.today()
+    # Registro exactamente en el cutoff (hoy - 1 ano) y su ciclo siguiente
+    # (hoy): la replica debe contar UN ciclo anual, no dos.
+    _dividend(db, company, today.replace(year=today.year - 1), "1.00")
+    _dividend(db, company, today, "1.00")
+    _fx(db, rate="1.0")
+
+    out = DividendProjectionService().project(db, months=12)
+
+    pos = out["positions"][0]
+    assert pos["frequency_last_year"] == 1
+    assert pos["gross_native"] == pytest.approx(10.0)
