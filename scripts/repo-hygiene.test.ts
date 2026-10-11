@@ -18,8 +18,36 @@ import test from 'node:test';
 
 const MAX_TRACKED_BYTES = 5 * 1024 * 1024;
 
-function git(args: string[], opts: Record<string, unknown> = {}) {
-  return execFileSync('git', args, { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024, ...opts });
+/**
+ * Un guard que no puede ejecutar git NO puede evaluar el repo: tiene que
+ * fallar con un error de ENTORNO claro, no inventar violaciones. Caso real
+ * (11 oct 2026): el bundle corriendo como root en docker sin safe.directory
+ * hacia que git respondiera "fatal: detected dubious ownership" y el guard
+ * reportaba 6 violaciones E6/H1-H6 que NO existian en main.
+ */
+export class GitEnvError extends Error {}
+
+/** exec inyectable solo para el test negativo N5; el default es el real. */
+function git(
+  args: string[],
+  opts: Record<string, unknown> = {},
+  exec: typeof execFileSync = execFileSync,
+) {
+  try {
+    return exec('git', args, { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024, ...opts });
+  } catch (err) {
+    // exit 1 de check-ignore es una RESPUESTA ("no ignorado"): la traduce
+    // isIgnored, no es un fallo de entorno.
+    if (args[0] === 'check-ignore' && (err as { status?: number }).status === 1) throw err;
+    const e = err as { code?: string; message?: string; stderr?: string | Buffer };
+    const detail = (e.code ?? String(e.stderr ?? e.message ?? err)).slice(0, 200);
+    throw new GitEnvError(
+      `git no es usable en este entorno (${detail}): el guard no puede evaluar el repo y ` +
+        'NINGUNA violacion E6 reportada asi es real. Si corre en docker como root: ' +
+        'git config --global --add safe.directory <ruta-del-repo>. Si git no esta instalado: ' +
+        'instala git en la imagen.',
+    );
+  }
 }
 
 const tracked = () => git(['ls-files', '-z']).split('\0').filter(Boolean);
@@ -30,12 +58,17 @@ const tracked = () => git(['ls-files', '-z']).split('\0').filter(Boolean);
  * is what we need: we are asking "if someone committed this, would it be
  * caught?", not "is this file present right now?".
  */
-function isIgnored(path: string) {
+function isIgnored(path: string, exec: typeof execFileSync = execFileSync) {
   try {
-    git(['check-ignore', '--no-index', '-q', path]);
+    git(['check-ignore', '--no-index', '-q', path], {}, exec);
     return true;
-  } catch {
-    return false;
+  } catch (err) {
+    // exit 1: el path no esta ignorado (respuesta normal). Cualquier otro
+    // fallo (git ausente, dubious ownership, repo roto) ya viene tipificado
+    // como GitEnvError por git(): propaga, nunca se cuenta como categoria
+    // sin cubrir.
+    if ((err as { status?: number }).status === 1) return false;
+    throw err;
   }
 }
 
@@ -294,4 +327,28 @@ test('E6/N4: el detector de tamano muerde (caso negativo)', () => {
   assert.equal(big[0].path, 'data-engine/data/big_esef.htm', 'orden descendente por tamano');
   // Boundary: exactly at the budget is allowed.
   assert.deepEqual(findOversized([[MAX_TRACKED_BYTES, 'ok.bin']]), []);
+});
+test('E6/N5: un git roto se reporta como ENTORNO, no como violaciones', () => {
+  const enoent: typeof execFileSync = () => {
+    throw Object.assign(new Error('spawnSync git ENOENT'), { code: 'ENOENT' });
+  };
+  assert.throws(() => git(['ls-files'], {}, enoent), (err: unknown) => {
+    assert.ok(err instanceof GitEnvError);
+    assert.match(String(err), /git no es usable en este entorno/);
+    return true;
+  });
+
+  const dubious: typeof execFileSync = () => {
+    throw Object.assign(new Error('Command failed'), {
+      status: 128,
+      stderr: 'fatal: detected dubious ownership in repository at /repo',
+    });
+  };
+  assert.throws(() => isIgnored('cavaai_test.db', dubious), GitEnvError);
+
+  // exit 1 de check-ignore sigue significando "no ignorado", no error.
+  const notIgnored: typeof execFileSync = () => {
+    throw Object.assign(new Error('exit 1'), { status: 1 });
+  };
+  assert.equal(isIgnored('src/index.ts', notIgnored), false);
 });
