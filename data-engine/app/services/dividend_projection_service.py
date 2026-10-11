@@ -1,31 +1,49 @@
-"""Proyección mes a mes de dividendos de la cartera, con retenciones.
+"""Proyección mes a mes de dividendos de la cartera con escenario fiscal.
 
-INFERIDO: réplica mecánica de los dividendos declarados en los últimos 12
-meses (misma cantidad por acción, fechas desplazadas +1 año). No modela
-crecimientos ni recortes: es la foto de "si repiten lo ya declarado",
-etiquetada como inferencia, nunca como compromiso de la empresa.
+INFERIDO: réplica mecánica de los dividendos YA declarados e ingeridos en los
+últimos 12 meses (ex_date <= hoy), con la misma cantidad por acción y las
+fechas desplazadas +N años según el horizonte. No modela crecimientos ni
+recortes: es la foto de "si repiten lo ya declarado", etiquetada como
+inferencia, nunca como compromiso de la empresa. Los dividendos declarados
+con ex_date futuro se reportan aparte (``declared_future``), no alimentan la
+réplica.
 
-Retenciones estimadas (etiquetadas, con fuente y fecha de verificación):
+Escenario fiscal (HIPÓTESIS, condicionado, nunca "neto final"):
 
-- Origen: tabla corta verificada. US 15 % (convenio España-EE.UU., W-8BEN;
-  AEAT, Anexo III de límites de imposición en convenios, verificado
-  2026-10-11), ES 19 % (retención a cuenta, primer tramo del ahorro) y
-  GB 0 % (sin retención interna sobre dividendos ordinarios). Cualquier
-  otro domicilio sale como ``None`` ("sin datos"), nunca como 0 %.
-- IRPF: escala del ahorro progresiva anual de
-  :mod:`app.services.tax_irpf_filing` (Orden HAC/277/2026, Renta 2025).
-- Doble imposición: lo retenido en origen es deducible en España hasta la
-  cuota española de esa renta; se simplifica como
-  ``neto = max(0, irpf - origen)``.
+- Residencia fiscal española asumida; W-8BEN vigente asumido para US.
+- Retención de origen: US 15 % (convenio España-EE.UU.; AEAT, Anexo III de
+  límites de imposición en convenios,
+  https://www3.agenciatributaria.gob.es/Sede/ayuda/manuales-videos-folletos/manuales-practicos/manual-tributacion-no-residentes/anexos/limites-imposicion-convenios.html,
+  consultado 2026-10-11). ES 19 %: pago a cuenta, NO impuesto extranjero.
+  Cualquier otro domicilio (incluido GB: HMRC puede retener según categoría,
+  p.ej. PID/REIT, https://www.gov.uk/hmrc-internal-manuals/investment-funds/ifm28125)
+  sale como ``None`` = sin datos, nunca 0 %.
+- IRPF: escala del ahorro de :mod:`app.services.tax_irpf_filing`
+  (Orden HAC/277/2026, Renta 2025). Aplicada a años futuros es ESCENARIO
+  (tipos vigentes a fecha de cálculo, sujetos a cambio legislativo).
+  Progresiva sobre el acumulado anual de la cartera; condicionada a que
+  estos dividendos sean la única renta del ahorro del año.
+- Deducción por doble imposición internacional (solo impuesto extranjero):
+  por posición y año, el MENOR entre el impuesto soportado en origen y el
+  tipo medio efectivo de gravamen aplicado a la base extranjera (AEAT,
+  deducción por doble imposición internacional,
+  https://sede.agenciatributaria.gob.es/Sede/ayuda/manuales-videos-folletos/manuales-ayuda-presentacion/irpf-2025/8-cumplimentacion-irpf/8_7-cuota-liquida-cuota-resultante-autoliquidacion/8_7_3-cuota-resultante-autoliquidacion/8_7_3_1-deduccion-doble-imposicion-internacional.html,
+  consultado 2026-10-11). El tipo medio se calcula sobre el total anual del
+  escenario.
+- Fiscal solo si la divisa base es EUR; con otra base, IRPF/neto = None.
 
-Honestidad de cobertura: posiciones sin dividendos declarados ingeridos
-aparecen en ``coverage.sin_datos`` (nunca como 0,00 €), y las cantidades en
-moneda sin tipo de cambio se excluyen de los agregados en divisa base y se
-listan en ``coverage.fx_missing``.
+Honestidad de cobertura: solo posiciones largas abiertas (quantity > 0);
+posiciones sin dividendos declarados van a ``coverage.sin_datos`` (nunca
+0,00); sin tipo de cambio a ``coverage.fx_missing``; domicilio sin tipo
+verificado a ``coverage.unknown_source_withholding``. Los totales mensuales
+solo agregan posiciones fiscalmente cubiertas y declaran
+``covered_tickers``/``excluded_tickers`` por mes: son un subconjunto
+explícito, no el total de la cartera.
 """
 
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 from datetime import date
 from decimal import Decimal
@@ -38,24 +56,43 @@ from app.models.entities import Company, DividendRecord, Position
 from app.services.portfolio_fx_service import PortfolioFXService
 from app.services.tax_irpf_filing import calculate_savings_tax
 
-# Retención en origen por país de domicilio (ISO). Verificada 2026-10-11:
-# - US: 15 % convenio España-EE.UU. con W-8BEN (AEAT, Anexo III convenios).
-# - ES: 19 % retención a cuenta (escala del ahorro, primer tramo).
-# - GB: 0 % (Reino Unido no retiene dividendos ordinarios en origen).
-# Ausente = tipo no verificado -> None ("sin datos"), jamás 0 inventado.
+# Retención en origen verificada (consultado 2026-10-11). Solo entradas
+# verificadas: US 15 % (convenio, W-8BEN; AEAT Anexo III) y ES 19 % (pago a
+# cuenta, no impuesto extranjero). GB queda fuera a propósito: HMRC puede
+# retener según la categoría del dividendo (IFM28125), así que sin dato por
+# empresa es "sin datos", nunca 0 %.
 _SOURCE_WITHHOLDING: dict[str, Decimal] = {
     "US": Decimal("0.15"),
     "ES": Decimal("0.19"),
-    "GB": Decimal("0.00"),
+}
+_FOREIGN_WITHHOLDING = {"US"}  # ES es pago a cuenta nacional, no deducible como impuesto extranjero
+
+_SOURCE_URLS = {
+    "aeat_convenios": "https://www3.agenciatributaria.gob.es/Sede/ayuda/manuales-videos-folletos/manuales-practicos/manual-tributacion-no-residentes/anexos/limites-imposicion-convenios.html",
+    "aeat_doble_imposicion": "https://sede.agenciatributaria.gob.es/Sede/ayuda/manuales-videos-folletos/manuales-ayuda-presentacion/irpf-2025/8-cumplimentacion-irpf/8_7-cuota-liquida-cuota-resultante-autoliquidacion/8_7_3-cuota-resultante-autoliquidacion/8_7_3_1-deduccion-doble-imposicion-internacional.html",
+    "hmrc_property_income_distributions": "https://www.gov.uk/hmrc-internal-manuals/investment-funds/ifm28125",
 }
 
 _METHOD_NOTE = (
     "INFERIDO: réplica mecánica de los dividendos declarados en los últimos 12 "
-    "meses desplazados +1 año (sin crecimiento ni recortes). Retención de origen "
-    "según convenio (AEAT, verificado 2026-10-11); IRPF con la escala del ahorro "
-    "vigente (Orden HAC/277/2026); deducción por doble imposición simplificada "
-    "(neto = máx(0, IRPF - origen))."
+    "meses desplazados +N años según horizonte (sin crecimiento ni recortes). "
+    "Fiscal: ESCENARIO condicionado a residencia fiscal ES, W-8BEN vigente (US) "
+    "y a que estos dividendos sean la única renta del ahorro del año; escala del "
+    "ahorro de la Renta 2025 (Orden HAC/277/2026) aplicada a años futuros como "
+    "hipótesis. Deducción por doble imposición: menor entre impuesto extranjero "
+    "soportado y tipo medio efectivo sobre la base extranjera (AEAT). Fuentes y "
+    "condiciones en `sources`. No es el neto final: ignora otras rentas, "
+    "ganancias/pérdidas y el resto de la base anual."
 )
+
+_FISCAL_CONDITIONS = [
+    "Residencia fiscal en España asumida.",
+    "W-8BEN vigente asumido para dividendos US (sin W-8BEN el tipo sería 30 %).",
+    "Única renta del ahorro del año asumida; el IRPF real depende del resto de la base.",
+    "Escala del ahorro de la Renta 2025 aplicada a años futuros (hipótesis, sujeta a cambio legislativo).",
+    "La retención ES del 19 % es pago a cuenta, no impuesto extranjero ni deducción por doble imposición.",
+    "Domicilios sin tipo verificado (p.ej. GB: HMRC IFM28125 distingue categorías) salen como sin datos.",
+]
 
 
 def _shift_year(d: date, years: int = 1) -> date:
@@ -72,7 +109,7 @@ def _month_key(d: date) -> str:
 class DividendProjectionService:
     def project(self, db: Session, months: int = 12) -> dict[str, Any]:
         today = date.today()
-        cutoff = date(today.year - 1, today.month, today.day)
+        cutoff = _shift_year(today, -1)
         window: list[str] = []
         y, m = today.year, today.month
         for _ in range(months):
@@ -81,45 +118,86 @@ class DividendProjectionService:
             if m > 12:
                 m, y = 1, y + 1
         window_set = set(window)
+        years_in_horizon = math.ceil(months / 12)
 
         fx = PortfolioFXService()
         base_currency = fx.base_currency(db)
+        fiscal_ok = base_currency.upper() == "EUR"
 
         rows = list(
             db.execute(
-                select(Position, Company).join(Company, Position.company_id == Company.id)
+                select(Position, Company)
+                .join(Company, Position.company_id == Company.id)
+                .where(Position.quantity > 0)
             ).all()
+        )
+        company_ids = [company.id for _, company in rows]
+        all_records = (
+            list(
+                db.scalars(
+                    select(DividendRecord).where(DividendRecord.company_id.in_(company_ids))
+                ).all()
+            )
+            if company_ids
+            else []
+        )
+        records_by_company: dict[int, list[DividendRecord]] = defaultdict(list)
+        for record in all_records:
+            records_by_company[record.company_id].append(record)
+        fx_table = fx.fx_table(
+            db,
+            currencies={position.currency for position, _ in rows},
+            base_currency=base_currency,
+            as_of_max=today,
         )
 
         per_position: list[dict[str, Any]] = []
         sin_datos: list[str] = []
         fx_missing: list[str] = []
         unknown_country: list[str] = []
-        # month -> {"gross_base": Decimal, "source_base": Decimal, "positions": set}
+        declared_future: list[dict[str, Any]] = []
+        # month -> agregado solo de posiciones fiscalmente cubiertas
         month_totals: dict[str, dict[str, Any]] = defaultdict(
-            lambda: {"gross_base": Decimal("0"), "source_base": Decimal("0")}
+            lambda: {
+                "gross_base": Decimal("0"),
+                "source_base": Decimal("0"),
+                "covered": set(),
+                "excluded": set(),
+            }
         )
-        # (year, position_id) -> projected gross_base rows for IRPF progresivo
-        yearly_gross: dict[int, list[tuple[str, Decimal]]] = defaultdict(list)
+        # (year, ticker) -> gross_base anual proyectado (para IRPF + deducción)
+        yearly_position_gross: dict[tuple[int, str], Decimal] = defaultdict(lambda: Decimal("0"))
+        yearly_source: dict[tuple[int, str], Decimal] = defaultdict(lambda: Decimal("0"))
+        yearly_foreign_gross: dict[tuple[int, str], Decimal] = defaultdict(lambda: Decimal("0"))
 
         for position, company in rows:
             records = [
                 r
-                for r in db.scalars(
-                    select(DividendRecord).where(
-                        DividendRecord.company_id == company.id,
-                        DividendRecord.ex_date >= cutoff,
-                    )
-                ).all()
+                for r in records_by_company.get(company.id, [])
                 if r.currency == position.currency
             ]
-            if not records:
+            trailing = [r for r in records if cutoff <= r.ex_date <= today]
+            future = [r for r in records if r.ex_date > today]
+            for record in future:
+                declared_future.append(
+                    {
+                        "ticker": company.ticker,
+                        "ex_date": record.ex_date.isoformat(),
+                        "pay_date": record.pay_date.isoformat() if record.pay_date else None,
+                        "amount_per_share": float(record.amount),
+                        "currency": record.currency,
+                        "label": "OFICIAL",
+                        "source": record.source,
+                        "note": "Declarado con ex_date futura; no alimenta la réplica.",
+                    }
+                )
+            if not trailing:
                 sin_datos.append(company.ticker)
                 continue
 
             quantity = Decimal(str(position.quantity))
-            rate = fx.rate(
-                db,
+            rate = fx.rate_from_table(
+                fx_table,
                 quote_currency=position.currency,
                 base_currency=base_currency,
                 as_of=today,
@@ -131,43 +209,57 @@ class DividendProjectionService:
             source_rate = _SOURCE_WITHHOLDING.get(country) if country else None
             if country and country not in _SOURCE_WITHHOLDING:
                 unknown_country.append(company.ticker)
+            fiscally_covered = rate is not None and source_rate is not None
 
             month_entries: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
-            for record in records:
-                projected = _shift_year(record.pay_date or record.ex_date)
-                key = _month_key(projected)
-                if key in window_set:
-                    month_entries[key] += record.amount * quantity
+            for record in trailing:
+                for year_offset in range(1, years_in_horizon + 1):
+                    projected = _shift_year(record.pay_date or record.ex_date, year_offset)
+                    if projected < today:
+                        continue
+                    key = _month_key(projected)
+                    if key in window_set:
+                        month_entries[key] += record.amount * quantity
 
-            gross_native_year = sum(month_entries.values(), Decimal("0"))
-            gross_base_year: Decimal | None = None
-            source_base_year: Decimal | None = None
+            gross_native_total = sum(month_entries.values(), Decimal("0"))
+            gross_base_total: Decimal | None = None
+            source_base_total: Decimal | None = None
             if rate is not None:
-                gross_base_year = gross_native_year * rate
+                gross_base_total = gross_native_total * rate
                 if source_rate is not None:
-                    source_base_year = gross_base_year * source_rate
+                    source_base_total = gross_base_total * source_rate
                 for key, amount_native in month_entries.items():
                     gross_base = amount_native * rate
-                    month_totals[key]["gross_base"] += gross_base
+                    year = int(key[:4])
+                    yearly_position_gross[(year, company.ticker)] += gross_base
                     if source_rate is not None:
-                        month_totals[key]["source_base"] += gross_base * source_rate
-                    yearly_gross[int(key[:4])].append((key, gross_base))
+                        yearly_source[(year, company.ticker)] += gross_base * source_rate
+                        if country in _FOREIGN_WITHHOLDING:
+                            yearly_foreign_gross[(year, company.ticker)] += gross_base
+                    bucket = month_totals[key]
+                    if fiscally_covered:
+                        bucket["gross_base"] += gross_base
+                        bucket["source_base"] += gross_base * source_rate
+                        bucket["covered"].add(company.ticker)
+                    else:
+                        bucket["excluded"].add(company.ticker)
 
             per_position.append(
                 {
                     "ticker": company.ticker,
                     "currency": position.currency,
                     "quantity": float(quantity),
-                    "frequency_last_year": len(records),
-                    "gross_year_native": float(gross_native_year),
-                    "gross_year_base": (
-                        float(gross_base_year) if gross_base_year is not None else None
+                    "frequency_last_year": len(trailing),
+                    "gross_native": float(gross_native_total),
+                    "gross_base": (
+                        float(gross_base_total) if gross_base_total is not None else None
                     ),
+                    "domicile_country": country,
                     "source_withholding_rate": (
                         float(source_rate) if source_rate is not None else None
                     ),
-                    "source_withheld_year_base": (
-                        float(source_base_year) if source_base_year is not None else None
+                    "source_withheld_base": (
+                        float(source_base_total) if source_base_total is not None else None
                     ),
                     "months": {
                         key: float(amount) for key, amount in sorted(month_entries.items())
@@ -175,31 +267,74 @@ class DividendProjectionService:
                 }
             )
 
-        # IRPF progresivo por año natural: el tramo se aplica al acumulado.
-        irpf_by_month: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
-        for year, entries in yearly_gross.items():
-            monthly: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
-            for key, gross_base in entries:
-                monthly[key] += gross_base
-            cumulative = Decimal("0")
-            for key in sorted(monthly):
-                prev_tax = calculate_savings_tax(cumulative, year)
-                cumulative += monthly[key]
-                irpf_by_month[key] += calculate_savings_tax(cumulative, year) - prev_tax
+        # Escenario fiscal anual: IRPF progresivo por año natural sobre la
+        # cartera y deducción por doble imposición por posición.
+        fiscal_years: dict[int, dict[str, Any]] = {}
+        for year in sorted({year for year, _ in yearly_position_gross}):
+            tickers = [t for y, t in yearly_position_gross if y == year]
+            year_gross = sum(yearly_position_gross[(year, t)] for t in tickers)
+            if not fiscal_ok or year_gross <= 0:
+                fiscal_years[year] = {
+                    "gross_base": float(year_gross),
+                    "irpf_scenario": None,
+                    "source_withheld": None,
+                    "double_tax_deduction": None,
+                    "net_scenario": None,
+                    "note": "Sin datos" if year_gross <= 0 else
+                            "Escenario fiscal no disponible: la divisa base no es EUR.",
+                }
+                continue
+            irpf_total = calculate_savings_tax(year_gross, year)
+            avg_rate = irpf_total / year_gross
+            deduction_total = Decimal("0")
+            source_total = Decimal("0")
+            per_position_fiscal = {}
+            for t in tickers:
+                gross_t = yearly_position_gross[(year, t)]
+                source_t = yearly_source.get((year, t), Decimal("0"))
+                foreign_gross_t = yearly_foreign_gross.get((year, t), Decimal("0"))
+                source_total += source_t
+                # Deducción: menor entre impuesto extranjero y tipo medio sobre
+                # la base extranjera de ESA posición (AEAT, separando rentas).
+                deduction_t = min(
+                    source_t if foreign_gross_t > 0 else Decimal("0"),
+                    (avg_rate * foreign_gross_t).quantize(Decimal("0.0001")),
+                )
+                deduction_total += deduction_t
+                per_position_fiscal[t] = {
+                    "gross_base": float(gross_t),
+                    "source_withheld_base": float(source_t),
+                    "double_tax_deduction_base": float(deduction_t),
+                }
+            net = year_gross - source_total - irpf_total + deduction_total
+            fiscal_years[year] = {
+                "gross_base": float(year_gross),
+                "irpf_scenario": float(irpf_total),
+                "source_withheld": float(source_total),
+                "double_tax_deduction": float(deduction_total),
+                "net_scenario": float(net),
+                "effective_avg_rate": float(avg_rate),
+                "per_position": per_position_fiscal,
+                "note": "Escenario condicionado (ver `fiscal_conditions`); no es el neto final.",
+            }
 
         months_out = []
         for key in window:
-            gross = month_totals[key]["gross_base"]
-            source = month_totals[key]["source_base"]
-            irpf = irpf_by_month.get(key, Decimal("0"))
-            net = gross - source - max(Decimal("0"), irpf - source)
+            bucket = month_totals[key]
             months_out.append(
                 {
                     "month": key,
-                    "gross_base": float(gross),
-                    "source_withheld_base": float(source),
-                    "irpf_base": float(irpf),
-                    "net_base": float(net),
+                    "gross_base": float(bucket["gross_base"]),
+                    "source_withheld_base": float(bucket["source_base"]),
+                    "covered_tickers": sorted(bucket["covered"]),
+                    "excluded_tickers": sorted(bucket["excluded"]),
+                    "note": (
+                        "Subconjunto cubierto: hay posiciones con dividendo proyectado "
+                        "sin tipo de cambio o sin retención verificada; sus importes no "
+                        "se agregan (sin datos, no cero)."
+                        if bucket["excluded"]
+                        else None
+                    ),
                 }
             )
 
@@ -209,8 +344,12 @@ class DividendProjectionService:
             "horizon_months": months,
             "label": "INFERIDO",
             "method": _METHOD_NOTE,
+            "fiscal_conditions": _FISCAL_CONDITIONS,
+            "sources": _SOURCE_URLS,
             "months": months_out,
+            "fiscal_by_year": {str(year): data for year, data in sorted(fiscal_years.items())},
             "positions": per_position,
+            "declared_future": declared_future,
             "coverage": {
                 "with_data": len(per_position),
                 "sin_datos": sorted(sin_datos),

@@ -1,4 +1,4 @@
-"""Tests de la proyección mes a mes de dividendos con retenciones."""
+"""Tests de la proyección mes a mes de dividendos con escenario fiscal."""
 
 from datetime import date, timedelta
 from decimal import Decimal
@@ -46,8 +46,8 @@ def _company(db, ticker="AAPL", currency="USD", country="US"):
     return company
 
 
-def _position(db, company, quantity="10", currency="USD"):
-    portfolio = Portfolio(name="p", base_currency="EUR")
+def _position(db, company, quantity="10", currency="USD", base="EUR"):
+    portfolio = Portfolio(name="p", base_currency=base)
     db.add(portfolio)
     db.commit()
     position = Position(
@@ -106,11 +106,9 @@ def test_quarterly_payer_projects_same_amounts_next_year(db):
     pos = out["positions"][0]
     assert pos["ticker"] == "AAPL"
     assert pos["frequency_last_year"] == 4
-    # 4 dividendos x 0.25 x 10 acciones = 10 USD brutos proyectados.
-    assert pos["gross_year_native"] == pytest.approx(10.0)
-    # En base EUR (fx 0.9): 9.0 bruto, origen 15% -> 1.35 retenido.
-    assert pos["gross_year_base"] == pytest.approx(9.0)
-    assert pos["source_withheld_year_base"] == pytest.approx(1.35)
+    assert pos["gross_native"] == pytest.approx(10.0)
+    assert pos["gross_base"] == pytest.approx(9.0)
+    assert pos["source_withheld_base"] == pytest.approx(1.35)
     month_sum = sum(m["gross_base"] for m in out["months"])
     assert month_sum == pytest.approx(9.0)
 
@@ -128,7 +126,7 @@ def test_position_without_records_is_sin_datos_never_zero(db):
     assert out["positions"] == []
 
 
-def test_irpf_progressive_and_double_taxation_floor(db):
+def test_fiscal_scenario_progressive_irpf_and_double_taxation(db):
     company = _company(db)
     _position(db, company, quantity="100000")
     today = date.today()
@@ -138,22 +136,19 @@ def test_irpf_progressive_and_double_taxation_floor(db):
 
     out = DividendProjectionService().project(db, months=12)
 
-    # 200.000 EUR brutos: la escala del ahorro supera el 19% en agregado,
-    # y la cuota nunca puede quedar negativa por la deducción de origen.
-    total_irpf = sum(m["irpf_base"] for m in out["months"])
-    total_source = sum(m["source_withheld_base"] for m in out["months"])
-    total_net = sum(m["net_base"] for m in out["months"])
-    total_gross = sum(m["gross_base"] for m in out["months"])
-    assert total_gross == pytest.approx(200000.0)
-    assert total_irpf > 200000.0 * 0.19
-    assert total_source == pytest.approx(30000.0)
-    for m in out["months"]:
-        assert m["net_base"] <= m["gross_base"]
-        assert m["net_base"] >= 0.0
-    assert total_net == pytest.approx(total_gross - max(total_irpf, total_source))
+    year = str(today.year + 1)
+    fiscal = out["fiscal_by_year"][year]
+    # 200.000 EUR: escala 2025 -> 44.880 cuota; tipo medio 22,44% > 15%,
+    # asi que la deduccion cubre todo el impuesto extranjero (30.000).
+    assert fiscal["gross_base"] == pytest.approx(200000.0)
+    assert fiscal["irpf_scenario"] == pytest.approx(44880.0)
+    assert fiscal["source_withheld"] == pytest.approx(30000.0)
+    assert fiscal["double_tax_deduction"] == pytest.approx(30000.0)
+    assert fiscal["net_scenario"] == pytest.approx(200000.0 - 44880.0)
+    assert "condicionado" in fiscal["note"]
 
 
-def test_unknown_country_withholding_is_none_never_zero(db):
+def test_unknown_country_withholding_is_none_and_excluded(db):
     company = _company(db, ticker="NSR", country="JP")
     _position(db, company)
     today = date.today()
@@ -164,15 +159,19 @@ def test_unknown_country_withholding_is_none_never_zero(db):
 
     pos = out["positions"][0]
     assert pos["source_withholding_rate"] is None
-    assert pos["source_withheld_year_base"] is None
+    assert pos["source_withheld_base"] is None
     assert out["coverage"]["unknown_source_withholding"] == ["NSR"]
+    months_with_excluded = [m for m in out["months"] if m["excluded_tickers"]]
+    assert months_with_excluded
+    for m in months_with_excluded:
+        assert m["gross_base"] == 0.0
+        assert "Subconjunto cubierto" in m["note"]
 
 
 def test_currency_mismatch_records_are_skipped(db):
     company = _company(db, ticker="GBPAY", currency="GBP", country="GB")
     _position(db, company, currency="GBP")
     today = date.today()
-    # Declarado en USD pero la posición valora en GBP: no se usa.
     _dividend(db, company, today - timedelta(days=50), "1.00", currency="USD")
 
     out = DividendProjectionService().project(db, months=12)
@@ -186,10 +185,76 @@ def test_missing_fx_excludes_base_aggregation(db):
     _position(db, company)
     today = date.today()
     _dividend(db, company, today - timedelta(days=70), "2.00")
-    # Sin FXRate USD->EUR.
 
     out = DividendProjectionService().project(db, months=12)
 
     assert out["coverage"]["fx_missing"] == ["NOFX"]
-    assert out["positions"][0]["gross_year_base"] is None
+    assert out["positions"][0]["gross_base"] is None
     assert all(m["gross_base"] == 0.0 for m in out["months"])
+
+
+def test_horizon_24_replicates_both_years(db):
+    company = _company(db)
+    _position(db, company)
+    today = date.today()
+    _dividend(db, company, today - timedelta(days=30), "1.00")
+    _fx(db, rate="1.0")
+
+    out = DividendProjectionService().project(db, months=24)
+
+    per_year = {}
+    for m in out["months"]:
+        per_year[m["month"][:4]] = per_year.get(m["month"][:4], 0.0) + m["gross_base"]
+    year1 = str(today.year + 1)
+    year2 = str(today.year + 2)
+    assert per_year.get(year1, 0.0) == pytest.approx(10.0)
+    assert per_year.get(year2, 0.0) == pytest.approx(10.0)
+
+
+def test_future_declared_dividend_is_reported_not_replicated(db):
+    company = _company(db)
+    _position(db, company)
+    today = date.today()
+    _dividend(db, company, today - timedelta(days=90), "0.50")
+    _dividend(db, company, today + timedelta(days=30), "100.00")
+    _fx(db, rate="1.0")
+
+    out = DividendProjectionService().project(db, months=12)
+
+    pos = out["positions"][0]
+    assert pos["frequency_last_year"] == 1
+    assert pos["gross_native"] == pytest.approx(5.0)
+    assert len(out["declared_future"]) == 1
+    future = out["declared_future"][0]
+    assert future["amount_per_share"] == pytest.approx(100.0)
+    assert future["label"] == "OFICIAL"
+
+
+def test_zero_and_short_positions_ignored(db):
+    company = _company(db)
+    _position(db, company, quantity="0")
+    today = date.today()
+    _dividend(db, company, today - timedelta(days=45), "1.00")
+    _fx(db)
+
+    out = DividendProjectionService().project(db, months=12)
+
+    assert out["coverage"]["with_data"] == 0
+    assert out["positions"] == []
+    assert all(m["gross_base"] == 0.0 for m in out["months"])
+
+
+def test_non_eur_base_disables_fiscal_scenario(db):
+    company = _company(db)
+    _position(db, company, quantity="1000", base="USD")
+    today = date.today()
+    _dividend(db, company, today - timedelta(days=80), "10.00")
+    _fx(db, quote="USD", base="USD", rate="1.0")
+
+    out = DividendProjectionService().project(db, months=12)
+
+    year = str(today.year + 1)
+    fiscal = out["fiscal_by_year"][year]
+    assert fiscal["irpf_scenario"] is None
+    assert fiscal["net_scenario"] is None
+    assert "no es EUR" in fiscal["note"]
