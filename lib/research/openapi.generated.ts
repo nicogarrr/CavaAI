@@ -2704,6 +2704,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/portfolio/dividends/projection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Portfolio Dividend Projection
+         * @description Proyeccion mes a mes de dividendos con retencion de origen e IRPF.
+         *
+         *     INFERIDO: replica mecanica de lo declarado en los ultimos 12 meses
+         *     desplazado +1 ano; posiciones sin datos declarados quedan en cobertura,
+         *     nunca como 0,00.
+         */
+        get: operations["portfolio_dividend_projection_api_portfolio_dividends_projection_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/portfolio/dividends/sync": {
         parameters: {
             query?: never;
@@ -13961,6 +13985,48 @@ export interface operations {
     portfolio_dividends_api_portfolio_dividends_get: {
         parameters: {
             query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    portfolio_dividend_projection_api_portfolio_dividends_projection_get: {
+        parameters: {
+            query?: {
+                months?: number;
+            };
             header?: {
                 "x-cavaai-user"?: string | null;
                 "x-cavaai-tenant"?: string | null;
