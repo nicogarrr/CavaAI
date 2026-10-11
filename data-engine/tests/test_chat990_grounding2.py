@@ -1,8 +1,10 @@
-"""Ronda 2 auditor #990: vinculo cifra-divisa-compania-cita y abstencion.
+"""Ronda 5 auditor #990: la ruta general NO emite datos de mercado.
 
 Decidido por main bajo preferencias de Nico (cero terminal / secretos
-fuera de chat): las cifras financieras salen de las fuentes, nunca del
-modelo; sin compania resuelta, la intencion financiera se abstiene.
+fuera de chat): cualquier cifra con divisa o porcentaje en contexto
+financiero cae a la abstencion honesta; los datos cuantitativos viven
+solo en la ruta estructurada con ticker. La charla ordinaria queda
+natural.
 """
 
 import asyncio
@@ -28,33 +30,37 @@ def _grounded(text, sources):
     )
 
 
-def test_money_without_sources_is_rejected():
+def test_no_market_figures_even_with_perfect_source_and_citation():
+    # ruta general: ni con fuente perfecta y cita valida
+    assert not _grounded("ASTS cotiza a 1999 USD [market_price:mp1]", SRC)
     assert not _grounded("ASTS cotiza a $999", [])
     assert not _grounded("ASTS cotiza a 999 dólares", [])
     assert not _grounded("ASTS cotiza a 999 usd", [])
     assert not _grounded("rentabilidad 35%", [])
 
 
-def test_substring_figure_and_currency_mismatch_rejected():
-    # "999" es substring de "1999" en la fuente: no vale
-    assert not _grounded("ASTS cotiza a 999 USD [market_price:mp1]", SRC)
-    # divisa distinta a la de la fuente: no vale
-    assert not _grounded("ASTS cotiza a 1999 EUR [market_price:mp1]", SRC)
-    assert not _grounded("Otro activo 999 EUR [market_price:mp1]", SRC)
+def test_auditor_round5_repros():
+    assert not _grounded("msft cotiza a 1999USD [market_price:mp1]", SRC)
+    assert not _grounded("Microsoft cotiza a 1999USD [market_price:mp1]", SRC)
+    assert not _grounded("ASTS vale 1999 millones USD [market_price:mp1]", SRC)
+    assert not _grounded("ASTS cotiza a 1999GBP [market_price:mp1]", SRC)
 
 
-def test_exact_figure_currency_and_citation_accepted():
-    assert _grounded("ASTS cotiza a 1999 USD [market_price:mp1]", SRC)
-    assert _grounded("ASTS cotiza a 1999.00 USD [market_price:mp1]", SRC)
+def test_fabricated_citation_still_rejected():
+    assert not _grounded("El cielo es azul [market_price:999999].", SRC)
 
 
-def test_ordinary_chat_numbers_are_not_blocked():
+def test_english_still_rejected():
+    assert not _grounded(
+        "Hello! The price to earnings ratio is the price divided by earnings.", []
+    )
+
+
+def test_ordinary_chat_stays_natural():
     assert _grounded("Son las 5 y tengo 3 hermanos", [])
     assert _grounded("La batería está al 35%", [])
-
-
-def test_financial_percent_requires_source_backing():
-    assert not _grounded("rentabilidad 35% [market_price:mp1]", SRC)
+    assert _grounded("El PER es el precio dividido por beneficio.", [])
+    assert _grounded("¡Hola! ¿Qué tal tu día?", [])
 
 
 def test_financial_intent_without_company_abstains_without_llm():
@@ -70,64 +76,12 @@ def test_financial_intent_without_company_abstains_without_llm():
     assert "ticker" in result.answer
 
 
-def test_concept_question_still_goes_to_general_route():
-    db = _db()
-    provider = StubProvider("El PER es el precio dividido por beneficio.")
+def test_llm_market_figure_falls_back_honestly():
+    provider = StubProvider("ASTS cotiza a 1999 USD [market_price:mp1]")
     result = asyncio.run(
-        ChatService(provider).answer(db, "que es el PER", "portfolio", None, use_jev=False)
+        ChatSynthesisService(provider).synthesize_general(
+            question="precio", baseline=ChatResponse(answer="sin datos", sources=SRC)
+        )
     )
-    assert result.model != "abstain"
-    assert "PER" in result.answer
-
-
-def test_decimal_point_is_never_dropped():
-    # 19.99 USD no valida contra una fuente de 1999 USD (100x de error)
-    assert not _grounded("ASTS cotiza a 19.99 USD [market_price:mp1]", SRC)
-    assert not _grounded("rentabilidad 3.5% [market_price:mp1]", SRC)
-    # miles con separador si equivalen
-    src_miles = [
-        {
-            "type": "market_price",
-            "id": "mp2",
-            "title": "ASTS (cierre 2026-10-09, test)",
-            "price": "1,999.00 USD",
-        }
-    ]
-    assert _grounded("ASTS cotiza a 1999 USD [market_price:mp2]", src_miles)
-
-
-def test_cross_company_figure_is_rejected():
-    # la fuente es de ASTS: no valida la misma cifra atribuida a MSFT
-    assert not _grounded("MSFT cotiza a 1999 USD [market_price:mp1]", SRC)
-
-
-def test_financial_claim_without_citation_is_rejected():
-    assert not _grounded("ASTS cotiza a 1999 USD.", SRC)
-    assert _grounded("ASTS cotiza a 1999 USD [market_price:mp1]", SRC)
-
-
-MULTI = [
-    {"type": "market_price", "id": "mp1", "title": "ASTS (cierre 2026-10-09, test)", "price": "1999.00 USD"},
-    {"type": "market_price", "id": "mp2", "title": "MSFT (cierre 2026-10-09, test)", "price": "10.00 USD"},
-    {"type": "memory_item", "id": "mem3", "title": "ASTS nota del usuario: objetivo 1999 USD", "price": ""},
-]
-
-
-def test_figure_must_live_in_the_cited_source():
-    assert not _grounded("MSFT cotiza a 1999 USD [market_price:mp2]", MULTI)
-    assert _grounded("MSFT cotiza a 10 USD [market_price:mp2]", MULTI)
-    assert _grounded("ASTS cotiza a 1999 USD [market_price:mp1]", MULTI)
-
-
-def test_memory_cannot_back_a_price_claim():
-    assert not _grounded("ASTS cotiza a 1999 USD [memory_item:mem3]", MULTI)
-
-
-def test_ticker_binds_case_insensitively_to_the_cited_source():
-    assert not _grounded("asts cotiza a 1999 USD [market_price:mp2]", MULTI)
-    assert _grounded("asts cotiza a 1999 USD [market_price:mp1]", MULTI)
-
-
-def test_sign_is_part_of_the_figure():
-    assert not _grounded("ASTS cae a -1999 USD [market_price:mp1]", MULTI)
-    assert not _grounded("rentabilidad -35% [market_price:mp1]", MULTI)
+    assert "1999" not in result.answer
+    assert result.llm_trace.get("fallback") is True

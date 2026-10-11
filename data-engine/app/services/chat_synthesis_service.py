@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import re
-from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from pydantic import ValidationError
@@ -141,120 +140,19 @@ RESPONSE_SCHEMA = {
 
 
 
-_CURRENCY_WORDS = r"(?:USD|EUR|dólares?|dolares?|euros?)"
-_MONEY_RE = re.compile(
-    rf"(?:([$€]|{_CURRENCY_WORDS})\s*([-+−]?)(\d[\d.,]*)|([-+−]?)(\d[\d.,]*)\s*([$€]|{_CURRENCY_WORDS}))",
+_CURRENCY_WORDS = r"(?:USD|EUR|GBP|JPY|CHF|dólares?|dolares?|euros?|libras?)"
+# Cifra junto a divisa (cualquier orden, con hasta dos palabras de escala
+# como "millones" en medio): la ruta general NO emite datos de mercado
+# cuantitativos, asi que basta detectar su presencia para abstenerse.
+_MONEY_NEAR_RE = re.compile(
+    rf"(?:[$€£]\s*\d|\d[\d.,]*(?:\s+\w+){{0,2}}\s*(?:[$€£]|{_CURRENCY_WORDS}\b)|\b{_CURRENCY_WORDS}\s*\d)",
     re.IGNORECASE,
 )
-_PERCENT_RE = re.compile(r"(\d[\d.,]*)\s*%")
+_PERCENT_RE = re.compile(r"[-+−]?\d[\d.,]*\s*%")
 _FINANCIAL_HINT_RE = re.compile(
     r"(?i)\b(rentabilidad|beneficio|dividendo|margen|crecimiento|cotiza(?:ción|do)?|"
     r"precio|sube|subida|baja|caída|cae|earnings|valoración|PER|market cap)\b"
 )
-_CURRENCY_MAP = {
-    "$": "USD",
-    "usd": "USD",
-    "dólar": "USD",
-    "dólares": "USD",
-    "dolar": "USD",
-    "dolares": "USD",
-    "€": "EUR",
-    "eur": "EUR",
-    "euro": "EUR",
-    "euros": "EUR",
-}
-
-
-def _parse_amount(raw: str) -> Decimal | None:
-    """Decimal exacto con convencion explicita: NUNCA se quita el punto decimal.
-
-    1999 != 19.99 y 35 != 3.5 (ronda 3 auditor: quitar separadores igualaba
-    cifras 100x distintas). Con dos separadores, el ultimo es el decimal;
-    con uno solo, tres digitos detras en TODOS los grupos = miles europeos,
-    si no, decimal.
-    """
-    s = raw.strip().replace(" ", "")
-    if not s:
-        return None
-    if "," in s and "." in s:
-        if s.rfind(",") > s.rfind("."):
-            s = s.replace(".", "").replace(",", ".")
-        else:
-            s = s.replace(",", "")
-    elif "," in s:
-        parts = s.split(",")
-        if len(parts) > 1 and all(len(p) == 3 for p in parts[1:]):
-            s = s.replace(",", "")
-        else:
-            s = s.replace(",", ".")
-    elif "." in s:
-        parts = s.split(".")
-        if len(parts) > 2 and all(len(p) == 3 for p in parts[1:]):
-            s = s.replace(".", "")
-    try:
-        return Decimal(s)
-    except InvalidOperation:
-        return None
-
-
-_MONEY_FACT_TYPES = {"market_price", "financial_fact"}
-
-
-def _money_pairs(text: str) -> set[tuple[Decimal, str]]:
-    """Pares (importe CON SIGNO, divisa): -1999 nunca valida contra +1999."""
-    pairs: set[tuple[Decimal, str]] = set()
-    for match in _MONEY_RE.finditer(text):
-        currency_raw = match.group(1) or match.group(6) or ""
-        sign_raw = match.group(2) or match.group(4) or ""
-        amount_raw = match.group(3) or match.group(5) or ""
-        currency = _CURRENCY_MAP.get(currency_raw.lower())
-        amount = _parse_amount(amount_raw)
-        if currency and amount is not None:
-            if sign_raw in ("-", "−"):
-                amount = -amount
-            pairs.add((amount, currency))
-    return pairs
-
-
-def _source_money_pairs(source: dict) -> set[tuple[Decimal, str]]:
-    """Pares de UNA fuente: la cifra debe vivir en una sola fuente admisible
-    (titulo + precio), no reconstruirse mezclando fuentes distintas."""
-    return _money_pairs(f"{source.get('title', '')} {source.get('price', '')}")
-
-
-_PERCENT_RE_SIGNED = re.compile(r"([-+−]?)(\d[\d.,]*)\s*%")
-
-
-def _percents(text: str) -> set[Decimal]:
-    out: set[Decimal] = set()
-    for m in _PERCENT_RE_SIGNED.finditer(text):
-        amount = _parse_amount(m.group(2))
-        if amount is not None:
-            if m.group(1) in ("-", "−"):
-                amount = -amount
-            out.add(amount)
-    return out
-
-
-def _source_percents(source: dict) -> set[Decimal]:
-    return _percents(f"{source.get('title', '')} {source.get('price', '')}")
-
-
-_TICKER_RE = re.compile(r"\b[A-Z]{2,6}\b")
-_TICKER_WHITELIST = {
-    "USD", "EUR", "GBP", "JPY", "CHF", "OK", "PER", "CEO", "CFO", "IPO",
-    "ETF", "AI", "IT", "RAG", "LLM", "API", "GDP", "CPI", "YOY", "QOQ",
-}
-
-
-def _source_tickers(sources: list[dict]) -> set[str]:
-    """Tickers de las fuentes admisibles (primer token ALLCAPS del titulo)."""
-    tickers: set[str] = set()
-    for source in sources:
-        match = _TICKER_RE.search(str(source.get("title", "")))
-        if match:
-            tickers.add(match.group(0))
-    return tickers
 
 
 class ChatSynthesisService:
@@ -549,73 +447,30 @@ class ChatSynthesisService:
 
     @staticmethod
     def _general_text_grounded(text: str, baseline: ChatResponse) -> bool:
-        """El texto libre no puede inventar citas ni cifras financieras.
+        """La ruta general NO emite datos de mercado cuantitativos.
 
-        - Citas [tipo:id] ⊆ fuentes recuperadas.
-        - Toda cifra con divisa debe coincidir como par (Decimal exacto,
-          divisa) con UNA sola fuente admisible: nunca substring, nunca
-          19.99 contra 1999, nunca otra divisa.
-        - Vinculo compania/cita: una afirmacion financiera exige al menos
-          una cita valida, y un ticker junto a la cifra que no este en las
-          fuentes (MSFT con fuente ASTS) invalida el texto.
-        - Los porcentajes solo se exigen en contexto financiero
-          (rentabilidad, cotiza, ...) y deben existir en una fuente.
+        Regla estructural (ronda 5 auditor): el texto libre general es prosa
+        natural; cualquier cifra con divisa o porcentaje en contexto
+        financiero hace la salida no publicable y cae a la abstencion
+        honesta. Los datos cuantitativos viven solo en la ruta estructurada
+        con ticker (HECHO/CALCULO/... con fuentes verificadas). Las citas
+        deben existir en las fuentes y el ingles sigue OFF.
         """
         allowed = {
             f"{source.get('type')}:{source.get('id')}"
             for source in baseline.sources
             if source.get("id") is not None
         }
-        citations = list(re.finditer(r"\[([a-z_]+):([^\]]+)\]", text))
-        for match in citations:
+        for match in re.finditer(r"\[([a-z_]+):([^\]]+)\]", text):
             if f"{match.group(1)}:{match.group(2)}" not in allowed:
                 return False
-        # Ingles OFF tambien en la ruta general: el umbral del guard
-        # estructural (4 hits) deja pasar frases cortas; aqui basta un par
-        # de marcadores funcionales ingleses para que no sea publicable.
         hits, total = _english_hits(text)
         if hits >= 2 and hits / max(total, 1) >= 0.15:
             return False
-        financial_hint = bool(_FINANCIAL_HINT_RE.search(text))
-        by_id = {
-            f"{source.get('type')}:{source.get('id')}": source
-            for source in baseline.sources
-            if source.get("id") is not None
-        }
-        # Validacion POR AFIRMACION (segmento): la MISMA cita debe contener
-        # compania + importe con signo + divisa/metrica. Nada de uniones de
-        # fuentes: MSFT no se valida con la cifra de ASTS ni con una nota de
-        # memoria (tipo no factual no respalda cotizaciones).
-        for segment in re.split(r"(?<=[.!?])\s+(?=[A-ZÁÉÍÓÚÑ¿¡(])|\n", text):
-            seg_money = _money_pairs(segment)
-            seg_percents = _percents(segment) if financial_hint else set()
-            if not seg_money and not seg_percents:
-                continue
-            seg_citations = [
-                by_id[f"{m.group(1)}:{m.group(2)}"]
-                for m in re.finditer(r"\[([a-z_]+):([^\]]+)\]", segment)
-                if f"{m.group(1)}:{m.group(2)}" in by_id
-            ]
-            if not seg_citations:
-                return False
-            seg_tickers = [
-                t.upper()
-                for t in _TICKER_RE.findall(segment)
-                if t.upper() not in _TICKER_WHITELIST
-            ]
-
-            def _backs(source: dict) -> bool:
-                if source.get("type") not in _MONEY_FACT_TYPES:
-                    return False
-                title_upper = str(source.get("title", "")).upper()
-                if any(t not in title_upper for t in seg_tickers):
-                    return False
-                if seg_money - _source_money_pairs(source):
-                    return False
-                return not (seg_percents - _source_percents(source))
-
-            if not any(_backs(source) for source in seg_citations):
-                return False
+        if _MONEY_NEAR_RE.search(text):
+            return False
+        if _FINANCIAL_HINT_RE.search(text) and _PERCENT_RE.search(text):
+            return False
         return True
 
     @staticmethod
