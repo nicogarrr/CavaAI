@@ -137,6 +137,29 @@ def test_all_missing_data_is_not_zero(db):
     assert "0 posiciones con cierre" not in alert.message
 
 
+def test_all_invalid_pct_names_every_ticker_and_marks_partial(db):
+    digest = make_digest(db, items=[
+        {"ticker": "NAN1", "status": "disponible", "price_change_pct": float("nan")},
+        {"ticker": "NOPCT", "status": "disponible", "price_change_pct": None},
+    ], coverage="complete")
+    alert = emit_digest_alert(db, digest, AS_OF)
+    # Sin variaciones finitas: se nombran los tickers igualmente y no se repite "complete"
+    assert "Sin datos: NAN1, NOPCT" in alert.message
+    assert "complete" not in alert.message
+    assert "Cobertura del resumen: parcial" in alert.message
+    assert alert.metadata_["coverage"] == "parcial"
+    assert alert.metadata_["digest_coverage"] == "complete"
+
+
+def test_coverage_stays_complete_when_nothing_filtered(db):
+    digest = make_digest(db, items=[
+        {"ticker": "A", "status": "disponible", "price_change_pct": 1.0},
+        {"ticker": "B", "status": "disponible", "price_change_pct": -2.0},
+    ], coverage="complete")
+    alert = emit_digest_alert(db, digest, AS_OF)
+    assert "Cobertura del resumen: complete" in alert.message
+
+
 def test_subscription_matches_alert_emitted_after_opt_in(db):
     opt_in(db)
     digest = make_digest(db)

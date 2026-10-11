@@ -85,9 +85,15 @@ def emit_digest_alert(db: Session, digest: PortfolioMoveDigest, as_of: date) -> 
         if omitidas:
             resumen += (f" Mostradas {len(lineas)} de {total_var} posiciones con "
                         f"variacion; {omitidas} omitidas.")
-        if sin_datos_shown:
-            resumen += f" Sin datos: {', '.join(sin_datos_shown)}"
-            resumen += f" y {omitidas_sd} mas." if omitidas_sd else "."
+    if items and sin_datos_shown:
+        resumen += f" Sin datos: {', '.join(sin_datos_shown)}"
+        resumen += f" y {omitidas_sd} mas." if omitidas_sd else "."
+    # La etiqueta del digest habla de su propia cobertura; si el resumen filtro
+    # variaciones no finitas u omitio filas, el resumen es parcial aunque el
+    # digest dijera "complete".
+    cobertura_resumen = digest.coverage
+    if items and (sin_datos or omitidas or total_var < len(items)):
+        cobertura_resumen = "parcial"
     sampled = digest.generated_at
     if sampled.tzinfo is None:
         sampled = sampled.replace(tzinfo=UTC)
@@ -102,10 +108,11 @@ def emit_digest_alert(db: Session, digest: PortfolioMoveDigest, as_of: date) -> 
                  f"{as_of.isoformat()}, no el P&L de tu posicion. "
                  f"Cartera medida al generar el resumen ({sampled_txt}); "
                  "movimientos posteriores no estan incluidos. "
-                 f"Cobertura del digest: {digest.coverage}."),
+                 f"Cobertura del resumen: {cobertura_resumen}."),
         fingerprint=fp, channels=["in_app"], last_triggered_at=datetime.now(UTC),
         metadata_={"digest_id": digest.id, "digest_date": as_of.isoformat(),
-                   "coverage": digest.coverage, "rule_version": VERSION,
+                   "coverage": cobertura_resumen, "digest_coverage": digest.coverage,
+                   "rule_version": VERSION,
                    "price_source": "yfinance", "as_of": as_of.isoformat(),
                    "positions_sampled_at": sampled.isoformat()},
     )
