@@ -139,6 +139,54 @@ RESPONSE_SCHEMA = {
 }
 
 
+
+_CURRENCY_WORDS = r"(?:USD|EUR|dólares?|dolares?|euros?)"
+_MONEY_RE = re.compile(
+    rf"(?:([$€]|{_CURRENCY_WORDS})\s*(\d[\d.,]*)|(\d[\d.,]*)\s*([$€]|{_CURRENCY_WORDS}))",
+    re.IGNORECASE,
+)
+_PERCENT_RE = re.compile(r"(\d[\d.,]*)\s*%")
+_FINANCIAL_HINT_RE = re.compile(
+    r"(?i)\b(rentabilidad|beneficio|dividendo|margen|crecimiento|cotiza(?:ción|do)?|"
+    r"precio|sube|subida|baja|caída|cae|earnings|valoración|PER|market cap)\b"
+)
+_CURRENCY_MAP = {
+    "$": "USD",
+    "usd": "USD",
+    "dólar": "USD",
+    "dólares": "USD",
+    "dolar": "USD",
+    "dolares": "USD",
+    "€": "EUR",
+    "eur": "EUR",
+    "euro": "EUR",
+    "euros": "EUR",
+}
+
+
+def _norm_amount(raw: str) -> str:
+    """Cifras comparables sin hueco de substring: 999 nunca valida contra 1999.
+
+    Texto y fuente se normalizan igual (sin separadores; un '.00'/'/00' final
+    se descarta) y se comparan como pares (cifra, divisa) exactos.
+    """
+    cleaned = re.sub(r"[.,]", "", raw)
+    if re.search(r"[.,]00$", raw.strip()):
+        cleaned = cleaned[:-2]
+    return cleaned
+
+
+def _money_pairs(text: str) -> set[tuple[str, str]]:
+    pairs: set[tuple[str, str]] = set()
+    for match in _MONEY_RE.finditer(text):
+        currency_raw = match.group(1) or match.group(4) or ""
+        amount_raw = match.group(2) or match.group(3) or ""
+        currency = _CURRENCY_MAP.get(currency_raw.lower())
+        if currency and amount_raw:
+            pairs.add((_norm_amount(amount_raw), currency))
+    return pairs
+
+
 class ChatSynthesisService:
     def __init__(self, provider: LLMProvider, tracer: LangfuseTracer | None = None) -> None:
         self.provider = provider
@@ -431,11 +479,15 @@ class ChatSynthesisService:
 
     @staticmethod
     def _general_text_grounded(text: str, baseline: ChatResponse) -> bool:
-        """El texto libre no puede inventar citas ni cifras con divisa.
+        """El texto libre no puede inventar citas ni cifras financieras.
 
-        Toda cita [tipo:id] debe existir en las fuentes recuperadas y toda
-        cifra con divisa debe aparecer en el titulo/precio de una fuente:
-        los numeros salen de las fuentes, nunca del modelo.
+        Citas [tipo:id] ⊆ fuentes recuperadas. Toda cifra con divisa debe
+        coincidir como par (cifra normalizada, divisa) con una fuente:
+        nunca por substring ("999" no valida contra "1999") ni con divisa
+        distinta. Los porcentajes solo se exigen en contexto financiero
+        (rentabilidad, cotizacion, ...) para no bloquear charla ordinaria
+        ("bateria al 35%"). Los numeros salen de las fuentes, nunca del
+        modelo.
         """
         allowed = {
             f"{source.get('type')}:{source.get('id')}"
@@ -445,10 +497,9 @@ class ChatSynthesisService:
         for match in re.finditer(r"\[([a-z_]+):([^\]]+)\]", text):
             if f"{match.group(1)}:{match.group(2)}" not in allowed:
                 return False
-        # Ingles OFF tambien en la ruta general: el umbral del guard estructural
-        # (4 hits) deja pasar frases cortas; aqui basta un par de marcadors
-        # funcionales ingleses para que el texto no sea publicable. El espanol
-        # normal da 0 hits (verificado en tests).
+        # Ingles OFF tambien en la ruta general: el umbral del guard
+        # estructural (4 hits) deja pasar frases cortas; aqui basta un par
+        # de marcadores funcionales ingleses para que no sea publicable.
         hits, total = _english_hits(text)
         if hits >= 2 and hits / max(total, 1) >= 0.15:
             return False
@@ -456,10 +507,19 @@ class ChatSynthesisService:
             f"{source.get('title', '')} {source.get('price', '')}"
             for source in baseline.sources
         )
-        return all(
-            match.group(1) in haystack
-            for match in re.finditer(r"(\d[\d.,]*)\s?(USD|EUR|€|\$)", text)
-        )
+        source_money = _money_pairs(haystack)
+        if _money_pairs(text) - source_money:
+            return False
+        if _FINANCIAL_HINT_RE.search(text):
+            source_percents = {
+                _norm_amount(m.group(1)) for m in _PERCENT_RE.finditer(haystack)
+            }
+            text_percents = {
+                _norm_amount(m.group(1)) for m in _PERCENT_RE.finditer(text)
+            }
+            if text_percents - source_percents:
+                return False
+        return True
 
     @staticmethod
     def _verified_sections(
