@@ -86,8 +86,9 @@ def test_synthesize_general_no_inventa_si_vacio():
             question="hola que hay", baseline=baseline
         )
     )
-    assert "No tengo datos suficientes" in result.answer
-    assert result.confidence == 0.2
+    assert "No puedo responderte con fuentes ahora mismo" in result.answer
+    assert result.model == "fallback"
+    assert result.llm_trace["fallback"] is True
 
 
 def test_prompt_chat_general_registrado():

@@ -1,5 +1,6 @@
 import os
 import re
+from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import desc, select
@@ -250,6 +251,12 @@ class ChatService:
                 confidence=0.9,
                 llm_trace={"path": "small_talk"},
             )
+        # Routing por compania RESUELTA del texto, no solo por el parametro
+        # ticker: "precio de ASTS" sin campo ticker va igualmente por la
+        # ruta estructurada con validacion financiera.
+        company = self._resolve_company(db, question, scope, ticker)
+        if company is not None and not ticker:
+            ticker = company.ticker
         baseline = self._deterministic_answer(db, question, scope, ticker)
         # Fast-path Jev (4): si la pregunta es una consulta factual simple
         # (baseline_ok, conf >= 0.8), el contexto determinista ya responde y
@@ -435,19 +442,23 @@ class ChatService:
             latest_price = db.scalars(
                 select(MarketPrice)
                 .where(MarketPrice.company_id == company.id)
+                .where(MarketPrice.date <= date.today())
                 .order_by(desc(MarketPrice.date))
                 .limit(1)
             ).first()
             if latest_price is not None:
-                # adj_close NULL = spot sin ajustar por splits/dividendos;
-                # se etiqueta, nunca se inventa un ajuste.
+                # adj_close NULL = spot sin ajustar por splits/dividendos
+                # (p. ej. intraday): se distingue de cierre diario y se
+                # declara el proveedor. Fechas futuras excluidas: una barra
+                # de manana no es cotizacion actual.
                 adjusted = latest_price.adj_close is not None
                 value = latest_price.adj_close if adjusted else latest_price.close
+                kind = "cierre" if adjusted else "spot"
                 sources.append(
                     self._source_entry(
                         "market_price",
                         latest_price.id,
-                        f"{company.ticker} {value} {company.currency} (cierre {latest_price.date.isoformat()})",
+                        f"{company.ticker} {value} {company.currency} ({kind} {latest_price.date.isoformat()}, {latest_price.source})",
                         date=latest_price.date.isoformat(),
                         price=str(value),
                         currency=company.currency,
@@ -490,13 +501,13 @@ class ChatService:
                 )
 
             if not thesis:
-                proposed_actions.append(f"Create first thesis for {company.ticker}")
+                proposed_actions.append(f"Crear la primera tesis para {company.ticker}")
             if any(claim.status in {"unverified", "contradicted"} for claim in claims):
-                proposed_actions.append("Review unverified or contradicted claims")
+                proposed_actions.append("Revisar afirmaciones no verificadas o contradichas")
             if any(event.requires_update for event in news):
-                proposed_actions.append("Review material news-driven thesis changes")
+                proposed_actions.append("Revisar cambios de tesis por noticias materiales")
             if not facts:
-                proposed_actions.append("Ingest SEC/FMP financial facts before quantitative conclusions")
+                proposed_actions.append("Ingerir hechos financieros SEC/FMP antes de sacar conclusiones cuantitativas")
 
             facts_text = (
                 "\n".join(
@@ -505,12 +516,12 @@ class ChatService:
                     f"[financial_fact:{fact.id}]"
                     for fact in facts[:5]
                 )
-                or "- No reliable stored financial facts found for this company."
+                or "- No hay hechos financieros fiables almacenados para esta empresa."
             )
             calculations_text = (
-                "- No new calculation was performed in this answer; stored facts are cited as inputs."
+                "- No se ha hecho un calculo nuevo en esta respuesta; los hechos almacenados se citan como entradas."
                 if facts
-                else "- Calculation blocked: missing stored financial facts."
+                else "- Calculo bloqueado: faltan hechos financieros almacenados."
             )
             assumptions_text = (
                 "\n".join(
@@ -518,7 +529,7 @@ class ChatService:
                     f"[memory_item:{item.item.id}]"
                     for item in retrieved_memory[:3]
                 )
-                or "- No relevant user memory retrieved."
+                or "- No se recupero memoria relevante del usuario."
             )
             claim_lines = [
                 f"- [{claim.status}] {_short(claim.statement, 180)} "
@@ -526,13 +537,13 @@ class ChatService:
                 for claim in claims[:5]
                 if claim.status != "supported"
             ]
-            unverified_text = "\n".join(claim_lines) or "- No unresolved claim surfaced in the retrieved context."
+            unverified_text = "\n".join(claim_lines) or "- No hay afirmaciones sin resolver en el contexto recuperado."
             thesis_text = (
-                f"{company.ticker} thesis v{thesis.version} is `{thesis.status}` with rating `{thesis.rating}`. "
-                f"Expected value={_decimal_to_float(thesis.expected_value)} vs current price={_decimal_to_float(thesis.current_price)}. "
+                f"Tesis {company.ticker} v{thesis.version}: `{thesis.status}` con rating `{thesis.rating}`. "
+                f"Valor esperado={_decimal_to_float(thesis.expected_value)} frente a precio actual={_decimal_to_float(thesis.current_price)}. "
                 f"[thesis_version:{thesis.id}]"
                 if thesis
-                else f"No stored thesis exists yet for {company.ticker}."
+                else f"Aun no hay tesis almacenada para {company.ticker}."
             )
             rag_evidence_lines = [
                 f"- {_short(chunk.get('text', ''), 180)} "
@@ -552,7 +563,7 @@ class ChatService:
                         *rag_evidence_lines,
                     ]
                 )
-                or "- No local document chunk matched strongly enough; upload/ingest primary sources."
+                or "- Ningun fragmento de documento local encajo con fuerza; sube o ingiere fuentes primarias."
             )
             news_text = (
                 "\n".join(
@@ -560,7 +571,7 @@ class ChatService:
                     f"[news_event:{event.id}]"
                     for event in news[:3]
                 )
-                or "- No recent stored news for this company."
+                or "- No hay noticias recientes almacenadas para esta empresa."
             )
             contradiction_claims = [
                 claim
@@ -573,35 +584,35 @@ class ChatService:
                     f"[claim:{claim.id}]"
                     for claim in contradiction_claims
                 )
-                or "- No contradiction was found in the retrieved claim set."
+                or "- No se encontraron contradicciones en las afirmaciones recuperadas."
             )
             found_metrics = {fact.metric for fact in facts}
             missing_metrics = [
                 metric for metric in KEY_FACT_METRICS if metric not in found_metrics
             ]
             insufficient_text = (
-                f"- Missing stored inputs: {', '.join(missing_metrics)}."
+                f"- Faltan entradas almacenadas: {', '.join(missing_metrics)}."
                 if missing_metrics
-                else "- No key financial input is missing from this retrieval."
+                else "- No falta ninguna entrada financiera clave en esta recuperacion."
             )
             conclusion_text = (
-                "- Thesis review is required before changing assumptions."
+                "- Hay que revisar la tesis antes de cambiar supuestos."
                 if contradiction_claims
                 or any(event.requires_update for event in news)
-                else "- Retrieved evidence does not require an automatic thesis change; continue monitoring."
+                else "- La evidencia recuperada no exige un cambio automatico de tesis; seguir monitorizando."
             )
 
             answer = (
-                f"FACT\n{facts_text}\n\n"
-                f"CALCULATION\n{calculations_text}\n\n"
-                f"USER ASSUMPTION / MEMORY\n{assumptions_text}\n\n"
-                f"UNVERIFIED CLAIM\n{unverified_text}\n\n"
-                f"INFERENCE\n{thesis_text} Based on the retrieved evidence, the safest next step is to review "
-                f"claims and primary sources before changing the thesis.\n\n"
-                f"EVIDENCE SNAPSHOT\n{evidence_text}\n\n"
-                f"NEWS / WHAT CHANGED\n{news_text}\n\n"
-                f"CONTRADICTIONS\n{contradictions_text}\n\n"
-                f"INSUFFICIENT DATA\n{insufficient_text}\n\n"
+                f"HECHO\n{facts_text}\n\n"
+                f"CALCULO\n{calculations_text}\n\n"
+                f"HIPOTESIS / MEMORIA DEL USUARIO\n{assumptions_text}\n\n"
+                f"AFIRMACION SIN VERIFICAR\n{unverified_text}\n\n"
+                f"INFERENCIA\n{thesis_text} A partir de la evidencia recuperada, el siguiente paso mas seguro es revisar "
+                f"las afirmaciones y las fuentes primarias antes de cambiar la tesis.\n\n"
+                f"FOTO DE EVIDENCIA\n{evidence_text}\n\n"
+                f"NOTICIAS / QUE CAMBIO\n{news_text}\n\n"
+                f"CONTRADICCIONES\n{contradictions_text}\n\n"
+                f"DATOS INSUFICIENTES\n{insufficient_text}\n\n"
                 f"CONCLUSION\n{conclusion_text}"
             )
 

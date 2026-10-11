@@ -48,10 +48,10 @@ def test_empty_company_is_blocked_with_honest_next_steps(db):
     )
     assert response.blocked is True
     assert response.model == "deterministic"
-    assert f"No stored thesis exists yet for {company.ticker}." in response.answer
-    assert "Calculation blocked: missing stored financial facts." in response.answer
-    assert f"Create first thesis for {company.ticker}" in response.proposed_actions
-    assert any("Ingest SEC/FMP" in action for action in response.proposed_actions)
+    assert f"Aun no hay tesis almacenada para {company.ticker}." in response.answer
+    assert "Calculo bloqueado: faltan hechos financieros almacenados." in response.answer
+    assert f"Crear la primera tesis para {company.ticker}" in response.proposed_actions
+    assert any("Ingerir hechos financieros SEC/FMP" in action for action in response.proposed_actions)
     assert not response.sources
 
 
@@ -79,8 +79,8 @@ def test_populated_company_cites_stored_sourced_rows(db):
     fact_source = next(s for s in response.sources if s["type"] == "financial_fact")
     assert fact_source["source_type"] == "SEC"
     assert fact_source["value"] == 391000000000.0
-    assert "AAPL thesis v3 is `published` with rating `watch`" in response.answer
-    assert "Missing stored inputs" in response.answer  # other key metrics absent
+    assert "Tesis AAPL v3: `published` con rating `watch`" in response.answer
+    assert "Faltan entradas almacenadas" in response.answer  # other key metrics absent
 
 
 def test_unverified_claim_surfaces_review_action(db):
@@ -97,7 +97,7 @@ def test_unverified_claim_surfaces_review_action(db):
     db.commit()
 
     response = ChatService()._deterministic_answer(db, "AAPL claims?", "company", "AAPL")
-    assert "Review unverified or contradicted claims" in response.proposed_actions
+    assert "Revisar afirmaciones no verificadas o contradichas" in response.proposed_actions
     assert "[unverified] Margins will expand next year" in response.answer
 
 

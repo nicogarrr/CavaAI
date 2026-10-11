@@ -15,7 +15,7 @@ from app.llm.base import LLMProvider
 from app.schemas import ChatResponse, SynthesisSection
 from app.services.budget import BudgetController, BudgetExceededError
 from app.services.langfuse_client import LangfuseTracer
-from app.services.llm_output_guard import complete_guarded
+from app.services.llm_output_guard import _english_hits, complete_guarded
 from app.services.prompt_registry import get_prompt
 
 PROMPT_VERSION = get_prompt("chat_source_synthesis", allow_remote=False).version
@@ -34,7 +34,7 @@ SECTION_LABELS = {
     "calculations": "CALCULO",
     "user_hypotheses": "HIPOTESIS / MEMORIA DEL USUARIO",
     "unverified_claims": "AFIRMACION SIN VERIFICAR",
-    "inferences": "INFERENCE",
+    "inferences": "INFERENCIA",
     "contradictions": "CONTRADICCIONES",
     "insufficient_data": "DATOS INSUFICIENTES",
     "conclusion": "CONCLUSION",
@@ -341,6 +341,11 @@ class ChatSynthesisService:
         datos; una pregunta general merece prosa natural con citas cuando
         use las fuentes recuperadas.
         """
+        budget = BudgetController()
+        # Mismo control de presupuesto que la ruta estructurada: sin saldo
+        # NO hay primera llamada (antes solo se comprobaba el reintento).
+        if db is not None and not budget.can_spend(db, 0.02):
+            return self._general_fallback(baseline, reason="budget_exhausted")
         request = LLMRequest(
             messages=[
                 Message("system", get_prompt("chat_general").text),
@@ -363,23 +368,41 @@ class ChatSynthesisService:
         spent = {"cost": 0.0}
 
         def _record(resp: Any) -> None:
-            spent["cost"] += getattr(resp, "cost", 0.0) or 0.0
+            # CADA respuesta consume presupuesto y se registra en DB como en
+            # la ruta estructurada, tambien la descartada por el guard.
+            resp_cost = budget.estimate_cost_eur(
+                getattr(resp, "model", None) or "unknown",
+                resp.usage.input_tokens,
+                resp.usage.output_tokens,
+            )
+            spent["cost"] += resp_cost
+            if db is not None:
+                budget.record(
+                    db,
+                    getattr(resp, "model", None) or "unknown",
+                    "chat_general",
+                    resp_cost,
+                    resp.usage.total_tokens,
+                )
 
         def _can_retry() -> None:
-            if db is not None and not BudgetController().can_spend(db, 0.02):
+            if db is not None and not budget.can_spend(db, 0.02):
                 raise BudgetExceededError("LLM budget exhausted")
 
-        guarded = await complete_guarded(
-            self.provider,
-            request,
-            source="chat_general",
-            english="off",
-            on_response=_record,
-            before_retry=_can_retry,
-        )
+        try:
+            guarded = await complete_guarded(
+                self.provider,
+                request,
+                source="chat_general",
+                english="strict",
+                on_response=_record,
+                before_retry=_can_retry,
+            )
+        except Exception:  # proveedor caido, guard agotado o presupuesto: fallback honesto
+            return self._general_fallback(baseline, reason="provider_or_guard_failure")
         text = (guarded.response.text or "").strip()
-        if not text:
-            text = "No tengo datos suficientes para responder con fuentes; prueba a dar mas contexto o un ticker."
+        if not text or not self._general_text_grounded(text, baseline):
+            return self._general_fallback(baseline, reason="ungrounded")
         return ChatResponse(
             answer=text,
             sources=baseline.sources,
@@ -388,6 +411,54 @@ class ChatSynthesisService:
             prompt_version="chat-general-v1",
             confidence=0.35 if baseline.sources else 0.2,
             llm_trace={"path": "general", "cost": spent["cost"]},
+        )
+
+    @staticmethod
+    def _general_fallback(baseline: ChatResponse, *, reason: str) -> ChatResponse:
+        """Degradado honesto en espanol: nunca texto crudo del proveedor."""
+        return ChatResponse(
+            answer=(
+                "No puedo responderte con fuentes ahora mismo; "
+                "prueba de nuevo en un momento o dame un ticker para ir a datos concretos."
+            ),
+            sources=baseline.sources,
+            proposed_actions=baseline.proposed_actions,
+            model="fallback",
+            prompt_version="chat-general-v1",
+            confidence=0.2,
+            llm_trace={"path": "general", "fallback": True, "reason": reason},
+        )
+
+    @staticmethod
+    def _general_text_grounded(text: str, baseline: ChatResponse) -> bool:
+        """El texto libre no puede inventar citas ni cifras con divisa.
+
+        Toda cita [tipo:id] debe existir en las fuentes recuperadas y toda
+        cifra con divisa debe aparecer en el titulo/precio de una fuente:
+        los numeros salen de las fuentes, nunca del modelo.
+        """
+        allowed = {
+            f"{source.get('type')}:{source.get('id')}"
+            for source in baseline.sources
+            if source.get("id") is not None
+        }
+        for match in re.finditer(r"\[([a-z_]+):([^\]]+)\]", text):
+            if f"{match.group(1)}:{match.group(2)}" not in allowed:
+                return False
+        # Ingles OFF tambien en la ruta general: el umbral del guard estructural
+        # (4 hits) deja pasar frases cortas; aqui basta un par de marcadors
+        # funcionales ingleses para que el texto no sea publicable. El espanol
+        # normal da 0 hits (verificado en tests).
+        hits, total = _english_hits(text)
+        if hits >= 2 and hits / max(total, 1) >= 0.15:
+            return False
+        haystack = " ".join(
+            f"{source.get('title', '')} {source.get('price', '')}"
+            for source in baseline.sources
+        )
+        return all(
+            match.group(1) in haystack
+            for match in re.finditer(r"(\d[\d.,]*)\s?(USD|EUR|€|\$)", text)
         )
 
     @staticmethod
