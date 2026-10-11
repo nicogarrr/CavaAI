@@ -173,6 +173,7 @@ def test_dispatch_no_subscriptions_is_early_return(db):
 
 def _patch_actor(monkeypatch, db, emit):
     from types import SimpleNamespace
+
     import app.services.daily_digest_alerts as dda
     import app.services.portfolio_moves_service as pms
     from app.workers import dramatiq_app
@@ -201,3 +202,38 @@ def test_actor_reports_emitted_and_already_emitted(db, monkeypatch):
     app2 = _patch_actor(monkeypatch, db, lambda *_a: None)
     out2 = app2.refresh_portfolio_moves.fn(tenant_id=1, user_id="owner")
     assert out2["status"] == "ok" and out2["digest_alert"] == "already_emitted"
+
+
+def test_nan_and_missing_pct_go_to_sin_datos(db):
+    digest = make_digest(db, items=[
+        {"ticker": "NAN1", "status": "disponible", "price_change_pct": float("nan")},
+        {"ticker": "INF1", "status": "disponible", "price_change_pct": float("inf")},
+        {"ticker": "NOPCT", "status": "disponible", "price_change_pct": None},
+        {"ticker": "OK1", "status": "disponible", "price_change_pct": 1.5},
+    ])
+    alert = emit_digest_alert(db, digest, AS_OF)
+    assert "+nan" not in alert.message and "+inf" not in alert.message
+    assert "OK1 +1.50%" in alert.message
+    assert "1 de 4 posiciones con variacion" in alert.message
+    for bad in ("NAN1", "INF1", "NOPCT"):
+        assert bad in alert.message.split("Sin datos:")[1]
+
+
+def test_aware_non_utc_generated_at_is_converted(db):
+    from datetime import timedelta, timezone
+    digest = make_digest(db)
+    digest.generated_at = datetime(2026, 10, 10, 7, 15, tzinfo=timezone(timedelta(hours=2)))
+    alert = emit_digest_alert(db, digest, AS_OF)
+    assert "2026-10-10 05:15 UTC" in alert.message
+    assert alert.metadata_["positions_sampled_at"] == "2026-10-10T05:15:00+00:00"
+
+
+def test_truncation_is_explicit(db):
+    items = [{"ticker": f"T{i:02d}", "status": "disponible", "price_change_pct": float(i)}
+             for i in range(20)]
+    items += [{"ticker": f"S{i:02d}", "status": "sin datos"} for i in range(20)]
+    digest = make_digest(db, items=items)
+    alert = emit_digest_alert(db, digest, AS_OF)
+    assert "Mostradas 16 de 20 posiciones con variacion; 4 omitidas." in alert.message
+    assert "20 de 40 posiciones con variacion" in alert.message
+    assert "y 4 mas." in alert.message  # sin_datos tambien acotado

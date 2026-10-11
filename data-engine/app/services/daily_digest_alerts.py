@@ -8,6 +8,7 @@ nunca como 0.
 from __future__ import annotations
 
 import hashlib
+import math
 from datetime import UTC, date, datetime
 
 from sqlalchemy import select
@@ -28,9 +29,12 @@ def _fingerprint(tenant_id: int, as_of: date) -> str:
 
 def _fmt_pct(value: object) -> str | None:
     try:
-        return f"{float(value):+.2f}%"
+        pct = float(value)
     except (TypeError, ValueError):
         return None
+    if not math.isfinite(pct):
+        return None
+    return f"{pct:+.2f}%"
 
 
 def emit_digest_alert(db: Session, digest: PortfolioMoveDigest, as_of: date) -> ResearchAlert | None:
@@ -53,28 +57,42 @@ def emit_digest_alert(db: Session, digest: PortfolioMoveDigest, as_of: date) -> 
     if existing is not None:
         return None
     items = digest.items or []
-    disponibles = [i for i in items if i.get("status") == "disponible"]
-    sin_datos = sorted({i.get("ticker") for i in items
-                        if i.get("status") != "disponible" and i.get("ticker")})
-    con_var = []
-    for item in disponibles:
+    # "disponible" sin variacion finita NO cuenta como dato: pasa a Sin datos.
+    disponibles = []
+    sin_datos = set()
+    for item in items:
         pct = _fmt_pct(item.get("price_change_pct"))
-        if item.get("ticker") and pct is not None:
-            con_var.append((abs(float(item["price_change_pct"])), f"{item['ticker']} {pct}"))
-    con_var.sort(reverse=True)
-    lineas = [txt for _, txt in con_var[:_MAX_LINEAS]]
+        if item.get("status") == "disponible" and pct is not None:
+            disponibles.append((abs(float(item["price_change_pct"])),
+                                f"{item['ticker']} {pct}"))
+        elif item.get("ticker"):
+            sin_datos.add(item["ticker"])
+    disponibles.sort(reverse=True)
+    total_var = len(disponibles)
+    lineas = [txt for _, txt in disponibles[:_MAX_LINEAS]]
+    omitidas = total_var - len(lineas)
+    sin_datos_all = sorted(sin_datos)
+    sin_datos_shown = sin_datos_all[:_MAX_LINEAS]
+    omitidas_sd = len(sin_datos_all) - len(sin_datos_shown)
     if not items:
         resumen = "No habia posiciones abiertas que resumir."
     elif not disponibles:
         resumen = (f"{len(items)} posiciones seguidas, sin datos de cierre para el "
                    f"{as_of.isoformat()} (sin datos, no 0).")
     else:
-        resumen = ", ".join(lineas) + "."
-        if sin_datos:
-            resumen += f" Sin datos: {', '.join(sin_datos)}."
+        resumen = (f"{total_var} de {len(items)} posiciones con variacion: "
+                   + ", ".join(lineas) + ".")
+        if omitidas:
+            resumen += (f" Mostradas {len(lineas)} de {total_var} posiciones con "
+                        f"variacion; {omitidas} omitidas.")
+        if sin_datos_shown:
+            resumen += f" Sin datos: {', '.join(sin_datos_shown)}"
+            resumen += f" y {omitidas_sd} mas." if omitidas_sd else "."
     sampled = digest.generated_at
     if sampled.tzinfo is None:
         sampled = sampled.replace(tzinfo=UTC)
+    else:
+        sampled = sampled.astimezone(UTC)
     sampled_txt = sampled.strftime("%Y-%m-%d %H:%M UTC")
     alert = ResearchAlert(
         tenant_id=tenant_id, company_id=None, severity="low", status="open",
