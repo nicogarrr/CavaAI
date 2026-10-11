@@ -234,3 +234,16 @@ def test_partial_burn_inputs_fail_closed(absent):
     assert result.missing_inputs == [absent]
     assert result.funding_gap is None
     assert result.dilution is None
+
+
+def test_burn_proxy_source_expone_origen_del_burn():
+    result = estimate_funding_gap(_snapshot_completo(), current_price=10.0, value_per_share=8.0)
+    assert result.burn_proxy_source == "operating_cash_flow"
+
+
+def test_burn_proxy_source_no_se_inventa_en_resultado_incompleto():
+    result = estimate_funding_gap(
+        _snapshot_completo(operating_cash_flow=None), current_price=10.0, value_per_share=8.0
+    )
+    assert result.status == "incomplete"
+    assert result.burn_proxy_source is None
