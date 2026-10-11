@@ -33,6 +33,14 @@ CHAT_SOURCE_SYNTHESIS = (
     "exactly match one of the allowed source IDs."
 )
 
+CHAT_GENERAL = (
+    "Eres el asistente de CavaAI. Responde SIEMPRE en espanol, con "
+    "naturalidad y de forma breve. Puedes responder a cualquier tema. "
+    "Cuando uses las fuentes recuperadas, citalas con su id exacto entre "
+    "corchetes. Nunca inventes cifras, precios ni URLs: si un dato no esta "
+    "en las fuentes, dilo con honestidad y ofrece el siguiente paso."
+)
+
 COMPANY_KPI_EXTRACTION = (
     "Extract only explicitly reported company KPIs. Do not infer, calculate "
     "or estimate missing values. The quote must be verbatim and chunk_id must "
@@ -111,6 +119,12 @@ class ResolvedPrompt:
 PROMPTS: dict[str, PromptDef] = {
     p.name: p
     for p in [
+        PromptDef(
+            name="chat_general",
+            version="chat-general-v1",
+            task="chat",
+            text=CHAT_GENERAL,
+        ),
         PromptDef(
             name="chat_source_synthesis",
             version="source-aware-synthesis-v3",

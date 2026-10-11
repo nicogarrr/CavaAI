@@ -384,7 +384,7 @@ def test_4_fast_path_ahorra_sintesis_llm(monkeypatch):
     engine = _memdb()
     provider = CountingJsonProvider(_chat_payload())
     with Session(engine) as db:
-        resp = asyncio.run(ChatService(provider).answer(db, _CHAT_QUESTION, "portfolio", None))
+        resp = asyncio.run(ChatService(provider).answer(db, _CHAT_QUESTION, "company", "AAPL"))
     assert provider.calls == 0  # 1 llamada LLM ahorrada
     assert resp.model == "deterministic"
     assert resp.llm_trace.get("fast_path") is True
@@ -395,18 +395,32 @@ def test_4_needs_llm_sintetiza(monkeypatch):
     engine = _memdb()
     provider = CountingJsonProvider(_chat_payload())
     with Session(engine) as db:
-        resp = asyncio.run(ChatService(provider).answer(db, _CHAT_QUESTION, "portfolio", None))
+        resp = asyncio.run(ChatService(provider).answer(db, _CHAT_QUESTION, "company", "AAPL"))
     assert provider.calls == 1
     assert resp.model == "test-model"
 
 
-def test_4_sin_key_sintetiza_igual_que_antes():
+def test_4_sin_ticker_va_a_sintesis_general_en_espanol():
+    # Sin ticker el gate jev no aplica: la pregunta general siempre la
+    # responde el LLM en prosa natural (chat-general-v1), nunca el template.
+    engine = _memdb()
+    provider = CountingJsonProvider(_chat_payload())
+    with Session(engine) as db:
+        resp = asyncio.run(
+            ChatService(provider).answer(db, "Cuéntame algo interesante sobre Madrid", "portfolio", None)
+        )
+    assert provider.calls == 1
+    assert resp.prompt_version == "chat-general-v1"
+
+
+def test_4b_financiero_sin_compania_ni_ticker_se_abstiene_sin_llm():
+    # Ronda 7: consulta financiera sin ticker/compania resuelta NO llega al LLM libre.
     engine = _memdb()
     provider = CountingJsonProvider(_chat_payload())
     with Session(engine) as db:
         resp = asyncio.run(ChatService(provider).answer(db, _CHAT_QUESTION, "portfolio", None))
-    assert provider.calls == 1
-    assert resp.model == "test-model"
+    assert provider.calls == 0
+    assert resp.model == "abstain"
 
 
 # ------------------------------------------------------------ (5) juez Jev

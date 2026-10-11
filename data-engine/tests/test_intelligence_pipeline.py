@@ -327,7 +327,7 @@ def test_chat_llm_synthesis_verifies_citations_and_falls_back_on_hallucination()
     assert valid.model == "test-model"
     assert valid.llm_trace["citation_verification"] is True
     assert valid.llm_trace["cache_read_tokens"] == 20
-    assert "FACT" in valid.answer
+    assert "HECHO" in valid.answer
 
     invalid_baseline = baseline.model_copy(deep=True)
     invalid_baseline.answer = "safe deterministic answer"
