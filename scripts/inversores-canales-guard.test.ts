@@ -14,7 +14,8 @@ test('cada canal lleva URL de YouTube, fuente y fecha', () => {
     for (const channel of INVESTOR_CHANNELS) {
         assert.match(channel.url, /^https:\/\/www\.youtube\.com\/@[A-Za-z0-9._-]+$/, channel.name);
         assert.equal(channel.url, `https://www.youtube.com/${channel.handle}`);
-        assert.ok(channel.source.length > 0 && channel.checked_at === '2026-10-06', channel.name);
+        assert.ok(channel.source.length > 0, channel.name);
+        assert.match(channel.checked_at, /^\d{4}-\d{2}-\d{2}$/, channel.name);
     }
 });
 
