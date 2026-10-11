@@ -86,15 +86,41 @@ def test_emit_requires_tenant(db):
         emit_digest_alert(db, digest, AS_OF)
 
 
-def test_copy_carries_source_and_date(db):
+def test_copy_carries_source_date_basis_and_variations(db):
     digest = make_digest(db)
     alert = emit_digest_alert(db, digest, AS_OF)
     assert AS_OF.isoformat() in alert.message
     assert "yfinance" in alert.message
-    assert "ASTS" in alert.message
-    assert "NBIS" not in alert.message  # sin datos no se mezcla con lo cubierto
+    assert "ASTS +2.50%" in alert.message  # la variacion viaja en el resumen
+    assert "Sin datos: NBIS" in alert.message  # lo no cubierto se nombra, nunca 0
+    assert "no el P&L" in alert.message
     assert alert.metadata_["price_source"] == "yfinance"
     assert alert.metadata_["rule_version"] == VERSION
+
+
+def test_copy_seals_universe_sampling_time(db):
+    digest = make_digest(db)
+    alert = emit_digest_alert(db, digest, AS_OF)
+    assert "2026-10-10 05:15 UTC" in alert.message  # cartera medida al generar
+    assert alert.metadata_["positions_sampled_at"] == "2026-10-10T05:15:00+00:00"
+
+
+def test_foreign_tenant_digest_is_rejected(db):
+    from types import SimpleNamespace
+    digest = make_digest(db)
+    foreign = SimpleNamespace(tenant_id=2, digest_date=AS_OF, items=[], coverage="complete",
+                              generated_at=digest.generated_at, id=digest.id)
+    with pytest.raises(ValueError):
+        emit_digest_alert(db, foreign, AS_OF)
+    assert db.scalars(select(ResearchAlert)).all() == []
+
+
+def test_stale_date_digest_is_rejected(db):
+    from datetime import timedelta
+    digest = make_digest(db)
+    with pytest.raises(ValueError):
+        emit_digest_alert(db, digest, AS_OF - timedelta(days=1))
+    assert db.scalars(select(ResearchAlert)).all() == []
 
 
 def test_zero_positions_still_emits_honest_copy(db):
@@ -143,3 +169,35 @@ def test_dispatch_no_subscriptions_is_early_return(db):
     emit_digest_alert(db, digest, AS_OF)
     stats = dispatch_pending(db)
     assert stats == {"candidates": 0, "redispatched": 0, "errors": []}
+
+
+def _patch_actor(monkeypatch, db, emit):
+    from types import SimpleNamespace
+    import app.services.daily_digest_alerts as dda
+    import app.services.portfolio_moves_service as pms
+    from app.workers import dramatiq_app
+    monkeypatch.setattr(dramatiq_app, "_session", lambda *a, **kw: db)
+    digest = SimpleNamespace(id=1, coverage="complete", tenant_id=1, digest_date=AS_OF)
+    monkeypatch.setattr(pms, "build_digest", lambda _db, _as_of: digest)
+    monkeypatch.setattr(dda, "emit_digest_alert", emit)
+    return dramatiq_app
+
+
+def test_actor_emit_failure_is_partial_never_false_green(db, monkeypatch):
+    def boom(_db, _digest, _as_of):
+        raise RuntimeError("fallo de emision simulado")
+    app = _patch_actor(monkeypatch, db, boom)
+    out = app.refresh_portfolio_moves.fn(tenant_id=1, user_id="owner")
+    assert out["status"] == "partial"
+    assert out["digest_alert"] == "error"
+    assert "fallo de emision" in out["alert_error"]
+
+
+def test_actor_reports_emitted_and_already_emitted(db, monkeypatch):
+    from types import SimpleNamespace
+    app = _patch_actor(monkeypatch, db, lambda *_a: SimpleNamespace(id=42))
+    out = app.refresh_portfolio_moves.fn(tenant_id=1, user_id="owner")
+    assert out["status"] == "ok" and out["digest_alert"] == "emitted" and out["digest_alert_id"] == 42
+    app2 = _patch_actor(monkeypatch, db, lambda *_a: None)
+    out2 = app2.refresh_portfolio_moves.fn(tenant_id=1, user_id="owner")
+    assert out2["status"] == "ok" and out2["digest_alert"] == "already_emitted"
