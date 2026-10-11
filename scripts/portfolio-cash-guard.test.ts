@@ -13,7 +13,7 @@ import { dirname, join } from 'node:path';
 // @ts-expect-error TS5097: la extensión explícita la exige node --experimental-strip-types.
 import { sumCashByCurrency } from '../lib/portfolio-cash.ts';
 // @ts-expect-error TS5097: la extensión explícita la exige node --experimental-strip-types.
-import { buildAllocationSlices } from '../lib/portfolio-allocation.ts';
+import { buildAllocationSlices, CASH_SLICE_SYMBOL } from '../lib/portfolio-allocation.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
@@ -70,37 +70,62 @@ describe('línea Caja en las tablas de posiciones', () => {
 });
 
 describe('buildAllocationSlices: datos del donut', () => {
-    it('añade el segmento Caja con peso sobre el total con caja', () => {
-        const slices = buildAllocationSlices(
-            [{ symbol: 'AAPL', value: 300, gain: 0, gainPercent: 0 }],
-            400,
-            100,
-        );
+    it('reparte pesos SOLO entre posiciones (suman 100%): la caja nunca es segmento', () => {
+        const slices = buildAllocationSlices([
+            { symbol: 'MSFT', value: 100, gain: 0, gainPercent: 0 },
+            { symbol: 'AAPL', value: 300, gain: 0, gainPercent: 0 },
+        ]);
         assert.equal(slices.length, 2);
-        assert.deepEqual(slices[1], { symbol: 'Caja', value: 100, gain: 0, gainPercent: 0, percentage: 25 });
+        assert.equal(slices[0].symbol, 'AAPL');
+        assert.equal(slices[0].percentage, 75);
+        assert.equal(slices[1].percentage, 25);
+        assert.ok(slices.every((slice) => slice.symbol !== CASH_SLICE_SYMBOL), 'sin segmento Caja');
     });
 
-    it('cartera solo-caja: el donut es 100% Caja, no desaparece', () => {
-        const slices = buildAllocationSlices([], 100, 100);
-        assert.deepEqual(slices, [{ symbol: 'Caja', value: 100, gain: 0, gainPercent: 0, percentage: 100 }]);
+    it('con margen (caja negativa) los pesos no superan el 100%', () => {
+        // Caso real Nico 11 oct 2026: RV 21.520,40 + caja -11.269,38 daba ASTS 133,1%.
+        const slices = buildAllocationSlices([
+            { symbol: 'ASTS', value: 13635, gain: 0, gainPercent: 0 },
+            { symbol: 'TSLA', value: 7885.4, gain: 0, gainPercent: 0 },
+        ]);
+        const total = slices.reduce((acc, slice) => acc + slice.percentage, 0);
+        assert.ok(Math.abs(total - 100) < 1e-9, 'los pesos suman 100');
+        assert.equal(slices[0].percentage, (13635 / 21520.4) * 100);
     });
 
-    it('sin caja no hay segmento Caja', () => {
-        const slices = buildAllocationSlices([{ symbol: 'AAPL', value: 300, gain: 0, gainPercent: 0 }], 300, 0);
-        assert.equal(slices.length, 1);
-        assert.equal(buildAllocationSlices([], 0, null).length, 0);
+    it('sin posiciones no hay slices: la caja va en su línea aparte', () => {
+        assert.equal(buildAllocationSlices([]).length, 0);
     });
 
     it('la etiqueta declara la base y el panel no se esconde con cartera solo-caja', () => {
         const allocation = source('components/portfolio/PortfolioAllocation.tsx');
-        assert.ok(allocation.includes('caja incluida'), 'etiqueta que declara la base');
+        assert.ok(allocation.includes('Pesos sobre las posiciones'), 'etiqueta que declara la base (pesos sobre RV)');
         assert.ok(allocation.includes('holdings.length === 0 && !hasCash'), 'estado vacío solo cuando tampoco hay caja');
-        assert.ok(allocation.includes('buildAllocationSlices(holdings, totalValue, cash)'), 'datos vía el helper probado');
+        assert.ok(allocation.includes('buildAllocationSlices(knownHoldings)'), 'datos vía el helper probado');
     });
 
     it('la leyenda no enlaza la caja', () => {
         const allocation = source('components/portfolio/PortfolioAllocation.tsx');
         assert.ok(allocation.includes('item.symbol === CASH_SLICE_SYMBOL'), 'la leyenda distingue la caja');
+    });
+
+    it('una posición sin valor no certifica un 100% falso: fuera del donut y con aviso', () => {
+        // Regresión (auditor, 11 oct): valueMissing/fxMissing mapeaba a 0 y el
+        // reparto normalizaba lo conocido al 100% sin decirlo.
+        const allocation = source('components/portfolio/PortfolioAllocation.tsx');
+        assert.ok(
+            allocation.includes('!holding.valueMissing && !holding.fxMissing'),
+            'el panel filtra posiciones sin valor conocido antes de repartir',
+        );
+        assert.ok(allocation.includes('Distribución incompleta'), 'aviso visible cuando falta alguna');
+        assert.ok(allocation.includes('Distribución N/D'), 'abstención cuando ninguna tiene valor');
+    });
+
+    it('la caja/margen va en línea aparte con su signo real, fuera del donut', () => {
+        const allocation = source('components/portfolio/PortfolioAllocation.tsx');
+        assert.ok(allocation.includes("Caja (margen)"), 'etiqueta de margen cuando la caja es negativa');
+        assert.ok(allocation.includes('formatMoney(cash,'), 'importe real formateado, sin suavizar el signo');
+        assert.ok(allocation.includes("typeof cash === 'number' && cash !== 0"), 'la línea aparece con cualquier signo');
     });
 });
 
