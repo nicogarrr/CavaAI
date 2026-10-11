@@ -6,7 +6,7 @@ nunca se representa como 0 ni como cadena vacia.
 """
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, delete, update
 from sqlalchemy.orm import Session
 
 from app.models.entities import Company, FactAnchor, Tenant
@@ -225,10 +225,41 @@ class TestFactAnchorModel:
             yield s
 
     def _row(self, session):
-        row = FactAnchor.from_spec(_build(), tenant_id=None)
+        row = FactAnchor.from_spec(_build(), body=BODY, tenant_id=None)
         session.add(row)
         session.commit()
         return row
+
+    def test_from_spec_rechaza_spec_manipulado_al_persistir(self, session):
+        from dataclasses import replace
+
+        spec = replace(_build(), value_text="$99.99")
+        with pytest.raises(FactAnchorError):
+            FactAnchor.from_spec(spec, body=BODY, tenant_id=None)
+
+    def test_constructor_directo_cerrado(self):
+        with pytest.raises(FactAnchorError):
+            FactAnchor(tenant_id=None, accession_number="x", value_text="$1")
+
+    def test_bulk_update_orm_bloqueado(self, session):
+        self._row(session)
+        with pytest.raises(FactAnchorError):
+            session.execute(
+                update(FactAnchor)
+                .where(FactAnchor.accession_number == "0001193125-26-004321")
+                .values(value_text="$99.99")
+            )
+        session.rollback()
+
+    def test_bulk_delete_orm_bloqueado(self, session):
+        self._row(session)
+        with pytest.raises(FactAnchorError):
+            session.execute(
+                delete(FactAnchor).where(
+                    FactAnchor.accession_number == "0001193125-26-004321"
+                )
+            )
+        session.rollback()
 
     def test_from_spec_persiste_los_campos_del_builder(self, session):
         row = self._row(session)

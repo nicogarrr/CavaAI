@@ -23,7 +23,7 @@ from sqlalchemy import (
     UniqueConstraint,
     event,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
 
 from app.core.database import Base
 
@@ -707,15 +707,21 @@ class MarketPrice(Base, TimestampMixin):
     source: Mapped[str] = mapped_column(String(80), default="seed")
 
 
+_FROM_SPEC_TOKEN = object()
+
+
 class FactAnchor(TenantOwnedMixin, Base, TimestampMixin):
     """Dato extraido anclado a la frase exacta del filing (provenance a nivel dato).
 
-    Append-only: los eventos ORM bloquean UPDATE y DELETE de filas; si el dato
-    se re-extrae, se inserta otra fila y la anterior queda como historico.
-    Limite declarado: DML masivo por SQL crudo (fuera del ORM) no pasa por esa
-    guardia. Las filas se crean con `FactAnchor.from_spec` sobre un
-    FactAnchorSpec construido por `services.fact_anchor.build_anchor`; el
-    constructor directo no queda verificado por el builder y no debe usarse.
+    Persistencia verificada: la UNICA via de creacion es `from_spec`, que
+    re-verifica el spec contra el body original justo antes de persistir; el
+    constructor directo esta bloqueado. Append-only: eventos ORM bloquean
+    UPDATE/DELETE por fila y DML masivo del ORM (update()/delete() en lote);
+    si el dato se re-extrae, se inserta otra fila y la anterior queda como
+    historico. Limites declarados: (1) SQL crudo Core sobre la conexion,
+    fuera de la sesion ORM, no pasa por esas guardias; (2) INFERIDO exige
+    derivacion no vacia, pero no prueba el calculo (trazabilidad, no
+    validacion del metodo).
     """
 
     __tablename__ = "fact_anchors"
@@ -748,16 +754,42 @@ class FactAnchor(TenantOwnedMixin, Base, TimestampMixin):
         ForeignKey("companies.id"), nullable=True
     )
 
+    def __init__(self, *_args: object, _token: object = None, **kwargs: object) -> None:
+        # Cerrado a cal y canto: la unica construccion valida pasa por
+        # from_spec, que es quien verifica. SQLAlchemy no llama a __init__
+        # al cargar filas, asi que la lectura no se ve afectada.
+        from app.services.fact_anchor import FactAnchorError
+
+        if _token is not _FROM_SPEC_TOKEN:
+            raise FactAnchorError(
+                "FactAnchor solo se crea con FactAnchor.from_spec(spec, body=...): "
+                "el constructor directo no esta verificado"
+            )
+        super().__init__(**kwargs)
+
     @classmethod
     def from_spec(
         cls,
         spec: "FactAnchorSpec",
         *,
+        body: str,
         tenant_id: int | None,
         company_id: int | None = None,
     ) -> "FactAnchor":
-        """Unica via verificada de persistir un ancla (spec del builder)."""
+        """Unica via verificada de persistir un ancla.
+
+        Re-verifica el spec contra el body ORIGINAL en el momento de
+        persistir: un spec manipulado (dataclasses.replace o construido a
+        mano) que no ancla el valor en el filing no llega a la base de datos.
+        """
+        from app.services.fact_anchor import FactAnchorError, verify_anchor
+
+        if not verify_anchor(body, spec):
+            raise FactAnchorError(
+                "el spec no verifica contra el body del filing: no se persiste"
+            )
         return cls(
+            _token=_FROM_SPEC_TOKEN,
             tenant_id=tenant_id,
             company_id=company_id,
             accession_number=spec.accession,
@@ -786,6 +818,25 @@ def _fact_anchor_no_delete(mapper, connection, target):  # noqa: ANN001, ANN202
     from app.services.fact_anchor import FactAnchorError
 
     raise FactAnchorError("fact_anchors es append-only: DELETE prohibido")
+
+
+@event.listens_for(Session, "do_orm_execute")
+def _fact_anchor_no_bulk_dml(orm_execute_state):  # noqa: ANN001, ANN202
+    """El DML masivo del ORM (update()/delete() en lote) salta los eventos por
+    fila; aqui se bloquea para fact_anchors. Limite declarado: SQL Core crudo
+    fuera de la sesion ORM."""
+    from sqlalchemy import Delete, Update
+
+    statement = orm_execute_state.statement
+    if not isinstance(statement, (Update, Delete)):
+        return
+    table = getattr(statement, "table", None)
+    if table is not None and getattr(table, "name", None) == FactAnchor.__table__.name:
+        from app.services.fact_anchor import FactAnchorError
+
+        raise FactAnchorError(
+            "fact_anchors es append-only: DML masivo del ORM prohibido"
+        )
 
 
 class NewsEvent(TenantOwnedMixin, Base, TimestampMixin):
