@@ -1,8 +1,9 @@
 /**
- * Datos del donut de distribución de /portfolio. La etiqueta declara
- * "pesos sobre el valor total (caja incluida)", así que la caja entra como
- * segmento propio: sin ella el círculo se llenaba solo con acciones.
- * Con cartera solo-caja (sin posiciones) el donut es 100% Caja.
+ * Datos del donut de distribución de /portfolio. Decisión de producto
+ * (Nico, 11 oct 2026): los pesos se reparten SOLO entre las posiciones
+ * (suman 100%) y la caja/margen se muestra como línea aparte fuera del
+ * donut. Con caja negativa (margen), pesos sobre el valor total darían
+ * porcentajes >100%: matemáticamente cierto y visualmente absurdo.
  */
 export type AllocationHolding = {
     symbol: string;
@@ -15,30 +16,19 @@ export type AllocationSliceData = AllocationHolding & {
     percentage: number;
 };
 
-export const CASH_SLICE_SYMBOL = 'Caja';
+/** Símbolo reservado de la caja. Ya no es segmento del donut; lo conserva
+ *  AllocationTooltip por compatibilidad con datos antiguos. */
+export const CASH_SLICE_SYMBOL = "Caja";
 
-export function buildAllocationSlices(
-    holdings: AllocationHolding[],
-    totalValue: number,
-    cash?: number | null,
-): AllocationSliceData[] {
-    const slices: AllocationSliceData[] = holdings
+export function buildAllocationSlices(holdings: AllocationHolding[]): AllocationSliceData[] {
+    const positionsValue = holdings.reduce((sum, holding) => sum + holding.value, 0);
+    return holdings
         .map((holding) => ({
             symbol: holding.symbol,
             value: holding.value,
             gain: holding.gain,
             gainPercent: holding.gainPercent,
-            percentage: totalValue > 0 ? (holding.value / totalValue) * 100 : 0,
+            percentage: positionsValue > 0 ? (holding.value / positionsValue) * 100 : 0,
         }))
         .sort((a, b) => b.value - a.value);
-    if (typeof cash === 'number' && cash > 0 && totalValue > 0) {
-        slices.push({
-            symbol: CASH_SLICE_SYMBOL,
-            value: cash,
-            gain: 0,
-            gainPercent: 0,
-            percentage: (cash / totalValue) * 100,
-        });
-    }
-    return slices;
 }
