@@ -97,6 +97,34 @@ def test_financial_intent_without_company_abstains_without_llm():
     assert "ticker" in result.answer
 
 
+def test_round8_financial_concepts_reach_llm_via_service():
+    # Ronda 8 auditor: clasificador unificado. Los conceptos genericos ya no
+    # caen en un gate previo y llegan al LLM como alcance "concept".
+    for q, ans in [
+        ("¿Qué es un dividendo?", "Un dividendo es la parte del beneficio que se reparte."),
+        ("¿Cómo se calcula la rentabilidad?", "Es la ganancia en relación a lo invertido."),
+        ("¿Qué significa precio de mercado?", "Es el precio al que se intercambia hoy."),
+    ]:
+        db = _db()
+        provider = StubProvider(ans)
+        result = asyncio.run(ChatService(provider).answer(db, q, "portfolio", None))
+        assert len(provider.requests) == 1, q
+        assert result.model == "stub" and ans in result.answer, q
+
+
+def test_round8_specific_still_abstains_without_llm():
+    for q in [
+        "¿A cuánto cotiza FooCorp?",
+        "¿Cuál es la rentabilidad de mi cartera?",
+        "¿Cuánto vale Microsoft ahora?",
+    ]:
+        db = _db()
+        provider = StubProvider()
+        result = asyncio.run(ChatService(provider).answer(db, q, "portfolio", None))
+        assert provider.requests == [], q
+        assert result.model == "abstain", q
+
+
 def test_llm_market_figure_falls_back_honestly():
     provider = StubProvider("ASTS cotiza a 1999 USD [market_price:mp1]")
     result = asyncio.run(

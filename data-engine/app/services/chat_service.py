@@ -67,16 +67,6 @@ _SMALL_TALK_ANSWER = (
 )
 
 
-_FINANCIAL_INTENT_RE = re.compile(
-    r"(?i)\b(cotiza(?:ción|do)?|precio|rentabilidad|dividendo|beneficio|"
-    r"sube|baja|cae|earnings|a cuánto|a cuanto|cuánto vale|cuanto vale)\b"
-)
-_FINANCIAL_ABSTAIN_ANSWER = (
-    "No tengo datos de mercado sobre eso en tu research. Si te refieres a "
-    "una empresa, dime su nombre o ticker y lo consulto."
-)
-
-
 class ChatService:
     def __init__(self, provider: LLMProvider | None = None) -> None:
         self.memory = MemoryService()
@@ -267,17 +257,9 @@ class ChatService:
         company = self._resolve_company(db, question, scope, ticker)
         if company is not None and not ticker:
             ticker = company.ticker
-        if company is None and not ticker and _FINANCIAL_INTENT_RE.search(question or ""):
-            # Intencion financiera sin compania resuelta: abstencion honesta
-            # en lugar de texto libre del LLM con cifras no sustentadas.
-            return ChatResponse(
-                answer=_FINANCIAL_ABSTAIN_ANSWER,
-                sources=[],
-                model="abstain",
-                prompt_version="financial-abstain-v1",
-                confidence=0.2,
-                llm_trace={"path": "financial_abstain"},
-            )
+        # La abstencion financiera vive en el clasificador unificado de
+        # synthesize_general (ronda 8 auditor): los conceptos financieros
+        # genericos llegan al LLM y solo lo especifico/ambiguo se abstiene.
         baseline = self._deterministic_answer(db, question, scope, ticker)
         # Fast-path Jev (4): si la pregunta es una consulta factual simple
         # (baseline_ok, conf >= 0.8), el contexto determinista ya responde y
