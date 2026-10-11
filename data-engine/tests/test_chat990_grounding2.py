@@ -104,3 +104,30 @@ def test_cross_company_figure_is_rejected():
 def test_financial_claim_without_citation_is_rejected():
     assert not _grounded("ASTS cotiza a 1999 USD.", SRC)
     assert _grounded("ASTS cotiza a 1999 USD [market_price:mp1]", SRC)
+
+
+MULTI = [
+    {"type": "market_price", "id": "mp1", "title": "ASTS (cierre 2026-10-09, test)", "price": "1999.00 USD"},
+    {"type": "market_price", "id": "mp2", "title": "MSFT (cierre 2026-10-09, test)", "price": "10.00 USD"},
+    {"type": "memory_item", "id": "mem3", "title": "ASTS nota del usuario: objetivo 1999 USD", "price": ""},
+]
+
+
+def test_figure_must_live_in_the_cited_source():
+    assert not _grounded("MSFT cotiza a 1999 USD [market_price:mp2]", MULTI)
+    assert _grounded("MSFT cotiza a 10 USD [market_price:mp2]", MULTI)
+    assert _grounded("ASTS cotiza a 1999 USD [market_price:mp1]", MULTI)
+
+
+def test_memory_cannot_back_a_price_claim():
+    assert not _grounded("ASTS cotiza a 1999 USD [memory_item:mem3]", MULTI)
+
+
+def test_ticker_binds_case_insensitively_to_the_cited_source():
+    assert not _grounded("asts cotiza a 1999 USD [market_price:mp2]", MULTI)
+    assert _grounded("asts cotiza a 1999 USD [market_price:mp1]", MULTI)
+
+
+def test_sign_is_part_of_the_figure():
+    assert not _grounded("ASTS cae a -1999 USD [market_price:mp1]", MULTI)
+    assert not _grounded("rentabilidad -35% [market_price:mp1]", MULTI)

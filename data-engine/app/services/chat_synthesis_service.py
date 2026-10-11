@@ -143,7 +143,7 @@ RESPONSE_SCHEMA = {
 
 _CURRENCY_WORDS = r"(?:USD|EUR|dólares?|dolares?|euros?)"
 _MONEY_RE = re.compile(
-    rf"(?:([$€]|{_CURRENCY_WORDS})\s*(\d[\d.,]*)|(\d[\d.,]*)\s*([$€]|{_CURRENCY_WORDS}))",
+    rf"(?:([$€]|{_CURRENCY_WORDS})\s*([-+−]?)(\d[\d.,]*)|([-+−]?)(\d[\d.,]*)\s*([$€]|{_CURRENCY_WORDS}))",
     re.IGNORECASE,
 )
 _PERCENT_RE = re.compile(r"(\d[\d.,]*)\s*%")
@@ -197,14 +197,21 @@ def _parse_amount(raw: str) -> Decimal | None:
         return None
 
 
+_MONEY_FACT_TYPES = {"market_price", "financial_fact"}
+
+
 def _money_pairs(text: str) -> set[tuple[Decimal, str]]:
+    """Pares (importe CON SIGNO, divisa): -1999 nunca valida contra +1999."""
     pairs: set[tuple[Decimal, str]] = set()
     for match in _MONEY_RE.finditer(text):
-        currency_raw = match.group(1) or match.group(4) or ""
-        amount_raw = match.group(2) or match.group(3) or ""
+        currency_raw = match.group(1) or match.group(6) or ""
+        sign_raw = match.group(2) or match.group(4) or ""
+        amount_raw = match.group(3) or match.group(5) or ""
         currency = _CURRENCY_MAP.get(currency_raw.lower())
         amount = _parse_amount(amount_raw)
         if currency and amount is not None:
+            if sign_raw in ("-", "−"):
+                amount = -amount
             pairs.add((amount, currency))
     return pairs
 
@@ -215,14 +222,22 @@ def _source_money_pairs(source: dict) -> set[tuple[Decimal, str]]:
     return _money_pairs(f"{source.get('title', '')} {source.get('price', '')}")
 
 
-def _source_percents(source: dict) -> set[Decimal]:
-    haystack = f"{source.get('title', '')} {source.get('price', '')}"
+_PERCENT_RE_SIGNED = re.compile(r"([-+−]?)(\d[\d.,]*)\s*%")
+
+
+def _percents(text: str) -> set[Decimal]:
     out: set[Decimal] = set()
-    for m in _PERCENT_RE.finditer(haystack):
-        amount = _parse_amount(m.group(1))
+    for m in _PERCENT_RE_SIGNED.finditer(text):
+        amount = _parse_amount(m.group(2))
         if amount is not None:
+            if m.group(1) in ("-", "−"):
+                amount = -amount
             out.add(amount)
     return out
+
+
+def _source_percents(source: dict) -> set[Decimal]:
+    return _percents(f"{source.get('title', '')} {source.get('price', '')}")
 
 
 _TICKER_RE = re.compile(r"\b[A-Z]{2,6}\b")
@@ -561,38 +576,46 @@ class ChatSynthesisService:
         hits, total = _english_hits(text)
         if hits >= 2 and hits / max(total, 1) >= 0.15:
             return False
-        text_money = _money_pairs(text)
         financial_hint = bool(_FINANCIAL_HINT_RE.search(text))
-        text_percents: set[Decimal] = set()
-        if financial_hint:
-            for m in _PERCENT_RE.finditer(text):
-                amount = _parse_amount(m.group(1))
-                if amount is not None:
-                    text_percents.add(amount)
-        if not text_money and not text_percents:
-            return True
-        # Afirmacion financiera: exige cita valida a fuente admisible.
-        if not citations:
-            return False
-        # Cada cifra debe existir en UNA fuente (vinculo fuente-metrica).
-        source_pairs: set[tuple[Decimal, str]] = set()
-        source_pcts: set[Decimal] = set()
-        for source in baseline.sources:
-            source_pairs |= _source_money_pairs(source)
-            source_pcts |= _source_percents(source)
-        if text_money - source_pairs:
-            return False
-        if text_percents - source_pcts:
-            return False
-        # Vinculo compania: un ticker en la MISMA frase que la cifra debe
-        # ser de una fuente admisible (MSFT no se valida con ASTS).
-        tickers_ok = _source_tickers(baseline.sources) | _TICKER_WHITELIST
-        for sentence in re.split(r"[.!?\n]", text):
-            if not _MONEY_RE.search(sentence) and not _PERCENT_RE.search(sentence):
+        by_id = {
+            f"{source.get('type')}:{source.get('id')}": source
+            for source in baseline.sources
+            if source.get("id") is not None
+        }
+        # Validacion POR AFIRMACION (segmento): la MISMA cita debe contener
+        # compania + importe con signo + divisa/metrica. Nada de uniones de
+        # fuentes: MSFT no se valida con la cifra de ASTS ni con una nota de
+        # memoria (tipo no factual no respalda cotizaciones).
+        for segment in re.split(r"(?<=[.!?])\s+(?=[A-ZÁÉÍÓÚÑ¿¡(])|\n", text):
+            seg_money = _money_pairs(segment)
+            seg_percents = _percents(segment) if financial_hint else set()
+            if not seg_money and not seg_percents:
                 continue
-            for token in _TICKER_RE.findall(sentence):
-                if token not in tickers_ok:
+            seg_citations = [
+                by_id[f"{m.group(1)}:{m.group(2)}"]
+                for m in re.finditer(r"\[([a-z_]+):([^\]]+)\]", segment)
+                if f"{m.group(1)}:{m.group(2)}" in by_id
+            ]
+            if not seg_citations:
+                return False
+            seg_tickers = [
+                t.upper()
+                for t in _TICKER_RE.findall(segment)
+                if t.upper() not in _TICKER_WHITELIST
+            ]
+
+            def _backs(source: dict) -> bool:
+                if source.get("type") not in _MONEY_FACT_TYPES:
                     return False
+                title_upper = str(source.get("title", "")).upper()
+                if any(t not in title_upper for t in seg_tickers):
+                    return False
+                if seg_money - _source_money_pairs(source):
+                    return False
+                return not (seg_percents - _source_percents(source))
+
+            if not any(_backs(source) for source in seg_citations):
+                return False
         return True
 
     @staticmethod
