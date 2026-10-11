@@ -441,10 +441,10 @@ def test_memory_api_tracks_claims_evidence_sections_and_sessions():
     )
     assert source_aware_chat.status_code == 200
     chat_payload = source_aware_chat.json()
-    assert "FACT" in chat_payload["answer"]
-    assert "USER ASSUMPTION / MEMORY" in chat_payload["answer"]
-    assert "UNVERIFIED CLAIM" in chat_payload["answer"]
-    assert "INFERENCE" in chat_payload["answer"]
+    assert "HECHO" in chat_payload["answer"]
+    assert "HIPOTESIS / MEMORIA DEL USUARIO" in chat_payload["answer"]
+    assert "AFIRMACION SIN VERIFICAR" in chat_payload["answer"]
+    assert "INFERENCIA" in chat_payload["answer"]
     source_types = {source["type"] for source in chat_payload["sources"]}
     assert {"thesis_version", "financial_fact", "claim", "claim_evidence", "memory_item", "memory_writeback"} <= source_types
 

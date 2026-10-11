@@ -69,7 +69,7 @@ def test_valid_synthesis_replaces_sections_and_records_trace():
     assert result.model == "stub-model"
     assert result.confidence == 0.8
     assert result.prompt_version
-    assert "FACT" in result.answer and "CONCLUSION" in result.answer
+    assert "HECHO" in result.answer and "CONCLUSION" in result.answer
     assert result.llm_trace["json_validity"] is True
     assert result.llm_trace["citation_verification"] is True
     assert result.llm_trace["request_id"] == "req-1"
