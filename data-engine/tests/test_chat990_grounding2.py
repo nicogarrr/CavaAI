@@ -101,8 +101,75 @@ def test_llm_market_figure_falls_back_honestly():
     provider = StubProvider("ASTS cotiza a 1999 USD [market_price:mp1]")
     result = asyncio.run(
         ChatSynthesisService(provider).synthesize_general(
-            question="precio", baseline=ChatResponse(answer="sin datos", sources=SRC)
+            question="Cuéntame algo", baseline=ChatResponse(answer="sin datos", sources=SRC)
         )
     )
     assert "1999" not in result.answer
     assert result.llm_trace.get("fallback") is True
+
+
+# ---- Ronda 7: ruta LIMITADA (decision de producto: veracidad primero) ----
+from app.services.chat_synthesis_service import _general_scope  # noqa: E402
+
+
+def _general(question, llm_text):
+    provider = StubProvider(llm_text)
+    result = asyncio.run(
+        ChatSynthesisService(provider).synthesize_general(
+            question=question,
+            baseline=ChatResponse(answer="", sources=SRC),
+        )
+    )
+    return provider, result
+
+
+def test_round7_scope_classification():
+    assert _general_scope("Hola, cuéntame un chiste") == "ordinary"
+    assert _general_scope("¿Qué hora es en Tokio?") == "ordinary"
+    assert _general_scope("¿Qué es el PER?") == "concept"
+    assert _general_scope("¿Cómo funciona un ETF?") == "concept"
+    assert _general_scope("¿Cómo va mi cartera?") == "abstain"
+    assert _general_scope("¿Qué es el PER de ASTS?") == "abstain"
+    assert _general_scope("cuánto vale Microsoft") == "abstain"
+
+
+def test_round7_financial_specific_never_reaches_llm():
+    for q in ["¿Cómo va mi cartera?", "¿Cuánto han subido mis acciones?", "precio de ASTS"]:
+        provider, result = _general(q, "cualquier cosa")
+        assert provider.requests == []
+        assert result.model == "abstain"
+        assert result.sources == []
+
+
+def test_round7_llm_never_gets_private_context():
+    provider, _ = _general("Cuéntame un chiste", "Ahí va un chiste sobre gatos.")
+    payload = provider.requests[0].messages[1].content
+    assert "retrieved_sources" not in payload
+    assert "mp1" not in payload and "1999" not in payload
+
+
+def test_round7_auditor_round6_outputs_rejected():
+    # El generador alucina afirmaciones financieras: rechazadas en ambos alcances.
+    bad = [
+        "Microsoft cotiza a novecientos",
+        "asts cotiza a 999",
+        "El precio de Microsoft es novecientos",
+        "Tus acciones han duplicado su valor",
+        "La cartera tiene una ganancia de treinta por ciento",
+    ]
+    for text in bad:
+        _, r1 = _general("Cuéntame algo", text)  # ordinaria
+        assert r1.llm_trace.get("fallback") is True, text
+        _, r2 = _general("¿Qué es el PER?", text)  # concepto
+        assert r2.llm_trace.get("fallback") is True, text
+
+
+def test_round7_conversation_and_concepts_stay_natural():
+    _, r = _general("Cuéntame un chiste", "Ahí va: ¿qué le dice un gato a otro? Miau.")
+    assert r.model == "stub" and not r.llm_trace.get("fallback")
+    _, r = _general(
+        "¿Qué es el PER?",
+        "El PER relaciona lo que pagas por una empresa con lo que gana cada año.",
+    )
+    assert not r.llm_trace.get("fallback")
+    assert r.sources == []

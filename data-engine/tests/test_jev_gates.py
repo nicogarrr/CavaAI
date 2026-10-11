@@ -406,9 +406,21 @@ def test_4_sin_ticker_va_a_sintesis_general_en_espanol():
     engine = _memdb()
     provider = CountingJsonProvider(_chat_payload())
     with Session(engine) as db:
-        resp = asyncio.run(ChatService(provider).answer(db, _CHAT_QUESTION, "portfolio", None))
+        resp = asyncio.run(
+            ChatService(provider).answer(db, "Cuéntame algo interesante sobre Madrid", "portfolio", None)
+        )
     assert provider.calls == 1
     assert resp.prompt_version == "chat-general-v1"
+
+
+def test_4b_financiero_sin_compania_ni_ticker_se_abstiene_sin_llm():
+    # Ronda 7: consulta financiera sin ticker/compania resuelta NO llega al LLM libre.
+    engine = _memdb()
+    provider = CountingJsonProvider(_chat_payload())
+    with Session(engine) as db:
+        resp = asyncio.run(ChatService(provider).answer(db, _CHAT_QUESTION, "portfolio", None))
+    assert provider.calls == 0
+    assert resp.model == "abstain"
 
 
 # ------------------------------------------------------------ (5) juez Jev

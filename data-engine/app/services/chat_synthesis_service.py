@@ -180,6 +180,74 @@ _FINANCIAL_HINT_RE = re.compile(
 )
 
 
+# Ronda 7 (decision de producto, main bajo preferencias de Nico: veracidad
+# primero): se LIMITA la ruta. El generador libre solo atiende
+#   - charla/preguntas ordinarias NO financieras, y
+#   - conceptos financieros genericos ("que es el PER", "como funciona un ETF").
+# Cualquier otra consulta financiera (ticker, cartera propia, precio,
+# rentabilidad, cifras) se abstiene SIN llamar al LLM, y el generador libre
+# NUNCA recibe contexto privado (fuentes/cartera). El guard de salida es
+# defensa en profundidad, no la garantia.
+_FIN_WORDS_RE = re.compile(
+    r"(?i)\b(acci[oó]n(?:es)?|cartera|portfolio|posici[oó]n(?:es)?|rentabilidad|"
+    r"rendimiento|cotiza\w*|cotizaci[oó]n|precio|bolsa|burs[aá]til\w*|dividendos?|"
+    r"inversi[oó]n(?:es)?|invertir|ganancias?|p[eé]rdidas?|beneficios?|"
+    r"capitalizaci[oó]n|valoraci[oó]n|stock|shares?|earnings|etf|ebitda|"
+    r"sube|suben|baja|bajan|cae|caen|duplic\w*|tripl\w*|vale|valen)\b"
+    r"|[$€£%]"
+)
+# Tickers: 2-5 mayusculas, SENSIBLE a mayusculas (el flag (?i) de arriba no
+# aplica aqui), salvo siglas conceptuales y de divisa.
+_TICKER_RE = re.compile(r"\b[A-Z]{2,5}\b")
+_FIN_ACRONYMS = frozenset({"PER", "ETF", "ROE", "ROA", "ROIC", "EPS", "FCF", "EBITDA", "PEG", "CAGR"})
+_CONCEPT_ACRONYMS = frozenset({"PER", "ETF", "ROE", "ROA", "ROIC", "EPS", "FCF", "EBITDA", "PEG", "IPO", "CAGR", "OK"})
+
+
+def _has_ticker(text: str) -> bool:
+    return any(t not in _CONCEPT_ACRONYMS for t in _TICKER_RE.findall(text))
+
+
+class _FinScope:
+    @staticmethod
+    def search(text: str) -> bool:
+        return (
+            bool(_FIN_WORDS_RE.search(text))
+            or _has_ticker(text)
+            or any(t in _FIN_ACRONYMS for t in _TICKER_RE.findall(text))
+        )
+
+
+_FIN_SCOPE_RE = _FinScope
+_CONCEPT_Q_RE = re.compile(
+    r"(?i)^\W*(?:¿\s*)?(?:qu[eé]\s+(?:es|son|significa)|c[oó]mo\s+(?:funciona|funcionan|se\s+calcula)|"
+    r"expl[ií]ca(?:me)?|para\s+qu[eé]\s+sirve|cu[aá]l\s+es\s+la\s+diferencia)\b"
+)
+_PERSONAL_RE = re.compile(r"(?i)\b(mi|mis|tu|tus|su|sus|nuestr[oa]s?|m[ií]o|m[ií]a)\b")
+_NUMBER_WORD_RE = re.compile(
+    r"(?i)\b(cero|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|"
+    r"catorce|quince|veinte\w*|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|"
+    r"noventa|cien|ciento|doscientos|trescientos|cuatrocientos|quinientos|"
+    r"seiscientos|setecientos|ochocientos|novecientos|mil|mill[oó]n|millones|"
+    r"billones?|por\s+ciento|porcentaje|duplic\w*|tripl\w*|doblad\w*)\b"
+)
+_NAMED_ENTITY_RE = re.compile(r"(?<![.¿¡\n])\s[A-Z][a-záéíóúñ]{3,}\b")
+
+
+def _general_scope(question: str) -> str:
+    """'ordinary' | 'concept' | 'abstain' (determinista, sin LLM)."""
+    q = (question or "").strip()
+    if not _FIN_SCOPE_RE.search(q):
+        return "ordinary"
+    if (
+        _CONCEPT_Q_RE.match(q)
+        and not _PERSONAL_RE.search(q)
+        and not re.search(r"\d", q)
+        and not _has_ticker(q)
+    ):
+        return "concept"
+    return "abstain"
+
+
 class ChatSynthesisService:
     def __init__(self, provider: LLMProvider, tracer: LangfuseTracer | None = None) -> None:
         self.provider = provider
@@ -382,6 +450,20 @@ class ChatSynthesisService:
         datos; una pregunta general merece prosa natural con citas cuando
         use las fuentes recuperadas.
         """
+        scope = _general_scope(question)
+        if scope == "abstain":
+            # Consulta financiera especifica/ambigua: nunca al generador libre.
+            return ChatResponse(
+                answer=(
+                    "No tengo datos de mercado sobre eso en tu research. Si te "
+                    "refieres a una empresa, dime su nombre o ticker y lo consulto."
+                ),
+                sources=[],
+                model="abstain",
+                prompt_version="chat-general-v1",
+                confidence=0.2,
+                llm_trace={"path": "general", "abstain": True, "reason": "financial_scope"},
+            )
         budget = BudgetController()
         # Mismo control de presupuesto que la ruta estructurada: sin saldo
         # NO hay primera llamada (antes solo se comprobaba el reintento).
@@ -394,8 +476,9 @@ class ChatSynthesisService:
                     "user",
                     json.dumps(
                         {
+                            # Sin contexto privado (cartera/memorias/fuentes):
+                            # el generador libre solo ve la pregunta.
                             "question": question,
-                            "retrieved_sources": baseline.sources[:40],
                         },
                         default=str,
                         ensure_ascii=False,
@@ -442,12 +525,17 @@ class ChatSynthesisService:
         except Exception:  # proveedor caido, guard agotado o presupuesto: fallback honesto
             return self._general_fallback(baseline, reason="provider_or_guard_failure")
         text = (guarded.response.text or "").strip()
-        if not text or not self._general_text_grounded(text, baseline):
+        if (
+            not text
+            or not self._general_text_grounded(text, ChatResponse(answer="", sources=[]))
+            or not self._general_output_in_scope(text, scope)
+        ):
             return self._general_fallback(baseline, reason="ungrounded")
         return ChatResponse(
             answer=text,
-            sources=baseline.sources,
-            proposed_actions=baseline.proposed_actions,
+            # Sin fuentes: la prosa general no se presenta como respaldada.
+            sources=[],
+            proposed_actions=[],
             model=getattr(self.provider, "name", "unknown"),
             prompt_version="chat-general-v1",
             confidence=0.35 if baseline.sources else 0.2,
@@ -469,6 +557,28 @@ class ChatSynthesisService:
             confidence=0.2,
             llm_trace={"path": "general", "fallback": True, "reason": reason},
         )
+
+    @staticmethod
+    def _general_output_in_scope(text: str, scope: str) -> bool:
+        """Defensa en profundidad sobre el alcance acotado.
+
+        ordinary: la respuesta no puede contener lenguaje financiero.
+        concept: solo definicion generica; sin cifras, numerales, posesivos
+        de cartera ni nombres propios de empresas.
+        """
+        if scope == "ordinary":
+            return not _FIN_SCOPE_RE.search(text)
+        if scope == "concept":
+            if re.search(r"\d", text) or _NUMBER_WORD_RE.search(text):
+                return False
+            if _MARKET_CLAIM_VERB_RE.search(text) or _PORTFOLIO_CLAIM_RE.search(text):
+                return False
+            if re.search(r"(?i)\b(tus|tu|mis|mi)\s+(acciones|cartera|posici)", text):
+                return False
+            if _NAMED_ENTITY_RE.search(text):
+                return False
+            return True
+        return False
 
     @staticmethod
     def _general_text_grounded(text: str, baseline: ChatResponse) -> bool:
