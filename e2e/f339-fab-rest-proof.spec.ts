@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { createHash, createHmac, randomUUID } from "node:crypto";
+import { seedMarketPrices } from "./fixtures/market-prices";
 
 // Prueba F339: a 390px el FAB del chat no debe tapar la leyenda del donut EN
 // REPOSO. Stack e2e estándar del repo (webServer de playwright.config.ts).
@@ -58,6 +59,24 @@ test("F339: el FAB queda oculto en reposo mientras la leyenda cruza su zona", as
     });
     expect(res.status(), await res.text()).toBeLessThan(300);
   }
+
+  // Sin precios ni FX el backend devuelve market_value_base=null y el donut
+  // se abstiene (honesto): la leyenda necesita valores reales sembrados.
+  for (const s of seeds) {
+    seedMarketPrices(s.ticker, [{ date: "2026-10-09", close: s.price }]);
+  }
+  // FX via API firmada: el upsert revaloriza TODAS las posiciones
+  // (rebuild_position), asi market_value_base queda calculado con los
+  // precios sembrados. Sembrar la fila en sqlite no basta: /positions lee
+  // columnas materializadas, no revalua en lectura.
+  const fxBody = Buffer.from(JSON.stringify({
+    base_currency: "EUR", quote_currency: "USD", rate: 0.86,
+    rate_date: "2026-01-10", source: "e2e-fixture",
+  }));
+  const fxRes = await request.post(`${apiBase}/api/portfolio/fx-rates`, {
+    data: fxBody, headers: signedHeaders("POST", "/api/portfolio/fx-rates", fxBody),
+  });
+  expect(fxRes.status(), await fxRes.text()).toBeLessThan(300);
 
   await page.goto("/portfolio");
   const legend = page.locator("#portfolio-allocation-legend");
