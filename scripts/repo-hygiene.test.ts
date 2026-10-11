@@ -43,7 +43,7 @@ function git(
     const detail = (e.code ?? String(e.stderr ?? e.message ?? err)).slice(0, 200);
     throw new GitEnvError(
       `git no es usable en este entorno (${detail}): el guard no puede evaluar el repo y ` +
-        'NINGUNA violacion E6 reportada asi es real. Si corre en docker como root: ' +
+        'No se han podido evaluar las reglas E6: estos fallos son de entorno y no prueban violaciones ni que el repo este limpio. Si corre en docker como root: ' +
         'git config --global --add safe.directory <ruta-del-repo>. Si git no esta instalado: ' +
         'instala git en la imagen.',
     );
