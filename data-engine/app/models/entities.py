@@ -1,4 +1,5 @@
 from datetime import UTC, date, datetime
+from typing import TYPE_CHECKING
 
 # Alias para las columnas llamadas `date`. Dentro del cuerpo de una clase,
 # `date: Mapped[date]` hace que el anotado se refiera a la propia columna
@@ -20,10 +21,14 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    event,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
 
 from app.core.database import Base
+
+if TYPE_CHECKING:
+    from app.services.fact_anchor import FactAnchorSpec
 
 
 def utcnow() -> datetime:
@@ -700,6 +705,187 @@ class MarketPrice(Base, TimestampMixin):
     # coronaba al ticker como el menos activo con un dato inexistente.
     volume: Mapped[int | None] = mapped_column(Integer, nullable=True)
     source: Mapped[str] = mapped_column(String(80), default="seed")
+
+
+_FROM_SPEC_TOKEN = object()
+
+
+class FactAnchor(TenantOwnedMixin, Base, TimestampMixin):
+    """Dato extraido anclado a la frase exacta del filing (provenance a nivel dato).
+
+    Persistencia verificada: la UNICA via de creacion es `from_spec`, que
+    re-verifica el spec contra el body original justo antes de persistir; el
+    constructor directo esta bloqueado. Append-only: eventos ORM bloquean
+    UPDATE/DELETE por fila y DML masivo del ORM (update()/delete() en lote);
+    si el dato se re-extrae, se inserta otra fila y la anterior queda como
+    historico. Limites declarados: (1) SQL crudo Core sobre la conexion,
+    fuera de la sesion ORM, no pasa por esas guardias; (2) INFERIDO exige
+    derivacion no vacia, pero no prueba el calculo (trazabilidad, no
+    validacion del metodo); (3) codigo hostil ejecutandose dentro del proceso
+    puede manipular atributos privados o guards - estas defensas cubren la
+    API normal, no un adversario con ejecucion arbitraria.
+    """
+
+    __tablename__ = "fact_anchors"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "accession_number",
+            "filename",
+            "field",
+            "quote_offset",
+            "body_sha256",
+            name="uq_fact_anchors_tenant_point",
+        ),
+        Index("ix_fact_anchors_company", "company_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    accession_number: Mapped[str] = mapped_column(String(40), index=True)
+    filename: Mapped[str] = mapped_column(String(255))
+    body_sha256: Mapped[str] = mapped_column(String(64))
+    field: Mapped[str] = mapped_column(String(80))
+    value_text: Mapped[str] = mapped_column(String(2000))
+    label: Mapped[str] = mapped_column(String(10))
+    quote: Mapped[str] = mapped_column(Text)
+    quote_offset: Mapped[int] = mapped_column(Integer)
+    item: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    extractor: Mapped[str] = mapped_column(String(120))
+    derivation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    company_id: Mapped[int | None] = mapped_column(
+        ForeignKey("companies.id"), nullable=True
+    )
+
+    def __init__(self, *_args: object, _token: object = None, **kwargs: object) -> None:
+        # Cerrado a cal y canto: la unica construccion valida pasa por
+        # from_spec, que es quien verifica. SQLAlchemy no llama a __init__
+        # al cargar filas, asi que la lectura no se ve afectada.
+        from app.services.fact_anchor import FactAnchorError
+
+        if _token is not _FROM_SPEC_TOKEN:
+            raise FactAnchorError(
+                "FactAnchor solo se crea con FactAnchor.from_spec(spec, body=...): "
+                "el constructor directo no esta verificado"
+            )
+        super().__init__(**kwargs)
+
+    @classmethod
+    def from_spec(
+        cls,
+        spec: "FactAnchorSpec",
+        *,
+        body: str,
+        tenant_id: int | None,
+        company_id: int | None = None,
+    ) -> "FactAnchor":
+        """Unica via verificada de persistir un ancla.
+
+        Re-verifica el spec contra el body ORIGINAL en el momento de
+        persistir: un spec manipulado (dataclasses.replace o construido a
+        mano) que no ancla el valor en el filing no llega a la base de datos.
+        """
+        from app.services.fact_anchor import FactAnchorError, verify_anchor
+
+        if not verify_anchor(body, spec):
+            raise FactAnchorError(
+                "el spec no verifica contra el body del filing: no se persiste"
+            )
+        anchor = cls(
+            _token=_FROM_SPEC_TOKEN,
+            tenant_id=tenant_id,
+            company_id=company_id,
+            accession_number=spec.accession,
+            filename=spec.filename,
+            body_sha256=spec.body_sha256,
+            field=spec.field,
+            value_text=spec.value_text,
+            label=spec.label,
+            quote=spec.quote,
+            quote_offset=spec.quote_offset,
+            item=spec.item,
+            extractor=spec.extractor,
+            derivation=spec.derivation,
+        )
+        # El body verificado queda retenido en memoria (transitorio, nunca se
+        # persiste): before_insert re-verifica la fila ACTUAL contra el con
+        # verify_anchor. Una huella recalculable de la propia fila no vale:
+        # la misma instancia podria rehacerla tras mutarla.
+        anchor._verified_body = body
+        return anchor
+
+
+@event.listens_for(FactAnchor, "before_update", propagate=True)
+def _fact_anchor_no_update(mapper, connection, target):  # noqa: ANN001, ANN202
+    from app.services.fact_anchor import FactAnchorError
+
+    raise FactAnchorError("fact_anchors es append-only: UPDATE prohibido")
+
+
+@event.listens_for(FactAnchor, "before_delete", propagate=True)
+def _fact_anchor_no_delete(mapper, connection, target):  # noqa: ANN001, ANN202
+    from app.services.fact_anchor import FactAnchorError
+
+    raise FactAnchorError("fact_anchors es append-only: DELETE prohibido")
+
+
+@event.listens_for(FactAnchor, "before_insert", propagate=True)
+def _fact_anchor_revalidate_on_insert(mapper, connection, target):  # noqa: ANN001, ANN202
+    """Al persistir se RE-VERIFICA la fila actual contra el body retenido
+    desde from_spec (verify_anchor completo, no un checksum): mutar
+    value/quote/hash/label/item entre construccion y flush no persiste.
+
+    Limite honesto: esto defiende la API normal de la aplicacion. Python
+    hostil con ejecucion arbitraria dentro del proceso puede tocar atributos
+    privados o desactivar guards; contra eso no se promete defensa.
+    """
+    from app.services.fact_anchor import (
+        FactAnchorError,
+        FactAnchorSpec,
+        verify_anchor,
+    )
+
+    body = getattr(target, "_verified_body", None)
+    if body is None:
+        raise FactAnchorError(
+            "fact_anchors: fila sin body verificado; reconstruye con from_spec"
+        )
+    current = FactAnchorSpec(
+        accession=target.accession_number,
+        filename=target.filename,
+        body_sha256=target.body_sha256,
+        field=target.field,
+        value_text=target.value_text,
+        label=target.label,
+        quote=target.quote,
+        quote_offset=target.quote_offset,
+        item=target.item,
+        extractor=target.extractor,
+        derivation=target.derivation,
+    )
+    if not verify_anchor(body, current):
+        raise FactAnchorError(
+            "fact_anchors: la fila fue modificada tras la verificacion; "
+            "reconstruye con from_spec"
+        )
+
+
+@event.listens_for(Session, "do_orm_execute")
+def _fact_anchor_no_bulk_dml(orm_execute_state):  # noqa: ANN001, ANN202
+    """El DML masivo del ORM (update()/delete() en lote) salta los eventos por
+    fila; aqui se bloquea para fact_anchors. Limite declarado: SQL Core crudo
+    fuera de la sesion ORM."""
+    from sqlalchemy import Delete, Update
+
+    statement = orm_execute_state.statement
+    if not isinstance(statement, (Update, Delete)):
+        return
+    table = getattr(statement, "table", None)
+    if table is not None and getattr(table, "name", None) == FactAnchor.__table__.name:
+        from app.services.fact_anchor import FactAnchorError
+
+        raise FactAnchorError(
+            "fact_anchors es append-only: DML masivo del ORM prohibido"
+        )
 
 
 class NewsEvent(TenantOwnedMixin, Base, TimestampMixin):
