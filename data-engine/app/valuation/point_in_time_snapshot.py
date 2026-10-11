@@ -154,8 +154,9 @@ class PointInTimeSnapshotBuilder:
     def _published_dates(self, db: Session, company_id: int) -> dict[int, date | None]:
         """Publication date per source document, in one query.
 
-        A fact whose source has no ``published_at`` is not automatically
-        discarded: the period end still bounds it from below. But we never
+        A fact whose source has no published_at is unusable in a replay:
+        the period end is only a lower bound on when it could have become
+        public, so the builder abstains. But we never
         pretend the filing date exists, so the audit shows ``published_on:
         null`` and the cell is flagged as unverifiable-provenance.
         """

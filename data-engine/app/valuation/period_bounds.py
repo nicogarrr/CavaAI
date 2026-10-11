@@ -288,16 +288,20 @@ def resolve_as_of(
     ``AS_OF_SOURCE_TODAY_DEFAULT`` was *not* a replay of that day, it was a
     valuation with no date attached.
     """
-    snapshot_as_of = ((trace or {}).get("snapshot") or {}).get("as_of")
     for value, source in (
         (as_of, AS_OF_SOURCE_EXPLICIT),
         ((valuation or {}).get("as_of"), AS_OF_SOURCE_VALUATION),
         ((trace or {}).get("as_of"), AS_OF_SOURCE_TRACE),
-        (snapshot_as_of, AS_OF_SOURCE_TRACE),
     ):
         parsed = to_date(value)
         if parsed is not None:
             return AsOfResolution(cutoff=parsed, source=source, inferred=False)
+    # La rama snapshot solo se examina si las superiores no resolvieron, y un
+    # snapshot malformado (lista/str/numero) nunca rompe la resolucion.
+    snapshot = (trace or {}).get("snapshot")
+    parsed = to_date(snapshot.get("as_of") if isinstance(snapshot, dict) else None)
+    if parsed is not None:
+        return AsOfResolution(cutoff=parsed, source=AS_OF_SOURCE_TRACE, inferred=False)
     return AsOfResolution(
         cutoff=today or date.today(),
         source=AS_OF_SOURCE_TODAY_DEFAULT,
