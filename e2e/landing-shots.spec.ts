@@ -55,10 +55,13 @@ async function landingAsentada(page: import("@playwright/test").Page, alts: RegE
   }
   // Esas imágenes con píxeles de verdad (naturalWidth), no solo en el DOM.
   await page.waitForFunction(
-    (wanted) =>
-      Array.from(document.querySelectorAll("img"))
-        .filter((i) => wanted.some((w) => i.alt.includes(w)))
-        .every((i) => i.complete && i.naturalWidth > 0),
+    (wanted) => {
+      const matches = Array.from(document.querySelectorAll("img")).filter((i) =>
+        wanted.some((w) => i.alt.includes(w)),
+      );
+      // Sin el count, una lista vacía pasaría el every() sin haber visto nada.
+      return matches.length === wanted.length && matches.every((i) => i.complete && i.naturalWidth > 0);
+    },
     alts.map((a) => a.source),
   );
   // Tipografías cargadas: el ancho del texto cambia con la fuente y el overflow
@@ -78,9 +81,24 @@ test("landing shots: landing movil fullpage", async ({ page }) => {
   await page.goto("/");
   await landingAsentada(page, [/Ficha de empresa de CavaAI/, /CavaAI en móvil/]);
   // Sin desbordamiento horizontal: el layout debe caber en 390px de verdad.
-  const overflow = await page.evaluate(
-    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
-  );
-  expect(overflow).toBeLessThanOrEqual(1);
+  // El mensaje nombra a los culpables: la próxima CI roja dice QUÉ se sale,
+  // no solo cuánto.
+  const overflowInfo = await page.evaluate(() => {
+    const doc = document.documentElement;
+    const offenders = Array.from(document.querySelectorAll("body *"))
+      .map((el) => ({ el, r: el.getBoundingClientRect() }))
+      .filter(({ r }) => r.right > doc.clientWidth + 1 || r.left < -1)
+      .slice(0, 8)
+      .map(({ el, r }) => {
+        const cls = typeof el.className === "string" ? el.className.trim().slice(0, 60) : "";
+        const txt = (el.textContent ?? "").trim().slice(0, 40);
+        return `${el.tagName.toLowerCase()}${cls ? "." + cls : ""} [${Math.round(r.left)}..${Math.round(r.right)}] "${txt}"`;
+      });
+    return { excess: doc.scrollWidth - doc.clientWidth, scrollWidth: doc.scrollWidth, clientWidth: doc.clientWidth, offenders };
+  });
+  expect(
+    overflowInfo.excess,
+    `overflow: scrollWidth=${overflowInfo.scrollWidth} client=${overflowInfo.clientWidth}; offenders: ${overflowInfo.offenders.join(" | ") || "ninguno >1px"}`,
+  ).toBeLessThanOrEqual(1);
   await page.screenshot({ path: "test-results/landing-page-mobile.png", fullPage: true });
 });
