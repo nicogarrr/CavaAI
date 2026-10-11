@@ -702,6 +702,45 @@ class MarketPrice(Base, TimestampMixin):
     source: Mapped[str] = mapped_column(String(80), default="seed")
 
 
+class FactAnchor(TenantOwnedMixin, Base, TimestampMixin):
+    """Dato extraido anclado a la frase exacta del filing (provenance a nivel dato).
+
+    Una fila por (tenant, accession, documento, campo, desplazamiento). La
+    fila es inmutable: si el dato se re-extrae con otra cita, se inserta otra
+    fila y la anterior queda como historico. `label` distingue OFICIAL (la
+    frase lo dice literalmente) de INFERIDO (calculo propio etiquetado); la
+    ausencia de dato no produce fila (nunca un 0).
+    """
+
+    __tablename__ = "fact_anchors"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "accession_number",
+            "filename",
+            "field",
+            "quote_offset",
+            name="uq_fact_anchors_tenant_point",
+        ),
+        Index("ix_fact_anchors_company", "company_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    accession_number: Mapped[str] = mapped_column(String(40), index=True)
+    filename: Mapped[str] = mapped_column(String(255))
+    body_sha256: Mapped[str] = mapped_column(String(64))
+    field: Mapped[str] = mapped_column(String(80))
+    value_text: Mapped[str] = mapped_column(String(2000))
+    label: Mapped[str] = mapped_column(String(10))
+    quote: Mapped[str] = mapped_column(Text)
+    quote_offset: Mapped[int] = mapped_column(Integer)
+    item: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    extractor: Mapped[str] = mapped_column(String(120))
+    company_id: Mapped[int | None] = mapped_column(
+        ForeignKey("companies.id"), nullable=True
+    )
+
+
 class NewsEvent(TenantOwnedMixin, Base, TimestampMixin):
     __tablename__ = "news_events"
     __table_args__ = (
