@@ -296,10 +296,11 @@ def test_unknown_country_excluded_from_fiscal_year(db):
     out = DividendProjectionService().project(db, months=12)
 
     assert out["coverage"]["unknown_source_withholding"] == ["NSR"]
+    assert out["fiscal_by_year"], "el ano con todo excluido debe tener fila"
     for fiscal in out["fiscal_by_year"].values():
-        assert fiscal["gross_base"] == 0.0
-        assert fiscal["irpf_scenario"] is None or "NSR" not in fiscal["covered_tickers"]
-        assert "NSR" in fiscal["excluded_tickers"] or fiscal["gross_base"] == 0.0
+        assert fiscal["gross_base"] is None
+        assert fiscal["covered_tickers"] == []
+        assert "NSR" in fiscal["excluded_tickers"]
 
 
 def test_annual_cycle_not_duplicated_at_boundaries(db):
@@ -317,3 +318,98 @@ def test_annual_cycle_not_duplicated_at_boundaries(db):
     pos = out["positions"][0]
     assert pos["frequency_last_year"] == 1
     assert pos["gross_native"] == pytest.approx(10.0)
+
+
+class _FakeDate(date):
+    """date con today() fijado para probar el clamp del horizonte."""
+
+    _today = date(2026, 1, 31)
+
+    @classmethod
+    def today(cls):
+        return cls._today
+
+
+def _patch_today(monkeypatch, value):
+    _FakeDate._today = value
+    monkeypatch.setattr("app.services.dividend_projection_service.date", _FakeDate)
+
+
+def test_end_date_clamp_jan31(db, monkeypatch):
+    _patch_today(monkeypatch, date(2026, 1, 31))
+    out = DividendProjectionService().project(db, months=1)
+    assert out["months"][-1]["month"] == "2026-02"
+
+
+def test_end_date_clamp_feb29_leap(db, monkeypatch):
+    _patch_today(monkeypatch, date(2028, 2, 29))
+    out = DividendProjectionService().project(db, months=12)
+    assert out["months"][-1]["month"] == "2029-02"
+
+
+def test_horizon_13_months(db, monkeypatch):
+    _patch_today(monkeypatch, date(2026, 12, 31))
+    out = DividendProjectionService().project(db, months=13)
+    assert out["months"][-1]["month"] == "2028-01"
+
+
+def test_cuota_pendiente_us_deduces_di(db):
+    company = _company(db)
+    _position(db, company, quantity="100")
+    today = date.today()
+    _dividend(db, company, today - timedelta(days=90), "10.00")
+    _fx(db, rate="1.0")
+
+    out = DividendProjectionService().project(db, months=12)
+
+    year = str(today.year + 1)
+    fiscal = out["fiscal_by_year"][year]
+    # 1.000 EUR brutos: IRPF 190, DI 150, a cuenta 0 -> pendiente 40.
+    assert fiscal["irpf_scenario"] == pytest.approx(190.0)
+    assert fiscal["double_tax_deduction"] == pytest.approx(150.0)
+    assert fiscal["retencion_a_cuenta_es"] == pytest.approx(0.0)
+    assert fiscal["cuota_pendiente_estimada"] == pytest.approx(40.0)
+    assert fiscal["net_scenario"] == pytest.approx(1000.0 - 190.0)
+
+
+def test_cuota_pendiente_mixed_es_us(db):
+    es = _company(db, ticker="ESCO", currency="EUR", country="ES")
+    _position(db, es, quantity="100", currency="EUR")
+    us = _company(db, ticker="USCO", currency="USD", country="US")
+    _position(db, us, quantity="100", currency="USD")
+    today = date.today()
+    _dividend(db, es, today - timedelta(days=90), "1.00", currency="EUR")
+    _dividend(db, us, today - timedelta(days=90), "1.00")
+    _fx(db, quote="USD", base="EUR", rate="1.0")
+    _fx(db, quote="EUR", base="EUR", rate="1.0")
+
+    out = DividendProjectionService().project(db, months=12)
+
+    year = str(today.year + 1)
+    fiscal = out["fiscal_by_year"][year]
+    # 200 EUR (100 ES + 100 US): IRPF 38, DI 15, a cuenta 19 -> pendiente 4.
+    assert fiscal["gross_base"] == pytest.approx(200.0)
+    assert fiscal["irpf_scenario"] == pytest.approx(38.0)
+    assert fiscal["double_tax_deduction"] == pytest.approx(15.0)
+    assert fiscal["retencion_a_cuenta_es"] == pytest.approx(19.0)
+    assert fiscal["cuota_pendiente_estimada"] == pytest.approx(4.0)
+    assert fiscal["net_scenario"] == pytest.approx(200.0 - 38.0)
+
+
+def test_fiscal_year_with_only_excluded_positions_shows_row(db):
+    company = _company(db, ticker="NSR", country="JP")
+    _position(db, company)
+    today = date.today()
+    _dividend(db, company, today - timedelta(days=100), "5.00")
+    _fx(db)
+
+    out = DividendProjectionService().project(db, months=12)
+
+    assert out["fiscal_by_year"], "el ano con todo excluido debe tener fila"
+    row = list(out["fiscal_by_year"].values())[0]
+    assert row["covered_tickers"] == []
+    assert row["excluded_tickers"] == ["NSR"]
+    assert row["gross_base"] is None
+    assert row["irpf_scenario"] is None
+    assert row["net_scenario"] is None
+    assert "Sin datos" in row["note"]

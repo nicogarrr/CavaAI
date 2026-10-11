@@ -43,6 +43,7 @@ explícito, no el total de la cartera.
 
 from __future__ import annotations
 
+import calendar
 import math
 from collections import defaultdict
 from datetime import date
@@ -88,6 +89,8 @@ _METHOD_NOTE = (
 _FISCAL_CONDITIONS = [
     "Residencia fiscal en España asumida.",
     "W-8BEN vigente asumido para dividendos US (sin W-8BEN el tipo sería 30 %).",
+    "Tipo de dividendo ordinario asumido: no se verifica la categoría (REIT, ADR, ETF, PID pueden tener tratamiento distinto) y no se deduce del domicilio.",
+    "Los tipos de retención son escenario (Anexo III AEAT: convenio US 0/15 segên condiciones), no verificación particular de cada pago.",
     "Única renta del ahorro del año asumida; el IRPF real depende del resto de la base.",
     "Escala del ahorro de la Renta 2025 aplicada a años futuros (hipótesis, sujeta a cambio legislativo).",
     "La retención ES del 19 % es pago a cuenta, no impuesto extranjero ni deducción por doble imposición.",
@@ -113,8 +116,9 @@ class DividendProjectionService:
         # Horizonte exacto por fechas: [today, today + months meses], ambos
         # inclusive. Los buckets mensuales cubren desde el mes actual hasta
         # el mes del fin (pueden ser months+1 buckets en la frontera).
-        end_month = today.month + months
-        end = date(today.year + (end_month - 1) // 12, (end_month - 1) % 12 + 1, today.day)
+        end_year = today.year + (today.month + months - 1) // 12
+        end_mon = (today.month + months - 1) % 12 + 1
+        end = date(end_year, end_mon, min(today.day, calendar.monthrange(end_year, end_mon)[1]))
         window: list[str] = []
         y, m = today.year, today.month
         while (y, m) <= (end.year, end.month):
@@ -194,7 +198,7 @@ class DividendProjectionService:
                         "currency": record.currency,
                         "label": "INGESTADO",
                         "source": record.source,
-                        "ingested_as_of": today.isoformat(),
+                        "projection_as_of": today.isoformat(),
                         "note": "Declarado con ex_date futura según el proveedor de datos "
                                 "(no verificado contra fuente primaria); no alimenta la réplica.",
                     }
@@ -281,20 +285,36 @@ class DividendProjectionService:
         # posiciones fiscalmente cubiertas; excluidas se listan y su parte
         # queda N/D, nunca agregada como cero.
         fiscal_years: dict[int, dict[str, Any]] = {}
-        all_years = sorted(
-            {year for year, _ in yearly_position_gross}
-            | {year for year, _ in yearly_a_cuenta}
-        )
         # Tickers excluidos por ano (con dividendo proyectado pero sin fx o
         # sin retencion verificada): se recogen de los buckets mensuales.
         excluded_by_year: dict[int, set] = defaultdict(set)
         for key, bucket in month_totals.items():
             for t in bucket["excluded"]:
                 excluded_by_year[int(key[:4])].add(t)
+        all_years = sorted(
+            {year for year, _ in yearly_position_gross}
+            | {year for year, _ in yearly_a_cuenta}
+            | set(excluded_by_year)
+        )
         for year in all_years:
             tickers = [t for y, t in yearly_position_gross if y == year]
             year_gross = sum(yearly_position_gross[(year, t)] for t in tickers)
             excluded = sorted(excluded_by_year.get(year, set()))
+            if year_gross <= 0 and excluded:
+                fiscal_years[year] = {
+                    "gross_base": None,
+                    "irpf_scenario": None,
+                    "source_withheld_foreign": None,
+                    "retencion_a_cuenta_es": None,
+                    "double_tax_deduction": None,
+                    "cuota_pendiente_estimada": None,
+                    "net_scenario": None,
+                    "covered_tickers": [],
+                    "excluded_tickers": excluded,
+                    "note": "Sin datos: todas las posiciones con dividendo proyectado "
+                            "este ano carecen de fx o de retencion verificada (N/D, no cero).",
+                }
+                continue
             if not fiscal_ok or year_gross <= 0:
                 fiscal_years[year] = {
                     "gross_base": float(year_gross),
@@ -337,9 +357,10 @@ class DividendProjectionService:
                     "retencion_a_cuenta_base": float(a_cuenta_t),
                     "double_tax_deduction_base": float(deduction_t),
                 }
-            # Cuota pendiente: el IRPF menos lo ya retenido a cuenta (ES).
-            # Puede salir negativo (devolucion estimada).
-            cuota_pendiente = irpf_total - a_cuenta_total
+            # Cuota pendiente de ingresar: IRPF menos deduccion por doble
+            # imposicion y menos lo ya retenido a cuenta (ES). Puede salir
+            # negativo (devolucion estimada).
+            cuota_pendiente = irpf_total - deduction_total - a_cuenta_total
             # Neto = bruto - impuesto total soportado. El pago a cuenta ES no
             # es un impuesto adicional: es anticipo de la cuota IRPF, asi que
             # el coste fiscal total es IRPF + extranjero - deduccion DI.
