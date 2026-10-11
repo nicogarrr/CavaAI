@@ -721,7 +721,9 @@ class FactAnchor(TenantOwnedMixin, Base, TimestampMixin):
     historico. Limites declarados: (1) SQL crudo Core sobre la conexion,
     fuera de la sesion ORM, no pasa por esas guardias; (2) INFERIDO exige
     derivacion no vacia, pero no prueba el calculo (trazabilidad, no
-    validacion del metodo).
+    validacion del metodo); (3) codigo hostil ejecutandose dentro del proceso
+    puede manipular atributos privados o guards - estas defensas cubren la
+    API normal, no un adversario con ejecucion arbitraria.
     """
 
     __tablename__ = "fact_anchors"
@@ -804,30 +806,12 @@ class FactAnchor(TenantOwnedMixin, Base, TimestampMixin):
             extractor=spec.extractor,
             derivation=spec.derivation,
         )
-        # Huella de los campos tal como se verificaron: before_insert la
-        # revalida, asi mutar la fila entre construccion y flush no persiste.
-        anchor._verified_fingerprint = anchor._field_fingerprint()
+        # El body verificado queda retenido en memoria (transitorio, nunca se
+        # persiste): before_insert re-verifica la fila ACTUAL contra el con
+        # verify_anchor. Una huella recalculable de la propia fila no vale:
+        # la misma instancia podria rehacerla tras mutarla.
+        anchor._verified_body = body
         return anchor
-
-    def _field_fingerprint(self) -> str:
-        import hashlib
-
-        fields = (
-            self.tenant_id,
-            self.company_id,
-            self.accession_number,
-            self.filename,
-            self.body_sha256,
-            self.field,
-            self.value_text,
-            self.label,
-            self.quote,
-            self.quote_offset,
-            self.item,
-            self.extractor,
-            self.derivation,
-        )
-        return hashlib.sha256(repr(fields).encode()).hexdigest()
 
 
 @event.listens_for(FactAnchor, "before_update", propagate=True)
@@ -846,13 +830,39 @@ def _fact_anchor_no_delete(mapper, connection, target):  # noqa: ANN001, ANN202
 
 @event.listens_for(FactAnchor, "before_insert", propagate=True)
 def _fact_anchor_revalidate_on_insert(mapper, connection, target):  # noqa: ANN001, ANN202
-    """La verificacion es al CONSTRUIR; la persistencia revalida que la fila
-    sigue exactamente como se verifico (mutar value/quote/hash/label/item
-    antes del flush ya no persiste)."""
-    from app.services.fact_anchor import FactAnchorError
+    """Al persistir se RE-VERIFICA la fila actual contra el body retenido
+    desde from_spec (verify_anchor completo, no un checksum): mutar
+    value/quote/hash/label/item entre construccion y flush no persiste.
 
-    expected = getattr(target, "_verified_fingerprint", None)
-    if expected is None or expected != target._field_fingerprint():
+    Limite honesto: esto defiende la API normal de la aplicacion. Python
+    hostil con ejecucion arbitraria dentro del proceso puede tocar atributos
+    privados o desactivar guards; contra eso no se promete defensa.
+    """
+    from app.services.fact_anchor import (
+        FactAnchorError,
+        FactAnchorSpec,
+        verify_anchor,
+    )
+
+    body = getattr(target, "_verified_body", None)
+    if body is None:
+        raise FactAnchorError(
+            "fact_anchors: fila sin body verificado; reconstruye con from_spec"
+        )
+    current = FactAnchorSpec(
+        accession=target.accession_number,
+        filename=target.filename,
+        body_sha256=target.body_sha256,
+        field=target.field,
+        value_text=target.value_text,
+        label=target.label,
+        quote=target.quote,
+        quote_offset=target.quote_offset,
+        item=target.item,
+        extractor=target.extractor,
+        derivation=target.derivation,
+    )
+    if not verify_anchor(body, current):
         raise FactAnchorError(
             "fact_anchors: la fila fue modificada tras la verificacion; "
             "reconstruye con from_spec"

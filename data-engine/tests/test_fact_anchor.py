@@ -291,6 +291,16 @@ class TestFactAnchorModel:
         assert loaded.value_text == "$54.20"
         assert loaded.item == "Item 1.01"
 
+    def test_rehacer_la_verificacion_tras_mutar_no_abre_puerta(self, session):
+        # El bypass del auditor r4: mutar y "re-sellar" la fila no vale -
+        # la revalidacion va contra el body retenido, no contra un checksum.
+        row = FactAnchor.from_spec(_build(), body=BODY, tenant_id=None)
+        row.value_text = "$99.99"
+        session.add(row)
+        with pytest.raises(FactAnchorError):
+            session.commit()
+        session.rollback()
+
     def test_from_spec_persiste_los_campos_del_builder(self, session):
         row = self._row(session)
         assert row.id is not None
