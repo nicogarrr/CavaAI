@@ -141,6 +141,7 @@ RESPONSE_SCHEMA = {
 
 
 _CURRENCY_WORDS = r"(?:USD|EUR|GBP|JPY|CHF|dólares?|dolares?|euros?|libras?)"
+_CURRENCY_WORDS_RE = re.compile(rf"\b" + _CURRENCY_WORDS + r"\b", re.IGNORECASE)
 # Cifra junto a divisa (cualquier orden, con hasta dos palabras de escala
 # como "millones" en medio): la ruta general NO emite datos de mercado
 # cuantitativos, asi que basta detectar su presencia para abstenerse.
@@ -149,6 +150,30 @@ _MONEY_NEAR_RE = re.compile(
     re.IGNORECASE,
 )
 _PERCENT_RE = re.compile(r"[-+−]?\d[\d.,]*\s*%")
+# Ronda 6 auditor: candado semantico, no mas formatos de numero. La ruta
+# general no publica afirmaciones de mercado/cartera actuales en NINGUN
+# formato: la cifra puede ir sin divisa ("cotiza a 999"), deletreada
+# ("novecientos dolares"), con signo ("$-999") o con un codigo no listado
+# ("999CAD"). Se bloquea la AFIRMACION (ticker/posicion + verbo de estado
+# de mercado), no el numero. La prosa conceptual (que es el PER, como
+# funciona X) sigue natural: sin ticker ni posicion propia no hay candado.
+_MARKET_CLAIM_VERB_RE = re.compile(
+    r"(?i)\b(cotiza|cotizan|cotizando|cotizaci[oó]n|cotizad[oa]s?|vale|valen|"
+    r"sube|suben|ha subido|han subido|baja|bajan|ha bajado|han bajado|"
+    r"cae|caen|rinde|rinden|se paga|se pagan|precio de mercado)\b"
+)
+_TICKER_TOKEN_RE = re.compile(r"\b[A-Z]{2,5}\b")
+_TICKER_ALLOWLIST = frozenset(
+    {
+        "PER", "ROE", "ROA", "ROIC", "ETF", "PEG", "EPS", "IPO", "ROI",
+        "CAGR", "YTD", "USD", "EUR", "GBP", "JPY", "CHF", "API", "OK",
+        "FCF", "TIR", "BPA", "IV", "CAD", "AUD", "NZD", "SEK", "NOK",
+    }
+)
+_PORTFOLIO_CLAIM_RE = re.compile(
+    r"(?i)\b(?:tu|mi|su|vuestra|nuestra)\s+"
+    r"(?:rentabilidad|rendimiento|cartera|posici[oó]n|posiciones|inversi[oó]n)\b"
+)
 _FINANCIAL_HINT_RE = re.compile(
     r"(?i)\b(rentabilidad|beneficio|dividendo|margen|crecimiento|cotiza(?:ción|do)?|"
     r"precio|sube|subida|baja|caída|cae|earnings|valoración|PER|market cap)\b"
@@ -471,6 +496,18 @@ class ChatSynthesisService:
             return False
         if _FINANCIAL_HINT_RE.search(text) and _PERCENT_RE.search(text):
             return False
+        # Candado semantico (ronda 6): afirmacion de mercado/cartera actual,
+        # con o sin cifra detectable.
+        if _PORTFOLIO_CLAIM_RE.search(text):
+            return False
+        if _MARKET_CLAIM_VERB_RE.search(text):
+            tickers = {
+                token
+                for token in _TICKER_TOKEN_RE.findall(text)
+                if token not in _TICKER_ALLOWLIST
+            }
+            if tickers or _CURRENCY_WORDS_RE.search(text):
+                return False
         return True
 
     @staticmethod

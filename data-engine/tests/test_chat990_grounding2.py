@@ -46,6 +46,27 @@ def test_auditor_round5_repros():
     assert not _grounded("ASTS cotiza a 1999GBP [market_price:mp1]", SRC)
 
 
+def test_auditor_round6_repros():
+    # Candado semantico: la AFIRMACION de mercado/cartera se bloquea en
+    # cualquier formato, no solo cuando la cifra es detectable.
+    assert not _grounded("ASTS cotiza a 999", [])  # sin moneda
+    assert not _grounded("ASTS cotiza a novecientos dólares", [])  # deletreada
+    assert not _grounded(
+        "Tu rentabilidad es del treinta y cinco por ciento", []
+    )  # cartera sin cifra numerica
+    assert not _grounded("ASTS cotiza a $-999", [])  # signo
+    assert not _grounded("ASTS cotiza a 999CAD", [])  # divisa no listada
+    assert not _grounded("Microsoft cotiza a novecientos dólares", [])  # sin ticker
+    assert not _grounded("AAPL ha subido mucho esta semana", [])  # sin cifra
+    assert not _grounded("Mi cartera va muy bien este año", [])  # posicion propia
+
+
+def test_round6_conceptual_stays_natural():
+    assert _grounded("El PER es el precio dividido por beneficio.", [])
+    assert _grounded("La cotización bursátil refleja expectativas.", [])
+    assert _grounded("Un ETF replica un índice.", [])
+
+
 def test_fabricated_citation_still_rejected():
     assert not _grounded("El cielo es azul [market_price:999999].", SRC)
 
