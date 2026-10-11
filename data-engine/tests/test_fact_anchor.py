@@ -1,12 +1,15 @@
 """Tests adversariales del anclaje de datos a la frase exacta del filing.
 
-Regla de la casa: un dato sin ancla verificable no se publica; lo inferido se
-etiqueta INFERIDO; la ausencia nunca se representa como 0 ni como cadena vacia.
+Regla de la casa: un dato sin ancla verificable no se publica; OFICIAL exige
+el valor literal en la cita; INFERIDO exige derivacion trazable; la ausencia
+nunca se representa como 0 ni como cadena vacia.
 """
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 
-from app.models.entities import FactAnchor
+from app.models.entities import Company, FactAnchor, Tenant
 from app.services.fact_anchor import (
     FactAnchorError,
     FactAnchorSpec,
@@ -27,6 +30,8 @@ BODY = (
     "(d) Exhibits. Exhibit 2.1 Agreement and Plan of Merger.\n"
 )
 
+QUOTE = "will receive $54.20 in cash for each share of Beta common stock."
+
 
 def _build(**over):
     args = dict(
@@ -36,7 +41,7 @@ def _build(**over):
         field="offer_price",
         value_text="$54.20",
         label="OFICIAL",
-        quote="will receive $54.20 in cash for each share of Beta common stock.",
+        quote=QUOTE,
         extractor="instinct/test-1.0",
     )
     args.update(over)
@@ -105,9 +110,6 @@ class TestBuildAnchor:
         with pytest.raises(FactAnchorError, match="Etiqueta"):
             _build(label="MAS_O_MENOS_OFICIAL")
 
-    def test_inferido_es_etiqueta_valida(self):
-        assert _build(label="INFERIDO").label == "INFERIDO"
-
     def test_valor_vacio_es_error_la_ausencia_nunca_es_cadena_vacia(self):
         with pytest.raises(FactAnchorError, match="valor"):
             _build(value_text="   ")
@@ -116,42 +118,133 @@ class TestBuildAnchor:
         with pytest.raises(FactAnchorError):
             _build(field=" ")
 
+    @pytest.mark.parametrize("campo", ["accession", "filename", "extractor"])
+    def test_identidad_vacia_es_error(self, campo):
+        with pytest.raises(FactAnchorError):
+            _build(**{campo: "  "})
+
     def test_cita_que_no_esta_en_el_documento_no_ancla(self):
         with pytest.raises(FactAnchorError):
             _build(quote="will receive $99.99 in cash")
+
+    def test_oficial_exige_valor_literal_en_la_cita(self):
+        with pytest.raises(FactAnchorError, match="literal"):
+            _build(value_text="$99.99")
+
+    def test_oficial_rechaza_normalizacion_no_literal(self):
+        # "54,20 EUR" no aparece literal en la cita: no es OFICIAL.
+        with pytest.raises(FactAnchorError, match="INFERIDO"):
+            _build(value_text="54,20 EUR")
+
+    def test_inferido_exige_derivacion_trazable(self):
+        with pytest.raises(FactAnchorError, match="derivation"):
+            _build(label="INFERIDO", value_text="54.20")
+
+    def test_inferido_con_derivacion_es_valido(self):
+        anchor = _build(
+            label="INFERIDO",
+            value_text="54.20",
+            derivation="strip del signo $ sobre la cita anclada",
+        )
+        assert anchor.label == "INFERIDO"
+        assert anchor.derivation
+
+    def test_item_declarado_que_contradice_la_estructura_es_error(self):
+        with pytest.raises(FactAnchorError, match="contradice"):
+            _build(item="Item 8.01")
+
+    def test_item_declarado_coherente_es_aceptado(self):
+        assert _build(item="Item 1.01").item == "Item 1.01"
 
 
 class TestVerifyAnchor:
     def test_ancla_valida_verifica(self):
         assert verify_anchor(BODY, _build()) is True
 
-    def test_documento_distinto_no_verifica_por_sha(self):
+    def _tampered(self, **over):
         anchor = _build()
-        assert verify_anchor(BODY + " ", anchor) is False
+        return FactAnchorSpec(**{**anchor.__dict__, **over})
+
+    def test_documento_distinto_no_verifica_por_sha(self):
+        assert verify_anchor(BODY + " ", _build()) is False
 
     def test_offset_manipulado_no_verifica(self):
-        anchor = _build()
-        moved = FactAnchorSpec(
-            **{**anchor.__dict__, "quote_offset": anchor.quote_offset - 1}
-        )
-        assert verify_anchor(BODY, moved) is False
+        anchor = self._tampered(quote_offset=_build().quote_offset - 1)
+        assert verify_anchor(BODY, anchor) is False
 
     def test_cita_manipulada_no_verifica(self):
-        anchor = _build()
-        tampered = FactAnchorSpec(**{**anchor.__dict__, "quote": anchor.quote.replace("54.20", "54.21")})
-        assert verify_anchor(BODY, tampered) is False
+        anchor = self._tampered(quote=QUOTE.replace("54.20", "54.21"))
+        assert verify_anchor(BODY, anchor) is False
+
+    def test_valor_manipulado_no_verifica_aunque_la_cita_sea_real(self):
+        anchor = self._tampered(value_text="$99.99")
+        assert verify_anchor(BODY, anchor) is False
+
+    def test_etiqueta_invalida_no_verifica(self):
+        assert verify_anchor(BODY, self._tampered(label="MAS_O_MENOS")) is False
+
+    def test_cita_vacia_no_verifica(self):
+        assert verify_anchor(BODY, self._tampered(quote="", quote_offset=-1)) is False
+
+    def test_item_inventado_no_verifica(self):
+        assert verify_anchor(BODY, self._tampered(item="Item 8.01")) is False
+
+    def test_cita_duplicada_en_el_documento_no_verifica(self):
+        body = BODY + "\n" + QUOTE + "\n"
+        # El sha ya no coincide: reconstruimos el spec con el sha del body nuevo.
+        anchor = self._tampered(body_sha256=sha256_text(body))
+        assert verify_anchor(body, anchor) is False
+
+    def test_inferido_sin_derivacion_no_verifica(self):
+        anchor = _build(label="INFERIDO", value_text="54.20", derivation="strip $")
+        assert verify_anchor(BODY, self._tampered(label="INFERIDO", derivation=None)) is False
+        assert verify_anchor(BODY, anchor) is True
 
 
 class TestFactAnchorModel:
-    def test_unicidad_incluye_tenant_como_el_resto_de_tablas(self):
+    def test_unicidad_incluye_tenant_y_version_del_documento(self):
         constraints = [
             c for c in FactAnchor.__table__.constraints if c.__class__.__name__ == "UniqueConstraint"
         ]
         assert any(
             [col.name for col in c.columns]
-            == ["tenant_id", "accession_number", "filename", "field", "quote_offset"]
+            == ["tenant_id", "accession_number", "filename", "field", "quote_offset", "body_sha256"]
             for c in constraints
         )
 
     def test_tenant_id_indexado(self):
         assert FactAnchor.__table__.c.tenant_id.index is True
+
+    @pytest.fixture()
+    def session(self):
+        engine = create_engine("sqlite:///:memory:")
+        Tenant.__table__.create(engine)
+        Company.__table__.create(engine)
+        FactAnchor.__table__.create(engine)
+        with Session(engine) as s:
+            yield s
+
+    def _row(self, session):
+        row = FactAnchor.from_spec(_build(), tenant_id=None)
+        session.add(row)
+        session.commit()
+        return row
+
+    def test_from_spec_persiste_los_campos_del_builder(self, session):
+        row = self._row(session)
+        assert row.id is not None
+        assert row.value_text == "$54.20"
+        assert row.item == "Item 1.01"
+        assert row.body_sha256 == sha256_text(BODY)
+
+    def test_update_de_una_fila_esta_bloqueado(self, session):
+        row = self._row(session)
+        row.value_text = "$99.99"
+        with pytest.raises(FactAnchorError):
+            session.commit()
+
+    def test_delete_de_una_fila_esta_bloqueado(self, session):
+        row = self._row(session)
+        session.delete(row)
+        with pytest.raises(FactAnchorError):
+            session.commit()

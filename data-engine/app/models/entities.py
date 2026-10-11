@@ -1,4 +1,5 @@
 from datetime import UTC, date, datetime
+from typing import TYPE_CHECKING
 
 # Alias para las columnas llamadas `date`. Dentro del cuerpo de una clase,
 # `date: Mapped[date]` hace que el anotado se refiera a la propia columna
@@ -20,10 +21,14 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    event,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+
+if TYPE_CHECKING:
+    from app.services.fact_anchor import FactAnchorSpec
 
 
 def utcnow() -> datetime:
@@ -705,11 +710,12 @@ class MarketPrice(Base, TimestampMixin):
 class FactAnchor(TenantOwnedMixin, Base, TimestampMixin):
     """Dato extraido anclado a la frase exacta del filing (provenance a nivel dato).
 
-    Una fila por (tenant, accession, documento, campo, desplazamiento). La
-    fila es inmutable: si el dato se re-extrae con otra cita, se inserta otra
-    fila y la anterior queda como historico. `label` distingue OFICIAL (la
-    frase lo dice literalmente) de INFERIDO (calculo propio etiquetado); la
-    ausencia de dato no produce fila (nunca un 0).
+    Append-only: los eventos ORM bloquean UPDATE y DELETE de filas; si el dato
+    se re-extrae, se inserta otra fila y la anterior queda como historico.
+    Limite declarado: DML masivo por SQL crudo (fuera del ORM) no pasa por esa
+    guardia. Las filas se crean con `FactAnchor.from_spec` sobre un
+    FactAnchorSpec construido por `services.fact_anchor.build_anchor`; el
+    constructor directo no queda verificado por el builder y no debe usarse.
     """
 
     __tablename__ = "fact_anchors"
@@ -720,6 +726,7 @@ class FactAnchor(TenantOwnedMixin, Base, TimestampMixin):
             "filename",
             "field",
             "quote_offset",
+            "body_sha256",
             name="uq_fact_anchors_tenant_point",
         ),
         Index("ix_fact_anchors_company", "company_id"),
@@ -736,9 +743,49 @@ class FactAnchor(TenantOwnedMixin, Base, TimestampMixin):
     quote_offset: Mapped[int] = mapped_column(Integer)
     item: Mapped[str | None] = mapped_column(String(40), nullable=True)
     extractor: Mapped[str] = mapped_column(String(120))
+    derivation: Mapped[str | None] = mapped_column(Text, nullable=True)
     company_id: Mapped[int | None] = mapped_column(
         ForeignKey("companies.id"), nullable=True
     )
+
+    @classmethod
+    def from_spec(
+        cls,
+        spec: "FactAnchorSpec",
+        *,
+        tenant_id: int | None,
+        company_id: int | None = None,
+    ) -> "FactAnchor":
+        """Unica via verificada de persistir un ancla (spec del builder)."""
+        return cls(
+            tenant_id=tenant_id,
+            company_id=company_id,
+            accession_number=spec.accession,
+            filename=spec.filename,
+            body_sha256=spec.body_sha256,
+            field=spec.field,
+            value_text=spec.value_text,
+            label=spec.label,
+            quote=spec.quote,
+            quote_offset=spec.quote_offset,
+            item=spec.item,
+            extractor=spec.extractor,
+            derivation=spec.derivation,
+        )
+
+
+@event.listens_for(FactAnchor, "before_update", propagate=True)
+def _fact_anchor_no_update(mapper, connection, target):  # noqa: ANN001, ANN202
+    from app.services.fact_anchor import FactAnchorError
+
+    raise FactAnchorError("fact_anchors es append-only: UPDATE prohibido")
+
+
+@event.listens_for(FactAnchor, "before_delete", propagate=True)
+def _fact_anchor_no_delete(mapper, connection, target):  # noqa: ANN001, ANN202
+    from app.services.fact_anchor import FactAnchorError
+
+    raise FactAnchorError("fact_anchors es append-only: DELETE prohibido")
 
 
 class NewsEvent(TenantOwnedMixin, Base, TimestampMixin):

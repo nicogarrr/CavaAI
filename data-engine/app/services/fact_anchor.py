@@ -1,13 +1,16 @@
-"""Anclaje verificable de un dato extraido a la frase exacta del filing.
+"""Base para provenance a nivel dato: anclaje verificable a la frase exacta.
 
-Regla de la casa: ningun dato extraido se presenta sin su ancla (filing,
-documento, sha256 del cuerpo, cita literal y desplazamiento). "Found word for
-word" o no se publica. Lo inferido se etiqueta INFERIDO; la ausencia de dato
-no produce ancla (nunca un 0 ni una cadena vacia).
+FASE A - cimiento restringido. Lo que este modulo SI garantiza:
+- la cita existe literalmente y una sola vez en el documento aportado;
+- el sha256 y el desplazamiento los calcula el builder, nunca el caller;
+- OFICIAL significa "el valor aparece literal en la cita de ESTE documento";
+  INFERIDO exige una derivacion trazable (metodo + inputs);
+- verify_anchor revalida TODO el ancla contra el documento.
 
-El ancla la construye `build_anchor` y solo desde el documento: el extractor
-aporta la cita y el valor, pero el sha256 y el desplazamiento se calculan
-aqui, de modo que ningun caller puede declarar una procedencia falsa.
+Lo que NO garantiza (limites declarados): el hash local no certifica emisor,
+empresa ni URL primaria (eso es trabajo de sec_filing_evidence); OFICIAL no es
+veracidad financiera; verify_anchor no entiende el significado del valor.
+La ausencia de dato no produce ancla (nunca un 0 ni una cadena vacia).
 """
 
 from __future__ import annotations
@@ -86,6 +89,13 @@ class FactAnchorSpec:
     quote_offset: int
     item: str | None
     extractor: str
+    derivation: str | None
+
+
+def _require_text(name: str, value: str) -> str:
+    if not value or not value.strip():
+        raise FactAnchorError(f"{name} no puede ser vacio")
+    return value.strip()
 
 
 def build_anchor(
@@ -99,34 +109,93 @@ def build_anchor(
     quote: str,
     extractor: str,
     item: str | None = None,
+    derivation: str | None = None,
 ) -> FactAnchorSpec:
-    """Construye el ancla calculando sha256/offset desde el documento."""
-    if label not in LABELS:
-        raise FactAnchorError(f"Etiqueta desconocida: {label!r} (usa {LABELS})")
-    if not field.strip():
-        raise FactAnchorError("El campo no puede ser vacio")
-    if not value_text.strip():
+    """Construye el ancla calculando sha256/offset/item desde el documento.
+
+    OFICIAL exige que el valor aparezca literal en la cita; si el valor se
+    deriva (normalizacion, calculo, otra parte del documento), la etiqueta
+    correcta es INFERIDO y hay que aportar `derivation` (metodo + inputs).
+    Un `item` aportado por el caller debe coincidir con la estructura real.
+    """
+    accession = _require_text("accession", accession)
+    filename = _require_text("filename", filename)
+    field = _require_text("field", field)
+    extractor = _require_text("extractor", extractor)
+    if not value_text or not value_text.strip():
         raise FactAnchorError(
             "El valor no puede ser vacio: sin dato no hay ancla (nunca 0)"
         )
+    if label not in LABELS:
+        raise FactAnchorError(f"Etiqueta desconocida: {label!r} (usa {LABELS})")
     offset = locate_unique(body, quote)
+    computed_item = item_for_offset(body, offset)
+    if item is not None and item != computed_item:
+        raise FactAnchorError(
+            f"El item declarado ({item!r}) contradice la estructura del documento "
+            f"({computed_item!r})"
+        )
+    if label == LABEL_OFICIAL:
+        if value_text not in quote:
+            raise FactAnchorError(
+                "OFICIAL exige el valor literal en la cita; si el valor se deriva, "
+                "etiqueta INFERIDO y aporta derivation"
+            )
+    elif derivation is None or not derivation.strip():
+        raise FactAnchorError(
+            "INFERIDO exige derivation trazable (metodo + inputs del calculo)"
+        )
     return FactAnchorSpec(
         accession=accession,
         filename=filename,
         body_sha256=sha256_text(body),
-        field=field.strip(),
+        field=field,
         value_text=value_text,
         label=label,
         quote=quote,
         quote_offset=offset,
-        item=item if item is not None else item_for_offset(body, offset),
+        item=computed_item,
         extractor=extractor,
+        derivation=derivation.strip() if derivation else None,
     )
 
 
 def verify_anchor(body: str, anchor: FactAnchorSpec) -> bool:
-    """Re-verifica un ancla contra el documento: sha y cita en su sitio."""
-    if sha256_text(body) != anchor.body_sha256:
+    """Revalida TODO el ancla contra el documento. False ante cualquier duda."""
+    try:
+        if anchor.label not in LABELS:
+            return False
+        for value in (
+            anchor.accession,
+            anchor.filename,
+            anchor.field,
+            anchor.value_text,
+            anchor.quote,
+            anchor.extractor,
+        ):
+            if not value or not value.strip():
+                return False
+        if anchor.label == LABEL_INFERIDO and not (
+            anchor.derivation and anchor.derivation.strip()
+        ):
+            return False
+        if (
+            not isinstance(anchor.quote_offset, int)
+            or anchor.quote_offset < 0
+            or anchor.quote_offset > len(body)
+        ):
+            return False
+        if sha256_text(body) != anchor.body_sha256:
+            return False
+        end = anchor.quote_offset + len(anchor.quote)
+        if body[anchor.quote_offset : end] != anchor.quote:
+            return False
+        if len(locate_quote(body, anchor.quote)) != 1:
+            return False
+        if anchor.item != item_for_offset(body, anchor.quote_offset):
+            return False
+        if anchor.label == LABEL_OFICIAL and anchor.value_text not in anchor.quote:
+            return False
+    except (FactAnchorError, TypeError):
         return False
-    end = anchor.quote_offset + len(anchor.quote)
-    return body[anchor.quote_offset : end] == anchor.quote
+    return True
