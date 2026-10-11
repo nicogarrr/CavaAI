@@ -27,8 +27,13 @@ const REPORT =
   'a value shown without currency or unit, an empty state that hides a failed load, ' +
   'text cut off or overlapping, or "Fecha desconocida" / "SIN DATOS" / "N/D" where a value is expected.';
 
-test.describe('rutas autenticadas (solo lectura)', () => {
-  test.skip(!EMAIL || !PASSWORD, 'Faltan los secrets E2E_USER_EMAIL / E2E_USER_PASSWORD: no se ejecuta.');
+// e2e v0.15: test.skip(condicion, razon) fuera de un test es COLLECTION_ERROR.
+// El skip a nivel de describe (capa) es la forma soportada y deja constancia de
+// la razon en el reporte en vez de un verde falso.
+const SKIP_AUTH: string | false =
+  (!EMAIL || !PASSWORD) && 'Faltan los secrets E2E_USER_EMAIL / E2E_USER_PASSWORD: no se ejecuta.';
+
+test.describe('rutas autenticadas (solo lectura)', { skip: SKIP_AUTH }, () => {
 
   test.beforeEach(async ({ app, browser }) => {
     // BLOQUEO MECANICO de escritura (la sesion es la cuenta real de Nico contra
