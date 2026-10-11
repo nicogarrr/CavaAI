@@ -359,11 +359,24 @@ def _seed_company(db, spec: dict) -> None:
         # COMPLETO (todas las entradas del motor): el motor valora con datos
         # futuros y el guard publico tiene que rechazar la celda.
         trap_metrics = list(latest_facts) if spec.get("trap_full_period") else [next(iter(latest_facts))]
+        # La trampa tambien tiene filing real (en 2999): con la politica de
+        # abstencion, sin published_on no seria una trampa de futuro sino una
+        # fila no verificable, y el guard de look-ahead no se ejercitaria.
+        trap_doc = Document(
+            company_id=company.id,
+            title=f"{company.ticker} TRAMPA FY2999",
+            source_type="sec_10k",
+            source_url=f"https://example.invalid/{company.ticker}/2999",
+            published_at=_ts(date(2999, 3, 15)),
+        )
+        db.add(trap_doc)
+        db.flush()
         for trap_metric in trap_metrics:
             db.add(
                 FinancialFact(
                     company_id=company.id,
                     metric=trap_metric,
+                    source_id=trap_doc.id,
                     value=Decimal("999999") if len(trap_metrics) == 1 else Decimal(str(latest_facts[trap_metric])),
                     unit="EUR",
                     period="2999-12-31",

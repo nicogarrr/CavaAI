@@ -84,19 +84,13 @@ class KnowledgeBounds:
         period is unreadable or the source declares no publication date. A
         replay must abstain rather than assume.
         """
-        if self.period.end_date is None:
+        if self.period.end_date is None or self.published_on is None:
             return None
-        if self.published_on is None:
-            # No declared publication date. The period end is the only bound we
-            # have, and it is a real one: a fact whose period ended on time was
-            # reportable on time. It is still a *lower* bound, so callers that
-            # need a filing date should treat it as unverifiable.
-            return self.period.end_date
         return max(self.period.end_date, self.published_on)
 
     @property
     def unverifiable(self) -> bool:
-        return self.known_on is None
+        return self.known_on is None or self.published_on is None
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -289,9 +283,10 @@ def resolve_as_of(
     """Resolve the cutoff, recording whether it was asked for or defaulted.
 
     Precedence: explicit argument, then ``valuation["as_of"]``, then
-    ``trace["as_of"]``, then today. The last branch is the one a report must
-    surface: a cell computed with ``AS_OF_SOURCE_TODAY_DEFAULT`` was *not* a
-    replay of that day, it was a valuation with no date attached.
+    ``trace["as_of"]``, then ``trace["snapshot"]["as_of"]``, then today. The
+    last branch is the one a report must surface: a cell computed with
+    ``AS_OF_SOURCE_TODAY_DEFAULT`` was *not* a replay of that day, it was a
+    valuation with no date attached.
     """
     for value, source in (
         (as_of, AS_OF_SOURCE_EXPLICIT),
@@ -301,6 +296,12 @@ def resolve_as_of(
         parsed = to_date(value)
         if parsed is not None:
             return AsOfResolution(cutoff=parsed, source=source, inferred=False)
+    # La rama snapshot solo se examina si las superiores no resolvieron, y un
+    # snapshot malformado (lista/str/numero) nunca rompe la resolucion.
+    snapshot = (trace or {}).get("snapshot")
+    parsed = to_date(snapshot.get("as_of") if isinstance(snapshot, dict) else None)
+    if parsed is not None:
+        return AsOfResolution(cutoff=parsed, source=AS_OF_SOURCE_TRACE, inferred=False)
     return AsOfResolution(
         cutoff=today or date.today(),
         source=AS_OF_SOURCE_TODAY_DEFAULT,
