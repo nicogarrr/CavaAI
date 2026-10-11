@@ -1151,9 +1151,18 @@ def refresh_portfolio_moves(tenant_id: int | None = None, user_id: str | None = 
 
     db = _session(tenant_id, user_id)
     try:
-        digest = build_digest(db, datetime.now(UTC).date() - timedelta(days=1))
+        as_of = datetime.now(UTC).date() - timedelta(days=1)
+        digest = build_digest(db, as_of)
+        from app.services.daily_digest_alerts import emit_digest_alert
+
+        alert_id = None
+        try:
+            emitted = emit_digest_alert(db, digest, as_of)
+            alert_id = emitted.id if emitted is not None else None
+        except Exception:
+            _rollback(db)
         return {"actor": "refresh_portfolio_moves", "status": "ok", "digest_id": digest.id,
-                "coverage": digest.coverage}
+                "coverage": digest.coverage, "digest_alert_id": alert_id}
     except Exception as exc:
         _rollback(db)
         return _handle_actor_error("refresh_portfolio_moves", exc, tenant_id=tenant_id)

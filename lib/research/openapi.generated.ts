@@ -6697,7 +6697,7 @@ export interface components {
              * Event Type
              * @enum {string}
              */
-            event_type: "thesis_broken" | "new_filing" | "insiders" | "shorts_rising";
+            event_type: "thesis_broken" | "new_filing" | "insiders" | "shorts_rising" | "daily_digest";
         };
         /** ThesisApproveRequest */
         ThesisApproveRequest: {
@@ -7644,7 +7644,7 @@ export interface operations {
                 "x-cavaai-body-hash"?: string | null;
             };
             path: {
-                event_type: "thesis_broken" | "new_filing" | "insiders" | "shorts_rising";
+                event_type: "thesis_broken" | "new_filing" | "insiders" | "shorts_rising" | "daily_digest";
             };
             cookie?: never;
         };

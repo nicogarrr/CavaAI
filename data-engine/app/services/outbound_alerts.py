@@ -6,11 +6,13 @@ from sqlalchemy.orm import Session
 
 from app.models import AlertDelivery, AlertSubscription, NewsEvent, ResearchAlert
 
-EVENT_TYPES = ("thesis_broken", "new_filing", "insiders", "shorts_rising")
+EVENT_TYPES = ("thesis_broken", "new_filing", "insiders", "shorts_rising", "daily_digest")
 
 
 def event_type(db: Session, alert: ResearchAlert) -> str | None:
     kind = alert.alert_type
+    if kind == "daily_digest":
+        return "daily_digest"
     if kind in {"thesis_broken", "claim_contradicted"}:
         return "thesis_broken"
     if kind.startswith("insider_"):
@@ -75,6 +77,8 @@ def dispatch_pending(db: Session, *, limit: int = 100) -> dict:
         categories.append(ResearchAlert.alert_type.in_(("shorts_rising", "short_interest_buildup")))
     if "new_filing" in types:
         categories.append(ResearchAlert.alert_type.in_(("filing_changes", "earnings_release", "new_filing", "tracked_news")))
+    if "daily_digest" in types:
+        categories.append(ResearchAlert.alert_type == "daily_digest")
     oldest = db.scalar(select(AlertSubscription.enabled_at).where(
         AlertSubscription.tenant_id == tenant,
         AlertSubscription.enabled.is_(True),
