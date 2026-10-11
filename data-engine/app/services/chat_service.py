@@ -14,6 +14,7 @@ from app.models import (
     DocumentChunk,
     EvidenceSuggestion,
     FinancialFact,
+    MarketPrice,
     NewsEvent,
     ResearchSession,
     ThesisSection,
@@ -49,6 +50,20 @@ def _short(text: str, limit: int = 420) -> str:
     if len(compact) <= limit:
         return compact
     return f"{compact[: limit - 3]}..."
+
+
+
+_SMALL_TALK_RE = re.compile(
+    r"^\s*(hola|buenas|buenos dias|buenas tardes|buenas noches|hey|hi|hello|"
+    r"que tal|como estas|gracias|muchas gracias|ok|vale|adios|hasta luego)"
+    r"[\s!.,¡¿?]*$",
+    re.IGNORECASE,
+)
+_SMALL_TALK_ANSWER = (
+    "¡Hola! Soy el asistente de CavaAI. Puedo responder a cualquier tema "
+    "y, ademas, tengo acceso a tu cartera, tus tesis, tu research y tus "
+    "documentos. Preguntame lo que quieras."
+)
 
 
 class ChatService:
@@ -226,12 +241,21 @@ class ChatService:
         enable_debate: bool | None = None,
         use_jev: bool = True,
     ) -> ChatResponse:
+        if _SMALL_TALK_RE.match(question or ""):
+            return ChatResponse(
+                answer=_SMALL_TALK_ANSWER,
+                sources=[],
+                model="small-talk",
+                prompt_version="small-talk-v1",
+                confidence=0.9,
+                llm_trace={"path": "small_talk"},
+            )
         baseline = self._deterministic_answer(db, question, scope, ticker)
         # Fast-path Jev (4): si la pregunta es una consulta factual simple
         # (baseline_ok, conf >= 0.8), el contexto determinista ya responde y
         # se ahorra la llamada LLM de sintesis. Sin key o ante fallo,
         # sintesis como siempre.
-        if use_jev:
+        if use_jev and ticker:
             try:
                 from app.services.jev_gates import (
                     CHAT_BASELINE_OK_THRESHOLD,
@@ -263,12 +287,19 @@ class ChatService:
                     return baseline
             except Exception:  # noqa: BLE001 — Jev nunca rompe el chat
                 pass
-        return await ChatSynthesisService(self.provider).synthesize(
+        synthesis = ChatSynthesisService(self.provider)
+        if ticker:
+            return await synthesis.synthesize(
+                question=question,
+                ticker=ticker,
+                baseline=baseline,
+                db=db,
+                enable_debate=enable_debate,
+            )
+        return await synthesis.synthesize_general(
             question=question,
-            ticker=ticker,
             baseline=baseline,
             db=db,
-            enable_debate=enable_debate,
         )
 
     def _deterministic_answer(
@@ -399,6 +430,28 @@ class ChatService:
                         source_tier=source_tier_key(chunk.get("source_type")),
                         score=chunk.get("score"),
                         text=_short(chunk.get("text", ""), 240),
+                    )
+                )
+            latest_price = db.scalars(
+                select(MarketPrice)
+                .where(MarketPrice.company_id == company.id)
+                .order_by(desc(MarketPrice.date))
+                .limit(1)
+            ).first()
+            if latest_price is not None:
+                # adj_close NULL = spot sin ajustar por splits/dividendos;
+                # se etiqueta, nunca se inventa un ajuste.
+                adjusted = latest_price.adj_close is not None
+                value = latest_price.adj_close if adjusted else latest_price.close
+                sources.append(
+                    self._source_entry(
+                        "market_price",
+                        latest_price.id,
+                        f"{company.ticker} {value} {company.currency} (cierre {latest_price.date.isoformat()})",
+                        date=latest_price.date.isoformat(),
+                        price=str(value),
+                        currency=company.currency,
+                        adjusted=adjusted,
                     )
                 )
             for event in news:
@@ -675,13 +728,13 @@ class ChatService:
             sources.append(self._source_entry("memory_writeback", written_memory.id, "New chat memory stored"))
 
         answer = (
-            "FACT\n- Portfolio chat currently has access to stored portfolio memories and research sessions.\n\n"
-            "CALCULATION\n- No portfolio calculation was performed in this answer.\n\n"
-            "USER ASSUMPTION / MEMORY\n"
+            "CONTEXTO\n- Pregunta general sin ticker: el asistente dispone de memorias de cartera, sesiones de research y contexto documental.\n\n"
+            "SIN CALCULOS\n- Sin ticker no hay calculos de cartera en esta respuesta.\n\n"
+            "MEMORIAS\n"
             f"{chr(10).join(f'- {_short(item.content, 180)}' for item in portfolio_memories[:5]) or '- No relevant portfolio memory retrieved.'}\n\n"
-            "UNVERIFIED CLAIM\n- Ask about a specific ticker to check company claims and evidence.\n\n"
-            "INFERENCE\n"
-            + ("\n".join(library_lines) or "- For source-aware answers, provide a ticker or ingest portfolio-level evidence first.")
+            "SIN AFIRMACIONES DE EMPRESA\n- Pregunta por un ticker concreto para revisar afirmaciones y evidencia.\n\n"
+            "CONTEXTO DOCUMENTAL\n"
+            + ("\n".join(library_lines) or "- Para respuestas con fuentes de empresa, indica un ticker o ingiere evidencia primero.")
         )
         return ChatResponse(
             answer=answer,

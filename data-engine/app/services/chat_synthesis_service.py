@@ -30,13 +30,13 @@ SECTION_ORDER = (
     "conclusion",
 )
 SECTION_LABELS = {
-    "facts": "FACT",
-    "calculations": "CALCULATION",
-    "user_hypotheses": "USER ASSUMPTION / MEMORY",
-    "unverified_claims": "UNVERIFIED CLAIM",
+    "facts": "HECHO",
+    "calculations": "CALCULO",
+    "user_hypotheses": "HIPOTESIS / MEMORIA DEL USUARIO",
+    "unverified_claims": "AFIRMACION SIN VERIFICAR",
     "inferences": "INFERENCE",
-    "contradictions": "CONTRADICTIONS",
-    "insufficient_data": "INSUFFICIENT DATA",
+    "contradictions": "CONTRADICCIONES",
+    "insufficient_data": "DATOS INSUFICIENTES",
     "conclusion": "CONCLUSION",
 }
 # Confidence ceiling when the answer is not backed by sourced facts.
@@ -90,8 +90,8 @@ def _section_states_no_data(section: SynthesisSection | None) -> bool:
 GROUNDED_SECTIONS = frozenset({"facts", "calculations", "inferences", "conclusion"})
 # Source types each grounded section may legitimately rest on.
 SECTION_SOURCE_TYPES: dict[str, set[str]] = {
-    "facts": {"financial_fact", "document_chunk", "claim_evidence"},
-    "calculations": {"financial_fact", "document_chunk", "claim_evidence"},
+    "facts": {"financial_fact", "document_chunk", "claim_evidence", "market_price"},
+    "calculations": {"financial_fact", "document_chunk", "claim_evidence", "market_price"},
     "inferences": {
         "financial_fact",
         "document_chunk",
@@ -327,6 +327,68 @@ class ChatSynthesisService:
                 trace.update(**baseline.llm_trace)
                 trace.output = {"fallback": True, "reason": type(exc).__name__}
                 return baseline
+
+    async def synthesize_general(
+        self,
+        *,
+        question: str,
+        baseline: ChatResponse,
+        db: Session | None = None,
+    ) -> ChatResponse:
+        """Respuesta natural en espanol para preguntas sin ticker.
+
+        El contrato estructurado (HECHO/CALCULO/...) es para respuestas de
+        datos; una pregunta general merece prosa natural con citas cuando
+        use las fuentes recuperadas.
+        """
+        request = LLMRequest(
+            messages=[
+                Message("system", get_prompt("chat_general").text),
+                Message(
+                    "user",
+                    json.dumps(
+                        {
+                            "question": question,
+                            "retrieved_sources": baseline.sources[:40],
+                        },
+                        default=str,
+                        ensure_ascii=False,
+                    ),
+                ),
+            ],
+            task="chat",
+            temperature=0.3,
+            max_tokens=600,
+        )
+        spent = {"cost": 0.0}
+
+        def _record(resp: Any) -> None:
+            spent["cost"] += getattr(resp, "cost", 0.0) or 0.0
+
+        def _can_retry() -> None:
+            if db is not None and not BudgetController().can_spend(db, 0.02):
+                raise BudgetExceededError("LLM budget exhausted")
+
+        guarded = await complete_guarded(
+            self.provider,
+            request,
+            source="chat_general",
+            english="off",
+            on_response=_record,
+            before_retry=_can_retry,
+        )
+        text = (guarded.response.text or "").strip()
+        if not text:
+            text = "No tengo datos suficientes para responder con fuentes; prueba a dar mas contexto o un ticker."
+        return ChatResponse(
+            answer=text,
+            sources=baseline.sources,
+            proposed_actions=baseline.proposed_actions,
+            model=getattr(self.provider, "name", "unknown"),
+            prompt_version="chat-general-v1",
+            confidence=0.35 if baseline.sources else 0.2,
+            llm_trace={"path": "general", "cost": spent["cost"]},
+        )
 
     @staticmethod
     def _verified_sections(
