@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import type { PortfolioHolding } from '@/lib/actions/portfolio.actions';
 import { PieChart as PieChartIcon } from 'lucide-react';
-import { formatPercent } from '@/lib/format';
+import { formatMoney, formatPercent } from '@/lib/format';
 import { COLORS, buildAllocationSlices, CASH_SLICE_SYMBOL, type AllocationSlice } from './PortfolioAllocationChart';
 
 const PortfolioAllocationChart = dynamic(() => import('./PortfolioAllocationChart'), {
@@ -19,16 +19,15 @@ const PortfolioAllocationChart = dynamic(() => import('./PortfolioAllocationChar
 
 type Props = {
     holdings: PortfolioHolding[];
-    totalValue: number;
-    /** Caja en divisa base: entra como segmento propio para que el donut
-     *  represente de verdad el total con caja que anuncia la etiqueta. */
+    /** Caja en divisa base con su signo real (negativa = margen). NO entra
+     *  en el donut: se muestra como línea aparte (decisión Nico, 11 oct). */
     cash?: number | null;
     /** Moneda base para el importe del tooltip (sin ella saldría en USD). */
     baseCurrency?: string;
 };
 
-export default function PortfolioAllocation({ holdings, totalValue, cash, baseCurrency }: Props) {
-    const hasCash = typeof cash === 'number' && cash > 0;
+export default function PortfolioAllocation({ holdings, cash, baseCurrency }: Props) {
+    const hasCash = typeof cash === 'number' && cash !== 0;
     if (holdings.length === 0 && !hasCash) {
         return (
             <Card className="bg-gray-800/50 border-gray-700">
@@ -47,37 +46,53 @@ export default function PortfolioAllocation({ holdings, totalValue, cash, baseCu
         );
     }
 
-    // Datos del donut: posiciones + segmento Caja (buildAllocationSlices)
-    const chartData: AllocationSlice[] = buildAllocationSlices(holdings, totalValue, cash);
+    // Datos del donut: SOLO posiciones CON valor conocido; los pesos
+    // suman 100% entre ellas. Una posicion sin valor (FX o precio ausente)
+    // NO entra mudamente con 0%: queda fuera del donut y se avisa — nunca
+    // presentamos como completo un reparto que no lo es (regla de veracidad).
+    const knownHoldings = holdings.filter((holding) => !holding.valueMissing && !holding.fxMissing);
+    const missingCount = holdings.length - knownHoldings.length;
+    const chartData: AllocationSlice[] = buildAllocationSlices(knownHoldings);
 
     return (
         <div className="bg-[#111111] border border-gray-800 rounded-2xl p-6 h-full flex flex-col">
             {/* Header */}
             <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-2">
                 <span className="text-gray-400 text-sm font-medium">Distribución</span>
-                <span className="text-xs text-gray-500">Pesos sobre el valor total (caja incluida)</span>
+                <span className="text-xs text-gray-500">Pesos sobre las posiciones</span>
             </div>
 
             {/* Contenido: Pie Chart + Leyenda */}
             <div className="flex-1 flex flex-col items-center justify-center gap-6 sm:flex-row sm:justify-between">
                 {/* Pie Chart - Más grande */}
                 <div className="relative h-[200px] w-[200px] flex-shrink-0 sm:h-[250px] sm:w-[250px]">
-                    <PortfolioAllocationChart chartData={chartData} currency={baseCurrency} />
-
-                    {/* Centro del Donut */}
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <div className="text-center">
-                            <span className="text-4xl font-bold text-white block">{holdings.length}</span>
-                            <span className="text-xs text-gray-500">Posiciones</span>
+                    {chartData.length > 0 ? (
+                        <PortfolioAllocationChart chartData={chartData} currency={baseCurrency} />
+                    ) : (
+                        <div className="flex h-full w-full items-center justify-center rounded-full border border-gray-800">
+                            <span className="px-6 text-center text-sm text-gray-500">
+                                Distribución N/D: ninguna posición tiene valor disponible
+                            </span>
                         </div>
-                    </div>
+                    )}
+
+                    {/* Centro del Donut (solo con donut real: sin datos el
+                        mensaje N/D ya ocupa el centro y el número sobra) */}
+                    {chartData.length > 0 && (
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <div className="text-center">
+                                <span className="text-4xl font-bold text-white block">{knownHoldings.length}</span>
+                                <span className="text-xs text-gray-500">Posiciones</span>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* Leyenda lateral - Pegada a la derecha */}
-                <div id="portfolio-allocation-legend" className="max-h-[250px] w-full min-w-0 space-y-3 overflow-y-auto sm:w-auto sm:min-w-[140px]">
+                <div id="portfolio-allocation-legend" className="max-h-[250px] w-full min-w-0 space-y-3 overflow-y-auto sm:max-h-none sm:w-auto sm:min-w-[160px] sm:max-w-[260px] sm:overflow-visible">
                     {chartData.map((item, index) => (
-                        <div key={item.symbol} className="flex items-center justify-between gap-6">
-                            <div className="flex items-center gap-2">
+                        <div key={item.symbol} className="flex min-w-0 items-center justify-between gap-3">
+                            <div className="flex min-w-0 items-center gap-2">
                                 <div
                                     className="w-3 h-3 rounded-full"
                                     style={{ backgroundColor: COLORS[index % COLORS.length] }}
@@ -87,19 +102,36 @@ export default function PortfolioAllocation({ holdings, totalValue, cash, baseCu
                                 ) : (
                                     <Link
                                         href={`/research/${item.symbol}`}
-                                        className="inline-flex min-h-[44px] min-w-[44px] items-center text-sm text-gray-300 hover:text-teal-300 transition-colors"
+                                        className="inline-flex min-h-[44px] min-w-[44px] items-center text-sm text-gray-300 truncate hover:text-teal-300 transition-colors"
                                     >
                                         {item.symbol}
                                     </Link>
                                 )}
                             </div>
-                            <span className="text-sm text-gray-400 tabular-nums">
+                            <span className="flex-shrink-0 whitespace-nowrap text-sm text-gray-400 tabular-nums">
                                 {formatPercent(item.percentage, { fromRatio: false, digits: 1 })}
                             </span>
                         </div>
                     ))}
                 </div>
             </div>
+
+            {missingCount > 0 && (
+                <p className="mt-3 text-xs text-amber-400">
+                    Distribución incompleta: {missingCount} {missingCount === 1 ? 'posición' : 'posiciones'} sin valor (fuera del donut)
+                </p>
+            )}
+
+            {/* Caja/margen: línea informativa aparte, con su signo real.
+                Nunca entra en el donut (margen negativo daría pesos >100%). */}
+            {typeof cash === 'number' && cash !== 0 && (
+                <div className="mt-4 flex items-center justify-between border-t border-gray-800 pt-3 text-sm">
+                    <span className="text-gray-400">{cash < 0 ? 'Caja (margen)' : 'Caja'}</span>
+                    <span className={`tabular-nums ${cash < 0 ? 'text-red-400' : 'text-gray-300'}`}>
+                        {formatMoney(cash, baseCurrency ?? 'EUR')}
+                    </span>
+                </div>
+            )}
         </div>
     );
 }

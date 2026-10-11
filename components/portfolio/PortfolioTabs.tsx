@@ -268,7 +268,6 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
                         {/* Panel Derecho: Pie Chart Completo */}
                         <PortfolioAllocation
                             holdings={summary.holdings}
-                            totalValue={summary.totalValue}
                             cash={summary.cash}
                             baseCurrency={summary.baseCurrency}
                         />
