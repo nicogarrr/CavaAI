@@ -78,3 +78,29 @@ def test_concept_question_still_goes_to_general_route():
     )
     assert result.model != "abstain"
     assert "PER" in result.answer
+
+
+def test_decimal_point_is_never_dropped():
+    # 19.99 USD no valida contra una fuente de 1999 USD (100x de error)
+    assert not _grounded("ASTS cotiza a 19.99 USD [market_price:mp1]", SRC)
+    assert not _grounded("rentabilidad 3.5% [market_price:mp1]", SRC)
+    # miles con separador si equivalen
+    src_miles = [
+        {
+            "type": "market_price",
+            "id": "mp2",
+            "title": "ASTS (cierre 2026-10-09, test)",
+            "price": "1,999.00 USD",
+        }
+    ]
+    assert _grounded("ASTS cotiza a 1999 USD [market_price:mp2]", src_miles)
+
+
+def test_cross_company_figure_is_rejected():
+    # la fuente es de ASTS: no valida la misma cifra atribuida a MSFT
+    assert not _grounded("MSFT cotiza a 1999 USD [market_price:mp1]", SRC)
+
+
+def test_financial_claim_without_citation_is_rejected():
+    assert not _grounded("ASTS cotiza a 1999 USD.", SRC)
+    assert _grounded("ASTS cotiza a 1999 USD [market_price:mp1]", SRC)

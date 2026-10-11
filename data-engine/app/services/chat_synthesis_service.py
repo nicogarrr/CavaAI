@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from pydantic import ValidationError
@@ -164,27 +165,81 @@ _CURRENCY_MAP = {
 }
 
 
-def _norm_amount(raw: str) -> str:
-    """Cifras comparables sin hueco de substring: 999 nunca valida contra 1999.
+def _parse_amount(raw: str) -> Decimal | None:
+    """Decimal exacto con convencion explicita: NUNCA se quita el punto decimal.
 
-    Texto y fuente se normalizan igual (sin separadores; un '.00'/'/00' final
-    se descarta) y se comparan como pares (cifra, divisa) exactos.
+    1999 != 19.99 y 35 != 3.5 (ronda 3 auditor: quitar separadores igualaba
+    cifras 100x distintas). Con dos separadores, el ultimo es el decimal;
+    con uno solo, tres digitos detras en TODOS los grupos = miles europeos,
+    si no, decimal.
     """
-    cleaned = re.sub(r"[.,]", "", raw)
-    if re.search(r"[.,]00$", raw.strip()):
-        cleaned = cleaned[:-2]
-    return cleaned
+    s = raw.strip().replace(" ", "")
+    if not s:
+        return None
+    if "," in s and "." in s:
+        if s.rfind(",") > s.rfind("."):
+            s = s.replace(".", "").replace(",", ".")
+        else:
+            s = s.replace(",", "")
+    elif "," in s:
+        parts = s.split(",")
+        if len(parts) > 1 and all(len(p) == 3 for p in parts[1:]):
+            s = s.replace(",", "")
+        else:
+            s = s.replace(",", ".")
+    elif "." in s:
+        parts = s.split(".")
+        if len(parts) > 2 and all(len(p) == 3 for p in parts[1:]):
+            s = s.replace(".", "")
+    try:
+        return Decimal(s)
+    except InvalidOperation:
+        return None
 
 
-def _money_pairs(text: str) -> set[tuple[str, str]]:
-    pairs: set[tuple[str, str]] = set()
+def _money_pairs(text: str) -> set[tuple[Decimal, str]]:
+    pairs: set[tuple[Decimal, str]] = set()
     for match in _MONEY_RE.finditer(text):
         currency_raw = match.group(1) or match.group(4) or ""
         amount_raw = match.group(2) or match.group(3) or ""
         currency = _CURRENCY_MAP.get(currency_raw.lower())
-        if currency and amount_raw:
-            pairs.add((_norm_amount(amount_raw), currency))
+        amount = _parse_amount(amount_raw)
+        if currency and amount is not None:
+            pairs.add((amount, currency))
     return pairs
+
+
+def _source_money_pairs(source: dict) -> set[tuple[Decimal, str]]:
+    """Pares de UNA fuente: la cifra debe vivir en una sola fuente admisible
+    (titulo + precio), no reconstruirse mezclando fuentes distintas."""
+    return _money_pairs(f"{source.get('title', '')} {source.get('price', '')}")
+
+
+def _source_percents(source: dict) -> set[Decimal]:
+    haystack = f"{source.get('title', '')} {source.get('price', '')}"
+    out: set[Decimal] = set()
+    for m in _PERCENT_RE.finditer(haystack):
+        amount = _parse_amount(m.group(1))
+        if amount is not None:
+            out.add(amount)
+    return out
+
+
+_TICKER_RE = re.compile(r"\b[A-Z]{2,6}\b")
+_TICKER_WHITELIST = {
+    "USD", "EUR", "GBP", "JPY", "CHF", "OK", "PER", "CEO", "CFO", "IPO",
+    "ETF", "AI", "IT", "RAG", "LLM", "API", "GDP", "CPI", "YOY", "QOQ",
+}
+
+
+def _source_tickers(sources: list[dict]) -> set[str]:
+    """Tickers de las fuentes admisibles (primer token ALLCAPS del titulo)."""
+    tickers: set[str] = set()
+    for source in sources:
+        match = _TICKER_RE.search(str(source.get("title", "")))
+        if match:
+            tickers.add(match.group(0))
+    return tickers
 
 
 class ChatSynthesisService:
@@ -481,20 +536,23 @@ class ChatSynthesisService:
     def _general_text_grounded(text: str, baseline: ChatResponse) -> bool:
         """El texto libre no puede inventar citas ni cifras financieras.
 
-        Citas [tipo:id] ⊆ fuentes recuperadas. Toda cifra con divisa debe
-        coincidir como par (cifra normalizada, divisa) con una fuente:
-        nunca por substring ("999" no valida contra "1999") ni con divisa
-        distinta. Los porcentajes solo se exigen en contexto financiero
-        (rentabilidad, cotizacion, ...) para no bloquear charla ordinaria
-        ("bateria al 35%"). Los numeros salen de las fuentes, nunca del
-        modelo.
+        - Citas [tipo:id] ⊆ fuentes recuperadas.
+        - Toda cifra con divisa debe coincidir como par (Decimal exacto,
+          divisa) con UNA sola fuente admisible: nunca substring, nunca
+          19.99 contra 1999, nunca otra divisa.
+        - Vinculo compania/cita: una afirmacion financiera exige al menos
+          una cita valida, y un ticker junto a la cifra que no este en las
+          fuentes (MSFT con fuente ASTS) invalida el texto.
+        - Los porcentajes solo se exigen en contexto financiero
+          (rentabilidad, cotiza, ...) y deben existir en una fuente.
         """
         allowed = {
             f"{source.get('type')}:{source.get('id')}"
             for source in baseline.sources
             if source.get("id") is not None
         }
-        for match in re.finditer(r"\[([a-z_]+):([^\]]+)\]", text):
+        citations = list(re.finditer(r"\[([a-z_]+):([^\]]+)\]", text))
+        for match in citations:
             if f"{match.group(1)}:{match.group(2)}" not in allowed:
                 return False
         # Ingles OFF tambien en la ruta general: el umbral del guard
@@ -503,22 +561,38 @@ class ChatSynthesisService:
         hits, total = _english_hits(text)
         if hits >= 2 and hits / max(total, 1) >= 0.15:
             return False
-        haystack = " ".join(
-            f"{source.get('title', '')} {source.get('price', '')}"
-            for source in baseline.sources
-        )
-        source_money = _money_pairs(haystack)
-        if _money_pairs(text) - source_money:
+        text_money = _money_pairs(text)
+        financial_hint = bool(_FINANCIAL_HINT_RE.search(text))
+        text_percents: set[Decimal] = set()
+        if financial_hint:
+            for m in _PERCENT_RE.finditer(text):
+                amount = _parse_amount(m.group(1))
+                if amount is not None:
+                    text_percents.add(amount)
+        if not text_money and not text_percents:
+            return True
+        # Afirmacion financiera: exige cita valida a fuente admisible.
+        if not citations:
             return False
-        if _FINANCIAL_HINT_RE.search(text):
-            source_percents = {
-                _norm_amount(m.group(1)) for m in _PERCENT_RE.finditer(haystack)
-            }
-            text_percents = {
-                _norm_amount(m.group(1)) for m in _PERCENT_RE.finditer(text)
-            }
-            if text_percents - source_percents:
-                return False
+        # Cada cifra debe existir en UNA fuente (vinculo fuente-metrica).
+        source_pairs: set[tuple[Decimal, str]] = set()
+        source_pcts: set[Decimal] = set()
+        for source in baseline.sources:
+            source_pairs |= _source_money_pairs(source)
+            source_pcts |= _source_percents(source)
+        if text_money - source_pairs:
+            return False
+        if text_percents - source_pcts:
+            return False
+        # Vinculo compania: un ticker en la MISMA frase que la cifra debe
+        # ser de una fuente admisible (MSFT no se valida con ASTS).
+        tickers_ok = _source_tickers(baseline.sources) | _TICKER_WHITELIST
+        for sentence in re.split(r"[.!?\n]", text):
+            if not _MONEY_RE.search(sentence) and not _PERCENT_RE.search(sentence):
+                continue
+            for token in _TICKER_RE.findall(sentence):
+                if token not in tickers_ok:
+                    return False
         return True
 
     @staticmethod
