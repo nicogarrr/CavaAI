@@ -465,7 +465,7 @@ export default function PublicLanding() {
                                         key={check.check}
                                     >
                                         <span className="text-sm text-gray-300">{check.check}</span>
-                                        <span className="shrink-0 text-xs">
+                                        <span className="min-w-0 shrink text-right text-xs">
                                             <span className="font-mono text-gray-200">
                                                 {check.unit === 'rate'
                                                     ? formatPercent(check.value)
@@ -500,7 +500,7 @@ export default function PublicLanding() {
                             ))}
                         </ul>
                         <div className="mt-4 overflow-x-auto">
-                            <table className="w-full min-w-[22rem] text-left text-sm">
+                            <table className="w-full min-w-0 text-left text-sm sm:min-w-[22rem]">
                                 <caption className="pb-2 text-left text-xs text-gray-500">
                                     Sensibilidad del valor por acción: coste de capital (filas) frente a
                                     crecimiento en el año 5 (columnas).
