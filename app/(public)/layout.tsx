@@ -60,8 +60,9 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
         <div className="public-shell">
             <a href="#content" className="skip-link">Saltar al contenido</a>
 
-            <header className="public-header">
-                <div className="container public-header-inner">
+            <header className="sticky top-3 z-50 sm:top-4">
+                <div className="container">
+                    <div className="public-header-inner rounded-full border border-gray-700/60 bg-surface-1/80 px-4 shadow-lg shadow-black/30 backdrop-blur">
                     <Link href="/" className="flex min-h-11 items-center" aria-label="CavaAI, inicio">
                         <CavaAIWordmark />
                     </Link>
@@ -89,6 +90,7 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
                                 ) : null}
                             </>
                         )}
+                    </div>
                     </div>
                 </div>
             </header>
