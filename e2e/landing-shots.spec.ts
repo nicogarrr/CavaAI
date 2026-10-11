@@ -40,19 +40,44 @@ test("landing shots: ficha MSFT movil", async ({ page }) => {
   await page.screenshot({ path: "test-results/landing-mobile.png" });
 });
 
+// Espera de verdad, no de reloj: en un runner lento (CI) las tipografías y los
+// mockups llegan tarde, y el mockup de móvil nace BAJO el fold (next/image lazy):
+// sin traerlo a vista puede no empezar a cargar nunca. Medir overflow o capturar
+// antes de que fuentes e imágenes asienten da resultados distintos por entorno.
+// `alts` son los mockups VISIBLES en ese viewport: el de tablet es `hidden lg:block`
+// por diseño y esperarlo en 390px es esperar lo imposible.
+async function landingAsentada(page: import("@playwright/test").Page, alts: RegExp[]) {
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  for (const alt of alts) {
+    const img = page.getByAltText(alt);
+    await img.scrollIntoViewIfNeeded();
+    await expect(img).toBeVisible({ timeout: 30_000 });
+  }
+  // Esas imágenes con píxeles de verdad (naturalWidth), no solo en el DOM.
+  await page.waitForFunction(
+    (wanted) =>
+      Array.from(document.querySelectorAll("img"))
+        .filter((i) => wanted.some((w) => i.alt.includes(w)))
+        .every((i) => i.complete && i.naturalWidth > 0),
+    alts.map((a) => a.source),
+  );
+  // Tipografías cargadas: el ancho del texto cambia con la fuente y el overflow
+  // medido antes del swap no es el overflow real.
+  await page.evaluate(() => document.fonts.ready.then(() => undefined));
+}
+
 test("landing shots: landing desktop fullpage", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
-  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-  await expect(page.getByAltText(/Ficha de empresa de CavaAI/)).toBeVisible();
+  await landingAsentada(page, [/Ficha de empresa de CavaAI/, /CavaAI en tablet/, /CavaAI en móvil/]);
   await page.screenshot({ path: "test-results/landing-page-desktop.png", fullPage: true });
 });
 
 test("landing shots: landing movil fullpage", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
-  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-  await expect(page.getByAltText(/CavaAI en móvil/)).toBeVisible();
+  await landingAsentada(page, [/Ficha de empresa de CavaAI/, /CavaAI en móvil/]);
+  // Sin desbordamiento horizontal: el layout debe caber en 390px de verdad.
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );
