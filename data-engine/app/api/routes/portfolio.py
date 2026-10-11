@@ -21,6 +21,7 @@ from app.models import (
 from app.services.company_resolver import resolve_company
 from app.services.connectors.ibkr import IBKRFlexClient
 from app.services.dividend_ingestion_service import DividendIngestionService
+from app.services.dividend_projection_service import DividendProjectionService
 from app.services.ibkr_import_service import IBKRImportError, IBKRImportService
 from app.services.market_refresh_service import MarketRefreshService
 from app.services.portfolio_fx_service import PortfolioFXService
@@ -351,6 +352,20 @@ def portfolio_dividends(db: Session = Depends(get_db)) -> dict:
     null yields instead of zeros.
     """
     return DividendIngestionService().portfolio_yields(db)
+
+
+@router.get("/dividends/projection")
+def portfolio_dividend_projection(
+    months: Annotated[int, Query(ge=1, le=24)] = 12,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Proyeccion mes a mes de dividendos con retencion de origen e IRPF.
+
+    INFERIDO: replica mecanica de lo declarado en los ultimos 12 meses
+    desplazado +1 ano; posiciones sin datos declarados quedan en cobertura,
+    nunca como 0,00.
+    """
+    return DividendProjectionService().project(db, months=months)
 
 
 @router.get("/tearsheet")
