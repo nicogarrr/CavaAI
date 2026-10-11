@@ -43,6 +43,7 @@ FUTURE_VALUE = Decimal("999999")
 THESIS_DAY = date(2024, 7, 15)
 #: FY2024 accounts filed on this date.
 FILING_DAY = date(2025, 3, 20)
+FUTURE_FILING_DAY = date(2999, 3, 15)
 #: The cutoffs the tests replay.
 CUTOFF_EARLY = date(2024, 6, 30)
 CUTOFF_MID = date(2025, 6, 30)
@@ -174,18 +175,36 @@ def add_accounts(
     return document
 
 
-def add_future_trap(session: Session, company: Company, *, metric: str = "revenue") -> None:
-    """A fact from FY2999 with an unambiguous, perfectly readable period.
+def add_future_trap(
+    session: Session,
+    company: Company,
+    *,
+    metric: str = "revenue",
+    published_at: date = FUTURE_FILING_DAY,
+) -> None:
+    """A fact from FY2999, filed in 2999, with an unambiguous readable period.
 
     The period is a real ISO date, so nothing about this row is malformed or
     ambiguous: the only thing standing between it and a 2024 valuation is the
-    point-in-time filter. That is what makes it a useful trap.
+    point-in-time filter. That is what makes it a useful trap. The filing date
+    is real and also in the future: under the abstention policy a fact without
+    one would not be a future trap at all, just an unverifiable row.
     """
+    document = Document(
+        company_id=company.id,
+        title=f"{company.ticker} accounts FY{FUTURE_FY}",
+        source_type="sec_10k",
+        source_url=f"https://example.invalid/{company.ticker}/{FUTURE_FY}",
+        published_at=ts(published_at),
+    )
+    session.add(document)
+    session.flush()
     session.add(
         FinancialFact(
             company_id=company.id,
             metric=metric,
             value=FUTURE_VALUE,
+            source_id=document.id,
             unit="EUR",
             period=FUTURE_PERIOD,
             fiscal_year=FUTURE_FY,

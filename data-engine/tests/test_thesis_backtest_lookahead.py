@@ -19,7 +19,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.models import FinancialFact
+from app.models import Document, FinancialFact
 from app.models.thesis_backtest import (
     STATUS_INSUFFICIENT_DATA,
     STATUS_NOT_YET_PUBLISHED,
@@ -50,6 +50,7 @@ from tests.backtest_fixtures import (
     make_company,
     make_session,
     seed_company,
+    ts,
 )
 
 
@@ -263,7 +264,18 @@ def test_quarterly_fact_is_visible_only_after_its_quarter_end(no_network):
     add_thesis(
         session, company, created_at=date(2024, 1, 31), evidence_published_at=date(2024, 1, 31)
     )
-    # A Q3 fact whose period ends on 30 September, with no filing date of its own.
+    # A Q3 fact whose period ends on 30 September, filed weeks later: the
+    # quarter end is only the earliest POSSIBLE knowledge date; the real one
+    # is the filing.
+    filing = Document(
+        company_id=company.id,
+        title=f"{company.ticker} Q3 2024",
+        source_type="sec_10q",
+        source_url=f"https://example.invalid/{company.ticker}/2024q3",
+        published_at=ts(date(2024, 10, 25)),
+    )
+    session.add(filing)
+    session.flush()
     session.add(
         FinancialFact(
             company_id=company.id,
@@ -273,6 +285,7 @@ def test_quarterly_fact_is_visible_only_after_its_quarter_end(no_network):
             period="Q3 2024",
             fiscal_year=2024,
             fiscal_quarter="Q3",
+            source_id=filing.id,
             source_type="sec",
             confidence=Decimal("0.9"),
         )
@@ -288,8 +301,13 @@ def test_quarterly_fact_is_visible_only_after_its_quarter_end(no_network):
     assert not any("Q3 2024" in item for item in antes.excluded_future_inputs)
     assert antes.lookahead_violations == []
 
-    # On the closing date it becomes knowable, and it is the newest revenue fact.
-    despues = service.cell(session, TICKER, date(2024, 9, 30))
+    # On the closing date the period has ended but the filing is not public
+    # yet: the replay still uses the annual fact.
+    recien_cerrado = service.cell(session, TICKER, date(2024, 9, 30))
+    assert recien_cerrado.point_in_time["valuation_periods"]["revenue"] == "2023-12-31"
+
+    # Once filed it becomes knowable, and it is the newest revenue fact.
+    despues = service.cell(session, TICKER, date(2024, 10, 25))
     assert despues.point_in_time["valuation_periods"]["revenue"] == "Q3 2024"
     assert despues.fair_value != antes.fair_value
 
@@ -365,16 +383,18 @@ def test_knowledge_is_the_later_of_period_end_and_publication():
     assert temprano.known_on == date(2025, 2, 1)
 
 
-def test_missing_publication_date_uses_the_period_end_as_the_lower_bound():
-    """Sin fecha de presentacion no se inventa una: se usa el final de periodo.
+def test_missing_publication_date_means_abstention_not_an_assumed_filing():
+    """Sin fecha de presentacion la respuesta es abstencion, no el fin de periodo.
 
-    Y queda marcado como no verificado, porque un final de periodo es una cota
-    inferior, no una prueba de que el filing ocurriera ese dia.
+    Un final de periodo es solo una cota inferior de cuando el hecho PODRIA
+    ser publico, nunca una prueba de que lo fuera: usarlo como known_on
+    meteria en el replay hechos aun no presentados (fuga de futuro). La
+    politica es no inventar la fecha y declarar el hecho no verificable.
     """
     bounds = knowledge_bounds(period="2024-12-31", fiscal_year=2024)
     assert bounds.published_on is None
-    assert bounds.known_on == date(2024, 12, 31)
-    assert bounds.unverifiable is False
+    assert bounds.known_on is None
+    assert bounds.unverifiable is True
 
 
 def test_a_fact_with_no_readable_period_at_all_is_unverifiable():
@@ -416,6 +436,39 @@ def test_pit_audit_records_kept_dropped_and_unverifiable_separately():
     assert "2999-12-31" not in snapshot.periods().values()
     # And the audit is JSON-serialisable for the point_in_time block.
     assert builder.audit.as_dict()["as_of"] == CUTOFF_MID.isoformat()
+
+
+def test_builder_abstiene_un_hecho_sin_fecha_de_presentacion(no_network):
+    """End to end: sin published_on el hecho NO se usa y queda auditado.
+
+    No basta con que KnowledgeBounds se abstenga aislado: el builder tiene que
+    dejar el hecho fuera del snapshot y registrarlo en audit.unverifiable con
+    published_on null, para que la celda declare su procedencia incompleta en
+    vez de parecer completa.
+    """
+    session = make_session()
+    company = seed_company(session)
+    session.add(
+        FinancialFact(
+            company_id=company.id,
+            metric="operating_cash_flow",
+            value=Decimal("555"),
+            unit="EUR",
+            period="2024-12-31",
+            fiscal_year=2024,
+            fiscal_quarter="FY",
+            source_type="manual",
+            confidence=Decimal("0.9"),
+        )
+    )
+    session.commit()
+
+    builder = PointInTimeSnapshotBuilder(as_of=CUTOFF_MID)
+    snapshot = builder.build(session, company)
+
+    assert "operating_cash_flow" in [item.metric for item in builder.audit.unverifiable]
+    assert "operating_cash_flow" not in {item.metric for item in builder.audit.kept}
+    assert snapshot.value("operating_cash_flow") is None
 
 
 def test_assert_no_lookahead_passes_on_a_cleanly_filtered_snapshot():

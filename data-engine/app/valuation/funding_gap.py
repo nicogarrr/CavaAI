@@ -23,6 +23,7 @@ class FundingGapResult:
     status: str
     missing_inputs: list[str]
     dilution: dict | None = None
+    burn_proxy_source: str | None = None
 
 
 def estimate_funding_gap(
@@ -61,6 +62,7 @@ def estimate_funding_gap(
 
     # Negative OCF implies cash burn; positive OCF reduces the gap.
     burn_proxy = 0.0
+    burn_proxy_source = "operating_cash_flow" if ocf is not None else "unavailable"
     if ocf is not None and ocf < 0:
         burn_proxy = abs(ocf) * default_horizon_years
 
@@ -96,4 +98,5 @@ def estimate_funding_gap(
         status="estimated" if funding_gap > 0 else "no_gap",
         missing_inputs=[],
         dilution=dilution,
+        burn_proxy_source=burn_proxy_source,
     )
