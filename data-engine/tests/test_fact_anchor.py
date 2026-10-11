@@ -261,6 +261,36 @@ class TestFactAnchorModel:
             )
         session.rollback()
 
+    def test_mutacion_pre_insert_no_persiste(self, session):
+        row = FactAnchor.from_spec(_build(), body=BODY, tenant_id=None)
+        row.value_text = "$99.99"
+        session.add(row)
+        with pytest.raises(FactAnchorError):
+            session.commit()
+        session.rollback()
+
+    def test_mutacion_pre_insert_de_quote_hash_label_item_no_persiste(self, session):
+        for field, value in (
+            ("quote", "texto inventado"),
+            ("body_sha256", "0" * 64),
+            ("label", "INFERIDO"),
+            ("item", "Item 9.99"),
+        ):
+            row = FactAnchor.from_spec(_build(), body=BODY, tenant_id=None)
+            setattr(row, field, value)
+            session.add(row)
+            with pytest.raises(FactAnchorError):
+                session.commit()
+            session.rollback()
+
+    def test_lectura_normal_tras_persistir(self, session):
+        self._row(session)
+        from sqlalchemy import select
+
+        loaded = session.execute(select(FactAnchor)).scalar_one()
+        assert loaded.value_text == "$54.20"
+        assert loaded.item == "Item 1.01"
+
     def test_from_spec_persiste_los_campos_del_builder(self, session):
         row = self._row(session)
         assert row.id is not None

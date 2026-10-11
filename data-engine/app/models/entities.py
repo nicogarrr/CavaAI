@@ -788,7 +788,7 @@ class FactAnchor(TenantOwnedMixin, Base, TimestampMixin):
             raise FactAnchorError(
                 "el spec no verifica contra el body del filing: no se persiste"
             )
-        return cls(
+        anchor = cls(
             _token=_FROM_SPEC_TOKEN,
             tenant_id=tenant_id,
             company_id=company_id,
@@ -804,6 +804,30 @@ class FactAnchor(TenantOwnedMixin, Base, TimestampMixin):
             extractor=spec.extractor,
             derivation=spec.derivation,
         )
+        # Huella de los campos tal como se verificaron: before_insert la
+        # revalida, asi mutar la fila entre construccion y flush no persiste.
+        anchor._verified_fingerprint = anchor._field_fingerprint()
+        return anchor
+
+    def _field_fingerprint(self) -> str:
+        import hashlib
+
+        fields = (
+            self.tenant_id,
+            self.company_id,
+            self.accession_number,
+            self.filename,
+            self.body_sha256,
+            self.field,
+            self.value_text,
+            self.label,
+            self.quote,
+            self.quote_offset,
+            self.item,
+            self.extractor,
+            self.derivation,
+        )
+        return hashlib.sha256(repr(fields).encode()).hexdigest()
 
 
 @event.listens_for(FactAnchor, "before_update", propagate=True)
@@ -818,6 +842,21 @@ def _fact_anchor_no_delete(mapper, connection, target):  # noqa: ANN001, ANN202
     from app.services.fact_anchor import FactAnchorError
 
     raise FactAnchorError("fact_anchors es append-only: DELETE prohibido")
+
+
+@event.listens_for(FactAnchor, "before_insert", propagate=True)
+def _fact_anchor_revalidate_on_insert(mapper, connection, target):  # noqa: ANN001, ANN202
+    """La verificacion es al CONSTRUIR; la persistencia revalida que la fila
+    sigue exactamente como se verifico (mutar value/quote/hash/label/item
+    antes del flush ya no persiste)."""
+    from app.services.fact_anchor import FactAnchorError
+
+    expected = getattr(target, "_verified_fingerprint", None)
+    if expected is None or expected != target._field_fingerprint():
+        raise FactAnchorError(
+            "fact_anchors: la fila fue modificada tras la verificacion; "
+            "reconstruye con from_spec"
+        )
 
 
 @event.listens_for(Session, "do_orm_execute")
