@@ -62,8 +62,15 @@ test("F339: el FAB queda oculto en reposo mientras la leyenda cruza su zona", as
 
   // Sin precios ni FX el backend devuelve market_value_base=null y el donut
   // se abstiene (honesto): la leyenda necesita valores reales sembrados.
+  // Dos cierres por ticker: _common_sessions exige que la sesion anterior
+  // pase un suelo de cobertura (mediana/2); con una sola fecha por ticker el
+  // 2026-09-24 quedaba por debajo y los rankings de movers salian vacios
+  // (ticker-badges siembra COST/NFLX en 09-24 y 09-25).
   for (const s of seeds) {
-    seedMarketPrices(s.ticker, [{ date: "2026-10-09", close: s.price }]);
+    seedMarketPrices(s.ticker, [
+      { date: "2026-09-24", close: s.price },
+      { date: "2026-09-25", close: s.price },
+    ]);
   }
   // FX via API firmada: el upsert revaloriza TODAS las posiciones
   // (rebuild_position), asi market_value_base queda calculado con los
