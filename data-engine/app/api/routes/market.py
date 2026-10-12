@@ -575,4 +575,4 @@ def _compute_themes_payload() -> dict:
 @router.get("/themes")
 def market_themes_ranking() -> dict:
     """Ranking de temas de mercado (cestas curadas, media simple, YTD y 1M)."""
-    return _themes_cache.get(_compute_themes_payload)
+    return market_themes.with_live_intraday(_themes_cache.get(_compute_themes_payload))

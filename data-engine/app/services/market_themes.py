@@ -172,6 +172,8 @@ MAX_STALE_DAYS = 7
 TURN_MIN_ABS_1M = 1.0
 HOT_TOP_N = 3
 CACHE_TTL_SECONDS = 3600.0
+# Un resultado parcial (Yahoo limitando) se reintenta pronto en vez de durar una hora.
+PARTIAL_TTL_SECONDS = 300.0
 FETCH_WORKERS = 6
 FETCH_DEADLINE_SECONDS = 40.0
 
@@ -401,13 +403,14 @@ class ThemesCache:
         self._compute_lock = threading.Lock()
         self._value: dict | None = None
         self._at = 0.0
+        self._effective_ttl = ttl
         self._refreshing = False
 
     def get(self, compute: Callable[[], dict]) -> dict:
         with self._lock:
             value, at = self._value, self._at
         now = self._clock()
-        if value is not None and now - at < self._ttl:
+        if value is not None and now - at < self._effective_ttl:
             return {**value, "stale": False}
         if value is not None:
             self._refresh_async(compute)
@@ -426,6 +429,9 @@ class ThemesCache:
         with self._lock:
             self._value = fresh
             self._at = self._clock()
+            self._effective_ttl = (
+                self._ttl if fresh.get("status") == "ok" else min(self._ttl, PARTIAL_TTL_SECONDS)
+            )
 
     def _refresh_async(self, compute: Callable[[], dict]) -> None:
         with self._lock:
@@ -443,3 +449,15 @@ class ThemesCache:
                     self._refreshing = False
 
         threading.Thread(target=run, name="market-themes-refresh", daemon=True).start()
+
+
+def with_live_intraday(payload: dict, now: datetime | None = None) -> dict:
+    """Recalcula `intraday` al SERVIR: el payload cacheado puede ser de antes del cierre."""
+    as_of = payload.get("as_of")
+    if not as_of:
+        return payload
+    try:
+        session = date.fromisoformat(as_of)
+    except ValueError:
+        return payload
+    return {**payload, "intraday": last_point_is_intraday(session, now or datetime.now(UTC))}

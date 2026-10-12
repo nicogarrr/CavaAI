@@ -268,3 +268,38 @@ def test_marca_intradia_solo_con_la_sesion_en_curso():
     c = {"X": _series(100, 120, base_ytd=100, base_1m=100)}
     assert mt.compute_themes(c, [_basket("T", ["X"])], generated_at=abierto)["intraday"] is True
     assert mt.compute_themes(c, [_basket("T", ["X"])], generated_at=cerrado)["intraday"] is False
+
+
+def test_intradia_se_recalcula_al_servir_y_no_se_queda_del_momento_de_generar():
+    from datetime import UTC, datetime
+
+    cached = {"as_of": "2026-10-12", "intraday": True, "status": "ok"}
+    # 16:30 ET (20:30 UTC, octubre = EDT): ya es cierre aunque se generase a las 15:30 ET.
+    assert mt.with_live_intraday(cached, datetime(2026, 10, 12, 20, 30, tzinfo=UTC))["intraday"] is False
+    assert mt.with_live_intraday(cached, datetime(2026, 10, 12, 19, 30, tzinfo=UTC))["intraday"] is True
+    assert mt.with_live_intraday({"as_of": None, "status": "sin_datos"}) == {
+        "as_of": None,
+        "status": "sin_datos",
+    }
+
+
+def test_resultado_parcial_caduca_pronto_y_uno_completo_dura_el_ttl():
+    clock = {"now": 0.0}
+    cache = mt.ThemesCache(ttl=3600, clock=lambda: clock["now"])
+    calls = []
+
+    def compute_partial():
+        calls.append(1)
+        return {"symbols_with_data": 5, "status": "parcial"}
+
+    cache.get(compute_partial)
+    clock["now"] = 299
+    assert cache.get(compute_partial)["stale"] is False
+    clock["now"] = 301
+    assert cache.get(compute_partial)["stale"] is True  # caducado a los 5 min, no a la hora
+
+    ok = mt.ThemesCache(ttl=3600, clock=lambda: clock["now"])
+    clock["now"] = 0
+    ok.get(lambda: {"symbols_with_data": 5, "status": "ok"})
+    clock["now"] = 3000
+    assert ok.get(lambda: {"symbols_with_data": 5, "status": "ok"})["stale"] is False
