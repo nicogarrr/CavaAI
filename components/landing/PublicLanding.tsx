@@ -123,10 +123,27 @@ export default function PublicLanding() {
                     <figure className="absolute -bottom-8 right-3 w-28 sm:-bottom-10 sm:right-6 sm:w-40">
                         <div className="rounded-[1.9rem] bg-gradient-to-br from-zinc-300 via-zinc-500 to-zinc-400 p-[1.5px] shadow-2xl shadow-black/60 sm:rounded-[2.4rem]">
                             <div className="relative rounded-[1.8rem] bg-black p-[4px] sm:rounded-[2.3rem] sm:p-[5px]">
-                                <div className="relative aspect-[390/880] overflow-hidden rounded-[1.5rem] bg-black sm:rounded-[2rem]">
+                                <div className="relative aspect-[390/903] overflow-hidden rounded-[1.5rem] bg-black sm:rounded-[2rem]">
+                                    {/* Barra de estado tipo iOS: la isla vive aquí y la app empieza debajo. */}
                                     <div
                                         aria-hidden="true"
-                                        className="absolute left-1/2 top-[3.5%] z-10 h-[2.6%] w-[28%] -translate-x-1/2 rounded-full bg-black ring-1 ring-zinc-800"
+                                        className="absolute inset-x-0 top-0 z-10 flex h-[6.5%] items-center justify-between px-[9%] text-[5px] font-semibold leading-none text-white sm:text-[7px]"
+                                    >
+                                        <span>9:41</span>
+                                        <span className="flex items-center gap-[2px]">
+                                            <span className="flex items-end gap-[1px]">
+                                                <i className="block h-[2px] w-[1.5px] bg-white" />
+                                                <i className="block h-[3px] w-[1.5px] bg-white" />
+                                                <i className="block h-[4px] w-[1.5px] bg-white" />
+                                            </span>
+                                            <span className="block h-[4px] w-[8px] rounded-[1.5px] border border-white/70 p-[0.5px] sm:h-[5px] sm:w-[11px]">
+                                                <i className="block h-full w-[75%] rounded-[0.5px] bg-white" />
+                                            </span>
+                                        </span>
+                                    </div>
+                                    <div
+                                        aria-hidden="true"
+                                        className="absolute left-1/2 top-[1.3%] z-20 h-[4.1%] w-[30%] -translate-x-1/2 rounded-full bg-black ring-1 ring-zinc-800"
                                     />
                                     <div className="absolute inset-x-0 bottom-0 aspect-[390/844]">
                                         <Image fill className="object-cover"
