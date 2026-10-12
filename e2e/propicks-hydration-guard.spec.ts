@@ -24,9 +24,11 @@ import { seedProPicksRun } from "./fixtures/propicks-run";
 //   screenshot() y screenshot({caret:"hide"}) -> mutacion en los 4 inputs
 //   en el mismo ms, restaurada enseguida; screenshot({caret:"initial"}) ->
 //   0 mutaciones.
-// - El HTML SSR sale SIEMPRE limpio (captura cruda de todos los documentos
-//   en una suite completa de 146 tests: 0 ocurrencias). Ni el repo, ni
-//   Radix 1.3.6, ni los chunks .next escriben caret-color.
+// - En las respuestas OBSERVADAS el HTML SSR salio limpio: 0 ocurrencias
+//   de caret-color en la captura cruda de todos los documentos servidos
+//   durante una suite completa de 146 tests, ni en curls directos de
+//   /research/news y /research/MSFT. Ni el repo, ni Radix 1.3.6, ni los
+//   chunks .next contienen ese string.
 // - React 19.1 (react-dom-client.development.js, diffHydratedStyles)
 //   compara el atributo style crudo contra el estilo cliente serializado
 //   SIN canonicalizar CSS, e imprime el diff leyendo la CSSOM VIVA
@@ -35,11 +37,15 @@ import { seedProPicksRun } from "./fixtures/propicks-run";
 //   el warning aparece con caret-color atribuido al "servidor" aunque el
 //   SSR nunca lo envio. Es dev-only.
 // - La variante "display:none" vs "display: none;" del warning original es
-//   canonicalizacion CSSOM: falso positivo byte-a-byte de la clase
-//   https://github.com/facebook/react/issues/33437.
-// - En el navegador real de Nico (sin Playwright) el mismo warning salio
-//   por un escritor externo del mismo patron (tipicamente una extension
-//   que oculta carets inline); ni el SSR ni nuestro codigo lo escriben.
+//   canonicalizacion CSSOM: falso positivo byte-a-byte del mismo patron
+//   descrito en https://github.com/facebook/react/issues/33437 (cerrado
+//   como stale, Status: Unconfirmed; se cita como patron conocido, no como
+//   prueba).
+// - En el navegador real de Nico (sin Playwright) su log mostro el mismo
+//   warning; el escritor concreto en su maquina NO esta identificado.
+//   Hipotesis SIN verificar: una extension u otro actor externo que oculta
+//   carets inline siguiendo el mismo patron. Lo probado es que ni el SSR
+//   observado ni el codigo del repo escriben caret-color.
 //
 // Por eso esta spec NO hace screenshots (su browser nunca recibe la
 // escritura transitoria) y research-controls-hydration.spec.ts, que si
