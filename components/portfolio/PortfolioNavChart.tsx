@@ -20,7 +20,17 @@ type Props = {
 export default function PortfolioNavChart({ data, positive, currency = 'USD' }: Props) {
     const color = positive ? '#14b8a6' : '#ef4444';
     return (
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer
+            width="100%"
+            height="100%"
+            // Recharts 3.3: initialDimension por defecto es {-1,-1} y el primer
+            // render (antes de que el ResizeObserver mida) dispara el warning
+            // dev "width(-1) and height(-1)". Damos un tamano inicial positivo
+            // (altura fija del wrapper h-[200px]; ancho estimado del caso
+            // movil, no una medicion real) y el ResizeObserver lo corrige al
+            // montar.
+            initialDimension={{ width: 320, height: 200 }}
+        >
             <AreaChart data={data} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
                 <defs>
                     <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
