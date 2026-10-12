@@ -60,6 +60,14 @@ _SMALL_TALK_RE = re.compile(
     r"[\s!.,¡¿?]*$",
     re.IGNORECASE,
 )
+# Tickers que tambien son palabras corrientes: en minusculas solo cuentan si
+# la pregunta trae una pista de consulta sobre empresas.
+_COMMON_WORD_TICKERS = frozenset({"META", "NOW"})
+_COMPANY_CUE_RE = re.compile(
+    r"(?i)\b(tesis|thesis|an[aá]lisis|analiza\w*|ficha|empresa|compa[nñ][ií]a|"
+    r"acci[oó]n(?:es)?|cotiza\w*|precio|valoraci[oó]n|resultados|balance|"
+    r"riesgos?|catalizadores?|noticias?|dividendos?|fundamentales|stock)\b"
+)
 _SMALL_TALK_ANSWER = (
     "¡Hola! Soy el asistente de CavaAI. Puedo responder a cualquier tema "
     "y, ademas, tengo acceso a tu cartera, tus tesis, tu research y tus "
@@ -76,7 +84,11 @@ class ChatService:
         if ticker:
             return resolve_company(db, ticker)
         if scope == "portfolio":
-            return None
+            # El asistente global manda scope="portfolio" sin ticker. Antes eso
+            # cortaba aqui y "meta tesis?" se quedaba sin empresa. Ahora solo
+            # se resuelve una mencion EXPLICITA (ver _explicit_mention); sin
+            # ella la pregunta sigue siendo de cartera.
+            return self._explicit_mention(db, question)
         # Índice por ticker + regex de palabra completa: evita falsos
         # positivos por substring ("A" dentro de "APPLE", "IT" en "WITH")
         # y no hace un scan substring por fila.
@@ -90,6 +102,38 @@ class ChatService:
             if re.search(rf"\b{re.escape(candidate.ticker)}\b", question, re.IGNORECASE):
                 return candidate
         return None
+
+    def _explicit_mention(self, db: Session, question: str) -> Company | None:
+        """Empresa nombrada por su ticker en el texto, para el scope global.
+
+        - Ticker escrito en mayusculas (>= 2 letras): vale siempre.
+        - Ticker en minusculas ("meta tesis?"): vale si tiene >= 3 letras y no
+          es una palabra corriente; si lo es ("meta", "now") exige ademas una
+          pista de consulta sobre empresas, para que "mi meta de ahorro" no se
+          convierta en una pregunta sobre Meta Platforms.
+        - Con varias empresas distintas nombradas no se elige ninguna: la
+          ambiguedad se deja al flujo general en vez de adivinar.
+        """
+        companies = list(db.scalars(select(Company)).all())
+        by_ticker = {company.ticker.upper(): company for company in companies}
+        found: dict[str, Company] = {}
+        has_cue = bool(_COMPANY_CUE_RE.search(question))
+        for raw in re.findall(r"[A-Za-z][A-Za-z.\-]*", question):
+            token = raw.upper()
+            company = by_ticker.get(token)
+            if company is None:
+                continue
+            if raw.isupper():
+                ok = len(token) >= 2
+            elif len(token) < 3:
+                ok = False
+            elif token in _COMMON_WORD_TICKERS:
+                ok = has_cue
+            else:
+                ok = True
+            if ok:
+                found[token] = company
+        return next(iter(found.values())) if len(found) == 1 else None
 
     def _latest_thesis(self, db: Session, company: Company) -> ThesisVersion | None:
         return db.scalar(
