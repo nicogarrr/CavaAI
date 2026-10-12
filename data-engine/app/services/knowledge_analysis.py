@@ -51,6 +51,16 @@ def _numbers(text: str) -> set[str]:
     return set(NUMBER.findall(text))
 
 
+def clean_quote(quote, sent: str) -> str | None:
+    """Cita literal de verdad: sin bordes en blanco, >=20 caracteres alfanumericos y dentro del texto enviado."""
+    if not isinstance(quote, str):
+        return None
+    quote = quote.strip()
+    if not 20 <= len(quote) <= 900 or sum(c.isalnum() for c in quote) < 20 or quote not in sent:
+        return None
+    return quote
+
+
 def _plain(value, low: int = 1, high: int = _MAX_TEXT) -> str | None:
     if not isinstance(value, str):
         return None
@@ -63,10 +73,9 @@ def _cited(item, sources: dict) -> dict | None:
     if not isinstance(item, dict) or type(item.get("chunk_id")) is not int:
         return None
     source = sources.get(item["chunk_id"])
-    text, quote = _plain(item.get("text")), item.get("quote")
-    if not source or text is None or not isinstance(quote, str):
-        return None
-    if not 20 <= len(quote) <= 900 or quote not in source["text"]:
+    text = _plain(item.get("text"))
+    quote = clean_quote(item.get("quote"), source["text"]) if source else None
+    if not source or text is None or quote is None:
         return None
     if not _numbers(text) <= _numbers(quote):
         return None

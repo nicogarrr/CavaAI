@@ -158,11 +158,11 @@ async def ask_library(db: Session, question: str, *, scope: str = "letters",
             if not isinstance(item, dict) or type(item.get("chunk_id")) is not int:
                 continue
             source = sources.get(item["chunk_id"])
-            quote, text = item.get("quote"), item.get("text")
-            if not source or not isinstance(quote, str) or not isinstance(text, str):
+            text = item.get("text")
+            if not source or not isinstance(text, str):
                 continue
-            sent = source["text"]
-            if not 20 <= len(quote) <= 900 or quote not in sent or not 1 <= len(text) <= 1400:
+            quote = knowledge_analysis.clean_quote(item.get("quote"), source["text"])
+            if quote is None or not 1 <= len(text) <= 1400:
                 continue
             # Cifras nuevas se rechazan en vez de presentarlas como verificadas.
             if not set(re.findall(r"\d+(?:[.,]\d+)*", text)) <= set(re.findall(r"\d+(?:[.,]\d+)*", quote)):

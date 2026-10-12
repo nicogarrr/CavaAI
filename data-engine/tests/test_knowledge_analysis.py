@@ -154,3 +154,38 @@ def test_validacion_no_muta_el_payload_del_modelo(monkeypatch):
 
     run(monkeypatch, build)
     assert seen["data"] == seen["copy"]
+
+
+def test_cita_de_solo_espacios_o_saltos_de_linea_no_es_cita_literal(monkeypatch):
+    # Un chunk de PDF maquetado puede traer rachas largas de blanco: la "cita" vacia pasaria `in`.
+    blanks = " " * 15 + "\n" * 15
+    for quote in [blanks, " " * 40, "." * 30, "- " * 20]:
+        db = setup_library()
+        chunk = retrieve(db, "repurchases", scope="letters", author="Buffett")[0][0][0]
+        chunk.content = chunk.content + "\n" + quote + "\nfin"
+        db.commit()
+        data = good(chunk.id)
+        for part in [*data["tesis"], data["error"], *data["modelos"]]:
+            part["quote"] = quote
+        result = asyncio.run(
+            ask_library(db, "repurchases", author="Buffett", mode="analisis", provider=Provider(data))
+        )
+        check_degrada(result)
+
+
+def test_la_cita_se_guarda_sin_bordes_en_blanco(monkeypatch):
+    result, _ = run(monkeypatch, mutate(lambda d: d["error"].update(quote="  " + QUOTE + "\n ")))
+    assert result["analysis"]["error"]["citation"]["quote"] == QUOTE
+
+
+def test_ruta_normal_tampoco_acepta_citas_en_blanco(monkeypatch):
+    monkeypatch.setenv("CAVAAI_ENABLE_VECTOR_SEARCH", "0")
+    db = setup_library()
+    chunk = retrieve(db, "repurchases", scope="letters", author="Buffett")[0][0][0]
+    chunk.content = chunk.content + "\n" + " " * 30 + "\nfin"
+    db.commit()
+    item = {"chunk_id": chunk.id, "quote": " " * 30, "text": "vacio"}
+    result = asyncio.run(
+        ask_library(db, "repurchases", author="Buffett", provider=Provider({"answers": [item]}))
+    )
+    assert result["status"] == "fragmentos" and all(a["text"] is None for a in result["answers"])
