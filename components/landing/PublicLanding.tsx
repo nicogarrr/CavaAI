@@ -95,16 +95,20 @@ export default function PublicLanding() {
                             /></div>
                         </div>
                     </figure>
-                    <figure className="absolute -bottom-10 left-1/2 hidden w-56 -translate-x-[130%] overflow-hidden rounded-2xl border border-gray-700/60 bg-surface-1 shadow-2xl shadow-black/60 lg:block">
-                        <div className="relative aspect-[3/4]">
-                            <div className="absolute inset-x-0 -top-16 h-[calc(100%+4rem)]"><Image fill className="object-cover object-top"
+                    <figure className="absolute -bottom-10 left-1/2 hidden w-60 -translate-x-[125%] rounded-[1.75rem] border-2 border-gray-600/80 bg-surface-1 p-2 shadow-2xl shadow-black/60 lg:block">
+                        <div
+                            aria-hidden="true"
+                            className="absolute left-1/2 top-[3px] h-1 w-1 -translate-x-1/2 rounded-full bg-gray-600"
+                        />
+                        <div className="relative aspect-[3/4] overflow-hidden rounded-[1.1rem]">
+                            <Image fill className="object-cover object-top"
                                 src="/landing/ficha-tablet.png"
                                 alt="CavaAI en tablet: la misma ficha adaptada a pantalla mediana"
-                                sizes="224px"
-                            /></div>
+                                sizes="240px"
+                            />
                         </div>
                     </figure>
-                    <figure className="absolute -bottom-10 right-2 w-32 overflow-hidden rounded-[1.75rem] border-2 border-gray-600/80 bg-surface-1 shadow-2xl shadow-black/60 sm:right-6 sm:w-40">
+                    <figure className="absolute -bottom-8 right-3 w-28 overflow-hidden rounded-[1.75rem] border-2 border-gray-600/80 bg-surface-1 shadow-2xl shadow-black/60 sm:-bottom-10 sm:right-6 sm:w-40">
                         <div
                             aria-hidden="true"
                             className="absolute left-1/2 top-1.5 z-10 h-1.5 w-10 -translate-x-1/2 rounded-full bg-gray-600"
@@ -119,8 +123,8 @@ export default function PublicLanding() {
                     </figure>
                 </div>
                 <p className="mx-auto mt-16 max-w-xl text-xs text-gray-500">
-                    Capturas reales de la aplicación con datos de ejemplo. La interfaz declara siempre
-                    de dónde sale cada cifra, o que no hay fuente disponible.
+                    Capturas reales de la aplicación con datos de ejemplo. La interfaz declara de dónde
+                    sale cada cifra que muestra, o que no hay fuente disponible.
                 </p>
             </section>
         </main>
