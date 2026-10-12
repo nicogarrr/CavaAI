@@ -95,33 +95,20 @@ export default function PublicLanding() {
                             /></div>
                         </div>
                     </figure>
-                    {/* iPad dibujado en CSS (obra propia, sin assets de terceros):
-                        canto de aluminio, bisel negro uniforme, botones laterales,
-                        cámara frontal y reflejo de cristal. */}
-                    <figure className="absolute -bottom-10 left-1/2 hidden w-[17rem] -translate-x-[118%] lg:block">
-                        <span
-                            aria-hidden="true"
-                            className="absolute -right-[2px] top-14 h-8 w-[2px] rounded-r-sm bg-gradient-to-b from-zinc-400 to-zinc-600"
-                        />
-                        <span
-                            aria-hidden="true"
-                            className="absolute -right-[2px] top-[6.5rem] h-8 w-[2px] rounded-r-sm bg-gradient-to-b from-zinc-400 to-zinc-600"
-                        />
-                        <span
-                            aria-hidden="true"
-                            className="absolute -top-[2px] right-16 h-[2px] w-9 rounded-t-sm bg-gradient-to-r from-zinc-400 to-zinc-600"
-                        />
-                        <div className="rounded-[1.5rem] bg-gradient-to-br from-zinc-300 via-zinc-500 to-zinc-400 p-[2.5px] shadow-2xl shadow-black/80">
-                            <div className="relative rounded-[1.4rem] bg-black p-[11px]">
+                    {/* iPad horizontal dibujado en CSS (obra propia, sin assets de terceros):
+                        marco fino de aluminio, bisel negro uniforme y captura 4:3 completa. */}
+                    <figure className="absolute -bottom-10 left-1/2 hidden w-[22rem] -translate-x-[100%] lg:block">
+                        <div className="rounded-[1.4rem] bg-gradient-to-br from-zinc-300 via-zinc-500 to-zinc-400 p-[2px] shadow-2xl shadow-black/80">
+                            <div className="relative rounded-[1.3rem] bg-black p-[10px]">
                                 <div
                                     aria-hidden="true"
-                                    className="absolute left-1/2 top-[3.5px] z-20 h-[5px] w-[5px] -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_35%_35%,#4b5563,#05070b_70%)] ring-1 ring-zinc-800"
+                                    className="absolute left-[4px] top-1/2 z-20 h-[4px] w-[4px] -translate-y-1/2 rounded-full bg-zinc-700"
                                 />
-                                <div className="relative aspect-[3/4] overflow-hidden rounded-[0.8rem] bg-surface-1">
-                                    <Image fill className="object-cover object-top"
+                                <div className="relative aspect-[4/3] overflow-hidden rounded-[0.7rem] bg-surface-1">
+                                    <Image fill className="object-cover"
                                         src="/landing/ficha-tablet.png"
                                         alt="CavaAI en tablet: la misma ficha adaptada a pantalla mediana"
-                                        sizes="272px"
+                                        sizes="352px"
                                     />
                                     <div
                                         aria-hidden="true"
@@ -131,17 +118,25 @@ export default function PublicLanding() {
                             </div>
                         </div>
                     </figure>
-                    <figure className="absolute -bottom-8 right-3 w-28 overflow-hidden rounded-[1.75rem] border-2 border-gray-600/80 bg-surface-1 shadow-2xl shadow-black/60 sm:-bottom-10 sm:right-6 sm:w-40">
-                        <div
-                            aria-hidden="true"
-                            className="absolute left-1/2 top-1.5 z-10 h-1.5 w-10 -translate-x-1/2 rounded-full bg-gray-600"
-                        />
-                        <div className="relative aspect-[390/760]">
-                            <div className="absolute inset-x-0 -top-16 h-[calc(100%+4rem)]"><Image fill className="object-cover object-top"
-                                src="/landing/ficha-movil.png"
-                                alt="CavaAI en móvil: precio y gráfico de la ficha de empresa"
-                                sizes="(min-width: 640px) 160px, 128px"
-                            /></div>
+                    {/* iPhone dibujado en CSS (obra propia): marco fino, isla dinámica y
+                        captura completa 390:844 sin recortar, con margen uniforme. */}
+                    <figure className="absolute -bottom-8 right-3 w-28 sm:-bottom-10 sm:right-6 sm:w-40">
+                        <div className="rounded-[1.9rem] bg-gradient-to-br from-zinc-300 via-zinc-500 to-zinc-400 p-[1.5px] shadow-2xl shadow-black/60 sm:rounded-[2.4rem]">
+                            <div className="relative rounded-[1.8rem] bg-black p-[4px] sm:rounded-[2.3rem] sm:p-[5px]">
+                                <div className="relative aspect-[390/880] overflow-hidden rounded-[1.5rem] bg-black sm:rounded-[2rem]">
+                                    <div
+                                        aria-hidden="true"
+                                        className="absolute left-1/2 top-[3.5%] z-10 h-[2.6%] w-[28%] -translate-x-1/2 rounded-full bg-black ring-1 ring-zinc-800"
+                                    />
+                                    <div className="absolute inset-x-0 bottom-0 aspect-[390/844]">
+                                        <Image fill className="object-cover"
+                                            src="/landing/ficha-movil.png"
+                                            alt="CavaAI en móvil: precio y gráfico de la ficha de empresa"
+                                            sizes="(min-width: 640px) 160px, 112px"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </figure>
                 </div>
