@@ -68,6 +68,7 @@ class LibraryQuestion(BaseModel):
     author: str | None = Field(default=None, max_length=240)
     document_id: int | None = Field(default=None, ge=1)
     collection_id: int | None = Field(default=None, ge=1)
+    mode: Literal["respuesta", "analisis"] = "respuesta"
 
 
 @router.post("/chat")

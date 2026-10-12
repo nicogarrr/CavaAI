@@ -10,11 +10,11 @@ test('solape has pagination, period and partial-data labels', () => {
 test('chat sends only signed server requests and renders quotes as plain text', () => {
   const action = read('lib/actions/knowledge-chat.actions.ts');
   assert.ok(action.includes('researchRequest<LibraryAnswer>'));
-  assert.ok(action.includes('timeoutMs: 60_000'));
+  assert.ok(action.includes("timeoutMs: mode === 'analisis' ? 90_000 : 60_000"));
   assert.ok(!action.includes('fetch('));
   assert.ok(action.includes("method: 'POST'"));
   const component = read('app/(root)/inversores/_components/LibraryChat.tsx');
-  assert.ok(component.includes('{cite.quote}'));
+  assert.ok(component.includes('{point.citation.quote}') && component.includes('{answer.citation.quote}'));
   assert.ok(component.includes('Página no registrada'));
   assert.ok(component.includes('Doctrina, no datos actuales'));
   assert.ok(!component.includes('dangerouslySetInnerHTML'));
