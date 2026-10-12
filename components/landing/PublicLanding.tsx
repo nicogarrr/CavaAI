@@ -95,16 +95,16 @@ export default function PublicLanding() {
                             /></div>
                         </div>
                     </figure>
-                    <figure className="absolute -bottom-10 left-1/2 hidden w-60 -translate-x-[125%] rounded-[1.75rem] border-2 border-gray-600/80 bg-surface-1 p-2 shadow-2xl shadow-black/60 lg:block">
+                    <figure className="absolute -bottom-10 left-1/2 hidden w-64 -translate-x-[120%] rounded-[1.6rem] bg-black p-[7px] shadow-2xl shadow-black/70 ring-1 ring-inset ring-white/15 outline outline-1 outline-black lg:block">
                         <div
                             aria-hidden="true"
-                            className="absolute left-1/2 top-[3px] h-1 w-1 -translate-x-1/2 rounded-full bg-gray-600"
+                            className="absolute left-1/2 top-[2.5px] z-10 h-[5px] w-[5px] -translate-x-1/2 rounded-full bg-gray-700 ring-1 ring-black"
                         />
-                        <div className="relative aspect-[3/4] overflow-hidden rounded-[1.1rem]">
+                        <div className="relative aspect-[3/4] overflow-hidden rounded-[1.1rem] bg-surface-1">
                             <Image fill className="object-cover object-top"
                                 src="/landing/ficha-tablet.png"
                                 alt="CavaAI en tablet: la misma ficha adaptada a pantalla mediana"
-                                sizes="240px"
+                                sizes="256px"
                             />
                         </div>
                     </figure>
