@@ -32,9 +32,10 @@ export default function PortfolioAllocationChart({ chartData, currency }: { char
             width="100%"
             height="100%"
             // Recharts 3.3: initialDimension por defecto es {-1,-1} y el primer
-            // render dispara el warning dev "width(-1) and height(-1)". El
-            // wrapper es h/w-[200px] (250 en sm): caja inicial real y el
-            // observer corrige despues.
+            // render dispara el warning dev "width(-1) and height(-1)". Damos
+            // un tamano inicial positivo (la caja fija del wrapper,
+            // h/w-[200px] y 250 en sm) y el ResizeObserver lo corrige al
+            // montar.
             initialDimension={{ width: 200, height: 200 }}
         >
             <PieChart>

@@ -25,8 +25,10 @@ export default function PortfolioNavChart({ data, positive, currency = 'USD' }: 
             height="100%"
             // Recharts 3.3: initialDimension por defecto es {-1,-1} y el primer
             // render (antes de que el ResizeObserver mida) dispara el warning
-            // dev "width(-1) and height(-1)". El wrapper es h-[200px] w-full:
-            // damos la caja inicial real y el observer corrige despues.
+            // dev "width(-1) and height(-1)". Damos un tamano inicial positivo
+            // (altura fija del wrapper h-[200px]; ancho estimado del caso
+            // movil, no una medicion real) y el ResizeObserver lo corrige al
+            // montar.
             initialDimension={{ width: 320, height: 200 }}
         >
             <AreaChart data={data} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>

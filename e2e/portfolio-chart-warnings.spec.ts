@@ -11,15 +11,24 @@ import { seedFxRates } from "./fixtures/fx-rates";
 // Causa raiz (verificada en node_modules/recharts@3.3.0,
 // es6/component/ResponsiveContainer.js): ResponsiveContainer arranca con el
 // estado initialDimension = {width: -1, height: -1} y el primer render (antes
-// de que el ResizeObserver mida) dispara el warn dev. El chart no se
-// renderiza con ese estado (devuelve null), asi que es un falso positivo de
-// log, pero ensucia cada montaje. Fix: pasar initialDimension con la caja
-// real del wrapper (h-[200px] en ambos charts) en PortfolioNavChart y
-// PortfolioAllocationChart; el ResizeObserver corrige despues.
+// de que el ResizeObserver mida) dispara el warn dev; el chart no se pinta
+// con ese estado (devuelve null). En dev React StrictMode monta dos veces:
+// dos warnings por UN solo chart. La repro controlada (cartera sembrada,
+// 768px) confirmo que el componente que los emitia es el donut
+// (PortfolioAllocationChart): el NAV chart no llega a montarse porque
+// getPortfolioScores devuelve `history: undefined`
+// (lib/actions/portfolio.actions.ts) y PortfolioTabs muestra el placeholder
+// "El historial aparecera cuando existan snapshots reales". El fix de
+// initialDimension se aplico a AMBOS charts por si el NAV se activa.
+//
+// Fix: initialDimension con un tamano inicial positivo (la altura fija del
+// wrapper, h-[200px]; el ancho es una estimacion del caso movil, NO una
+// medicion real — el ResizeObserver la corrige al montar).
 //
 // Esta spec renderiza /portfolio Resumen con datos reales sembrados
-// (companies + precios + FX EUR/USD + transacciones firmadas) y falla si
-// reaparece el warning, en desktop y a 768px (el viewport del log).
+// (companies + precios + FX EUR/USD + transacciones firmadas), exige el
+// donut montado con SVG de tamano real, deja constancia del estado del NAV
+// (placeholder o chart montado) y falla si reaparece el warning.
 
 test.skip(!process.env.E2E_UI_RUN, "Set E2E_UI_RUN=1 to run browser tests.");
 
@@ -102,17 +111,30 @@ for (const vp of [
 
     await page.setViewportSize({ width: vp.width, height: vp.height });
     await page.goto("/portfolio", { waitUntil: "networkidle", timeout: 60000 });
-    // Espera por estado: el NAV chart solo aparece cuando scores.history
-    // tiene datos; sin chart el guard no prueba nada.
-    await page.waitForSelector(".recharts-responsive-container", { timeout: 30000 });
+    // Espera por estado: el donut (dynamic import propio) monta su SVG.
+    await page.waitForSelector(".recharts-responsive-container svg", { timeout: 60000 });
     await page.waitForTimeout(4000);
 
-    const charts = await page.locator(".recharts-responsive-container").count();
-    expect(charts, "la cartera sembrada debe renderizar al menos un chart").toBeGreaterThan(0);
+    // El donut es el componente del warning original: debe estar montado.
+    await expect(
+      page.locator("#portfolio-allocation-legend"),
+      "la distribucion (donut) debe estar montada con la cartera sembrada"
+    ).toBeAttached();
+
+    // TODO chart montado (donut hoy; NAV si algun dia history deja de ser
+    // undefined) debe tener un SVG con tamano real >0.
+    const containers = page.locator(".recharts-responsive-container");
+    const charts = await containers.count();
+    expect(charts, "al menos el donut debe estar montado").toBeGreaterThanOrEqual(1);
+    for (let i = 0; i < charts; i++) {
+      const box = await containers.nth(i).locator("svg").first().boundingBox();
+      expect(box && box.width > 0 && box.height > 0, `chart #${i} con SVG de tamano real`).toBeTruthy();
+    }
+
     const hits = consoleLines.filter((l) => RECHARTS_SIZE_PATTERNS.some((p) => l.includes(p)));
     expect(
       hits,
-      `warnings de Recharts en /portfolio (${vp.name}):\n${hits.join("\n").slice(0, 2000)}`
+      `warnings de Recharts en /portfolio (${vp.name}, ${charts} charts):\n${hits.join("\n").slice(0, 2000)}`
     ).toEqual([]);
   });
 }
