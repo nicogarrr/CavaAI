@@ -32,6 +32,7 @@ const DISALLOWED = [
   '/ownership',
   '/corporate-actions',
   '/movers',
+  '/temas',
   '/taxes',
   '/plan',
   '/risk',
