@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models import Company, MarketPrice
+from app.services import market_themes
 from app.services.provenance import SourceKind, coverage_for_age, provenance
 
 router = APIRouter()
@@ -552,3 +553,26 @@ def market_movers(
         "losers": losers,
         "most_active": most_active,
     }
+
+
+_themes_cache = market_themes.ThemesCache()
+
+
+def _compute_themes_payload() -> dict:
+    now = datetime.now(UTC)
+    # Desde mediados de diciembre del año anterior: cubre el ultimo cierre de ese año
+    # (base del YTD) y el cierre de hace un mes con una sola descarga por simbolo.
+    from_ts = int(datetime(now.year - 1, 12, 10, tzinfo=UTC).timestamp())
+    to_ts = int(now.timestamp())
+    with httpx.Client(headers=dict(_HEADERS)) as client:
+        candles = market_themes.fetch_all(
+            market_themes.all_symbols(),
+            lambda symbol: _fetch_yahoo_candles(client, symbol, from_ts, to_ts, "1d"),
+        )
+    return market_themes.compute_themes(candles, generated_at=now)
+
+
+@router.get("/themes")
+def market_themes_ranking() -> dict:
+    """Ranking de temas de mercado (cestas curadas, media simple, YTD y 1M)."""
+    return _themes_cache.get(_compute_themes_payload)
