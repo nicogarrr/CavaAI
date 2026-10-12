@@ -145,7 +145,7 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
                 {/* Con teclado no hay barra de scroll: la region enfocable deja las
                     pestañas alcanzables con las flechas (WCAG 2.1.1). */}
                 <div role="region" aria-label="Secciones de la cartera" tabIndex={0} className="-mx-4 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
-                    <TabsList className="bg-[#0a0a0a] border border-gray-800 p-1 rounded-xl mb-6 flex w-max max-w-none gap-1">
+                    <TabsList className="bg-[#0a0a0a] border border-gray-800 p-1 rounded-xl mb-6 flex h-auto w-full flex-wrap gap-1 sm:h-9 sm:w-max sm:max-w-none sm:flex-nowrap">
                     <TabsTrigger
                         value="resumen"
                         className="data-[state=active]:bg-gray-800 data-[state=active]:text-white rounded-lg px-4 py-2.5 text-sm text-gray-400 flex items-center gap-2 min-h-[44px] sm:min-h-0 sm:py-2 whitespace-nowrap"
