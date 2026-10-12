@@ -3849,6 +3849,15 @@
             ],
             "title": "Document Id"
           },
+          "mode": {
+            "default": "respuesta",
+            "enum": [
+              "respuesta",
+              "analisis"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
           "question": {
             "maxLength": 1200,
             "minLength": 3,

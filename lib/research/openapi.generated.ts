@@ -5674,6 +5674,12 @@ export interface components {
             collection_id?: number | null;
             /** Document Id */
             document_id?: number | null;
+            /**
+             * Mode
+             * @default respuesta
+             * @enum {string}
+             */
+            mode: "respuesta" | "analisis";
             /** Question */
             question: string;
             /**
