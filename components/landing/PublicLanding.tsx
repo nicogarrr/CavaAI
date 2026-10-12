@@ -95,17 +95,40 @@ export default function PublicLanding() {
                             /></div>
                         </div>
                     </figure>
-                    <figure className="absolute -bottom-10 left-1/2 hidden w-64 -translate-x-[120%] rounded-[1.6rem] bg-black p-[7px] shadow-2xl shadow-black/70 ring-1 ring-inset ring-white/15 outline outline-1 outline-black lg:block">
-                        <div
+                    {/* iPad dibujado en CSS (obra propia, sin assets de terceros):
+                        canto de aluminio, bisel negro uniforme, botones laterales,
+                        cámara frontal y reflejo de cristal. */}
+                    <figure className="absolute -bottom-10 left-1/2 hidden w-[17rem] -translate-x-[118%] lg:block">
+                        <span
                             aria-hidden="true"
-                            className="absolute left-1/2 top-[2.5px] z-10 h-[5px] w-[5px] -translate-x-1/2 rounded-full bg-gray-700 ring-1 ring-black"
+                            className="absolute -right-[2px] top-14 h-8 w-[2px] rounded-r-sm bg-gradient-to-b from-zinc-400 to-zinc-600"
                         />
-                        <div className="relative aspect-[3/4] overflow-hidden rounded-[1.1rem] bg-surface-1">
-                            <Image fill className="object-cover object-top"
-                                src="/landing/ficha-tablet.png"
-                                alt="CavaAI en tablet: la misma ficha adaptada a pantalla mediana"
-                                sizes="256px"
-                            />
+                        <span
+                            aria-hidden="true"
+                            className="absolute -right-[2px] top-[6.5rem] h-8 w-[2px] rounded-r-sm bg-gradient-to-b from-zinc-400 to-zinc-600"
+                        />
+                        <span
+                            aria-hidden="true"
+                            className="absolute -top-[2px] right-16 h-[2px] w-9 rounded-t-sm bg-gradient-to-r from-zinc-400 to-zinc-600"
+                        />
+                        <div className="rounded-[1.5rem] bg-gradient-to-br from-zinc-300 via-zinc-500 to-zinc-400 p-[2.5px] shadow-2xl shadow-black/80">
+                            <div className="relative rounded-[1.4rem] bg-black p-[11px]">
+                                <div
+                                    aria-hidden="true"
+                                    className="absolute left-1/2 top-[3.5px] z-20 h-[5px] w-[5px] -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_35%_35%,#4b5563,#05070b_70%)] ring-1 ring-zinc-800"
+                                />
+                                <div className="relative aspect-[3/4] overflow-hidden rounded-[0.8rem] bg-surface-1">
+                                    <Image fill className="object-cover object-top"
+                                        src="/landing/ficha-tablet.png"
+                                        alt="CavaAI en tablet: la misma ficha adaptada a pantalla mediana"
+                                        sizes="272px"
+                                    />
+                                    <div
+                                        aria-hidden="true"
+                                        className="pointer-events-none absolute inset-0 bg-[linear-gradient(115deg,rgba(255,255,255,0.07)_0%,rgba(255,255,255,0)_38%)]"
+                                    />
+                                </div>
+                            </div>
                         </div>
                     </figure>
                     <figure className="absolute -bottom-8 right-3 w-28 overflow-hidden rounded-[1.75rem] border-2 border-gray-600/80 bg-surface-1 shadow-2xl shadow-black/60 sm:-bottom-10 sm:right-6 sm:w-40">
