@@ -298,7 +298,7 @@ export default function TaxesView({ initialHoldings, initialReport, initialThres
                 }
             />
 
-            <FilingSection key={`${year}-${reportKey}`} filing={(report?.filing as DataRecord | undefined) ?? null}
+            <FilingSection key={`filing-${year}-${reportKey}`} filing={(report?.filing as DataRecord | undefined) ?? null}
                 year={year} onPreview={(fresh) => setOverride({ year, report: fresh })}
                 onReset={() => setOverride(null)} />
 
