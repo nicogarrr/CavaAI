@@ -11,20 +11,41 @@ import { seedProPicksRun } from "./fixtures/propicks-run";
 // style="display:none;caret-color:transparent" y el cliente con
 // {display:"none"}.
 //
-// Estado de la investigacion (12/10, rama instinct/fix-log-hygiene):
-// NO REPRODUCIBLE en el codigo actual. Hechos verificados:
-// - Direccion del diff leida en el source de React 19.2
-//   (react-dom-client.development.js, diffHydratedStyles):
-//   "-" = atributo DOM servido por el SSR, "+" = props del cliente.
-// - "caret-color" NO aparece en: el repo, components/ui/slider.tsx, ninguna
-//   version publicada de @radix-ui/react-slider (tarballs npm 1.0.0, 1.1.0,
-//   1.1.1, 1.1.2, 1.2.3, la 1.3.6 instalada y el source main en GitHub), ni
-//   en los chunks .next del dev server.
-// - 0 ocurrencias en: run completo del spec methodology-disclosure y cargas
-//   directas de /propicks /risk /portfolio /plan con captura de consola.
-// La causa NO esta probada: con la evidencia actual no se puede afirmar de
-// donde salio el atributo caret-color del SSR de aquel run. Lo que si esta
-// probado es que el codigo y las dependencias actuales no lo emiten.
+// CAUSA RAIZ PROBADA (12/10, experimento controlado sobre Chromium de
+// Playwright 1.64 con about:blank y 4 inputs):
+// - page.screenshot() tiene la opcion `caret` con default "hide" (docs
+//   oficiales en playwright-core/types/types.d.ts). Su implementacion
+//   escribe caret-color:transparent !important INLINE en TODOS los
+//   inputs/textareas del documento durante la captura y lo restaura al
+//   terminar, desde el mundo aislado de Playwright (por eso no deja stack
+//   JS en el mundo principal: 0 setProperty/cssText/setAttribute, pero el
+//   MutationObserver si ve la mutacion del atributo).
+// - Verificado: idle/click/fill/teclado/foco JS -> 0 mutaciones;
+//   screenshot() y screenshot({caret:"hide"}) -> mutacion en los 4 inputs
+//   en el mismo ms, restaurada enseguida; screenshot({caret:"initial"}) ->
+//   0 mutaciones.
+// - El HTML SSR sale SIEMPRE limpio (captura cruda de todos los documentos
+//   en una suite completa de 146 tests: 0 ocurrencias). Ni el repo, ni
+//   Radix 1.3.6, ni los chunks .next escriben caret-color.
+// - React 19.1 (react-dom-client.development.js, diffHydratedStyles)
+//   compara el atributo style crudo contra el estilo cliente serializado
+//   SIN canonicalizar CSS, e imprime el diff leyendo la CSSOM VIVA
+//   (getStylesObjectFromElement). Si la ventana transitoria del screenshot
+//   pisa la hidratacion (dev server cargado en suite = hidratacion lenta),
+//   el warning aparece con caret-color atribuido al "servidor" aunque el
+//   SSR nunca lo envio. Es dev-only.
+// - La variante "display:none" vs "display: none;" del warning original es
+//   canonicalizacion CSSOM: falso positivo byte-a-byte de la clase
+//   https://github.com/facebook/react/issues/33437.
+// - En el navegador real de Nico (sin Playwright) el mismo warning salio
+//   por un escritor externo del mismo patron (tipicamente una extension
+//   que oculta carets inline); ni el SSR ni nuestro codigo lo escriben.
+//
+// Por eso esta spec NO hace screenshots (su browser nunca recibe la
+// escritura transitoria) y research-controls-hydration.spec.ts, que si
+// mezcla screenshots con una ventana de hidratacion ensanchada, usa
+// caret:"initial". El patron "caret-color" se mantiene en la lista: con
+// esas dos medidas, su reaparicion indicaria un escritor REAL nuevo.
 //
 // Este guard monta /propicks CON DATOS (run del embudo sembrado) para que
 // los Sliders Radix y sus inputs ocultos esten montados de verdad, y falla
