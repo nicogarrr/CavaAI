@@ -57,6 +57,10 @@ def _resolve(db, question, scope="portfolio", ticker=None):
         "analiza meta",
         "precio de META",
         "dame la ficha de meta",
+        "meta tesis.",
+        "meta, tesis",
+        "tesis de meta.",
+        "ANALIZA META",
     ],
 )
 def test_meta_se_reconoce_como_ticker(db, question):
@@ -74,6 +78,12 @@ def test_meta_se_reconoce_como_ticker(db, question):
         "hola",
         "cómo va mi cartera",
         "now",
+        "mi meta de ahorro y los riesgos de mi cartera",
+        "TODO BIEN ON",
+        "CUAL ES MI META DE AHORRO",
+        "¿Qué es IT?",
+        "what is the cat doing",
+        "tu meta es analizar la cartera",
     ],
 )
 def test_palabras_corrientes_y_cartera_no_son_ticker(db, question):
@@ -83,6 +93,9 @@ def test_palabras_corrientes_y_cartera_no_son_ticker(db, question):
 def test_ticker_en_minusculas_normal_vale(db):
     assert _resolve(db, "qué tal amd?") == "AMD"
     assert _resolve(db, "tesis de msft") == "MSFT"
+    assert _resolve(db, "tesis de AAPL.") is None  # AAPL no esta en el maestro del test
+    assert _resolve(db, "tesis de MSFT.") == "MSFT"
+    assert _resolve(db, "qué tal amd?") == "AMD"
 
 
 def test_dos_empresas_no_se_adivinan(db):
@@ -97,6 +110,7 @@ def test_ticker_corto_en_minusculas_no_cuenta_pero_en_mayusculas_si(db):
 def test_servicenow_en_mayusculas_o_con_pista(db):
     assert _resolve(db, "tesis de NOW") == "NOW"
     assert _resolve(db, "análisis de now") == "NOW"
+    assert _resolve(db, "tesis de NOW") == "NOW"
 
 
 def test_scope_company_o_ticker_explicito_sigue_igual(db):
@@ -116,3 +130,18 @@ def test_flujo_completo_meta_tesis_ya_no_pide_ticker_con_llm_caido(db):
     response = asyncio.run(ChatService(Caido()).answer(db, "meta tesis?", "portfolio", None, use_jev=False))
     assert "dame un ticker" not in response.answer
     assert "META" in response.answer or "Meta" in response.answer
+
+
+def test_empresa_deducida_del_texto_no_ata_la_memoria_a_la_empresa(db):
+    svc = ChatService()
+    capturado = {}
+
+    def espia(_db, _question, company, scope):
+        capturado["company"] = company
+        return None
+
+    svc.memory.maybe_write_from_chat = espia
+    svc._deterministic_answer(db, "meta tesis?", "portfolio", None)
+    assert capturado["company"] is None
+    svc._deterministic_answer(db, "tesis", "company", "META")
+    assert capturado["company"] is not None and capturado["company"].ticker == "META"

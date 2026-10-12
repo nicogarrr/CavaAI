@@ -62,7 +62,14 @@ _SMALL_TALK_RE = re.compile(
 )
 # Tickers que tambien son palabras corrientes: en minusculas solo cuentan si
 # la pregunta trae una pista de consulta sobre empresas.
-_COMMON_WORD_TICKERS = frozenset({"META", "NOW"})
+_COMMON_WORD_TICKERS = frozenset(
+    {"META", "NOW", "IT", "ON", "CAT", "ALL", "ARE", "KEY", "LOW", "FAST", "WELL", "A", "BIG", "GOOD"}
+)
+# Palabra previa que convierte la palabra comun en un sustantivo ("mi meta").
+_DETERMINERS = frozenset(
+    {"mi", "mis", "tu", "tus", "su", "sus", "la", "las", "el", "un", "una", "esta", "esa", "otra",
+     "nuestra", "my", "your", "our", "the", "a", "this", "that", "his", "her", "their"}
+)
 _COMPANY_CUE_RE = re.compile(
     r"(?i)\b(tesis|thesis|an[aá]lisis|analiza\w*|ficha|empresa|compa[nñ][ií]a|"
     r"acci[oó]n(?:es)?|cotiza\w*|precio|valoraci[oó]n|resultados|balance|"
@@ -118,19 +125,30 @@ class ChatService:
         by_ticker = {company.ticker.upper(): company for company in companies}
         found: dict[str, Company] = {}
         has_cue = bool(_COMPANY_CUE_RE.search(question))
-        for raw in re.findall(r"[A-Za-z][A-Za-z.\-]*", question):
+        all_caps = not any(ch.islower() for ch in question)
+        previous = ""
+        for match in re.finditer(r"[A-Za-z][A-Za-z.\-]*", question):
+            raw = match.group(0).strip(".-")
+            before, previous = previous, raw.lower()
+            if not raw:
+                continue
             token = raw.upper()
             company = by_ticker.get(token)
             if company is None:
                 continue
-            if raw.isupper():
+            if token in _COMMON_WORD_TICKERS:
+                # Palabra corriente: siempre exige pista de empresa y que no
+                # vaya tras un determinante/posesivo ("mi meta de ahorro").
+                # Un ticker escrito en MAYUSCULAS (>= 3 letras) en una frase en
+                # minusculas es deliberado; en minusculas pide pista de empresa.
+                deliberate = raw.isupper() and not all_caps and len(token) >= 3
+                ok = (deliberate or (len(token) >= 3 and has_cue)) and before not in _DETERMINERS
+                if len(token) < 3:
+                    ok = has_cue and raw.isupper() and not all_caps and before not in _DETERMINERS
+            elif raw.isupper() and not all_caps:
                 ok = len(token) >= 2
-            elif len(token) < 3:
-                ok = False
-            elif token in _COMMON_WORD_TICKERS:
-                ok = has_cue
             else:
-                ok = True
+                ok = len(token) >= 3
             if ok:
                 found[token] = company
         return next(iter(found.values())) if len(found) == 1 else None
@@ -360,7 +378,10 @@ class ChatService:
         self, db: Session, question: str, scope: str, ticker: str | None
     ) -> ChatResponse:
         company = self._resolve_company(db, question, scope, ticker)
-        written_memory = self.memory.maybe_write_from_chat(db, question, company, scope)
+        # La empresa deducida del texto en el scope global NO ata la memoria
+        # persistente a esa empresa: solo cuenta si la ficha la fijó el cliente.
+        memory_company = company if (ticker or scope != "portfolio") else None
+        written_memory = self.memory.maybe_write_from_chat(db, question, memory_company, scope)
         retrieved_memory = self.memory.retrieve(db, question, company, scope=scope, limit=6)
         recent_sessions = self._recent_sessions(db, company)
 
