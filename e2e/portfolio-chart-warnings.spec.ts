@@ -62,14 +62,15 @@ async function seedPortfolioWithCharts(request: import("@playwright/test").APIRe
   const seeds = [
     { ticker: "E2ECW1", quantity: 5, price: 900 },
     { ticker: "E2ECW2", quantity: 4, price: 700 },
-    { ticker: "E2ECW3", quantity: 6, price: 250 },
   ];
-  // Fechas FIJAS terminadas en la sesion ancla de la suite (2026-09-09):
-  // sembrar relativo a hoy moveria la sesion de ranking de /movers y
-  // excluiria los tickers de otras specs como "datos antiguos" (envenena
-  // ticker-badges: COST cierra 2026-09-24/25).
+  // 2 empresas x 2 fechas FIJAS (ancla 2026-09-09). Regla de convivencia
+  // con _common_sessions (market.py:378): la sesion de /movers sale de la
+  // mediana de counts de los ultimos 10 dias laborables; sembrar muchas
+  // empresas x muchos dias la sube y expulsa a COST de ticker-badges
+  // (CI rojo en 943949a9). 2x2 deja la mediana <= 3 y la sesion estable
+  // incluso en runs parciales (sharding, --grep, reruns).
   const days: { date: string; close: number }[] = [];
-  for (let i = 90; i >= 1; i--) {
+  for (let i = 2; i >= 1; i--) {
     const d = new Date(Date.parse("2026-09-09T00:00:00Z") - (i - 1) * 86400000).toISOString().slice(0, 10);
     days.push({ date: d, close: 100 + i });
   }
