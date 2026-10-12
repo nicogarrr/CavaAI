@@ -60,9 +60,15 @@ function signedHeaders(method: string, path: string, body: Buffer = Buffer.alloc
 async function seedProPicksData(request: import("@playwright/test").APIRequestContext) {
   // Tickers sinteticos exclusivos de esta spec (tenant e2e compartido).
   const tickers = ["E2EPP1", "E2EPP2", "E2EPP3"];
+  // Fechas FIJAS terminadas en la sesion ancla (2026-09-09): sembrar relativo
+  // a hoy moveria la sesion de ranking de /movers y excluiria tickers de otras
+  // specs (envenena ticker-badges: COST cierra 2026-09-24/25).
   const days: { date: string; close: number }[] = [];
   for (let i = 30; i >= 1; i--) {
-    days.push({ date: new Date(Date.now() - i * 86400000).toISOString().slice(0, 10), close: 100 + i });
+    days.push({
+      date: new Date(Date.parse("2026-09-09T00:00:00Z") - (i - 1) * 86400000).toISOString().slice(0, 10),
+      close: 100 + i,
+    });
   }
   for (const t of tickers) {
     const body = Buffer.from(JSON.stringify({ ticker: t, name: `${t} Inc`, exchange: "NASDAQ", currency: "USD" }));

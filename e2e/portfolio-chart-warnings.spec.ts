@@ -64,9 +64,13 @@ async function seedPortfolioWithCharts(request: import("@playwright/test").APIRe
     { ticker: "E2ECW2", quantity: 4, price: 700 },
     { ticker: "E2ECW3", quantity: 6, price: 250 },
   ];
+  // Fechas FIJAS terminadas en la sesion ancla de la suite (2026-09-09):
+  // sembrar relativo a hoy moveria la sesion de ranking de /movers y
+  // excluiria los tickers de otras specs como "datos antiguos" (envenena
+  // ticker-badges: COST cierra 2026-09-24/25).
   const days: { date: string; close: number }[] = [];
   for (let i = 90; i >= 1; i--) {
-    const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+    const d = new Date(Date.parse("2026-09-09T00:00:00Z") - (i - 1) * 86400000).toISOString().slice(0, 10);
     days.push({ date: d, close: 100 + i });
   }
   for (const s of seeds) {
