@@ -1,10 +1,13 @@
 'use server';
 
+import type { LibraryAnalysis } from '@/lib/knowledge/analysis';
 import { jsonBody, researchRequest } from '@/lib/research/client';
 
 export type LibraryAnswer = {
   status: 'ok' | 'fragmentos' | 'sin_datos';
   kind: 'doctrina';
+  mode?: 'respuesta' | 'analisis';
+  analysis?: LibraryAnalysis;
   retrieval: string;
   message: string | null;
   answers: {
@@ -17,12 +20,12 @@ export type LibraryAnswer = {
   }[];
 };
 
-export async function askKnowledge(question: string, scope: 'letters' | 'library', author?: string): Promise<LibraryAnswer> {
+export async function askKnowledge(question: string, scope: 'letters' | 'library', author?: string, mode: 'respuesta' | 'analisis' = 'respuesta'): Promise<LibraryAnswer> {
   const trimmed = question.trim();
   if (trimmed.length < 3 || trimmed.length > 1200) throw new Error('Escribe una pregunta de 3 a 1200 caracteres.');
   // POST LLM: presupuesto explícito, no el GET rápido. Sin catch: conserva errores API/sesión.
   return researchRequest<LibraryAnswer>('/api/knowledge/chat', {
-    method: 'POST', timeoutMs: 60_000,
-    body: jsonBody({ question: trimmed, scope, author: author || null }),
+    method: 'POST', timeoutMs: mode === 'analisis' ? 90_000 : 60_000,
+    body: jsonBody({ question: trimmed, scope, author: author || null, mode }),
   });
 }
