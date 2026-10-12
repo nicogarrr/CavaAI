@@ -28,7 +28,15 @@ const COLORS = [
 /** Donut de distribución: se carga solo en cliente (dynamic ssr:false desde el panel) */
 export default function PortfolioAllocationChart({ chartData, currency }: { chartData: AllocationSlice[]; currency?: string }) {
     return (
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer
+            width="100%"
+            height="100%"
+            // Recharts 3.3: initialDimension por defecto es {-1,-1} y el primer
+            // render dispara el warning dev "width(-1) and height(-1)". El
+            // wrapper es h/w-[200px] (250 en sm): caja inicial real y el
+            // observer corrige despues.
+            initialDimension={{ width: 200, height: 200 }}
+        >
             <PieChart>
                 <Pie
                     data={chartData}
