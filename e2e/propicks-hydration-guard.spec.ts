@@ -94,17 +94,38 @@ for (const vp of [
     page.on("console", (m) => consoleLines.push(m.text()));
     page.on("pageerror", (e) => consoleLines.push(String(e)));
 
+    // Prueba SSR del componente que originaba el warning: el BubbleInput
+    // oculto del Slider Radix (RadioBubbleInput). En Radix 1.3.6 es HERMANO
+    // del span role=slider (no descendiente) y SOLO se renderiza cuando
+    // isFormControl es true: durante el SSR/primer render siempre, y tras
+    // hidratar unicamente si hay <form> ancestro (la pagina no lo tiene, asi
+    // que el input puede desaparecer post-hidratacion — no se exige en DOM
+    // hidratado porque seria una condicion falsa). Por eso la asercion del
+    // input se hace sobre el HTML SSR, que es donde vivia el mismatch del
+    // log (style="display:none;caret-color:transparent" servido por SSR).
+    const ssrRes = await request.get("/propicks");
+    expect(ssrRes.status(), "SSR de /propicks con datos debe responder 200").toBe(200);
+    const ssrHtml = await ssrRes.text();
+    const ssrSliderThumbs = (ssrHtml.match(/role="slider"/g) || []).length;
+    const ssrBubbleInputs = (ssrHtml.match(/<input[^>]*style="display:\s*none"/g) || []).length;
+    expect(
+      ssrSliderThumbs,
+      "el SSR debe incluir los 2 thumbs de los Sliders de los filtros"
+    ).toBeGreaterThanOrEqual(2);
+    expect(
+      ssrBubbleInputs,
+      "el SSR debe incluir los 2 BubbleInput ocultos (el elemento del warning original)"
+    ).toBeGreaterThanOrEqual(2);
+
     await page.setViewportSize({ width: vp.width, height: vp.height });
     await page.goto("/propicks", { waitUntil: "networkidle", timeout: 60000 });
 
-    // El guard solo prueba algo si la pagina renderiza el componente que
-    // originaba el warning: los Sliders Radix de los filtros, montados con
-    // su thumb (role=slider) y el input oculto interno (SliderBubbleInput).
+    // Tras hidratar: los thumbs siguen montados (el input oculto puede
+    // desaparecer sin <form>, ver nota superior — no se exige aqui).
     const sliders = page.getByRole("slider");
     await expect(sliders.first(), "los filtros con Slider Radix deben estar montados (pagina con datos, no ProPicksLoadError)").toBeVisible({ timeout: 30000 });
     const sliderCount = await sliders.count();
     expect(sliderCount, "EnhancedProPicksFilters monta 2 Sliders (score y riesgo)").toBeGreaterThanOrEqual(2);
-    const hiddenInputs = await page.locator("[data-radix-slider-thumb] input, [role='slider'] input").count();
 
     // Margen para hidratacion tardia de boundaries Suspense streameados.
     await page.waitForTimeout(4000);
@@ -114,7 +135,7 @@ for (const vp of [
     );
     expect(
       hits,
-      `warnings de hidratacion en /propicks (${vp.name}, ${sliderCount} sliders, ${hiddenInputs} inputs ocultos):\n${hits.join("\n").slice(0, 2000)}`
+      `warnings de hidratacion en /propicks (${vp.name}, ${sliderCount} thumbs hidratados, SSR ${ssrSliderThumbs} thumbs/${ssrBubbleInputs} inputs):\n${hits.join("\n").slice(0, 2000)}`
     ).toEqual([]);
   });
 }
