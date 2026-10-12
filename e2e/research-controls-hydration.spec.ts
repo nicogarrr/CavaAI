@@ -41,7 +41,14 @@ test('research controls cannot accept input before their client handlers exist',
     }
     await alert.click();
     await expect(page.getByText('Introduce un precio objetivo válido', { exact: true })).toBeVisible();
-    await page.screenshot({ path: `test-results/hydration-controls-${page.viewportSize()?.width}.png`, fullPage: true });
+    // caret: "initial": el default de Playwright (caret:"hide") escribe
+    // caret-color:transparent !important INLINE y transitorio en TODOS los
+    // inputs durante la captura (causa raiz probada del falso warning de
+    // hidratacion caret-color, 12/10); en esta spec, que retrasa los chunks
+    // JS para ensanchar la ventana de hidratacion, esa escritura podria
+    // solaparse con el chequeo de estilos de React 19. caret:"initial"
+    // desactiva la escritura.
+    await page.screenshot({ path: `test-results/hydration-controls-${page.viewportSize()?.width}.png`, fullPage: true, caret: "initial" });
   } finally {
     release();
   }
