@@ -31,6 +31,7 @@ const DISALLOWED = [
   '/knowledge-graph',
   '/ownership',
   '/corporate-actions',
+  '/calendar',
   '/movers',
   '/temas',
   '/taxes',
