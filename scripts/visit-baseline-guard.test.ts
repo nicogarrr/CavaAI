@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+// @ts-expect-error TS5097: la extensión explícita la exige node --experimental-strip-types.
 import { resolveVisitBaseline, type StorageLike } from '../lib/research/visit-baseline.ts';
 
 const mem = (): StorageLike & { data: Record<string, string> } => {
