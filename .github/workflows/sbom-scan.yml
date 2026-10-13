@@ -199,7 +199,7 @@ jobs:
 
       - name: SBOM CycloneDX (syft via anchore/sbom-action)
         id: sbom-cyclonedx
-        uses: anchore/sbom-action@v0.24.2
+        uses: anchore/sbom-action@v0.24.3
         with:
           image: cavaai/${{ matrix.name }}:${{ github.sha }}
           format: cyclonedx-json
@@ -211,7 +211,7 @@ jobs:
 
       - name: SBOM SPDX (syft via anchore/sbom-action)
         id: sbom-spdx
-        uses: anchore/sbom-action@v0.24.2
+        uses: anchore/sbom-action@v0.24.3
         with:
           image: cavaai/${{ matrix.name }}:${{ github.sha }}
           format: spdx-json
