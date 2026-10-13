@@ -4,7 +4,6 @@ import type { Metadata } from 'next';
 import { ArrowRight } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { SUPPORT_EMAIL } from '@/lib/config/brand';
 import { isPublicSignUpOpen } from '@/lib/config/product';
 
 /**
@@ -32,7 +31,6 @@ export const metadata: Metadata = {
 
 export default function PublicLanding() {
     const signUpOpen = isPublicSignUpOpen();
-    const waitlistHref = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('Lista de espera de CavaAI')}`;
 
     return (
         <main id="content" tabIndex={-1} className="w-full overflow-x-clip">
@@ -58,10 +56,10 @@ export default function PublicLanding() {
                         </Button>
                     ) : (
                         <Button asChild size="lg">
-                            <a href={waitlistHref}>
-                                Pedir acceso en la lista de espera
+                            <Link href="/sign-up">
+                                Pedir acceso
                                 <ArrowRight aria-hidden="true" />
-                            </a>
+                            </Link>
                         </Button>
                     )}
                     <Button asChild size="lg" variant="outline">
