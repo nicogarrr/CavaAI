@@ -60,6 +60,9 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
         setMounted(true);
     }, []);
 
+    // Reintento: handleSearch no puede referirse a si misma dentro de su propio
+    // useCallback (react-hooks/immutability); se pasa por ref.
+    const retrySearchRef = useRef<(query: string) => void>(() => {});
     const handleSearch = useCallback(async (query: string) => {
         // Cancelar búsqueda anterior si existe
         if (abortControllerRef.current) {
@@ -100,7 +103,7 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
             if (!aborted && !controller.signal.aborted) {
                 if (isNextRedirectError(error)) throw error;
                 setSearchError(true);
-                showErrorToast(error, { onRetry: () => handleSearch(query.trim()) });
+                showErrorToast(error, { onRetry: () => retrySearchRef.current(query.trim()) });
             }
         } finally {
             if (!controller.signal.aborted) {
@@ -108,6 +111,9 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
             }
         }
     }, [popular]);
+    useEffect(() => {
+        retrySearchRef.current = (query: string) => { void handleSearch(query); };
+    }, [handleSearch]);
 
     // Debounce efectivo
     useEffect(() => {
