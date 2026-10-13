@@ -546,7 +546,7 @@ def test_quality_moat_score_full_pass_and_partial_coverage():
         full_checks = {c["check"]: c for c in full.calculation_trace["checks"]}
         assert full_checks["roic_gt_wacc"]["passed"] is True
         assert full.calculation_trace["checks_evaluable"] == 5
-        assert full.definition_version == "MARCO_NICO_V1"
+        assert full.definition_version == "MARCO_V1"
     finally:
         db.close()
         cleanup_metric_test_artifacts()
@@ -797,7 +797,7 @@ def test_quality_moat_score_v2_full_pass_and_partial():
         partial = service.calculate(db, company, "quality_moat_score_v2", persist=True)
         db.commit()
         assert partial.status == "partial"
-        assert partial.definition_version == "MARCO_NICO_V2"
+        assert partial.definition_version == "MARCO_V2"
         checks = {c["check"]: c for c in partial.calculation_trace["checks"]}
         assert len(checks) == 8
         assert checks["owner_earnings_5y_positive"]["passed"] is True

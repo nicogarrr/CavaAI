@@ -199,7 +199,7 @@ class Settings(BaseSettings):
     screener_quote_vendor: str = "finnhub"
     ibkr_flex_token: str | None = None
     ibkr_flex_query_id: str | None = None
-    # Tenant dueño del token Flex (cuenta de Nico). Sin él la sincronizacion
+    # Tenant dueño del token Flex (cuenta propietaria). Sin él la sincronizacion
     # periodica no corre: el token es de UNA cuenta y nunca se reparte por tenants.
     ibkr_flex_tenant_id: int | None = None
     # Cuenta IBKR esperada (p. ej. U1234567): sin ella la sync no borra nada.

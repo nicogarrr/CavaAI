@@ -41,7 +41,7 @@ import { seedProPicksRun } from "./fixtures/propicks-run";
 //   descrito en https://github.com/facebook/react/issues/33437 (cerrado
 //   como stale, Status: Unconfirmed; se cita como patron conocido, no como
 //   prueba).
-// - En el navegador real de Nico (sin Playwright) su log mostro el mismo
+// - En un navegador real (sin Playwright) su log mostro el mismo
 //   warning; el escritor concreto en su maquina NO esta identificado.
 //   Hipotesis SIN verificar: una extension u otro actor externo que oculta
 //   carets inline siguiendo el mismo patron. Lo probado es que ni el SSR

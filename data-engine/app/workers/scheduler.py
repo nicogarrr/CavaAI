@@ -99,7 +99,7 @@ def build_scheduler(*, background: bool = False) -> BlockingScheduler | Backgrou
     _register(scheduler, reconcile_thesis_dispatches, "interval",
               job_id="thesis_dispatch_recovery", minutes=1)
 
-    # Precios a dos velocidades, mismo criterio que news (decision de Nico
+    # Precios a dos velocidades, mismo criterio que news (decision
     # 2026-09-25): cartera+watchlist cada hora; universo completo cada 6 h en
     # background. El screener sirve quotes en vivo por su propia via de
     # vendors (screeners.py), asi que su frescura no depende del barrido de
@@ -144,7 +144,7 @@ def build_scheduler(*, background: bool = False) -> BlockingScheduler | Backgrou
         minutes=30,
     )
     # Universo completo en background, al ritmo que permite GDELT con
-    # pacing (~3 h/tenant): dos velocidades, decisión de Nico 2026-09-25.
+    # pacing (~3 h/tenant): dos velocidades, decisión 2026-09-25.
     _register(
         scheduler,
         partial(enqueue_for_all_tenants, refresh_news, scope="all"),

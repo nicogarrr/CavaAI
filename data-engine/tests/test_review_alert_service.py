@@ -153,25 +153,25 @@ def test_transition_alert_actions(db):
     db.add(alert)
     db.commit()
 
-    service.transition_alert(alert, action="acknowledge", actor="nico")
+    service.transition_alert(alert, action="acknowledge", actor="analyst")
     assert alert.status == "acknowledged"
-    assert alert.acknowledged_by == "nico"
+    assert alert.acknowledged_by == "analyst"
     assert alert.acknowledged_at is not None
 
     with pytest.raises(ValueError):
-        service.transition_alert(alert, action="snooze", actor="nico",
+        service.transition_alert(alert, action="snooze", actor="analyst",
                                  snoozed_until=datetime.now(UTC) - timedelta(minutes=1))
     future = datetime.now(UTC) + timedelta(hours=2)
-    service.transition_alert(alert, action="snooze", actor="nico", snoozed_until=future)
+    service.transition_alert(alert, action="snooze", actor="analyst", snoozed_until=future)
     assert alert.status == "snoozed"
     assert alert.snoozed_until == future
 
-    service.transition_alert(alert, action="reopen", actor="nico")
+    service.transition_alert(alert, action="reopen", actor="analyst")
     assert alert.status == "open"
     assert alert.snoozed_until is None
 
     with pytest.raises(ValueError):
-        service.transition_alert(alert, action="explode", actor="nico")
+        service.transition_alert(alert, action="explode", actor="analyst")
 
 
 def test_transition_review_sets_status_and_notes(db):

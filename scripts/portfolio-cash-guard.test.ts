@@ -83,7 +83,7 @@ describe('buildAllocationSlices: datos del donut', () => {
     });
 
     it('con margen (caja negativa) los pesos no superan el 100%', () => {
-        // Caso real Nico 11 oct 2026: RV 21.520,40 + caja -11.269,38 daba ASTS 133,1%.
+        // Caso real 11 oct 2026: RV 21.520,40 + caja -11.269,38 daba ASTS 133,1%.
         const slices = buildAllocationSlices([
             { symbol: 'ASTS', value: 13635, gain: 0, gainPercent: 0 },
             { symbol: 'TSLA', value: 7885.4, gain: 0, gainPercent: 0 },

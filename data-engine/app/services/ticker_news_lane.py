@@ -27,7 +27,7 @@ from urllib.parse import quote_plus
 from app.services.connectors.base import ConnectorItem, ConnectorResult
 
 US_EXCHANGE_RE = re.compile(r"NASDAQ|NYSE|AMEX|ARCA|BATS|CBOE", re.IGNORECASE)
-# Empresas que Nico sigue de cerca: siempre entran en el carril rapido.
+# Empresas seguidas de cerca: siempre entran en el carril rapido.
 PRIORITY_TICKERS = frozenset({"ASTS", "SPCX"})
 # Alias verificados a mano por empresa: las noticias reales citan la marca y no
 # el ticker ("SpaceX compra espectro..."). Solo marcas propias de esa empresa;

@@ -1,4 +1,4 @@
-"""Datos de empresa globales (decision de Nico, opcion A) y rama coherente del
+"""Datos de empresa globales (decision de producto, opcion A) y rama coherente del
 motor pre_revenue: el InferredInput fcf_margin se consulta cuando el snapshot
 es coherente y no hay FCF reportado. Las opiniones de usuario siguen aisladas."""
 

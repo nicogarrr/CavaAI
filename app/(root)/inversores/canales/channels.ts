@@ -1,4 +1,4 @@
-/** Canales de YouTube de inversión. Fuente: suscripciones de Nico (capturas del 2026-10-06) y referencias en inglés comprobadas el mismo día cargando la página del canal. */
+/** Canales de YouTube de inversión. Fuente: suscripciones del propietario (capturas del 2026-10-06) y referencias en inglés comprobadas el mismo día cargando la página del canal. */
 export type ChannelCategory = 'inversion' | 'negocio' | 'referencia' | 'empresa';
 
 export type InvestorChannel = {
@@ -14,9 +14,9 @@ export type InvestorChannel = {
 };
 
 export const CHANNELS_CHECKED_AT = '2026-10-06';
-const SUBS = 'Suscripciones de Nico (capturas, 2026-10-06)';
+const SUBS = 'Capturas, 2026-10-06';
 const CHECKED = 'Página del canal cargada el 2026-10-06';
-const NICOS_PICK = 'Elegidos por Nico y verificados en YouTube (2026-10-11)';
+const VERIFIED_PICK = 'Verificado en YouTube, 2026-10-11';
 
 export const INVESTOR_CHANNELS: InvestorChannel[] = [
     {
@@ -346,7 +346,7 @@ export const INVESTOR_CHANNELS: InvestorChannel[] = [
         category: 'inversion',
         language: 'es',
         note: null,
-        source: NICOS_PICK,
+        source: VERIFIED_PICK,
         checked_at: '2026-10-11',
     },
     {
@@ -357,7 +357,7 @@ export const INVESTOR_CHANNELS: InvestorChannel[] = [
         category: 'inversion',
         language: 'es',
         note: null,
-        source: NICOS_PICK,
+        source: VERIFIED_PICK,
         checked_at: '2026-10-11',
     },
     {
@@ -368,7 +368,7 @@ export const INVESTOR_CHANNELS: InvestorChannel[] = [
         category: 'inversion',
         language: 'es',
         note: null,
-        source: NICOS_PICK,
+        source: VERIFIED_PICK,
         checked_at: '2026-10-11',
     },
     {
@@ -379,7 +379,7 @@ export const INVESTOR_CHANNELS: InvestorChannel[] = [
         category: 'inversion',
         language: 'es',
         note: null,
-        source: NICOS_PICK,
+        source: VERIFIED_PICK,
         checked_at: '2026-10-11',
     },
     {
@@ -390,7 +390,7 @@ export const INVESTOR_CHANNELS: InvestorChannel[] = [
         category: 'inversion',
         language: 'es',
         note: null,
-        source: NICOS_PICK,
+        source: VERIFIED_PICK,
         checked_at: '2026-10-11',
     },
     {
@@ -401,7 +401,7 @@ export const INVESTOR_CHANNELS: InvestorChannel[] = [
         category: 'inversion',
         language: 'es',
         note: null,
-        source: NICOS_PICK,
+        source: VERIFIED_PICK,
         checked_at: '2026-10-11',
     },
     {
@@ -412,7 +412,7 @@ export const INVESTOR_CHANNELS: InvestorChannel[] = [
         category: 'inversion',
         language: 'es',
         note: null,
-        source: NICOS_PICK,
+        source: VERIFIED_PICK,
         checked_at: '2026-10-11',
     },
     {
@@ -423,7 +423,7 @@ export const INVESTOR_CHANNELS: InvestorChannel[] = [
         category: 'inversion',
         language: 'es',
         note: null,
-        source: NICOS_PICK,
+        source: VERIFIED_PICK,
         checked_at: '2026-10-11',
     },
     {
@@ -434,7 +434,7 @@ export const INVESTOR_CHANNELS: InvestorChannel[] = [
         category: 'inversion',
         language: 'en',
         note: null,
-        source: NICOS_PICK,
+        source: VERIFIED_PICK,
         checked_at: '2026-10-11',
     },
     {
@@ -445,7 +445,7 @@ export const INVESTOR_CHANNELS: InvestorChannel[] = [
         category: 'inversion',
         language: 'en',
         note: null,
-        source: NICOS_PICK,
+        source: VERIFIED_PICK,
         checked_at: '2026-10-11',
     },
     {
@@ -456,7 +456,7 @@ export const INVESTOR_CHANNELS: InvestorChannel[] = [
         category: 'inversion',
         language: 'en',
         note: null,
-        source: NICOS_PICK,
+        source: VERIFIED_PICK,
         checked_at: '2026-10-11',
     },
     {
@@ -467,7 +467,7 @@ export const INVESTOR_CHANNELS: InvestorChannel[] = [
         category: 'inversion',
         language: 'en',
         note: null,
-        source: NICOS_PICK,
+        source: VERIFIED_PICK,
         checked_at: '2026-10-11',
     },
     {
@@ -478,7 +478,7 @@ export const INVESTOR_CHANNELS: InvestorChannel[] = [
         category: 'inversion',
         language: 'en',
         note: null,
-        source: NICOS_PICK,
+        source: VERIFIED_PICK,
         checked_at: '2026-10-11',
     },
     {
@@ -489,7 +489,7 @@ export const INVESTOR_CHANNELS: InvestorChannel[] = [
         category: 'inversion',
         language: 'en',
         note: null,
-        source: NICOS_PICK,
+        source: VERIFIED_PICK,
         checked_at: '2026-10-11',
     },
     {
@@ -500,7 +500,7 @@ export const INVESTOR_CHANNELS: InvestorChannel[] = [
         category: 'inversion',
         language: 'en',
         note: null,
-        source: NICOS_PICK,
+        source: VERIFIED_PICK,
         checked_at: '2026-10-11',
     },
 ];

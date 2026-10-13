@@ -30,7 +30,7 @@ from app.services.provenance import Coverage, SourceKind, provenance
 SOURCE = "sec_edgar_13f"
 
 # Reviewed one by one before adding: exact CIK <-> official EDGAR name.
-# Small by design; Nico extends this table explicitly. Verified against EDGAR
+# Small by design; the owner extends this table explicitly. Verified against EDGAR
 # submissions (13F-HR for the 2026-06-30 period) on 2026-10-06.
 REVIEWED_MANAGERS: dict[str, str] = {
     "0001067983": "Berkshire Hathaway Inc",
