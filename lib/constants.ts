@@ -220,7 +220,7 @@ export function sectionForRoute(pathname: string): string | null {
   if (['/portfolio', '/risk', '/taxes', '/corporate-actions', '/calendar', '/plan'].some((p) => pathname === p || pathname.startsWith(`${p}/`))) return '/portfolio';
   if (['/research'].some((p) => pathname === p || pathname.startsWith(`${p}/`))) return '/research';
   if (['/knowledge', '/knowledge-graph', '/inversores/canales'].some((p) => pathname === p || pathname.startsWith(`${p}/`))) return '/knowledge';
-  if (['/discover', '/screeners', '/screener', '/movers', '/insider', '/ownership', '/inversores', '/propicks'].some((p) => pathname === p || pathname.startsWith(`${p}/`))) return '/discover';
+  if (['/discover', '/screeners', '/screener', '/movers', '/insider', '/ownership', '/inversores', '/propicks', '/macro-calendar'].some((p) => pathname === p || pathname.startsWith(`${p}/`))) return '/discover';
   return null;
 }
 
