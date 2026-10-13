@@ -53,7 +53,7 @@ export default function PortfolioNavChart({ data, positive, currency = 'USD' }: 
                         borderRadius: '8px',
                     }}
                     labelStyle={{ color: '#9ca3af' }}
-                    formatter={(value: number) => [formatMoney(value, currency), 'Valor']}
+                    formatter={(value) => [formatMoney(Number(value), currency), 'Valor']}
                 />
                 <Area
                     type="monotone"
