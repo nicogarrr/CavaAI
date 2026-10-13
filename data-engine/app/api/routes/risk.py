@@ -25,3 +25,20 @@ async def market_stress_signals(ticker: str | None = None) -> dict:
 @router.get("/market-stress")
 async def market_stress(ticker: str | None = None) -> dict:
     return await market_stress_signals(ticker)
+
+
+@router.get("/historical-stress")
+async def historical_stress(
+    ticker: str | None = None, db: Session = Depends(get_db)
+) -> dict:
+    from fastapi import HTTPException
+
+    from app.services.historical_stress_service import HistoricalStressService
+
+    if ticker is not None:
+        import re
+
+        ticker = ticker.strip().upper()
+        if not re.fullmatch(r"[A-Z0-9^][A-Z0-9.^=-]{0,19}", ticker):
+            raise HTTPException(status_code=422, detail="Ticker no válido")
+    return await HistoricalStressService().build(db, ticker=ticker)
