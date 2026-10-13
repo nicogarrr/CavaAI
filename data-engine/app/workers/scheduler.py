@@ -34,6 +34,7 @@ from app.workers.dramatiq_app import (
     scan_contradictions,
     scan_insider_watchlist,
     sync_ibkr_flex,
+    sync_investor_holdings,
     tenant_contexts,
 )
 
@@ -278,6 +279,19 @@ def build_scheduler(*, background: bool = False) -> BlockingScheduler | Backgrou
         day_of_week="sun",
         hour=3,
         minute=45,
+    )
+    # Carteras de inversores (13F + Form 4): el 13F es trimestral (plazo de 45
+    # dias) y los Form 4 de Trump/Bezos son poco frecuentes; semanal sobra y son
+    # ~10-15 peticiones a SEC por tenant.
+    _register(
+        scheduler,
+        partial(enqueue_for_all_tenants, sync_investor_holdings),
+        "cron",
+        job_id="investor_holdings_weekly",
+        day_of_week="mon",
+        hour=4,
+        minute=20,
+        jitter=600,
     )
     # Evaluacion de reglas de alerta del usuario: barata (una lectura por
     # regla + emision solo al disparar) y con cooldown por regla, asi que

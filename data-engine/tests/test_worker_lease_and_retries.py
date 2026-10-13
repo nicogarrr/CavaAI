@@ -42,6 +42,7 @@ LEASED_ACTORS = [
     "refresh_portfolio_prices_intraday",
     "refresh_propicks_prices",
     "scan_insider_watchlist",
+    "sync_investor_holdings",
     "dispatch_insider_alerts",
 ]
 
