@@ -1,5 +1,5 @@
 import logging
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Literal
 
@@ -33,6 +33,7 @@ from app.schemas import (
     FinancialRefreshResponse,
     ThesisTickersOut,
 )
+from app.services.company_changes_service import changes_since
 from app.services.company_enrichment_service import CompanyEnrichmentService
 from app.services.company_resolver import resolve_companies, resolve_company
 from app.services.company_snapshot_service import CompanySnapshotService
@@ -437,6 +438,19 @@ def refresh_calculated_metrics(
             for result in metrics
         ],
     }
+
+
+@router.get("/{ticker}/changes-since")
+def company_changes_since(
+    ticker: str,
+    since: datetime = Query(..., description="ISO 8601: ultima visita del usuario"),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Documentos, hechos y cambios de tesis creados despues de ``since``."""
+    company = resolve_company(db, ticker)
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return changes_since(db, company.id, since)
 
 
 @router.get("/{ticker}/long-term-model")
