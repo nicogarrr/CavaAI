@@ -2402,6 +2402,43 @@ def scan_insider_watchlist(
         return _handle_actor_error(actor_name, exc, tenant_id=tenant_id)
 
 
+@dramatiq.actor(max_retries=2, min_backoff=15_000)
+@_coalesce_on_success("sync_investor_holdings", 12 * 60 * 60, ("tenant_id",))
+def sync_investor_holdings(
+    tenant_id: int | None = None,
+    user_id: str | None = None,
+) -> dict[str, Any]:
+    """Refresco semanal de las carteras de inversores (13F de los gestores
+    revisados y Form 4 de Trump/Bezos). Cada fuente falla por separado."""
+    actor_name = "sync_investor_holdings"
+    try:
+        from app.services.investor_sync import sync_investor_holdings as run_sync
+
+        db = _session(tenant_id, user_id)
+        try:
+            lease = acquire_job_lease(
+                f"sync_investor_holdings:{tenant_id}",
+                ttl_seconds=1800,
+                redis_url=_lease_redis_url(),
+            )
+        except Exception:
+            db.close()
+            raise
+        if lease is None:
+            db.close()
+            return {"status": "skipped", "actor": actor_name, "reason": "lease_held"}
+        try:
+            result = run_sync(db)
+        finally:
+            release_job_lease(
+                f"sync_investor_holdings:{tenant_id}", lease, redis_url=_lease_redis_url()
+            )
+            db.close()
+        return {"actor": actor_name, **result}
+    except Exception as exc:
+        return _handle_actor_error(actor_name, exc, tenant_id=tenant_id)
+
+
 @dramatiq.actor(max_retries=2, min_backoff=15_000, queue_name=ALERT_QUEUE_NAME)
 def dispatch_insider_alerts(
     tenant_id: int | None = None,
