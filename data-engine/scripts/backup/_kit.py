@@ -70,8 +70,8 @@ REQUIRED_TOOL_KEYS = ("pg_dump", "pg_restore", "minio", "qdrant")
 
 POSTGRES_IMAGE = "postgres:17"
 REQUIRED_PG_CLIENT_MAJOR = 17
-QDRANT_IMAGE = "qdrant/qdrant:v1.12.5"
-REQUIRED_QDRANT_MAJOR_MINOR = "1.12"
+QDRANT_IMAGE = "qdrant/qdrant:v1.19.2"
+REQUIRED_QDRANT_MAJOR_MINOR = "1.19"
 # La imagen oficial de quay.io ya no es publica: prod construye MinIO desde
 # fuente (docker/minio/Dockerfile, PR #776) y etiqueta la imagen asi.
 MINIO_IMAGE = "cavaai-minio:RELEASE.2025-10-15T17-29-55Z"
