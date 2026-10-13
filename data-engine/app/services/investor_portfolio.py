@@ -46,7 +46,8 @@ LABELS = (OFICIAL, INFERIDO, SIN_DATOS)
 
 MOVEMENTS_LIMIT = 50
 # Inversores no-13F cuyo declarante en EDGAR (Forms 3/4) esta verificado.
-FORM4_FILER_CIK = {"trump": "0000947033"}
+# bezos: "BEZOS JEFFREY P" en la busqueda de propietarios de la SEC (own-disp, CIK 0001043298).
+FORM4_FILER_CIK = {"trump": "0000947033", "bezos": "0001043298"}
 
 _ARCHIVES = "https://www.sec.gov/Archives/edgar/data"
 _TRUMP_13D_URL = f"{_ARCHIVES}/947033/000114036125046424/xslSCHEDULE_13D_X01/primary_doc.xml"
