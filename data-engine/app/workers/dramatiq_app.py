@@ -379,10 +379,12 @@ def _redis_client():
     """Cliente redis corto para sondas de cola; None si no hay URL configurada."""
     import redis as _redis
 
+    from app.core.redis_retry import no_retry
+
     url = _lease_redis_url()
     if not url:
         return None
-    return _redis.from_url(url, socket_connect_timeout=2, socket_timeout=2)
+    return _redis.from_url(url, socket_connect_timeout=2, socket_timeout=2, retry=no_retry())
 
 
 def kpi_queue_depth(client=None) -> int | None:
@@ -555,7 +557,9 @@ def acquire_job_lease(
         try:
             import redis as redis_sync
 
-            client = redis_sync.Redis.from_url(redis_url, socket_connect_timeout=0.25)
+            from app.core.redis_retry import no_retry
+
+            client = redis_sync.Redis.from_url(redis_url, socket_connect_timeout=0.25, retry=no_retry())
             try:
                 acquired = client.set(
                     f"cavaai:job-lease:{job_name}", token, nx=True, ex=max(int(ttl_seconds), 1)
@@ -598,7 +602,9 @@ def release_job_lease(
         try:
             import redis as redis_sync
 
-            client = redis_sync.Redis.from_url(redis_url, socket_connect_timeout=0.25)
+            from app.core.redis_retry import no_retry
+
+            client = redis_sync.Redis.from_url(redis_url, socket_connect_timeout=0.25, retry=no_retry())
             try:
                 client.eval(_RELEASE_LEASE_LUA, 1, f"cavaai:job-lease:{job_name}", token)
                 return
