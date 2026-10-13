@@ -167,7 +167,11 @@ class PointInTimeSnapshotBuilder:
             .join(Document, Document.id == FinancialFact.source_id, isouter=True)
             .where(FinancialFact.company_id == company_id)
         ).all()
-        return {row[0]: (row[1].date() if row[1] else None) for row in rows if row[0]}
+        return {
+            source_id: (published_at.date() if published_at else None)
+            for source_id, published_at in rows
+            if source_id
+        }
 
     def _candidates(
         self,
