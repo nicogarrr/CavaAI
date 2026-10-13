@@ -167,7 +167,7 @@ class ShadowTracer:
             return
         client = self._ensure_client()
         trace_id = client.create_trace_id()
-        self._root = client.start_span(
+        self._root = client.start_observation(
             trace_context={"trace_id": trace_id},
             name=self.workflow_name,
             metadata=self.metadata,
@@ -197,7 +197,7 @@ class ShadowTracer:
             if self.active:
                 try:
                     self._start_root()
-                    span = self._root.start_span(
+                    span = self._root.start_observation(
                         name=name,
                         metadata=sanitize_metadata(
                             {**self.metadata, **record}
@@ -224,7 +224,8 @@ class ShadowTracer:
             return
         try:
             self._start_root()
-            generation = self._root.start_generation(
+            generation = self._root.start_observation(
+                as_type="generation",
                 name=name,
                 model=model,
                 metadata=sanitize_metadata(metadata),
@@ -247,7 +248,7 @@ class ShadowTracer:
                 self.active = True
                 self._start_root()
                 for record in self._step_buffer:
-                    span = self._root.start_span(
+                    span = self._root.start_observation(
                         name=record["step"],
                         metadata=sanitize_metadata({**self.metadata, **record}),
                         level="ERROR" if record["error_class"] else "DEFAULT",
