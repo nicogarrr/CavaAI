@@ -1,7 +1,7 @@
 """ProPicks funnel v1 (big-data stage): deterministic ranking of the whole
 research universe from persisted metrics and facts.
 
-Design (approved by Nico 2026-09-25):
+Design (2026-09-25):
 - Universe: every company in the tenant (US SEC + EUR ESEF).
 - Hard gates: metric coverage, earnings consistency, leverage (when the
   metric exists), and a sector-aware quality gate (financials use ROE vs
