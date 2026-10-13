@@ -1052,3 +1052,13 @@ async def refresh_wacc_inputs(
         # El RuntimeError envuelve el texto del error de httpx, que lleva la
         # URL completa con la api key del proveedor en la query.
         raise HTTPException(status_code=424, detail=safe_detail(exc, 424)) from exc
+
+
+@router.get("/{ticker}/share-capital")
+def company_share_capital(ticker: str, db: Session = Depends(get_db)) -> dict:
+    from app.services.share_capital_service import build_share_capital
+
+    company = resolve_company(db, ticker)
+    if not company:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    return build_share_capital(db, company)

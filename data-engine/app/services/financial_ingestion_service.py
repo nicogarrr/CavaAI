@@ -36,6 +36,10 @@ SEC_INTANGIBLE_COMPONENTS = [
 ]
 # Metrics whose concepts are disjoint parts to be summed, not alternative tags.
 SUMMED_COMPONENT_METRICS: frozenset[str] = frozenset({"intangible_assets"})
+CAPITAL_FLOW_METRICS = frozenset({
+    "common_stock_repurchased", "common_stock_issued", "shares_repurchased", "stock_based_compensation",
+})
+CAPITAL_PROVENANCE_METRICS = CAPITAL_FLOW_METRICS | {"shares_outstanding"}
 
 # Which provider wins when the same (metric, fiscal year) exists more than once.
 # A regulator filing the number itself beats a vendor's restatement of it, and
@@ -135,6 +139,10 @@ SEC_METRIC_MAP: list[tuple[str, list[str], str]] = [
     ("capital_expenditure", ["PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsToAcquireProductiveAssets"],          "USD"),
     ("depreciation_amortization", ["DepreciationDepletionAndAmortization", "DepreciationAmortizationAndAccretionNet",
                                    "Depreciation", "DepreciationAndAmortization"],                                                                  "USD"),
+    ("common_stock_repurchased", ["PaymentsForRepurchaseOfCommonStock"], "USD"),
+    ("common_stock_issued", ["ProceedsFromIssuanceOfCommonStock"], "USD"),
+    ("shares_repurchased", ["StockRepurchasedDuringPeriodShares"], "shares"),
+    ("stock_based_compensation", ["ShareBasedCompensation"], "USD"),
     ("dividends_paid",    ["PaymentsOfDividends", "PaymentsOfDividendsCommonStock"],                                "USD"),
 ]
 
@@ -1062,6 +1070,7 @@ class FinancialIngestionService:
         facts_imported = 0
         cash_restricted_years: set[int] = set()
         concept_usage: dict[str, dict[str, Any]] = {}
+        capital_provenance = dict((document.metadata_ or {}).get("capital_fact_provenance") or {})
         # La moda SOLO etiqueta trimestres (los 10-Q no declaran su cierre de
         # ejercicio por hecho); la admision anual va por ancla de filing.
         modal_fy_month = _current_fiscal_month_from_anchors(
@@ -1095,6 +1104,7 @@ class FinancialIngestionService:
                     max_span=380,
                     annual_anchors=annual_anchors,
                     as_of=as_of,
+                    require_start=metric in CAPITAL_FLOW_METRICS,
                 ),
                 metric,
             )
@@ -1158,7 +1168,7 @@ class FinancialIngestionService:
                     # Sin ancla trimestral, un saldo instantaneo de portada
                     # entraba como '<fecha>:Qn' y el mismo trimestre acababa
                     # con dos filas shares_diluted.
-                    require_start=metric == "shares_diluted",
+                    require_start=metric == "shares_diluted" or metric in CAPITAL_FLOW_METRICS,
                 ),
                 metric,
             )
@@ -1205,6 +1215,10 @@ class FinancialIngestionService:
                     concept_usage.setdefault(metric, {})[
                         f"{entry['end']}:{fp}"
                     ] = entry.get("_concept")
+                    if metric in CAPITAL_PROVENANCE_METRICS:
+                        capital_provenance.setdefault(metric, {})[f"{entry['end']}:{fp}"] = {
+                            "filed": entry.get("filed"), "concept": entry.get("_concept"),
+                        }
                     facts_imported += 1
             # Los alias se FUSIONAN, no "gana el primero que informe": muchos
             # filers migraron de tag (Revenues -> SalesRevenueNet ->
@@ -1261,11 +1275,16 @@ class FinancialIngestionService:
                     concept_usage.setdefault(metric, {})[str(entry["end"])] = entry.get(
                         "_concept"
                     )
+                    if metric in CAPITAL_PROVENANCE_METRICS:
+                        capital_provenance.setdefault(metric, {})[f"{entry['end']}:FY"] = {
+                            "filed": entry.get("filed"), "concept": entry.get("_concept"),
+                        }
                     facts_imported += 1
 
         if concept_usage:
             existing_meta = dict(document.metadata_ or {})
             existing_meta["xbrl_concept_by_metric_period"] = concept_usage
+            existing_meta["capital_fact_provenance"] = capital_provenance
             document.metadata_ = existing_meta
 
         drop_shadowed_facts(db, company.id, document.id, tenant_condition(db))
