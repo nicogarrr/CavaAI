@@ -111,7 +111,11 @@ function PriceCanvas({ bars, levels, currency, hourly = false }: { bars: Company
     const container = useRef<HTMLDivElement>(null);
     const engine = useRef<{ chart: IChartApi; line: ISeriesApi<'Area', Time>; volume: ISeriesApi<'Histogram', Time>; levels: IPriceLine[] } | null>(null);
     const latest = useRef({ bars, levels, currency });
-    latest.current = { bars, levels, currency };
+    // Sincroniza el ref tras cada render (react-hooks/refs prohibe escribirlo
+    // durante el render). Declarado antes del resto de efectos: se ejecuta primero.
+    useEffect(() => {
+        latest.current = { bars, levels, currency };
+    });
     const [ready, setReady] = useState(false);
     const [error, setError] = useState(false);
     useEffect(() => {

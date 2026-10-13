@@ -221,9 +221,14 @@ function ChartEngine({
     onState: (state: 'loading' | 'ready' | 'error') => void;
 }) {
     const rowsRef = useRef(rows);
-    rowsRef.current = rows;
     const currencyRef = useRef(currency);
-    currencyRef.current = currency;
+    // Sincroniza los refs tras cada render (escribir refs durante el render
+    // lo prohibe react-hooks/refs). Va ANTES del efecto de creacion: los
+    // efectos corren en orden de declaracion, asi que ve los valores nuevos.
+    useEffect(() => {
+        rowsRef.current = rows;
+        currencyRef.current = currency;
+    });
 
     // Creación única del gráfico (efecto sin dependencias: montar una vez).
     useEffect(() => {
