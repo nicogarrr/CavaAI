@@ -23,7 +23,7 @@ Backend (desde `data-engine/`): `uv sync --frozen --extra test --extra dev --no-
 `APP_ENV=test pytest -q -p no:warnings`. En imagen slim sin `git` fallan 4 tests conocidos de
 `tests/test_repo_and_image_hygiene.py::test_market_data_paths_are_ignored`; cualquier otro fallo es tuyo.
 Dependencias: `requirements.txt` se genera con `scripts/sync_requirements.py --write`.
-Frontend: `npm run lint` y `npx tsc --noEmit`.
+Frontend: `npm run lint` y `npm run typecheck`.
 
 ## Flujo
 - PRs pequenas, una por tema; declara en el cuerpo lo agrupado y los limites.
