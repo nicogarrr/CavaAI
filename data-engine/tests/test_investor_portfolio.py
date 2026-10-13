@@ -408,3 +408,33 @@ def test_partial_manager_with_all_row_values_still_has_no_total_or_weights():
     assert out["total_value_usd"]["label"] == "SIN_DATOS"
     assert all(p["weight_pct"]["label"] == "SIN_DATOS" for p in out["positions"])
     assert all(p["value_usd"]["label"] == "OFICIAL" for p in out["positions"])
+
+
+BEZOS_FORM4 = (
+    FORM4.replace("0000947033", "0001043298")
+    .replace("TRUMP DONALD J", "BEZOS JEFFREY P")
+    .replace("0001849635", "0001018724")
+    .replace("Trump Media &amp; Technology Group Corp.", "AMAZON COM INC")
+    .replace("DJT", "AMZN")
+    .replace("<transactionCode>G<", "<transactionCode>S<")
+    .replace("<value>114750000<", "<value>1000000<")
+    .replace("<value>0</value></transactionPricePerShare>", "<value>200.5</value></transactionPricePerShare>")
+)
+
+
+def test_sync_form4_bezos_official_sale_and_no_invented_positions():
+    db = _db()
+    filing = dict(FILING, accession_number="0001043298-25-000001")
+    assert sync_form4(db, "bezos", fetch=lambda url: BEZOS_FORM4, filings=[filing]) == 1
+    row = db.scalars(select(InvestorMovement)).one()
+    assert (row.investor_slug, row.action, row.transaction_code, row.label) == ("bezos", "venta", "S", "OFICIAL")
+    assert row.ticker == "AMZN" and row.shares == Decimal("1000000") and row.price_usd == Decimal("200.5")
+    out = investor_portfolio(db, "bezos")
+    assert out is not None
+    assert out["movements"] and out["movements"][0]["shares"]["source_url"] == filing["index_url"]
+    assert out["positions"] == [] or all(p["shares"]["label"] == "SIN_DATOS" for p in out["positions"])
+
+
+def test_sync_form4_bezos_rejects_trump_filer():
+    # El Form 4 de Trump firmado por otro CIK no se guarda bajo bezos.
+    assert sync_form4(_db(), "bezos", fetch=lambda url: FORM4, filings=[FILING]) == 0
