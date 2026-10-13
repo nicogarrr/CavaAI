@@ -10,7 +10,7 @@ import { Panel } from '@/components/ui/panel';
 export const dynamic = 'force-dynamic';
 
 type Side = { value: string; period: string; unit: string; source: { url: string | null; published_at: string | null } } | null;
-type Figure = { metric: string; unit: string; current: Side; previous: Side; label: string; change_pct: string | null; highlight: boolean };
+type Figure = { metric: string; unit: string; outflow?: boolean; current: Side; previous: Side; label: string; change_pct: string | null; highlight: boolean };
 type Excerpt = { text: string };
 type Section = { section: string; label: string; status: string; reason?: string; change_count?: number; truncated?: boolean;
   changes: Array<{ kind: 'added' | 'removed' | 'modified'; before: Excerpt[]; after: Excerpt[] }> };
@@ -21,10 +21,13 @@ type Yoy = { status: string; reason?: string; form: string; page: number; total:
 const KIND = { added: 'Añadido', removed: 'Eliminado', modified: 'Modificado' } as const;
 const PER_PAGE_NOTE = 'Cada página es un informe distinto, del más reciente al más antiguo.';
 
-function money(value: string, unit: string, metric: string): string {
-  const n = Number(value);
-  if (unit === 'USD' && metric !== 'eps_diluted') return formatMarketCapUsd(n);
-  return formatNumber(n, { maximumFractionDigits: 2 }) + (unit && unit !== 'USD' ? ` ${unit}` : '');
+function money(value: string, unit: string, metric: string, outflow = false): string {
+  const n = outflow ? Math.abs(Number(value)) : Number(value);
+  // Misma convencion en toda la tabla: dolares en estilo ingles compacto ($4.87B).
+  if (metric === 'eps_diluted') return `${new Intl.NumberFormat('en-US', { style: 'currency', currency: /^[A-Z]{3}(\/|$)/.test(unit) ? unit.slice(0, 3) : 'USD' }).format(n)} por acción`;
+  if (unit === 'USD') return formatMarketCapUsd(n);
+  if (unit === 'shares') return `${new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 2 }).format(n)} acciones`;
+  return formatNumber(n, { maximumFractionDigits: 2 }) + (unit ? ` ${unit}` : '');
 }
 
 function sourceLink(url: string | null) {
@@ -61,9 +64,9 @@ export default async function FilingsYoyPage({ params, searchParams }: {
           {data.figures?.length ? <div className="overflow-x-auto"><table className="w-full text-sm">
             <thead className="text-left text-xs text-gray-500"><tr><th className="py-1 pr-3">Métrica</th><th className="pr-3">Actual</th><th className="pr-3">Año anterior</th><th>Variación</th></tr></thead>
             <tbody>{data.figures.map((fig) => <tr className="border-t border-gray-800" key={`${fig.metric}-${fig.unit}`}>
-              <td className="py-1.5 pr-3">{metricLabel(fig.metric)}</td>
-              <td className="pr-3">{fig.current ? <>{money(fig.current.value, fig.unit, fig.metric)} {sourceLink(fig.current.source.url)}</> : 'N/D'}</td>
-              <td className="pr-3">{fig.previous ? <>{money(fig.previous.value, fig.unit, fig.metric)} {sourceLink(fig.previous.source.url)}</> : 'N/D'}</td>
+              <td className="py-1.5 pr-3">{metricLabel(fig.metric)}{fig.outflow ? <span className="block text-xs text-gray-500">salida de caja, importe absoluto</span> : null}</td>
+              <td className="pr-3">{fig.current ? <>{money(fig.current.value, fig.unit, fig.metric, fig.outflow)} {sourceLink(fig.current.source.url)}</> : 'N/D'}</td>
+              <td className="pr-3">{fig.previous ? <>{money(fig.previous.value, fig.unit, fig.metric, fig.outflow)} {sourceLink(fig.previous.source.url)}</> : 'N/D'}</td>
               <td className={fig.highlight ? 'font-semibold text-amber-300' : 'text-gray-300'}>
                 {fig.change_pct == null ? 'N/D' : `${Number(fig.change_pct) > 0 ? '+' : ''}${formatNumber(Number(fig.change_pct), { maximumFractionDigits: 1 })} %`}
                 {' '}<span className="text-xs text-gray-500">{fig.change_pct == null ? 'SIN_DATOS' : 'DERIVADO'}</span>

@@ -28,6 +28,9 @@ FIGURE_METRICS = (
     "total_liabilities", "total_equity", "cash_and_equivalents", "total_debt",
     "shares_diluted",
 )
+# Metricas que se guardan en NEGATIVO por ser salida de caja (capex). Variacion y
+# presentacion sobre el importe absoluto: un capex que sube no es un "recorte".
+OUTFLOW_METRICS = frozenset({"capital_expenditure"})
 LABEL_OFFICIAL = "OFICIAL"
 LABEL_DERIVED = "DERIVADO"
 LABEL_INFERRED = "INFERIDO"
@@ -97,15 +100,18 @@ def figures(db: Session, company_id: int, current_end: date, suffix: str | None)
     for metric in FIGURE_METRICS:
         for key in sorted(k for k in set(cur) | set(prev) if k[0] == metric):
             now, before = _best(cur.get(key, [])), _best(prev.get(key, []))
-            item: dict[str, Any] = {"metric": metric, "unit": key[1],
+            outflow = metric in OUTFLOW_METRICS
+            item: dict[str, Any] = {"metric": metric, "unit": key[1], "outflow": outflow,
                                     "current": _side(db, now) if now else None,
                                     "previous": _side(db, before) if before else None}
             if now is None or before is None:
                 item.update(label=LABEL_NO_DATA, change_pct=None, highlight=False)
             else:
                 item["label"] = LABEL_OFFICIAL
-                if before.value != 0 and (before.value > 0) == (now.value > 0):
-                    pct = (now.value - before.value) / abs(before.value) * 100
+                now_value, before_value = ((abs(now.value), abs(before.value)) if outflow
+                                           else (now.value, before.value))
+                if before_value != 0 and (before_value > 0) == (now_value > 0):
+                    pct = (now_value - before_value) / abs(before_value) * 100
                     item.update(change_pct=str(pct.quantize(Decimal("0.1"))),
                                 change_label=LABEL_DERIVED, highlight=abs(pct) >= HIGHLIGHT_PCT)
                 else:

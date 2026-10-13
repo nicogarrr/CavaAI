@@ -66,6 +66,22 @@ def test_pairs_annual_figures_with_source_and_derived_change(db):
     assert by["gross_profit"]["label"] == "SIN_DATOS" and by["gross_profit"]["previous"] is None
 
 
+def test_capex_stored_negative_is_compared_on_absolute_amount(db):
+    # Cifras reales de SEC companyfacts: META FY2025 vs FY2024 (capex guardado negativo).
+    now, before = doc(db, "2026-09-30", n=2), doc(db, "2025-09-30", n=1)
+    fact(db, "capital_expenditure", "-69691000000", "2026-09-30:FY", now)
+    fact(db, "capital_expenditure", "-37256000000", "2025-09-30:FY", before)
+    fact(db, "free_cash_flow", "-10", "2026-09-30:FY", now)
+    fact(db, "free_cash_flow", "-20", "2025-09-30:FY", before)
+    by = {f["metric"]: f for f in comparison(db, db.info["company_id"], "10-K", 1)["figures"]}
+    capex = by["capital_expenditure"]
+    assert capex["outflow"] is True
+    assert capex["change_pct"] == "87.1" and capex["highlight"]  # el gasto SUBE: variacion positiva
+    assert Decimal(capex["current"]["value"]) == Decimal("-69691000000")  # el dato guardado no se altera
+    # Una metrica que no es salida de caja conserva el calculo sobre su valor con signo.
+    assert by["free_cash_flow"]["outflow"] is False and by["free_cash_flow"]["change_pct"] == "50.0"
+
+
 def test_quarterly_never_mixes_fy_and_other_quarters(db):
     doc(db, "2026-06-30", "10-Q", 2, meta={"fiscal_quarter": "Q2"})
     doc(db, "2025-06-30", "10-Q", 1, meta={"fiscal_quarter": "Q2"})
