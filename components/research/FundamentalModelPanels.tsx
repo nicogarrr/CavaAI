@@ -247,7 +247,9 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
             <p className="mt-3 text-xs leading-5 text-gray-500">
               El WACC es la tasa con la que se descuentan los flujos futuros: lo que piden conjuntamente accionistas y prestamistas. El ROIC es lo que la empresa gana con su capital invertido; solo crea valor cuando supera el WACC.
             </p>
-            <p className="mt-3 text-xs leading-5 text-gray-500">Fuentes ingresos: {growthAssumption?.source_fact_ids.join(', ') || 'sin fuente'} · FCF: {marginAssumption?.source_fact_ids.join(', ') || 'sin fuente'}</p>
+            <p className="mt-3 text-xs leading-5 text-gray-500">
+              Fuentes ingresos: <AssumptionSources fuentes={growthAssumption?.fuentes} /> · FCF: <AssumptionSources fuentes={marginAssumption?.fuentes} />
+            </p>
           </div>
           <div className="rounded-md border border-gray-800 p-3 text-sm">
             <div className="text-xs font-semibold uppercase text-gray-500">
@@ -430,5 +432,26 @@ export function DecisionAndRealityPanel({
         )}
       </div>
     </section>
+  );
+}
+
+function AssumptionSources({ fuentes }: { fuentes?: Array<{ fact_id: number; titulo: string | null; url: string | null; fecha: string | null }> }) {
+  if (!fuentes || fuentes.length === 0) return <>sin fuente</>;
+  return (
+    <>
+      {fuentes.map((fuente, index) => (
+        <span key={fuente.fact_id}>
+          {index > 0 ? ', ' : ''}
+          {fuente.url && /^https:\/\//.test(fuente.url) ? (
+            <a href={fuente.url} target="_blank" rel="noopener noreferrer" className="text-teal-400 underline">
+              {fuente.titulo ?? 'Fuente oficial'}
+            </a>
+          ) : (
+            (fuente.titulo ?? 'Fuente oficial')
+          )}
+          {fuente.fecha ? ` (${fuente.fecha})` : ''}
+        </span>
+      ))}
+    </>
   );
 }
