@@ -130,11 +130,6 @@ const ALLOWED: Array<{ file: string; snippet: string; why: string }> = [
         why: "Form 4 / insider trading: el importe y la transacción se declaran y liquidan en USD ante la SEC (no hay divisa de bolsa que interpretar).",
     },
     {
-        file: 'components/landing/PublicLanding.tsx',
-        snippet: "formatMoney(check.value, 'USD', { maximumFractionDigits: 0 })",
-        why: "Métricas de marketing del propio producto (coste por análisis), fijadas en USD por contrato comercial, no datos de mercado.",
-    },
-    {
         file: 'lib/actions/proPicks.actions.ts',
         snippet: '(objetivo $${round1(targetPrice)} vs $${round1(currentPrice)}',
         why: "Texto de la alerta de proPicks, mismo universo US-only: el «$» acompaña a un precio de cotización del S&P 500.",
