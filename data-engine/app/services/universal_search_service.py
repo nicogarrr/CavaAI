@@ -35,6 +35,12 @@ TOKEN_RE = re.compile(r"[\w.-]+", re.UNICODE)
 RRF_K = 60
 
 
+def _rows(db: Session, statement: Any) -> list[tuple[Any, ...]]:
+    """Filas como tuplas planas: SQLAlchemy 2.1 tipa Row por columna y pyright
+    no puede desempaquetar la salida de ``_fts`` (sin anotar)."""
+    return [tuple(row) for row in db.execute(statement).all()]
+
+
 @dataclass
 class SearchCandidate:
     key: str
@@ -440,7 +446,7 @@ class UniversalSearchService:
             if company_id is not None:
                 statement = statement.where(Document.company_id == company_id)
             statement = self._fts(statement, DocumentChunk.text, query, db).limit(300)
-            for chunk, document, company in db.execute(statement).all():
+            for chunk, document, company in _rows(db, statement):
                 result.append(
                     SearchCandidate(
                         key=f"document_chunk:{chunk.id}",
@@ -554,7 +560,7 @@ class UniversalSearchService:
             if company_id is not None:
                 statement = statement.where(model.company_id == company_id)
             statement = self._fts(statement, model.metric, query, db).limit(500)
-            for row, row_company in db.execute(statement).all():
+            for row, row_company in _rows(db, statement):
                 result.append(
                     SearchCandidate(
                         key=f"{entity_type}:{row.id}",
@@ -601,7 +607,7 @@ class UniversalSearchService:
             if collection_id is not None:
                 statement = statement.where(KnowledgeDocument.collection_id == collection_id)
             statement = self._fts(statement, KnowledgeChunk.content, query, db).limit(300)
-            for chunk, document, collection in db.execute(statement).all():
+            for chunk, document, collection in _rows(db, statement):
                 result.append(
                     SearchCandidate(
                         key=f"knowledge_chunk:{chunk.id}",
@@ -653,7 +659,7 @@ class UniversalSearchService:
             statement = statement.where(InvestmentPrinciple.applies_to_company_ids.contains([company_id]))
         statement = self._fts(statement, InvestmentPrinciple.principle, query, db).limit(300)
         result = []
-        for row, document, collection in db.execute(statement).all():
+        for row, document, collection in _rows(db, statement):
             result.append(
                 SearchCandidate(
                     key=f"investment_principle:{row.id}",
@@ -703,7 +709,7 @@ class UniversalSearchService:
             statement = statement.where(InvestmentCaseStudy.company_id == company_id)
         statement = self._fts(statement, InvestmentCaseStudy.summary, query, db).limit(300)
         result = []
-        for row, collection in db.execute(statement).all():
+        for row, collection in _rows(db, statement):
             result.append(
                 SearchCandidate(
                     key=f"investment_case:{row.id}",
