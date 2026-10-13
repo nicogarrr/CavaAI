@@ -10,7 +10,7 @@ export const revalidate = 0;
 
 export const metadata: Metadata = {
     title: 'Calendario de catalizadores',
-    description: 'Resultados, dividendos y acciones corporativas de tus posiciones abiertas en un solo calendario.',
+    description: 'Resultados y ex-dividendos de tus posiciones en EE. UU. (USD) y acciones corporativas de todas tus posiciones, en un solo calendario.',
 };
 
 const TYPE_LABEL: Record<CatalystEvent['type'], string> = {
@@ -48,8 +48,9 @@ export default async function CalendarPage() {
                     <p className="text-sm font-semibold uppercase text-teal-300">Cartera</p>
                     <h1 className="mt-1 text-3xl font-bold text-gray-100">Calendario de catalizadores</h1>
                     <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-400">
-                        Resultados, dividendos y acciones corporativas de tus posiciones abiertas, del{' '}
-                        {formatMarketDate(calendar.desde)} al {formatMarketDate(calendar.hasta)}.
+                        Del {formatMarketDate(calendar.desde)} al {formatMarketDate(calendar.hasta)}. Resultados y
+                        ex-dividendos solo cubren tus posiciones cotizadas en EE. UU. (USD); las acciones corporativas
+                        registradas cubren todas tus posiciones abiertas.
                     </p>
                 </div>
                 <div className="flex items-center gap-2 rounded-lg border border-gray-800 bg-surface-1 px-3 py-2 text-sm text-gray-300">
@@ -72,7 +73,9 @@ export default async function CalendarPage() {
                 </p>
             ) : groups.length === 0 && !degraded ? (
                 <p className="rounded-lg border border-gray-800 p-4 text-sm text-gray-400">
-                    Sin eventos en este rango para tus {formatNumber(calendar.held_count, { maximumFractionDigits: 0 })} posiciones abiertas.
+                    Sin eventos en este rango. Esto solo vale para resultados y ex-dividendos de tus posiciones en EE. UU. (USD)
+                    y para las acciones corporativas registradas de tus {formatNumber(calendar.held_count, { maximumFractionDigits: 0 })} posiciones abiertas;
+                    no cubre resultados ni dividendos de posiciones fuera de EE. UU.
                 </p>
             ) : (
                 <ol className="flex flex-col gap-4">
@@ -82,13 +85,15 @@ export default async function CalendarPage() {
                                 {formatMarketDate(day, { weekday: 'long', day: 'numeric', month: 'long' })}
                             </h2>
                             <ul className="mt-3 flex flex-col gap-2">
-                                {events.map((event) => (
+                                {events.map((event, index) => (
                                     <li
-                                        key={`${event.type}-${event.ticker}-${event.date}`}
+                                        key={`${event.type}-${event.ticker}-${event.date}-${event.title}-${index}`}
                                         className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm"
                                     >
                                         <span className="font-mono font-semibold text-teal-300">{event.ticker}</span>
-                                        <span className="text-gray-100">{TYPE_LABEL[event.type] ?? event.title}</span>
+                                        <span className="text-gray-100">
+                                            {event.type === 'corporate_action' ? event.title : (TYPE_LABEL[event.type] ?? event.title)}
+                                        </span>
                                         {event.detail ? <span className="text-gray-400">{event.detail}</span> : null}
                                         <span className="ml-auto text-xs text-gray-500">Fuente: {event.source}</span>
                                     </li>
