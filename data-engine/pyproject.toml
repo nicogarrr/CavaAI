@@ -86,7 +86,7 @@ dependencies = [
     # queda el default duckdb_path en config como ruta historica). El
     # analytics local vive en Postgres + ficheros; no reintroducir sin uso.
     "minio>=7.2.7,<8",
-    "dramatiq[redis]>=1.17.0,<2",
+    "dramatiq[redis]>=1.17.0,<3",
     "apscheduler>=3.10.4,<4",
     "langfuse>=3.0.0,<4",
     # Thesis lifecycle shadow pilot (stage 6): usados en app/workflows/ y
