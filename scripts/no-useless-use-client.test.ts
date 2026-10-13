@@ -316,6 +316,7 @@ describe('el escaner y el guard cuentan lo mismo', () => {
   });
 
   it('el numero de directivas client del repo no crece sin explicacion', () => {
+    // 92 = ShareCapitalPanel: useState (pestanas saldos/flujos y paginacion) y recharts, que solo funciona en cliente.
     // 91 = ChangesSinceVisit: localStorage/sessionStorage + fetch en cliente (la ultima visita solo existe en el navegador).
     // 90 = InstallApp: beforeinstallprompt, useState/useEffect y click para instalar la PWA (seccion Instalar CavaAI en /security).
     // 89 = ThesisExportMenu: DropdownMenu Radix interactivo (trigger, items, teclado) que agrupa las 4 exportaciones de la tesis.
@@ -329,7 +330,7 @@ describe('el escaner y el guard cuentan lo mismo', () => {
     assert.equal(inherited, 5, 'cambian las excepciones: revisa COMPONENTS_EXCEPTIONS y su motivo');
     assert.equal(
       total,
-      91,
+      92,
       `han aparecido directivas 'use client' sin revisar (total ${total}, justificadas ${justified}, heredadas ${inherited})`,
     );
   });
