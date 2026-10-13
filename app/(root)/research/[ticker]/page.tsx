@@ -134,6 +134,7 @@ const MODULES = [
   { key: 'satellites', label: 'Satélites AST', group: 'seguimiento' },
   { key: 'thesis', label: 'Tesis', group: 'tesis' },
   { key: 'financials', label: 'Financieros', group: 'financieros' },
+  { key: 'capital', label: 'Dilución y recompras', group: 'financieros', path: 'share-capital' },
   { key: 'terminal', label: 'Terminal financiero', group: 'financieros', path: 'financial-terminal' },
   { key: 'supuestos', label: 'Supuestos de drivers', group: 'financieros', path: 'driver-assumptions' },
   { key: 'model', label: 'Modelo a largo plazo', group: 'modelo' },
