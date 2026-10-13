@@ -9,7 +9,7 @@ import {CountrySelectField} from "@/components/forms/CountrySelectField";
 import FooterLink from "@/components/forms/FooterLink";
 import AuthPitch from "@/components/forms/AuthPitch";
 import {signUpWithEmail} from "@/lib/actions/auth.actions";
-import {SUPPORT_EMAIL} from "@/lib/config/brand";
+import AccessRequestForm from "@/components/forms/AccessRequestForm";
 import {useRouter} from "next/navigation";
 import {toast} from "sonner";
 import React from "react";
@@ -74,15 +74,8 @@ const SignUpForm = ({ signUpOpen }: { signUpOpen: boolean }) => {
                 <div className="mb-6 rounded-lg border border-amber-900/60 bg-amber-950/20 p-4">
                     <p className="text-sm font-semibold text-amber-200">El registro está cerrado por ahora</p>
                     <p className="mt-1 text-sm leading-6 text-amber-100/90">
-                        Estamos abriendo el acceso por tandas para poder acompañar el alta. Deja tu correo en
-                        la lista de espera y te avisamos en cuanto haya plaza:{' '}
-                        <a
-                            href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('Lista de espera de CavaAI')}`}
-                            className="underline underline-offset-4 hover:text-amber-100"
-                        >
-                            {SUPPORT_EMAIL}
-                        </a>
-                        . Si ya tienes cuenta,{' '}
+                        Estamos abriendo el acceso por tandas para poder acompañar el alta. Pide acceso aquí
+                        abajo y te avisamos en cuanto haya plaza. Si ya tienes cuenta,{' '}
                         <a href="/sign-in" className="underline underline-offset-4 hover:text-amber-100">
                             inicia sesión
                         </a>
@@ -91,6 +84,9 @@ const SignUpForm = ({ signUpOpen }: { signUpOpen: boolean }) => {
                 </div>
             ) : null}
 
+            {/* Registro cerrado: el formulario de alta se sustituye por la solicitud de acceso
+                (el servidor rechazaria el alta de todos modos). */}
+            {!signUpOpen ? <AccessRequestForm /> : (
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
                 <InputField
                     name="fullName"
@@ -171,6 +167,7 @@ const SignUpForm = ({ signUpOpen }: { signUpOpen: boolean }) => {
 
                 <FooterLink text="¿Ya tienes cuenta?" linkText="Iniciar sesión" href="/sign-in" />
             </form>
+            )}
         </>
     )
 }
