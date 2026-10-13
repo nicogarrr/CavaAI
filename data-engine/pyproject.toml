@@ -40,7 +40,7 @@ dependencies = [
     "tabulate>=0.9.0,<0.11",
     "python-dateutil>=2.8.0,<3",
     "arch>=6.0,<9",
-    "qdrant-client>=1.9.0,<1.15",
+    "qdrant-client>=1.16.0,<2",
     "redis>=5.0.0,<9",
     # Embeddings RAG locales (all-MiniLM-L6-v2, ver app/services/rag.py).
     # torch es dependencia de sentence-transformers: se instala SIEMPRE la
@@ -70,8 +70,8 @@ dependencies = [
     # RAG de conocimiento profesional (app/services/knowledge_rag/). SOLO
     # llama-index-core como caja de herramientas de retrieval (TextNode,
     # NodeWithScore, QueryBundle, postprocesadores). Sin llama-index-vector-
-    # stores-qdrant (exige qdrant-client>=1.16; prod pinea <1.15 y su Qdrant
-    # server es 1.12.5), sin LlamaParse/LlamaCloud ni integraciones OpenAI.
+    # stores-qdrant (el store propio usa qdrant-client directo; prod ya va en
+    # Qdrant 1.19), sin LlamaParse/LlamaCloud ni integraciones OpenAI.
     "llama-index-core>=0.14.25,<0.15",
     # Export EPUB 100% Python sin binario externo (ver
     # app/services/thesis_epub_service.py). AGPL-3.0 = misma licencia que la app.
