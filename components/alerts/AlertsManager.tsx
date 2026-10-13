@@ -66,6 +66,26 @@ function AlertsManager() {
         },
     });
 
+    const loadAlerts = async () => {
+        setLoadError(null);
+        try {
+            const [data, telegramStatus, recent] = await Promise.all([
+                getUserAlerts(),
+                getTelegramStatus().catch(() => null),
+                getRecentTriggeredAlerts(10).catch(() => [] as TriggeredAlertDelivery[]),
+            ]);
+            setAlerts(data);
+            setTelegram(telegramStatus);
+            setTriggered(recent);
+        } catch (error) {
+            if (isNextRedirectError(error)) throw error;
+            setLoadError(t('common.states.alertsLoadError'));
+            showErrorToast(error, { onRetry: loadAlerts });
+        } finally {
+            setLoading(false);
+        }
+    };
+
     useEffect(() => {
         loadAlerts();
         // Deep-link desde QuickAlertButton: /alerts?symbol=MSFT&type=price_below&value=300
@@ -86,26 +106,6 @@ function AlertsManager() {
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
-
-    const loadAlerts = async () => {
-        setLoadError(null);
-        try {
-            const [data, telegramStatus, recent] = await Promise.all([
-                getUserAlerts(),
-                getTelegramStatus().catch(() => null),
-                getRecentTriggeredAlerts(10).catch(() => [] as TriggeredAlertDelivery[]),
-            ]);
-            setAlerts(data);
-            setTelegram(telegramStatus);
-            setTriggered(recent);
-        } catch (error) {
-            if (isNextRedirectError(error)) throw error;
-            setLoadError(t('common.states.alertsLoadError'));
-            showErrorToast(error, { onRetry: loadAlerts });
-        } finally {
-            setLoading(false);
-        }
-    };
 
     const handleCreateAlert = async () => {
         try {
