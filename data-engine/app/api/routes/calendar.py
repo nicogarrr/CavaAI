@@ -64,8 +64,11 @@ async def catalysts_calendar(
 ) -> dict:
     """Calendario unico de catalizadores de la cartera (por defecto, 14 dias).
 
-    Une resultados y dividendos (NASDAQ publico, solo empresas con posicion
-    abierta) y acciones corporativas registradas sin aplicar. Si NASDAQ no
+    Une resultados y fecha ex-dividendo (NASDAQ publico, solo posiciones
+    abiertas en bolsa US y USD) y acciones corporativas registradas sin
+    aplicar. No incluye la fecha de pago: NASDAQ solo devuelve cada dividendo
+    el dia de su ex-date, asi que un pago con ex-date anterior al rango
+    quedaria fuera sin avisar. Si NASDAQ no
     responde, ``status`` lo declara (``partial``/``unavailable``) y las
     acciones corporativas propias se siguen mostrando; nunca devuelve 5xx
     por un fallo del proveedor.
@@ -73,7 +76,7 @@ async def catalysts_calendar(
     start = desde or date.today()
     end = hasta or (start + timedelta(days=14))
     start, end = _resolve_range(start, end)
-    held = catalyst_service.held_tickers(db)
+    held, held_us = catalyst_service.held_tickers(db)
     if not held:
         return {
             "status": "ok",
@@ -84,12 +87,16 @@ async def catalysts_calendar(
             "events": [],
             "errors": [],
         }
-    earnings, dividends = await asyncio.gather(
-        calendar_connector.fetch_earnings_range(start, end),
-        calendar_connector.fetch_dividends_range(start, end),
-    )
+    if held_us:
+        earnings, dividends = await asyncio.gather(
+            calendar_connector.fetch_earnings_range(start, end),
+            calendar_connector.fetch_dividends_range(start, end),
+        )
+    else:  # sin posiciones US no hay nada que cruzar con NASDAQ: no se le pregunta
+        earnings = dividends = {"status": "ok", "events": [], "errors": []}
     events = catalyst_service.build_catalysts(
         held=held,
+        held_us=held_us,
         desde=start,
         hasta=end,
         earnings=earnings["events"],

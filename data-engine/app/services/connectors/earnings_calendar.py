@@ -38,10 +38,14 @@ BROWSER_HEADERS = {
 def _parse_float(value: Any) -> float | None:
     if value in (None, "", "--", "N/A", "time-not-supplied"):
         return None
+    text = str(value).strip()
+    # NASDAQ entrega los negativos entre parentesis: "($0.05)" = -0.05.
+    negative = text.startswith("(") and text.endswith(")")
     try:
-        return float(str(value).replace(",", "").strip("()%$"))
+        number = float(text.replace(",", "").strip("()%$"))
     except (TypeError, ValueError):
         return None
+    return -number if negative else number
 
 
 def normalize_earnings_row(row: dict[str, Any], day: date) -> dict[str, Any]:

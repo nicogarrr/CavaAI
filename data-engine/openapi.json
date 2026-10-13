@@ -11337,7 +11337,7 @@
     },
     "/api/calendar/catalysts": {
       "get": {
-        "description": "Calendario unico de catalizadores de la cartera (por defecto, 14 dias).\n\nUne resultados y dividendos (NASDAQ publico, solo empresas con posicion\nabierta) y acciones corporativas registradas sin aplicar. Si NASDAQ no\nresponde, ``status`` lo declara (``partial``/``unavailable``) y las\nacciones corporativas propias se siguen mostrando; nunca devuelve 5xx\npor un fallo del proveedor.",
+        "description": "Calendario unico de catalizadores de la cartera (por defecto, 14 dias).\n\nUne resultados y fecha ex-dividendo (NASDAQ publico, solo posiciones\nabiertas en bolsa US y USD) y acciones corporativas registradas sin\naplicar. No incluye la fecha de pago: NASDAQ solo devuelve cada dividendo\nel dia de su ex-date, asi que un pago con ex-date anterior al rango\nquedaria fuera sin avisar. Si NASDAQ no\nresponde, ``status`` lo declara (``partial``/``unavailable``) y las\nacciones corporativas propias se siguen mostrando; nunca devuelve 5xx\npor un fallo del proveedor.",
         "operationId": "catalysts_calendar_api_calendar_catalysts_get",
         "parameters": [
           {

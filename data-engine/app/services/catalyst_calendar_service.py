@@ -4,8 +4,16 @@ Une, para las empresas con posicion abierta (quantity > 0), tres fuentes que
 hasta ahora vivian en pantallas distintas:
 
 * resultados (earnings) del calendario publico de NASDAQ,
-* dividendos (fecha ex y fecha de pago) del mismo calendario,
+* fecha ex-dividendo del mismo calendario,
 * acciones corporativas registradas en CavaAI (splits, etc.) aun no aplicadas.
+
+Cobertura declarada: el calendario de dividendos de NASDAQ se consulta por dia
+y solo devuelve las filas cuya fecha ex-dividendo cae en ese dia, por eso el
+calendario muestra la fecha ex y NO la fecha de pago (un pago cuyo ex-date fue
+anterior al rango no aparecaria y el calendario parecería completo sin serlo).
+Resultados y dividendos de NASDAQ se cruzan solo con posiciones en bolsa US y
+USD (misma regla que ``market_refresh_service._us_listed``): un ticker pelado
+de un emisor no-US puede coincidir con otro emisor.
 
 Honestidad de datos: solo se emiten eventos que la fuente trae; nada se
 estima ni se inventa. Si NASDAQ no responde, el estado lo dice y las acciones
@@ -22,21 +30,38 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.entities import Company, CorporateAction, Position
+from app.services.market_refresh_service import _us_listed
 
 SOURCE_NASDAQ = "Calendario publico de NASDAQ"
 SOURCE_CAVAAI = "Accion corporativa registrada en CavaAI"
 
-_TYPE_ORDER = {"earnings": 0, "dividend_ex": 1, "dividend_pay": 2, "corporate_action": 3}
+_TYPE_ORDER = {"earnings": 0, "dividend_ex": 1, "corporate_action": 2}
+
+# Valores reales de ``time`` del calendario NASDAQ (medidos), mas los alias antiguos.
+_TIME_LABEL = {
+    "time-pre-market": "antes de la apertura",
+    "time-after-hours": "tras el cierre",
+    "before-market": "antes de la apertura",
+    "after-market": "tras el cierre",
+}
 
 
-def held_tickers(db: Session) -> set[str]:
-    """Tickers (mayusculas) con posicion abierta."""
-    rows = db.execute(
-        select(Company.ticker)
-        .join(Position, Position.company_id == Company.id)
-        .where(Position.quantity > 0)
+def _es_number(value: float, decimals: int) -> str:
+    """Numero con coma decimal y signo menos explicito (es-ES)."""
+    return f"{value:.{decimals}f}".replace(".", ",")
+
+
+def held_tickers(db: Session) -> tuple[set[str], set[str]]:
+    """(todos, solo_us): tickers en mayusculas con posicion abierta.
+
+    ``solo_us`` (bolsa US y USD) es el unico conjunto valido para cruzar con
+    NASDAQ; ``todos`` sirve para las acciones corporativas propias."""
+    companies = db.scalars(
+        select(Company).join(Position, Position.company_id == Company.id).where(Position.quantity > 0)
     ).all()
-    return {str(row[0]).upper() for row in rows if row[0]}
+    todos = {str(c.ticker).upper() for c in companies if c.ticker}
+    solo_us = {str(c.ticker).upper() for c in companies if c.ticker and _us_listed(c)}
+    return todos, solo_us
 
 
 def _parse_us_date(value: Any) -> date | None:
@@ -56,6 +81,7 @@ def _parse_us_date(value: Any) -> date | None:
 def build_catalysts(
     *,
     held: set[str],
+    held_us: set[str],
     desde: date,
     hasta: date,
     earnings: list[dict[str, Any]],
@@ -67,17 +93,14 @@ def build_catalysts(
     for row in earnings:
         ticker = str(row.get("symbol", "")).upper()
         day = _parse_us_date(row.get("date"))
-        if ticker not in held or day is None or not desde <= day <= hasta:
+        if ticker not in held_us or day is None or not desde <= day <= hasta:
             continue
         detail = []
-        if row.get("time") and row["time"] != "time-not-supplied":
-            detail.append(
-                {"before-market": "antes de la apertura", "after-market": "tras el cierre"}.get(
-                    row["time"], str(row["time"])
-                )
-            )
+        # Solo franjas conocidas: "time-not-supplied" o valores nuevos no se muestran crudos.
+        if row.get("time") in _TIME_LABEL:
+            detail.append(_TIME_LABEL[row["time"]])
         if row.get("eps_forecast") is not None:
-            detail.append(f"BPA estimado {row['eps_forecast']:.2f}")
+            detail.append(f"BPA estimado {_es_number(row['eps_forecast'], 2)}")
         events.append(
             {
                 "date": day.isoformat(),
@@ -90,27 +113,25 @@ def build_catalysts(
         )
     for row in dividends:
         ticker = str(row.get("symbol", "")).upper()
-        if ticker not in held:
+        if ticker not in held_us:
             continue
         amount = row.get("amount")
-        amount_txt = f"{amount:.4f} por accion" if isinstance(amount, (int, float)) else None
-        for key, kind, title in (
-            ("ex_date", "dividend_ex", "Fecha ex-dividendo"),
-            ("payment_date", "dividend_pay", "Pago de dividendo"),
-        ):
-            day = _parse_us_date(row.get(key))
-            if day is None or not desde <= day <= hasta:
-                continue
-            events.append(
-                {
-                    "date": day.isoformat(),
-                    "ticker": ticker,
-                    "type": kind,
-                    "title": title,
-                    "detail": amount_txt,
-                    "source": SOURCE_NASDAQ,
-                }
-            )
+        amount_txt = (
+            f"{_es_number(amount, 4)} por accion" if isinstance(amount, (int, float)) else None
+        )
+        day = _parse_us_date(row.get("ex_date"))
+        if day is None or not desde <= day <= hasta:
+            continue
+        events.append(
+            {
+                "date": day.isoformat(),
+                "ticker": ticker,
+                "type": "dividend_ex",
+                "title": "Fecha ex-dividendo",
+                "detail": amount_txt,
+                "source": SOURCE_NASDAQ,
+            }
+        )
     for action in actions:
         ticker = str(action.get("ticker", "")).upper()
         day = _parse_us_date(action.get("effective_date"))
@@ -131,7 +152,7 @@ def build_catalysts(
                 "ticker": ticker,
                 "type": "corporate_action",
                 "title": label,
-                "detail": f"ratio {ratio:g}" if isinstance(ratio, (int, float)) else None,
+                "detail": f"ratio {_es_number(float(ratio), 4).rstrip('0').rstrip(',')}" if isinstance(ratio, (int, float)) else None,
                 "source": SOURCE_CAVAAI,
             }
         )
