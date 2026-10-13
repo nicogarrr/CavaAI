@@ -43,7 +43,9 @@ class LangfuseTracer:
                     secret_key=self.settings.langfuse_secret_key,
                     host=self.settings.langfuse_host,
                 )
-                remote_trace = client.trace(name=name, metadata=handle.metadata)
+                remote_trace = client.start_observation(
+                    name=name, metadata=handle.metadata
+                )
             except Exception as exc:  # observability must not break analysis
                 handle.metadata["telemetry_setup_error"] = type(exc).__name__
         try:
@@ -58,8 +60,10 @@ class LangfuseTracer:
                     remote_trace.update(
                         metadata=handle.metadata,
                         output=handle.output,
+                        level="ERROR" if handle.error else "DEFAULT",
                         status_message=handle.error,
                     )
+                    remote_trace.end()
                     client.flush()
                 except Exception as exc:  # keep a visible local failure counter
                     handle.metadata["telemetry_flush_error"] = type(exc).__name__
