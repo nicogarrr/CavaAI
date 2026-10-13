@@ -48,7 +48,7 @@ M0 es lo que declara la documentacion del repo, no un dato verificado.
 Coste 0 EUR, solo lectura sobre Atlas:
 
 - `scripts/mongo-backup.sh`: `mongodump --archive --gzip` cifrado con `age`
-  (clave publica en la VM, `AGE_RECIPIENT`; la privada la guarda solo Nico).
+  (clave publica en la VM, `AGE_RECIPIENT`; la privada la guarda solo el propietario).
   No deja fichero en claro. Opcional: copia a R2 con `RCLONE_REMOTE`.
   Retencion local: `BACKUP_RETENTION_COUNT` (8 por defecto).
 - `scripts/mongo-restore-drill.sh`: prueba de restauracion en un `mongod`

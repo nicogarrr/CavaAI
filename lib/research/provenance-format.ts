@@ -37,7 +37,7 @@ export function formatMoneyShort(value: number, currency: string): string {
         currency,
         notation: abs >= 1e6 ? "compact" : "standard",
         maximumFractionDigits: abs >= 1e6 ? 2 : abs >= 100 ? 0 : 2,
-        // Estilo ingles de Nico: escala compacta SIEMPRE con 2 decimales
+        // Estilo ingles: escala compacta SIEMPRE con 2 decimales
         // ($4.87B, no $4.8B ni $4.5B). Sin minimum, Intl recorta ceros.
         minimumFractionDigits: abs >= 1e6 ? 2 : abs >= 100 ? 0 : 2,
     }).format(value);

@@ -1,6 +1,6 @@
 """Ronda 5 auditor #990: la ruta general NO emite datos de mercado.
 
-Decidido por main bajo preferencias de Nico (cero terminal / secretos
+Decidido por main bajo preferencias del propietario (cero terminal / secretos
 fuera de chat): cualquier cifra con divisa o porcentaje en contexto
 financiero cae a la abstencion honesta; los datos cuantitativos viven
 solo en la ruta estructurada con ticker. La charla ordinaria queda

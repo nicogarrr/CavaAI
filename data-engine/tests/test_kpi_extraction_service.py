@@ -66,14 +66,14 @@ def _scaffold(db: Session, *, status: str = "pending_approval", ticker: str = "A
 
 def test_approve_creates_canonical_fact_from_candidate(db):
     candidate = _scaffold(db)
-    fact = KPIExtractionService().approve(db, candidate, actor="nico")
+    fact = KPIExtractionService().approve(db, candidate, actor="analyst")
 
     assert fact.metric == "revenue"
     assert fact.value == Decimal("391000000000")
     assert fact.source_type == "SEC"
     assert fact.is_reported is True
     assert candidate.status == "approved"
-    assert candidate.approved_by == "nico"
+    assert candidate.approved_by == "analyst"
     assert candidate.canonical_fact_id == fact.id
     assert db.scalar(select(FactRevision)) is None  # no contradiction: no revision
 
@@ -88,14 +88,14 @@ def test_approve_contradiction_records_revision_trail(db):
     db.add(existing)
     db.commit()
 
-    fact = KPIExtractionService().approve(db, candidate, actor="nico")
+    fact = KPIExtractionService().approve(db, candidate, actor="analyst")
     assert fact.id == existing.id
     assert fact.value == Decimal("391000000000")  # canonical value updated
     revision = db.scalar(select(FactRevision))
     assert revision is not None
     assert revision.previous_value == Decimal("380000000000")
     assert revision.new_value == Decimal("391000000000")
-    assert revision.approved_by == "nico"
+    assert revision.approved_by == "analyst"
     assert revision.canonical_version == 1
     assert revision.status == "approved"
 
@@ -103,14 +103,14 @@ def test_approve_contradiction_records_revision_trail(db):
 def test_approve_rejects_unreconciled_or_missing_document(db):
     candidate = _scaffold(db, status="rejected")
     with pytest.raises(ValueError, match="pending candidates"):
-        KPIExtractionService().approve(db, candidate, actor="nico")
+        KPIExtractionService().approve(db, candidate, actor="analyst")
 
 
 def test_reject_marks_candidate_but_never_approved_ones(db):
     candidate = _scaffold(db)
-    KPIExtractionService.reject(db, candidate, actor="nico")
+    KPIExtractionService.reject(db, candidate, actor="analyst")
     assert candidate.status == "rejected"
-    assert candidate.approved_by == "nico"
+    assert candidate.approved_by == "analyst"
 
     approved = _scaffold(db, ticker="MSFT")
     # _scaffold rows are unique by raw_value; distinguish this one.
@@ -118,7 +118,7 @@ def test_reject_marks_candidate_but_never_approved_ones(db):
     approved.status = "approved"
     db.commit()
     with pytest.raises(ValueError, match="cannot be rejected"):
-        KPIExtractionService.reject(db, approved, actor="nico")
+        KPIExtractionService.reject(db, approved, actor="analyst")
 
 
 def test_normalize_units_negatives_and_percents():

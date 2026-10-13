@@ -178,7 +178,7 @@ def classify_origin(
 ) -> list[dict[str, Any]]:
     """Anade el origen binario OFICIAL / INFERIDO a cada input.
 
-    Politica de Nico: todo numero es OFICIAL (URL oficial + fecha, verificada
+    Politica del producto: todo numero es OFICIAL (URL oficial + fecha, verificada
     contra el documento persistido) o INFERIDO (base explicita + URLs). No hay
     tercera categoria: lo que no se pueda verificar como oficial es INFERIDO.
     `sources` = fact_id -> {url, date, title, source_type} resuelto desde

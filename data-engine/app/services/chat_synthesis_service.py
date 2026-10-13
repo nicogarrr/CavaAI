@@ -180,7 +180,7 @@ _FINANCIAL_HINT_RE = re.compile(
 )
 
 
-# Ronda 7 (decision de producto, main bajo preferencias de Nico: veracidad
+# Ronda 7 (decision de producto, main bajo preferencias del propietario: veracidad
 # primero): se LIMITA la ruta. El generador libre solo atiende
 #   - charla/preguntas ordinarias NO financieras, y
 #   - conceptos financieros genericos ("que es el PER", "como funciona un ETF").

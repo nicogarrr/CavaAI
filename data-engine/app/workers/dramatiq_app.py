@@ -483,7 +483,7 @@ def _price_tracked_companies(db):
 def _tracked_companies(db):
     """Carril rápido de noticias: cartera + watchlist/seguidas del tenant.
 
-    Decisión de Nico (2026-09-25): sus empresas cada 30 min; el universo
+    Decisión (2026-09-25): sus empresas cada 30 min; el universo
     completo sigue en background con el job scope="all".
     """
     from sqlalchemy import select

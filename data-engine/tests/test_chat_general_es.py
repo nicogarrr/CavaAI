@@ -1,6 +1,6 @@
 """Router de intencion del chat: small talk natural ES + general con LLM.
 
-Decidido por main bajo preferencias de Nico (cero terminal / secretos
+Decidido por main bajo preferencias del propietario (cero terminal / secretos
 fuera de chat): el asistente responde a TODO con naturalidad en espanol;
 la estructura HECHO/CALCULO/... es solo para respuestas de datos con ticker.
 """
