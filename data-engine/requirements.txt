@@ -46,7 +46,7 @@ arch>=6.0,<9
 torch==2.14.1+cpu
 qdrant-client>=1.9.0,<1.15
 redis>=5.0.0,<9
-sentence-transformers>=5.6.0,<6
+sentence-transformers>=5.6.0,<7
 transformers>=5.13.1,<6
 
 # Document parsing
