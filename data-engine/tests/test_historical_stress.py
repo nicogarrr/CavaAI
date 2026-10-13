@@ -124,6 +124,68 @@ def test_missing_position_not_silently_renormalized(db, monkeypatch):
     assert report['companies'][0]['windows'][1]['status'] == 'calculated'
 
 
+def _add_company(db, ticker, exchange, currency, value=50):
+    company = Company(ticker=ticker, name=ticker, exchange=exchange, currency=currency, sector='S', industry='I',
+                      company_type='holding', valuation_model='unassigned', special_sources=[], special_risks=[], factor_tags=[])
+    db.add(company)
+    db.flush()
+    db.add(Position(company_id=company.id, quantity=Decimal('1'), market_value_base=Decimal(value),
+                    base_currency='EUR', currency=currency, as_of=date(2026, 10, 13)))
+    db.commit()
+
+
+def test_non_us_position_requests_real_listing_symbol(db, monkeypatch):
+    _add_company(db, 'SAP', 'XETRA', 'EUR')
+    asked = []
+    async def load(symbol):
+        asked.append(symbol)
+        prices = series()
+        return {**history(prices), 'currency': 'EUR' if symbol == 'SAP.DE' else 'USD'}
+    monkeypatch.setattr(stress, 'load_history', load)
+    import asyncio
+    report = asyncio.run(stress.HistoricalStressService().build(db, ticker='SAP'))
+    assert 'SAP.DE' in asked and 'SAP' not in asked
+    assert report['companies'][0]['symbol'] == 'SAP.DE'
+    assert report['companies'][0]['windows'][1]['status'] == 'calculated'
+
+
+def test_unmapped_non_us_symbol_is_sin_datos_not_a_substitute(db, monkeypatch):
+    _add_company(db, 'ZZZ', 'UNMAPPED-EXCHANGE', 'EUR')
+    asked = []
+    async def load(symbol):
+        asked.append(symbol)
+        return history(series())
+    monkeypatch.setattr(stress, 'load_history', load)
+    import asyncio
+    report = asyncio.run(stress.HistoricalStressService().build(db))
+    assert 'ZZZ' not in asked
+    assert report['portfolio'][1]['status'] == 'SIN_DATOS'
+    assert 'ZZZ' in report['portfolio'][1]['missing_tickers']
+    zzz = next(c for c in report['companies'] if c['ticker'] == 'ZZZ')
+    assert zzz['history_failure'] == 'no_safe_symbol'
+    assert zzz['windows'][1]['reason'] == 'no_safe_symbol'
+
+
+def test_currency_mismatch_is_rejected(db, monkeypatch):
+    _add_company(db, 'SAP', 'XETRA', 'EUR')
+    async def load(symbol):
+        return history(series())  # Yahoo devuelve USD: otra linea
+    monkeypatch.setattr(stress, 'load_history', load)
+    import asyncio
+    report = asyncio.run(stress.HistoricalStressService().build(db, ticker='SAP'))
+    window = report['companies'][0]['windows'][1]
+    assert window['status'] == 'SIN_DATOS' and window['reason'] == 'currency_mismatch'
+
+
+def test_provider_error_reason_is_distinct_from_missing_history(db, monkeypatch):
+    async def load(symbol):
+        raise httpx.ConnectError('unavailable')
+    monkeypatch.setattr(stress, 'load_history', load)
+    import asyncio
+    report = asyncio.run(stress.HistoricalStressService().build(db, ticker='AAA'))
+    assert report['companies'][0]['windows'][1]['reason'] == 'provider_error'
+
+
 def test_provider_outage_and_empty_portfolio(db, monkeypatch):
     async def load(ticker):
         raise httpx.ConnectError('unavailable')

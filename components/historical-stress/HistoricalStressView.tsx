@@ -6,11 +6,20 @@ import { formatPercent } from '@/lib/format';
 
 const day = (value?: string | null) => value ? value.slice(0, 10) : 'Sin datos';
 
+const REASON_TEXT: Record<string, string> = {
+    history_gaps: 'Histórico con huecos',
+    provider_error: 'El proveedor (Yahoo) no respondió: reintenta más tarde',
+    no_safe_symbol: 'Sin símbolo seguro para este valor (bolsa o divisa no mapeadas)',
+    currency_mismatch: 'Yahoo devolvió otra divisa distinta de la guardada: se descarta por no ser el mismo instrumento',
+    currency_unverified: 'Yahoo no indicó la divisa: no se puede verificar el instrumento',
+    incomplete_portfolio: 'Histórico o valoración incompletos',
+};
+
 function WindowCard({ window }: { window: StressWindow }) {
     return <article className="rounded-xl border border-gray-800 bg-surface-1 p-4">
         <h3 className="text-xl font-semibold text-gray-100">{window.year}</h3>
         {window.status === 'SIN_DATOS' ? <div className="mt-3 text-sm text-amber-300">
-            <p>SIN_DATOS</p><p className="mt-1 text-gray-400">{window.reason === 'history_gaps' ? 'Histórico con huecos' : 'Histórico o valoración incompletos'}</p>
+            <p>SIN_DATOS</p><p className="mt-1 text-gray-400">{REASON_TEXT[window.reason ?? ''] ?? 'Histórico o valoración incompletos'}</p>
             {window.missing_tickers?.length ? <p className="mt-2 break-words">{window.missing_tickers.join(', ')}</p> : null}
         </div> : <>
             <dl className="mt-3 space-y-3 text-sm">

@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Company, Position
 from app.services.connectors.yahoo import YahooFinanceClient
+from app.services.propicks_price_service import yahoo_symbol
 
 YEARS = (2008, 2020, 2022)
 _CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
@@ -106,13 +107,28 @@ def calculate_window(prices: dict[date, float], year: int) -> dict[str, Any]:
     }
 
 
+def _failed_windows(reason: str) -> list[dict[str, Any]]:
+    return [{"year": year, "status": "SIN_DATOS", "reason": reason} for year in YEARS]
+
+
 class HistoricalStressService:
     async def build(self, db: Session, *, ticker: str | None = None) -> dict[str, Any]:
         weights: dict[str, float] = {}
         missing_values: list[str] = []
         weight_dates: dict[str, str | None] = {}
+        # Instrumento REAL por ticker: Yahoo resuelve el ticker pelado en la linea US
+        # (ADR/gemelo); se pide yahoo_symbol(company) y se exige divisa coincidente.
+        instruments: dict[str, dict[str, Any]] = {}
         if ticker:
             tickers = [ticker.upper()]
+            known = db.scalars(select(Company).where(Company.ticker == ticker.upper())).first()
+            if known is not None:
+                instruments[tickers[0]] = {
+                    "symbol": yahoo_symbol(known),
+                    "currency": (known.currency or "").strip().upper() or None,
+                }
+            else:  # sin ficha de empresa: ticker pelado y divisa sin verificar (se declara)
+                instruments[tickers[0]] = {"symbol": tickers[0], "currency": None}
         else:
             rows = db.execute(select(Position, Company).join(Company, Position.company_id == Company.id)).all()
             values: dict[str, float] = {}
@@ -124,6 +140,10 @@ class HistoricalStressService:
                     missing_values.append(company.ticker)
                     continue
                 tick = company.ticker
+                instruments[tick] = {
+                    "symbol": yahoo_symbol(company),
+                    "currency": (company.currency or "").strip().upper() or None,
+                }
                 weight_dates[tick] = position.as_of.isoformat() if position.as_of else None
                 value = position.market_value_base
                 if value is None or not math.isfinite(float(value)) or value <= 0:
@@ -139,17 +159,31 @@ class HistoricalStressService:
         semaphore = asyncio.Semaphore(4)
 
         async def fetch(tick: str) -> tuple[str, dict[str, Any]]:
+            instrument = instruments.get(tick) or {"symbol": None, "currency": None}
+            empty = {"prices": {}, "source": "Yahoo Finance", "source_url": None,
+                     "fetched_at": datetime.now(UTC).isoformat(), "currency": None,
+                     "symbol": instrument["symbol"], "failure": None}
+            if instrument["symbol"] is None:
+                return tick, {**empty, "failure": "no_safe_symbol"}
             async with semaphore:
                 try:
-                    return tick, await load_history(tick)
+                    history = await load_history(instrument["symbol"])
                 except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError):
-                    return tick, {"prices": {}, "source": "Yahoo Finance", "source_url": None,
-                                  "fetched_at": datetime.now(UTC).isoformat(), "currency": None}
+                    return tick, {**empty, "failure": "provider_error"}
+            expected = instrument["currency"]
+            got = (history.get("currency") or "").strip().upper() or None
+            if expected and got != expected:
+                # Otra linea de cotizacion u otro emisor: nunca un sustituto.
+                return tick, {**empty, "source_url": history.get("source_url"), "currency": got,
+                              "failure": "currency_mismatch" if got else "currency_unverified"}
+            return tick, {**history, "symbol": instrument["symbol"], "failure": None}
 
         histories = dict(await asyncio.gather(*(fetch(tick) for tick in tickers)))
         companies = [{"ticker": tick, "weight": weights.get(tick), "weight_as_of": weight_dates.get(tick),
-                      **{k: v for k, v in histories[tick].items() if k != "prices"},
-                      "windows": [calculate_window(histories[tick]["prices"], year) for year in YEARS]}
+                      **{k: v for k, v in histories[tick].items() if k not in ("prices", "failure")},
+                      "history_failure": histories[tick]["failure"],
+                      "windows": (_failed_windows(histories[tick]["failure"]) if histories[tick]["failure"]
+                                  else [calculate_window(histories[tick]["prices"], year) for year in YEARS])}
                      for tick in tickers]
         portfolio = []
         for year in YEARS:
