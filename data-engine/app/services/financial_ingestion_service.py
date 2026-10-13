@@ -112,7 +112,7 @@ SEC_METRIC_MAP: list[tuple[str, list[str], str]] = [
     # del DCF (fix FIX5-8).
     ("shares_diluted",    ["WeightedAverageNumberOfDilutedSharesOutstanding"],                                      "shares"),
     ("shares_outstanding", ["CommonStockSharesOutstanding"],                                                         "shares"),
-    # Fallback aprobado por Nico (25/9, WWW): el tag combinado incluye caja
+    # Fallback (WWW, 25/9): el tag combinado incluye caja
     # restringida -> deuda neta fresca pero algo optimista. Va el ULTIMO: por
     # periodo gana el `filed` mas reciente, y los periodos donde se uso quedan
     # anotados en document.metadata_["cash_includes_restricted_periods"].

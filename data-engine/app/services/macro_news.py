@@ -1,10 +1,10 @@
 """Macro news lane: GDELT theme queries without ticker, labeled macro at creation.
 
 Each query is specific (phrases, not bare generic terms) to keep noise out.
-Themes approved by Nico 2026-09-27 (oro/bancos centrales, tipos, materias
+Themes (2026-09-27): oro/bancos centrales, tipos, materias
 primas, camiones/freight, IA, Ormuz/petróleo, energía, semiconductores,
 dólar/divisas, inflación, liquidez M2, China/supply chains, política
-comercial EEUU). Events land with company_id NULL (no ticker detection),
+comercial EEUU. Events land with company_id NULL (no ticker detection),
 news_lane="macro" and macro_theme in metadata — they feed the macro feed
 and the second-order analysis, never tracked-news alerts (fail-closed:
 no company link, no alert).
