@@ -258,7 +258,7 @@ jobs:
         name: [frontend-dev, frontend-prod, backend-dev, backend-prod]
     steps:
       - name: SBOM del job sbom
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: sbom-${{ matrix.name }}-cyclonedx
           path: sbom
@@ -382,7 +382,7 @@ jobs:
           cache-from: type=gha,scope=img-${{ matrix.name }}
 
       - name: Informe del motor 2 (job engine2)
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: engine2-${{ matrix.name }}
           path: engine2
