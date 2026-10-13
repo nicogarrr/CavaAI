@@ -12,6 +12,7 @@ import {
   Download,
   FileSearch,
   Filter,
+  CalendarDays,
   Gauge,
   Home,
   Library,
@@ -123,6 +124,7 @@ export const ROUTE_CATALOG: NavSection[] = [
       { href: '/risk', label: 'Exposiciones', icon: Gauge },
       { href: '/taxes', label: 'Impuestos', icon: Receipt },
       { href: '/corporate-actions', label: 'Acciones corp.', icon: Building2 },
+      { href: '/calendar', label: 'Calendario', icon: CalendarDays },
     ],
   },
   {
@@ -215,7 +217,7 @@ export function isNavItemActive(pathname: string, href: string): boolean {
 export function sectionForRoute(pathname: string): string | null {
   if (pathname === '/inicio') return '/inicio';
   if (pathname === '/watchlist') return '/watchlist';
-  if (['/portfolio', '/risk', '/taxes', '/corporate-actions', '/plan'].some((p) => pathname === p || pathname.startsWith(`${p}/`))) return '/portfolio';
+  if (['/portfolio', '/risk', '/taxes', '/corporate-actions', '/calendar', '/plan'].some((p) => pathname === p || pathname.startsWith(`${p}/`))) return '/portfolio';
   if (['/research'].some((p) => pathname === p || pathname.startsWith(`${p}/`))) return '/research';
   if (['/knowledge', '/knowledge-graph', '/inversores/canales'].some((p) => pathname === p || pathname.startsWith(`${p}/`))) return '/knowledge';
   if (['/discover', '/screeners', '/screener', '/movers', '/insider', '/ownership', '/inversores', '/propicks'].some((p) => pathname === p || pathname.startsWith(`${p}/`))) return '/discover';
