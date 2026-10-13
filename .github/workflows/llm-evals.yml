@@ -65,7 +65,7 @@ jobs:
           version: "0.12.5"
           enable-cache: true
           cache-dependency-glob: "data-engine/uv.lock"
-      # Sin pins de herramientas: el lock trae ruff==0.16.10 y pytest via
+      # Sin pins de herramientas: el lock trae ruff==0.17.0 y pytest via
       # extras test/dev (FIX-3.4). Antes: `pip install pytest ruff` flotando.
       - run: uv sync --frozen --extra test --extra dev --no-install-project
       - name: Ruff sobre el judge y sus gates
