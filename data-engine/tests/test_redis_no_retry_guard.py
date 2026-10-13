@@ -1,8 +1,9 @@
-"""Guard: todo cliente Redis del servicio se crea sin reintentos (fallo rapido).
+"""Guard: todo cliente Redis del servicio se crea con retry explicito sin reintentos.
 
-redis-py 6 cambio el defecto standalone a 3 reintentos con backoff con jitter; los
-timeouts cortos del servicio (0,25-2 s) existen para fallar rapido y degradar. Un
-``from_url`` sin ``retry=`` los multiplicaria. Ver ``app/core/redis_retry.py``.
+El defecto de 3 reintentos (redis-py 6) aplica a ``Redis(host=...)``; ``from_url`` usa
+``None`` hoy, asi que ``retry=`` fija el fallo rapido por contrato y evita regresion si
+cambia el defecto. Este guard solo vigila ``from_url`` (no el constructor ``Redis(host=...)``;
+hoy no hay ninguno en ``app/``). Ver ``app/core/redis_retry.py``.
 """
 
 from __future__ import annotations
