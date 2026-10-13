@@ -1,6 +1,6 @@
 """Fallback de caja SEC: cuando el emisor deja de reportar caja estricta
 (p.ej. WWW), se usa el tag combinado caja+restringida como ultimo alias,
-con nota de cobertura en el documento. Aprobado por Nico 25/9."""
+con nota de cobertura en el documento."""
 
 import asyncio
 from datetime import date
