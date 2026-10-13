@@ -17,6 +17,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.core.errors import redact_secrets
 from app.services.investor_portfolio import FORM4_FILER_CIK, sync_form4
 from app.services.manager_holding_ingestion_service import (
     REVIEWED_MANAGERS,
@@ -24,6 +25,11 @@ from app.services.manager_holding_ingestion_service import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _describe(exc: Exception) -> str:
+    """Texto de error acotado y sin secretos (URLs con token, etc.)."""
+    return redact_secrets(f"{type(exc).__name__}: {exc}")[:200]
 
 
 def sync_investor_holdings(
@@ -60,7 +66,7 @@ def sync_investor_holdings(
             db.rollback()
             logger.warning("13F sync failed for %s: %s", cik, exc)
             managers[cik] = "error"
-            errors.append({"source": f"13f:{cik}", "error": f"{type(exc).__name__}: {exc}"[:200]})
+            errors.append({"source": f"13f:{cik}", "error": _describe(exc)})
 
     form4_created: dict[str, int] = {}
     for slug in sorted(FORM4_FILER_CIK):
@@ -69,7 +75,7 @@ def sync_investor_holdings(
         except Exception as exc:
             db.rollback()
             logger.warning("Form 4 sync failed for %s: %s", slug, exc)
-            errors.append({"source": f"form4:{slug}", "error": f"{type(exc).__name__}: {exc}"[:200]})
+            errors.append({"source": f"form4:{slug}", "error": _describe(exc)})
 
     attempted = len(managers) + len(FORM4_FILER_CIK)
     failed = len(errors)

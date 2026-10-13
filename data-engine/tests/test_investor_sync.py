@@ -119,3 +119,13 @@ def test_weekly_job_runs_monday_0420_utc():
     assert fields["day_of_week"] == "mon"
     assert fields["hour"] == "4"
     assert fields["minute"] == "20"
+
+
+def test_exception_text_in_errors_is_redacted_and_bounded():
+    def boom(*_a):
+        raise RuntimeError("fail https://x.example/api?apikey=SECRETVALUE " + "y" * 500)
+
+    out = sync_investor_holdings(_Db(), manager_sync=boom, form4_sync=boom)
+    for err in out["errors"]:
+        assert "SECRETVALUE" not in err["error"]
+        assert len(err["error"]) <= 200
