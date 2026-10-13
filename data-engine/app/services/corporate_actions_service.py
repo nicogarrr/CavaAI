@@ -44,7 +44,7 @@ class CorporateActionService:
             )
             .group_by(Transaction.company_id)
         ).all()
-        return {row[0]: row[1] for row in rows}
+        return {company_id: first_date for company_id, first_date in rows if company_id is not None}
 
     @staticmethod
     def companies_with_holding(db: Session, company_ids: set[int]) -> set[int]:
