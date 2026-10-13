@@ -7,6 +7,7 @@ from app.core.database import get_db
 from app.models import Document
 from app.services.company_resolver import resolve_company
 from app.services.filing_intelligence import KEY
+from app.services.filing_yoy_service import comparison
 
 router = APIRouter()
 
@@ -30,3 +31,17 @@ def filing_intelligence(
     ).offset((page - 1) * page_size).limit(page_size)).all()
     return {"status": "ready" if total else "insufficient_data", "page": page,
             "page_size": page_size, "total": total, "items": [row.metadata_[KEY] for row in rows]}
+
+
+@router.get("/{ticker}/filing-yoy")
+def filing_yoy(
+    ticker: str, form: str = Query(default="10-K", pattern="^(10-K|10-Q)$"),
+    page: int = Query(default=1, ge=1, le=200), db: Session = Depends(get_db),
+) -> dict:
+    """Un informe 10-K/10-Q frente al del ano anterior; ``page`` recorre informes."""
+    company = resolve_company(db, ticker)
+    if company is None:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    if db.info.get("tenant_id") is None:
+        raise HTTPException(status_code=401, detail="Se requiere una identidad de Research")
+    return comparison(db, company.id, form, page)
