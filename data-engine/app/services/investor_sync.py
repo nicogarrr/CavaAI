@@ -35,8 +35,10 @@ def sync_investor_holdings(
     if manager_sync is None:
         service = ManagerHoldingIngestionService()
 
-        def manager_sync(session: Session, cik: str) -> dict[str, Any]:
+        def default_manager_sync(session: Session, cik: str) -> dict[str, Any]:
             return service.sync_manager(session, cik=cik)
+
+        manager_sync = default_manager_sync
 
     form4_sync = form4_sync or (lambda session, slug: sync_form4(session, slug))
 
