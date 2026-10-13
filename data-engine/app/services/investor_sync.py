@@ -45,7 +45,15 @@ def sync_investor_holdings(
     for cik in REVIEWED_MANAGERS:
         try:
             result = manager_sync(db, cik)
-            managers[cik] = str(result.get("status", "unknown"))
+            status = str(result.get("status", "unknown"))
+            managers[cik] = status
+            if status != "ok":
+                # sync_manager NO lanza cuando la SEC falla: devuelve
+                # {"status": "unavailable", "reason": ...}. Sin esto el job
+                # diria "ok" sin haber refrescado nada y la coalescencia
+                # retendria el claim hasta la semana siguiente.
+                reason = str(result.get("reason") or result.get("note") or "sin detalle")
+                errors.append({"source": f"13f:{cik}", "error": f"{status}: {reason}"[:200]})
         except Exception as exc:  # un gestor caido no frena a los demas
             db.rollback()
             logger.warning("13F sync failed for %s: %s", cik, exc)

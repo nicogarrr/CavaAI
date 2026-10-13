@@ -39,7 +39,7 @@ def test_one_failure_does_not_stop_the_rest_and_is_visible():
     def manager_sync(_db, cik):
         if cik == first:
             raise RuntimeError("SEC 503")
-        return {"status": "unavailable"}
+        return {"status": "ok"}
 
     def form4_sync(_db, slug):
         if slug == "bezos":
@@ -49,7 +49,7 @@ def test_one_failure_does_not_stop_the_rest_and_is_visible():
     out = sync_investor_holdings(db, manager_sync=manager_sync, form4_sync=form4_sync)
     assert out["status"] == "partial"
     assert out["managers"][first] == "error"
-    assert all(v == "unavailable" for c, v in out["managers"].items() if c != first)
+    assert all(v == "ok" for c, v in out["managers"].items() if c != first)
     assert out["form4_new_movements"] == {"trump": 0}
     sources = [e["source"] for e in out["errors"]]
     assert sources == [f"13f:{first}", "form4:bezos"]
@@ -66,13 +66,56 @@ def test_everything_failing_is_error_not_partial():
     assert len(out["errors"]) == len(REVIEWED_MANAGERS) + len(FORM4_FILER_CIK)
 
 
-def test_actor_is_leased_off_the_alert_queue_and_scheduled_weekly():
+def test_unavailable_without_exception_is_a_failure_not_ok():
+    # sync_manager no lanza cuando la SEC cae: devuelve status "unavailable".
+    out = sync_investor_holdings(
+        _Db(),
+        manager_sync=lambda _db, _cik: {"status": "unavailable", "reason": "SEC 503"},
+        form4_sync=lambda _db, _slug: 0,
+    )
+    assert out["status"] == "partial"  # Form 4 si funciono
+    assert len(out["errors"]) == len(REVIEWED_MANAGERS)
+    assert out["errors"][0]["error"] == "unavailable: SEC 503"
+    assert all(e["source"].startswith("13f:") for e in out["errors"])
+
+
+def test_everything_unavailable_without_exceptions_is_error():
+    def down(*_a):
+        return {"status": "unavailable", "reason": "SEC caida"}
+
+    out = sync_investor_holdings(
+        _Db(), manager_sync=down, form4_sync=lambda *_a: (_ for _ in ()).throw(RuntimeError("x"))
+    )
+    assert out["status"] == "error"
+
+
+def test_one_manager_unavailable_is_partial_and_unreviewed_also_counts():
+    first, second, *_ = list(REVIEWED_MANAGERS)
+
+    def manager_sync(_db, cik):
+        if cik == first:
+            return {"status": "unavailable", "reason": "no 13F-HR filings found"}
+        if cik == second:
+            return {"status": "unreviewed_manager"}
+        return {"status": "ok"}
+
+    out = sync_investor_holdings(_Db(), manager_sync=manager_sync, form4_sync=lambda *_a: 1)
+    assert out["status"] == "partial"
+    assert [e["source"] for e in out["errors"]] == [f"13f:{first}", f"13f:{second}"]
+    assert out["errors"][1]["error"].startswith("unreviewed_manager")
+
+
+def test_actor_is_leased_and_off_the_alert_queue():
     actor = dramatiq_app.sync_investor_holdings
     assert actor.queue_name != "alerts"
-    fn = getattr(actor, "fn", actor)
-    source = inspect.getsource(fn)
+    source = inspect.getsource(getattr(actor, "fn", actor))
     assert source.index("_session(") < source.index("acquire_job_lease(")
     assert "if lease is None:" in source
-    jobs = {job.id: job for job in scheduler.build_scheduler(background=True).get_jobs()}
-    job = jobs["investor_holdings_weekly"]
-    assert "day_of_week='mon'" in str(job.trigger) or "mon" in str(job.trigger)
+
+
+def test_weekly_job_runs_monday_0420_utc():
+    job = {j.id: j for j in scheduler.build_scheduler(background=True).get_jobs()}["investor_holdings_weekly"]
+    fields = {f.name: str(f) for f in job.trigger.fields}
+    assert fields["day_of_week"] == "mon"
+    assert fields["hour"] == "4"
+    assert fields["minute"] == "20"
