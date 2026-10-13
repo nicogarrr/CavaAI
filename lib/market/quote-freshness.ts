@@ -153,7 +153,7 @@ export function sanitizeFinnhubQuote(data: any, nowMs: number = Date.now()): San
  * que NO se puede fechar: kind 'close' con t=null y el consumidor rotula
  * "precio de fecha desconocida" en vez de atribuir la fecha de otra serie
  * (exigencia del auditor). Pendiente: que el backend devuelva el t de la
- * vela exacta del c (routes/market.py, zona reclamada por Nico).
+ * vela exacta del c (routes/market.py).
  */
 export function mapBackendYahooQuote(data: any): SanitizedQuote | null {
     if (!data || !(data.c > 0 || data.pc > 0)) return null;

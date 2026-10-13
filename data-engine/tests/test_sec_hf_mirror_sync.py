@@ -114,7 +114,7 @@ def _tickers_file(tmp_path, monkeypatch, text="XYZ\n# comentario\n\n"):
 def test_sync_sube_layout_oficial_y_manifest(tmp_path, monkeypatch, fake_hf):
     _tickers_file(tmp_path, monkeypatch)
     monkeypatch.setenv("HF_TOKEN", "t")
-    monkeypatch.setenv("HF_DATASET", "nico/cavaai-sec-mirror")
+    monkeypatch.setenv("HF_DATASET", "owner/cavaai-sec-mirror")
     monkeypatch.setenv("SEC_USER_AGENT", "CavaAI research nicoiglesiasgarcia10@gmail.com")
     assert sync.main() == 0
     esperado = {
@@ -205,7 +205,7 @@ def test_sync_alias_brk_punto_resuelve_cik_de_brk_guion(tmp_path, monkeypatch, f
     _tickers_file(tmp_path, monkeypatch, text="BRK.B\n")
     monkeypatch.setattr(sync.httpx, "Client", _FakeSECClientBRK)
     monkeypatch.setenv("HF_TOKEN", "t")
-    monkeypatch.setenv("HF_DATASET", "nico/cavaai-sec-mirror")
+    monkeypatch.setenv("HF_DATASET", "owner/cavaai-sec-mirror")
     monkeypatch.setenv("SEC_USER_AGENT", "CavaAI research nicoiglesiasgarcia10@gmail.com")
     assert sync.main() == 0
     manifest = json.loads(fake_hf.uploads["manifest.json"])

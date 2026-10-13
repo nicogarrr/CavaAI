@@ -1,4 +1,4 @@
-"""Noticias a dos velocidades (decisión de Nico 2026-09-25):
+"""Noticias a dos velocidades (decisión 2026-09-25):
 carril tracked (cartera + watchlist) cada 30 min, universo en background."""
 
 import pytest

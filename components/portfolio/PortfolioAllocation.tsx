@@ -20,7 +20,7 @@ const PortfolioAllocationChart = dynamic(() => import('./PortfolioAllocationChar
 type Props = {
     holdings: PortfolioHolding[];
     /** Caja en divisa base con su signo real (negativa = margen). NO entra
-     *  en el donut: se muestra como línea aparte (decisión Nico, 11 oct). */
+     *  en el donut: se muestra como línea aparte (decisión de producto, 11 oct). */
     cash?: number | null;
     /** Moneda base para el importe del tooltip (sin ella saldría en USD). */
     baseCurrency?: string;

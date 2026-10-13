@@ -18,7 +18,7 @@ CFROI_REQUIRED_INPUTS = (
     "terminal_non_depreciating_assets",
 )
 
-# Métricas del marco de calidad de Nico: medias de ratios anuales en una
+# Métricas del marco de calidad: medias de ratios anuales en una
 # ventana de hasta 5 años fiscales (mínimo 3). metric -> (numerador, denominador)
 WINDOWED_RATIO_METRICS: dict[str, tuple[str, str]] = {
     "fcf_margin_5y": ("free_cash_flow", "revenue"),
@@ -30,8 +30,7 @@ WINDOWED_RATIO_METRICS: dict[str, tuple[str, str]] = {
 WINDOW_MIN_YEARS = 3
 WINDOW_MAX_YEARS = 5
 
-# Umbrales MARCO_NICO_V2 (criterios estandar value/Buffett; Nico delego la
-# eleccion el 2026-09-25: "usa los criterios que veas convenientes").
+# Umbrales MARCO_V2 (criterios estandar value/Buffett, elegidos el 2026-09-25).
 # Documentados en /metodologia para que pueda ajustarlos despues:
 # - owner earnings (Buffett, carta 1986): la media de hasta 5 anos debe ser
 #   positiva.
@@ -140,20 +139,20 @@ METRIC_DEFINITIONS: dict[str, MetricFormula] = {
         ("capital_expenditure", "depreciation_amortization"),
         "decimal",
     ),
-    # Marco de calidad de Nico (apuntes manuscritos, sept 2026): 5 checks
+    # Marco de calidad (apuntes manuscritos, sept 2026): 5 checks
     # trazables. Cada check no evaluable queda declarado como null, nunca
     # cuenta como superado.
     "quality_moat_score": (
-        "MARCO_NICO_V1",
+        "MARCO_V1",
         "count of passed checks: fcf_margin_5y > 0.05, net_margin_5y > 0.15, roe_5y > 0.15, roa_5y > 0.07, roic > wacc; each check traceable with its value and threshold",
         (),
         "score",
     ),
     # V2 (2026-09-25): los 5 checks de V1 mas tres de caja y disciplina de
-    # capital. Umbrales elegidos por delegacion de Nico y documentados en
+    # capital. Umbrales elegidos el 2026-09-25 y documentados en
     # /metodologia; cada check no evaluable queda null, nunca cuenta.
     "quality_moat_score_v2": (
-        "MARCO_NICO_V2",
+        "MARCO_V2",
         "V1 checks (fcf_margin_5y > 0.05, net_margin_5y > 0.15, roe_5y > 0.15, roa_5y > 0.07, roic > wacc) plus cfroi_approx > wacc, owner_earnings_5y > 0, capex_to_da_5y <= 1.5; each check traceable with its value and threshold",
         (),
         "score",
@@ -1480,7 +1479,7 @@ class MetricCalculationService:
     ) -> tuple[Decimal, dict] | None:
         """WACC = coste de equity puro para emisores ESEF sin deuda desagregable.
 
-        Aproximacion declarada (Nico, 25/9, documentada en /metodologia):
+        Aproximacion declarada (25/9, documentada en /metodologia):
         como el coste de la deuda tras impuestos es inferior al coste del
         equity, el WACC todo-equity es una COTA SUPERIOR del WACC real -
         umbral conservador AL ALZA para los checks roic/cfroi > wacc.
@@ -1519,7 +1518,7 @@ class MetricCalculationService:
                 "sin deuda ESEF desagregable (IFRS la reparte y la metodologia "
                 "prohibe sumarla): WACC = coste de equity puro, cota superior "
                 "del WACC real - umbral conservador al alza; aproximacion "
-                "declarada por Nico 25/9, documentada en /metodologia"
+                "declarada 25/9, documentada en /metodologia"
             ),
             "cost_of_equity": str(cost_of_equity),
             "risk_free_rate": str(risk_free),
@@ -1537,7 +1536,7 @@ class MetricCalculationService:
 
         Hueco IFRS honesto: borrowings current/noncurrent/lease van repartidos
         y la metodologia prohibe sumarlos (ver ESEF_METRIC_MAP). Aproximacion
-        declarada (Nico, 25/9, documentada en /metodologia): capital invertido
+        declarada (25/9, documentada en /metodologia): capital invertido
         ~ total_assets - cash_and_equivalents. Como activos - caja >= deuda +
         equity - caja, el denominador se sobreestima y el ROIC queda
         conservador A LA BAJA: nunca infla el check roic_gt_wacc.
@@ -1571,7 +1570,7 @@ class MetricCalculationService:
             "approximation": (
                 "capital invertido aproximado como total_assets - cash_and_equivalents "
                 "(>= deuda + equity - caja: ROIC conservador a la baja); "
-                "aproximacion declarada por Nico 25/9, documentada en /metodologia"
+                "aproximacion declarada 25/9, documentada en /metodologia"
             ),
             "fiscal_year": year,
             **tax_trace,
@@ -1702,7 +1701,7 @@ class MetricCalculationService:
             company,
             persist,
             "quality_moat_score",
-            "MARCO_NICO_V1 (apuntes manuscritos de Nico, sept 2026)",
+            "MARCO_V1 (apuntes manuscritos, sept 2026)",
             checks,
             component_results,
         )
@@ -1715,7 +1714,7 @@ class MetricCalculationService:
     ) -> MetricResult:
         checks, component_results = self._base_quality_checks(db, company, persist)
 
-        # Aproximaciones declaradas ESEF (Nico, 25/9, documentadas en
+        # Aproximaciones declaradas ESEF (25/9, documentadas en
         # /metodologia): IFRS reparte la deuda (borrowings current/noncurrent/
         # lease) y la metodologia prohibe sumarla, asi que el ROIC estandar y
         # el WACC estandar no son calculables para emisores ESEF. Ambas
@@ -1835,7 +1834,7 @@ class MetricCalculationService:
             company,
             False,
             "quality_moat_score_v2",
-            "MARCO_NICO_V2 (V1 + cfroi/owner earnings/capex; umbrales delegados por Nico 2026-09-25)",
+            "MARCO_V2 (V1 + cfroi/owner earnings/capex; umbrales fijados 2026-09-25)",
             checks,
             component_results,
         )

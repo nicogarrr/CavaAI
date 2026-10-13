@@ -105,7 +105,7 @@ def test_approve_thesis_transitions_status(db):
     ))
     db.commit()
     result = approve_thesis(
-        "ACME", ThesisApproveRequest(decision="approved", actor="nico"), db=db
+        "ACME", ThesisApproveRequest(decision="approved", actor="analyst"), db=db
     )
     # La ruta REST delega ahora en la MISMA funcion de transicion que el
     # poller de Telegram, con un vocabulario unico: "published". Antes cada
@@ -113,7 +113,7 @@ def test_approve_thesis_transitions_status(db):
     # podia constraining al otro.
     assert result["status"] == "published"
     assert result["decision"] == "approved"
-    assert result["actor"] == "nico"
+    assert result["actor"] == "analyst"
     assert result["version"] == 1
     assert result["telegram_auto_approval"] == "future"
     stored = db.query(ThesisVersion).one()

@@ -2,7 +2,7 @@
 
 - Estado: PROPUESTO (diseno; implementacion en PRs incrementales tras OK)
 - Fecha: 2026-09-28
-- Decisor: Nico (aprobada la direccion "compartidos" el 2026-09-28; este ADR fija el diseno concreto)
+- Decisor: propietario del producto (aprobada la direccion "compartidos" el 2026-09-28; este ADR fija el diseno concreto)
 
 ## Contexto
 

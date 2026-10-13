@@ -78,7 +78,7 @@ def test_fallback_a_mirror_hf_en_403(monkeypatch):
     from app.services.connectors import sec_edgar
 
     get_settings.cache_clear()
-    monkeypatch.setenv("SEC_HF_MIRROR_DATASET", "nico/cavaai-sec-mirror")
+    monkeypatch.setenv("SEC_HF_MIRROR_DATASET", "owner/cavaai-sec-mirror")
     get_settings.cache_clear()
 
     payload = {"filings": {"recent": {}}}
@@ -125,7 +125,7 @@ def test_fallback_a_mirror_hf_en_403(monkeypatch):
         "https://data.sec.gov/submissions/CIK0000000001.json"))
     assert data == payload
     assert llamadas["url"].endswith(
-        "/datasets/nico/cavaai-sec-mirror/resolve/main/submissions/CIK0000000001.json")
+        "/datasets/owner/cavaai-sec-mirror/resolve/main/submissions/CIK0000000001.json")
     get_settings.cache_clear()
 
 
@@ -135,7 +135,7 @@ def _mirror_env(monkeypatch):
     from app.core.config import get_settings
 
     get_settings.cache_clear()
-    monkeypatch.setenv("SEC_HF_MIRROR_DATASET", "nico/cavaai-sec-mirror")
+    monkeypatch.setenv("SEC_HF_MIRROR_DATASET", "owner/cavaai-sec-mirror")
     get_settings.cache_clear()
     return get_settings
 
@@ -190,7 +190,7 @@ def test_secclient_403_cae_al_mirror(monkeypatch):
     data = asyncio.run(client.company_facts("0000000001"))
     assert data == payload
     assert llamadas["url"].endswith(
-        "/datasets/nico/cavaai-sec-mirror/resolve/main/companyfacts/CIK0000000001.json")
+        "/datasets/owner/cavaai-sec-mirror/resolve/main/companyfacts/CIK0000000001.json")
     from app.core.config import get_settings
     get_settings.cache_clear()
 
@@ -240,7 +240,7 @@ def test_mirror_caducado_fail_closed(monkeypatch):
     from app.services.connectors import sec_edgar
 
     get_settings.cache_clear()
-    monkeypatch.setenv("SEC_HF_MIRROR_DATASET", "nico/cavaai-sec-mirror")
+    monkeypatch.setenv("SEC_HF_MIRROR_DATASET", "owner/cavaai-sec-mirror")
     get_settings.cache_clear()
     monkeypatch.setattr(sec_edgar, "_MANIFEST_CACHE", {})
     sec_edgar.drain_mirror_serves()
@@ -277,7 +277,7 @@ def test_mirror_sin_synced_at_fail_closed(monkeypatch):
     from app.services.connectors import sec_edgar
 
     get_settings.cache_clear()
-    monkeypatch.setenv("SEC_HF_MIRROR_DATASET", "nico/cavaai-sec-mirror")
+    monkeypatch.setenv("SEC_HF_MIRROR_DATASET", "owner/cavaai-sec-mirror")
     get_settings.cache_clear()
     monkeypatch.setattr(sec_edgar, "_MANIFEST_CACHE", {})
     sec_edgar.drain_mirror_serves()
@@ -350,7 +350,7 @@ def test_mirror_sha1_no_casa_fail_closed(monkeypatch):
     from app.services.connectors import sec_edgar
 
     get_settings.cache_clear()
-    monkeypatch.setenv("SEC_HF_MIRROR_DATASET", "nico/cavaai-sec-mirror")
+    monkeypatch.setenv("SEC_HF_MIRROR_DATASET", "owner/cavaai-sec-mirror")
     get_settings.cache_clear()
     monkeypatch.setattr(sec_edgar, "_MANIFEST_CACHE", {})
     sec_edgar.drain_mirror_serves()
@@ -376,7 +376,7 @@ def test_mirror_path_no_listado_fail_closed(monkeypatch):
     from app.services.connectors import sec_edgar
 
     get_settings.cache_clear()
-    monkeypatch.setenv("SEC_HF_MIRROR_DATASET", "nico/cavaai-sec-mirror")
+    monkeypatch.setenv("SEC_HF_MIRROR_DATASET", "owner/cavaai-sec-mirror")
     get_settings.cache_clear()
     monkeypatch.setattr(sec_edgar, "_MANIFEST_CACHE", {})
     sec_edgar.drain_mirror_serves()
@@ -403,7 +403,7 @@ def test_mirror_sirve_solo_si_hash_casa(monkeypatch):
     from app.services.connectors import sec_edgar
 
     get_settings.cache_clear()
-    monkeypatch.setenv("SEC_HF_MIRROR_DATASET", "nico/cavaai-sec-mirror")
+    monkeypatch.setenv("SEC_HF_MIRROR_DATASET", "owner/cavaai-sec-mirror")
     get_settings.cache_clear()
     monkeypatch.setattr(sec_edgar, "_MANIFEST_CACHE", {})
     sec_edgar.drain_mirror_serves()
@@ -442,7 +442,7 @@ def test_mirror_metadata_no_sobrevive_a_corrida_directa(monkeypatch):
     from app.services.financial_ingestion_service import FinancialIngestionService
 
     get_settings.cache_clear()
-    monkeypatch.setenv("SEC_HF_MIRROR_DATASET", "nico/cavaai-sec-mirror")
+    monkeypatch.setenv("SEC_HF_MIRROR_DATASET", "owner/cavaai-sec-mirror")
     monkeypatch.delenv("SEC_SNAPSHOT_DIR", raising=False)
     get_settings.cache_clear()
     monkeypatch.setattr(sec_edgar, "_MANIFEST_CACHE", {})
