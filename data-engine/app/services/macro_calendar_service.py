@@ -1,0 +1,125 @@
+"""Calendario macro (FOMC + BLS) con fuente y fecha en cada evento.
+
+Solo publicaciones de alto impacto: reuniones FOMC, IPC, empleo, IPP, JOLTS e
+indice de costes laborales. Cada fuente degrada por separado (``partial``).
+Cache en memoria de 6 h: los calendarios oficiales cambian muy pocas veces.
+"""
+
+from __future__ import annotations
+
+import time
+from datetime import UTC, date, datetime
+from typing import Any
+
+import httpx
+
+from app.core.config import get_settings
+from app.services.connectors import macro_calendar as connector
+
+CACHE_TTL_SECONDS = 6 * 3600
+MAX_RANGE_DAYS = 366
+
+# titulo BLS -> (clave, titulo en español)
+BLS_RELEASES: dict[str, tuple[str, str]] = {
+    "Consumer Price Index": ("cpi", "IPC de EE. UU. (inflación)"),
+    "Employment Situation": ("employment", "Informe de empleo de EE. UU."),
+    "Producer Price Index": ("ppi", "IPP de EE. UU. (precios al productor)"),
+    "Job Openings and Labor Turnover Survey": ("jolts", "JOLTS: ofertas de empleo"),
+    "Employment Cost Index": ("eci", "Índice de costes laborales"),
+}
+
+_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+
+
+def clear_cache() -> None:
+    _cache.clear()
+
+
+async def _cached(key: str, loader, *, use_cache: bool) -> list[dict[str, Any]]:
+    now = time.monotonic()
+    hit = _cache.get(key)
+    if use_cache and hit and now - hit[0] < CACHE_TTL_SECONDS:
+        return hit[1]
+    value = await loader()
+    if use_cache:
+        _cache[key] = (now, value)
+    return value
+
+
+def _fomc_event(raw: dict[str, Any]) -> dict[str, Any]:
+    title = "Reunión del FOMC (decisión de tipos)"
+    return {
+        "kind": "fomc",
+        "date": raw["date"],
+        "start_date": raw["start_date"],
+        "time_et": None,
+        "title": title,
+        "detail": "Con proyecciones económicas" if raw["projections"] else None,
+        "source": "Reserva Federal",
+        "source_url": connector.FOMC_URL,
+        "label": "OFICIAL",
+    }
+
+
+def _bls_event(raw: dict[str, Any]) -> dict[str, Any] | None:
+    release = BLS_RELEASES.get(raw["title"])
+    if release is None:
+        return None
+    kind, title = release
+    return {
+        "kind": kind,
+        "date": raw["date"],
+        "start_date": raw["date"],
+        "time_et": raw["time_et"],
+        "title": title,
+        "detail": None,
+        "source": "BLS",
+        "source_url": connector.BLS_SCHEDULE_URL,
+        "label": "OFICIAL",
+    }
+
+
+async def get_macro_events(
+    start: date,
+    end: date,
+    *,
+    client: httpx.AsyncClient | None = None,
+) -> dict[str, Any]:
+    """Eventos entre ``start`` y ``end`` (ambos incluidos), ordenados por fecha."""
+    if start > end:
+        raise ValueError("desde no puede ser posterior a hasta")
+    if (end - start).days + 1 > MAX_RANGE_DAYS:
+        raise ValueError(f"rango máximo: {MAX_RANGE_DAYS} días")
+    agent = get_settings().sec_user_agent
+    use_cache = client is None
+    sources: list[dict[str, Any]] = []
+    events: list[dict[str, Any]] = []
+    fetched_at = datetime.now(UTC).isoformat()
+
+    async def run(name: str, url: str, loader, convert) -> None:
+        try:
+            rows = await _cached(name, loader, use_cache=use_cache)
+        except (httpx.HTTPError, ValueError):
+            sources.append({"name": name, "url": url, "status": "unavailable", "fetched_at": fetched_at})
+            return
+        converted = [item for item in (convert(row) for row in rows) if item is not None]
+        # Una fuente que responde pero ya no tiene eventos (formato cambiado)
+        # no es "sin eventos": es no disponible.
+        status = "ready" if converted else "unavailable"
+        sources.append({"name": name, "url": url, "status": status, "fetched_at": fetched_at})
+        events.extend(converted)
+
+    await run("Reserva Federal (FOMC)", connector.FOMC_URL,
+              lambda: connector.fetch_fomc(agent, client), _fomc_event)
+    await run("BLS", connector.BLS_SCHEDULE_URL,
+              lambda: connector.fetch_bls(agent, client), _bls_event)
+
+    low, high = start.isoformat(), end.isoformat()
+    inside = sorted(
+        (e for e in events if low <= e["date"] <= high),
+        key=lambda e: (e["date"], e["time_et"] or "", e["kind"]),
+    )
+    ready = [s for s in sources if s["status"] == "ready"]
+    status = "ready" if len(ready) == len(sources) else ("partial" if ready else "unavailable")
+    return {"status": status, "from": low, "to": high, "total": len(inside),
+            "events": inside, "sources": sources}

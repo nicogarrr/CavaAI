@@ -1,0 +1,172 @@
+"""Resumen extractivo de 8-K de las compañías seguidas (cartera + watchlist).
+
+Sin modelo ni cifras calculadas: por cada ``Item`` del 8-K se devuelve el
+nombre oficial del apartado (formulario 8-K de la SEC) y las primeras frases
+literales del propio texto, con el ``chunk_id`` de origen. Solo documentos con
+URL oficial de SEC (``official_document``). Lectura pura: no descarga nada.
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Any
+
+from sqlalchemy import desc, select
+from sqlalchemy.orm import Session
+
+from app.models import Company, Document, DocumentChunk, Position, WatchItem
+from app.services.company_resolver import resolve_company
+from app.services.filing_changes import excerpt_units
+from app.services.filing_intelligence import KEY, official_document
+
+MAX_SCAN = 300
+MAX_CHUNKS = 400
+MAX_EXCERPTS_PER_ITEM = 2
+MAX_ITEMS_PER_FILING = 8
+MIN_SENTENCE = 30
+MAX_SENTENCE = 600
+
+# Nombres oficiales de los apartados del formulario 8-K, en español.
+ITEM_TITLES: dict[str, str] = {
+    "1.01": "Acuerdo material",
+    "1.02": "Rescisión de un acuerdo material",
+    "1.03": "Quiebra o administración concursal",
+    "1.05": "Incidente de ciberseguridad material",
+    "2.01": "Compra o venta de activos",
+    "2.02": "Resultados de operaciones y situación financiera",
+    "2.03": "Nueva obligación financiera",
+    "2.04": "Aceleración de una obligación financiera",
+    "2.05": "Costes de salidas o reestructuración",
+    "2.06": "Deterioro material de activos",
+    "3.01": "Aviso de exclusión de cotización o incumplimiento",
+    "3.02": "Venta no registrada de valores",
+    "3.03": "Modificación de derechos de los accionistas",
+    "4.01": "Cambio de auditor",
+    "4.02": "Cuentas anteriores que no deben usarse",
+    "5.01": "Cambio de control",
+    "5.02": "Cambios en directivos o consejeros",
+    "5.03": "Cambios en estatutos o ejercicio fiscal",
+    "5.04": "Suspensión de planes de acciones de empleados",
+    "5.05": "Cambios en el código ético",
+    "5.07": "Votación de los accionistas",
+    "5.08": "Nominaciones al consejo",
+    "6.01": "Información de titulizaciones",
+    "7.01": "Divulgación Regulation FD",
+    "8.01": "Otros eventos",
+    "9.01": "Estados financieros y anexos",
+}
+# Solo estos apartados: el 8-K no tiene contenido propio relevante.
+NON_MATERIAL_ONLY = {"5.07", "5.08", "7.01", "9.01"}
+_ITEM = re.compile(r"^Item\s+(\d\.\d{2})\s*[.:\-–—]?\s*(.*)$", re.I)
+_STOP = re.compile(r"^(?:SIGNATURES?|Pursuant to the requirements)\b", re.I)
+_BOILERPLATE = re.compile(
+    r"forward[- ]looking|safe harbor|incorporated (?:herein )?by reference|"
+    r"the information (?:in|contained in) (?:this|the following)|"
+    r"shall not be deemed|check the appropriate box|see exhibit index|"
+    r"emerging growth|commission file number",
+    re.I,
+)
+
+
+def tracked_company_ids(db: Session) -> dict[int, list[str]]:
+    """company_id -> ["cartera", "watchlist"] para el tenant de la sesión."""
+    tenant = db.info["tenant_id"]
+    found: dict[int, list[str]] = {}
+    for cid in db.scalars(select(Position.company_id).where(
+        Position.tenant_id == tenant, Position.quantity > 0,
+    )).all():
+        if cid is not None:
+            found.setdefault(cid, [])
+            if "cartera" not in found[cid]:
+                found[cid].append("cartera")
+    for symbol in db.scalars(select(WatchItem.symbol).where(WatchItem.tenant_id == tenant)).all():
+        company = resolve_company(db, symbol)
+        if company is not None:
+            found.setdefault(company.id, [])
+            if "watchlist" not in found[company.id]:
+                found[company.id].append("watchlist")
+    return found
+
+
+def summarize_items(chunks: list[dict]) -> list[dict[str, Any]]:
+    """Apartados del 8-K con extractos literales. Puro, sin acceso a datos."""
+    items: list[dict[str, Any]] = []
+    current: dict[str, Any] | None = None
+    for unit in excerpt_units(chunks):
+        text = unit["text"]
+        if _STOP.match(text):
+            break
+        heading = _ITEM.match(text)
+        if heading:
+            code = heading.group(1)
+            if any(i["code"] == code for i in items):
+                current = None
+                continue
+            current = {"code": code, "title": ITEM_TITLES.get(code, f"Apartado {code}"),
+                       "official_title": heading.group(2).strip() or None, "excerpts": []}
+            items.append(current)
+            continue
+        if (current is None or current["code"] == "9.01"
+                or len(current["excerpts"]) >= MAX_EXCERPTS_PER_ITEM):
+            continue
+        if MIN_SENTENCE <= len(text) <= MAX_SENTENCE and not _BOILERPLATE.search(text):
+            current["excerpts"].append({"text": text, "chunk_id": unit["chunk_id"]})
+    return items
+
+
+def is_material(items: list[dict[str, Any]]) -> bool:
+    return any(item["code"] not in NON_MATERIAL_ONLY for item in items)
+
+
+def _load_chunks(db: Session, document: Document) -> list[dict] | None:
+    rows = db.scalars(select(DocumentChunk).where(
+        DocumentChunk.tenant_id == document.tenant_id, DocumentChunk.document_id == document.id,
+    ).order_by(DocumentChunk.chunk_index).limit(MAX_CHUNKS + 1)).all()
+    if len(rows) > MAX_CHUNKS:
+        return None
+    return [{"id": r.id, "chunk_index": r.chunk_index, "text": r.text} for r in rows]
+
+
+def eight_k_digest(db: Session, *, page: int = 1, page_size: int = 10) -> dict[str, Any]:
+    """8-K recientes con contenido relevante de las compañías seguidas."""
+    tenant = db.info.get("tenant_id")
+    if tenant is None:
+        raise ValueError("Tenant context required")
+    tracked = tracked_company_ids(db)
+    if not tracked:
+        return {"status": "insufficient_data", "reason": "Sin posiciones ni watchlist.",
+                "page": page, "page_size": page_size, "total": 0, "scanned": 0, "items": []}
+    documents = db.scalars(select(Document).where(
+        Document.tenant_id == tenant, Document.company_id.in_(tracked),
+        Document.metadata_["form"].as_string() == "8-K",
+    ).order_by(desc(Document.published_at).nullslast(), desc(Document.id)).limit(MAX_SCAN)).all()
+    entries: list[dict[str, Any]] = []
+    for document in documents:
+        if document.company_id is None or not official_document(document):
+            continue
+        company = db.get(Company, document.company_id)
+        if company is None:
+            continue
+        chunks = _load_chunks(db, document)
+        base = {
+            "document_id": document.id, "ticker": company.ticker, "company": company.name,
+            "filed_at": document.published_at.date().isoformat() if document.published_at else None,
+            "source": "SEC", "source_url": document.source_url, "label": "OFICIAL",
+            "matching": tracked[document.company_id],
+            "filing_intelligence": (document.metadata_ or {}).get(KEY),
+        }
+        if not chunks:
+            entries.append({**base, "status": "insufficient_data", "items": [],
+                            "reason": "Sin texto completo disponible; revisa el documento oficial."})
+            continue
+        items = summarize_items(chunks)
+        if not items:
+            entries.append({**base, "status": "insufficient_data", "items": [],
+                            "reason": "No se identificaron apartados legibles en el 8-K."})
+        elif is_material(items):
+            entries.append({**base, "status": "ready", "items": items[:MAX_ITEMS_PER_FILING]})
+    start = (page - 1) * page_size
+    return {"status": "ready" if entries else "insufficient_data",
+            "reason": None if entries else "Sin 8-K relevantes de tus compañías.",
+            "page": page, "page_size": page_size, "total": len(entries),
+            "scanned": len(documents), "items": entries[start:start + page_size]}

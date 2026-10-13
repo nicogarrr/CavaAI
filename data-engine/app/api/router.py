@@ -20,6 +20,7 @@ from app.api.routes import (
     knowledge_graph,
     knowledge_rag,
     macro,
+    macro_calendar,
     market,
     market_context,
     memory,
@@ -107,6 +108,9 @@ api_router.include_router(market.router, prefix="/market", tags=["market"])
 api_router.include_router(market_context.router, prefix="/market", tags=["market"])
 api_router.include_router(asts.router, prefix="/market/asts", tags=["market", "asts"])
 api_router.include_router(macro.router, prefix="/macro", tags=["macro"])
+api_router.include_router(
+    macro_calendar.router, prefix="/macro-calendar", tags=["macro-calendar"]
+)
 api_router.include_router(cnmv.router, prefix="/cnmv", tags=["cnmv"])
 api_router.include_router(workflows.router, prefix="/workflows", tags=["workflows"])
 
