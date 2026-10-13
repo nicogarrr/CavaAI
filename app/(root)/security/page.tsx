@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { requireAuthenticatedUser } from "@/lib/auth/require-user";
 import { getTwoFactorStatus } from "@/lib/actions/auth.actions";
 import TwoFactorSettings from "@/components/security/TwoFactorSettings";
+import InstallApp from "@/components/pwa/InstallApp";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -37,6 +38,8 @@ export default async function SecurityPage() {
                     es lo mismo que tenerla desactivada: recarga la página o inténtalo más tarde.
                 </section>
             )}
+
+            <InstallApp />
         </main>
     );
 }
