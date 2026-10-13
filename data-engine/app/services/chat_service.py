@@ -126,10 +126,11 @@ class ChatService:
         found: dict[str, Company] = {}
         has_cue = bool(_COMPANY_CUE_RE.search(question))
         all_caps = not any(ch.islower() for ch in question)
-        previous = ""
+        recent: list[str] = []  # las dos palabras anteriores (ventana de 2)
         for match in re.finditer(r"[A-Za-z][A-Za-z.\-]*", question):
             raw = match.group(0).strip(".-")
-            before, previous = previous, raw.lower()
+            after_determiner = any(word in _DETERMINERS for word in recent)
+            recent = [*recent, raw.lower()][-2:]
             if not raw:
                 continue
             token = raw.upper()
@@ -142,9 +143,9 @@ class ChatService:
                 # Un ticker escrito en MAYUSCULAS (>= 3 letras) en una frase en
                 # minusculas es deliberado; en minusculas pide pista de empresa.
                 deliberate = raw.isupper() and not all_caps and len(token) >= 3
-                ok = (deliberate or (len(token) >= 3 and has_cue)) and before not in _DETERMINERS
+                ok = (deliberate or (len(token) >= 3 and has_cue)) and not after_determiner
                 if len(token) < 3:
-                    ok = has_cue and raw.isupper() and not all_caps and before not in _DETERMINERS
+                    ok = has_cue and raw.isupper() and not all_caps and not after_determiner
             elif raw.isupper() and not all_caps:
                 ok = len(token) >= 2
             else:
