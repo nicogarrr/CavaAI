@@ -286,7 +286,7 @@ jobs:
       # fallando con motivo explicito; nunca se sustituye por un stub.
       - name: Cache del modelo de embeddings (RAG evals)
         if: ${{ steps.discover.outputs.present != '' }}
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cache/huggingface
@@ -654,7 +654,7 @@ jobs:
         run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
       - name: Cache del navegador de Playwright
         id: pw-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
