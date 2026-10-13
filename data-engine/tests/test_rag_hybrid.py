@@ -76,15 +76,15 @@ class FakeQdrant:
     def update_collection(self, *args, **kwargs):
         return True
 
-    def search(self, **kwargs):
-        from qdrant_client.models import NamedSparseVector
+    def query_points(self, **kwargs):
+        from qdrant_client.models import SparseVector
 
         self.searches.append(kwargs)
-        if isinstance(kwargs.get("query_vector"), NamedSparseVector):
+        if isinstance(kwargs.get("query"), SparseVector):
             if self.fail_sparse:
                 raise RuntimeError("sparse index missing")
-            return list(self.sparse_hits)
-        return list(self.dense_hits)
+            return SimpleNamespace(points=list(self.sparse_hits))
+        return SimpleNamespace(points=list(self.dense_hits))
 
     def upsert(self, **kwargs):
         self.upserted.append(kwargs)
@@ -133,7 +133,7 @@ def test_search_dense_default_returns_legacy_shape_without_scores(index, monkeyp
     assert len(fake.searches) == 1
     call = fake.searches[0]
     assert call["limit"] == 5
-    assert isinstance(call["query_vector"], list) and len(call["query_vector"]) == 384
+    assert isinstance(call["query"], list) and len(call["query"]) == 384
     must = {c.key: c.match.value for c in call["query_filter"].must}
     assert must == {"ticker": "SRCH", "tenant_id": 99}
 
@@ -233,17 +233,17 @@ def test_query_change_changes_result_catches_input_blind_mocks(index, monkeypatc
     """El test tonto: un mock que ignora la query no pasa este test."""
 
     class QueryEcho(FakeQdrant):
-        def search(self, **kwargs):
-            from qdrant_client.models import NamedSparseVector
+        def query_points(self, **kwargs):
+            from qdrant_client.models import SparseVector
 
             self.searches.append(kwargs)
-            qv = kwargs.get("query_vector")
+            qv = kwargs.get("query")
             first = qv[0] if isinstance(qv, list) else 0.0
-            if isinstance(qv, NamedSparseVector):
-                return [_hit("S", 0.4)]
+            if isinstance(qv, SparseVector):
+                return SimpleNamespace(points=[_hit("S", 0.4)])
             if first > 5:
-                return [_hit("LONG", 0.9), _hit("SHORT", 0.1)]
-            return [_hit("SHORT", 0.9), _hit("LONG", 0.1)]
+                return SimpleNamespace(points=[_hit("LONG", 0.9), _hit("SHORT", 0.1)])
+            return SimpleNamespace(points=[_hit("SHORT", 0.9), _hit("LONG", 0.1)])
 
     monkeypatch.setattr(index.settings, "rag_hybrid_enabled", False)
     fake = QueryEcho()

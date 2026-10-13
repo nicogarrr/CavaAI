@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import sys
 import types
+from types import SimpleNamespace
 
 import pytest
 
@@ -203,9 +204,9 @@ class FakeQdrant:
         self.sparse_names.update(kwargs.get("sparse_vectors_config", {}).keys())
         return True
 
-    def search(self, **kwargs):
+    def query_points(self, **kwargs):
         self.calls.append(kwargs)
-        return []
+        return SimpleNamespace(points=[])
 
 
 def test_collection_has_sparse_true_false_and_error_false():
@@ -235,14 +236,14 @@ def test_ensure_sparse_vector_ok_and_failure_false(caplog):
 
 
 def test_sparse_search_uses_named_vector_and_filter():
-    from qdrant_client.models import NamedSparseVector
+    from qdrant_client.models import SparseVector
 
     seen: dict = {}
 
     class Rec(FakeQdrant):
-        def search(self, **kwargs):
+        def query_points(self, **kwargs):
             seen.update(kwargs)
-            return ["hit"]
+            return SimpleNamespace(points=["hit"])
 
     filt = hr.tenant_filter(9, ticker="VCTR")
     out = hr.sparse_search_points(
@@ -250,7 +251,7 @@ def test_sparse_search_uses_named_vector_and_filter():
         sparse_name="bm25", query_filter=filt, limit=11,
     )
     assert out == ["hit"]
-    assert isinstance(seen["query_vector"], NamedSparseVector)
-    assert seen["query_vector"].name == "bm25"
+    assert isinstance(seen["query"], SparseVector)
+    assert seen["using"] == "bm25"
     assert seen["query_filter"] is filt
     assert seen["limit"] == 11
