@@ -255,15 +255,15 @@ def sparse_search_points(
     limit: int = 30,
 ):
     """Busqueda sparse contra el indice nombrado (propaga errores al llamador)."""
-    from qdrant_client.models import NamedSparseVector
-
-    return client.search(
+    # query_points (search/NamedSparseVector se eliminaron en qdrant-client 1.16+).
+    return client.query_points(
         collection_name=collection_name,
-        query_vector=NamedSparseVector(name=sparse_name, vector=query_sparse),
+        query=query_sparse,
+        using=sparse_name,
         query_filter=query_filter,
         limit=limit,
         with_payload=True,
-    )
+    ).points
 
 
 @dataclass
