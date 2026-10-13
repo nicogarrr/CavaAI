@@ -48,7 +48,7 @@ dependencies = [
     # Dockerfiles); la wheel CUDA por defecto de PyPI son GB inservibles
     # en una VM CPU-only.
     "torch>=2.5",
-    "sentence-transformers>=5.6.0,<6",
+    "sentence-transformers>=5.6.0,<7",
     # Transitiva via sentence-transformers (tokenizers del embedder); sin
     # import directo en app/. Pin explicito para que no flote con ST.
     "transformers>=5.13.1,<6",
