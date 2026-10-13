@@ -9,7 +9,7 @@ export type CapitalFact = {
 };
 export type ShareBalance = CapitalFact & {
   previous_date: string | null; net_change: number | null; net_change_pct: number | null;
-  change_status: 'DERIVADO' | 'SIN_DATOS'; split_between_dates: boolean;
+  change_status: 'DERIVADO' | 'SIN_DATOS'; split_between_dates: boolean; abrupt_jump?: boolean;
 };
 export type AnnualCapitalFlow = {
   date: string; shares_repurchased?: CapitalFact; common_stock_repurchased?: CapitalFact;

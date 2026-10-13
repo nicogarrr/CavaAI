@@ -19,6 +19,12 @@ CAPITAL_METRICS = {
 }
 
 
+# Saltos que un balance sin ajustar no puede explicar con recompras/emisiones normales:
+# casi seguro un split (o fusion/IPO) no registrado. Se suprime la comparacion.
+ABRUPT_UP_PCT = 40.0
+ABRUPT_DOWN_PCT = -30.0
+
+
 def _https_url(value: str | None) -> str | None:
     try:
         parsed = urlsplit(value or "")
@@ -77,14 +83,21 @@ def build_share_capital(db: Session, company: Company) -> dict[str, Any]:
         events = [s for s in splits if previous and previous["date"] < s.effective_date.isoformat() <= end]
         delta = None
         percent = None
+        abrupt = False
         if previous and not events:
             delta = balance["value"] - previous["value"]
             percent = delta / previous["value"] * 100
+            if percent >= ABRUPT_UP_PCT or percent <= ABRUPT_DOWN_PCT:
+                # Split no registrado en CorporateAction: no se presenta como cambio real.
+                abrupt = True
+                delta = None
+                percent = None
         series.append({
             **balance, "previous_date": previous["date"] if previous else None,
             "net_change": delta, "net_change_pct": percent,
             "change_status": "DERIVADO" if percent is not None else "SIN_DATOS",
             "split_between_dates": bool(events),
+            "abrupt_jump": abrupt,
         })
         previous = balance
     return {

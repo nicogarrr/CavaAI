@@ -64,6 +64,27 @@ def test_split_suppresses_comparison(setup):
     assert last["split_between_dates"] is True
 
 
+@pytest.mark.parametrize("before,after", [(100, 670), (100, 374), (400, 100)])
+def test_abrupt_jump_without_registered_split_is_not_comparable(setup, before, after):
+    """Un split sin registrar en CorporateAction no debe salir como +570%."""
+    db, company, _ = setup
+    fact(setup, "shares_outstanding", before, "2024-12-31:FY")
+    fact(setup, "shares_outstanding", after, "2025-12-31:FY")
+    last = build_share_capital(db, company)["series"][-1]
+    assert last["abrupt_jump"] is True
+    assert last["net_change_pct"] is None and last["net_change"] is None
+    assert last["change_status"] == "SIN_DATOS"
+    assert last["split_between_dates"] is False
+
+
+def test_moderate_change_stays_derived(setup):
+    db, company, _ = setup
+    fact(setup, "shares_outstanding", 100, "2024-12-31:FY")
+    fact(setup, "shares_outstanding", 125, "2025-12-31:FY")
+    last = build_share_capital(db, company)["series"][-1]
+    assert last["abrupt_jump"] is False and last["net_change_pct"] == 25
+
+
 def test_only_annual_flows_no_ytd_sum_no_missing_to_zero(setup):
     db, company, _ = setup
     fact(setup, "common_stock_repurchased", 200, "2025-12-31:FY", unit="USD")

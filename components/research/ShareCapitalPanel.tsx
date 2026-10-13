@@ -30,7 +30,7 @@ export function ShareCapitalPanel({ data }: { data: ShareCapital }) {
   return <>
     <div className="grid gap-3 sm:grid-cols-2">
       <Stat label="Acciones en circulación" value={latest ? compact(latest.value) : 'N/D'} hint={latest ? <Source fact={latest} /> : 'SIN_DATOS'} />
-      <Stat label="Cambio neto entre balances" value={percent(latest?.net_change_pct ?? null)} hint={latest?.net_change_pct != null ? `DERIVADO · ${latest.previous_date} → ${latest.date}` : latest?.split_between_dates ? 'Split entre fechas · no comparable' : 'SIN_DATOS'} />
+      <Stat label="Cambio neto entre balances" value={percent(latest?.net_change_pct ?? null)} hint={latest?.net_change_pct != null ? `DERIVADO · ${latest.previous_date} → ${latest.date}` : latest?.split_between_dates ? 'Split entre fechas · no comparable' : latest?.abrupt_jump ? 'Salto brusco · posible split no registrado · no comparable' : 'SIN_DATOS'} />
     </div>
     <p className="text-xs text-gray-400">Saldos sin ajustar por splits. El cambio neto no identifica emisiones ni recompras.</p>
     {data.series.length > 1 && <Panel title="Evolución de acciones · OFICIAL">
@@ -52,7 +52,7 @@ export function ShareCapitalPanel({ data }: { data: ShareCapital }) {
         <Pager page={page} pages={pages} onChange={setPage} />
         <div className="my-4 overflow-x-auto">
           {tab === 'balances' ? <table className="w-full text-left text-sm"><thead><tr className="text-gray-400"><th className="p-2">Fecha / fuente</th><th className="p-2">Acciones</th><th className="p-2">Cambio neto · DERIVADO</th></tr></thead>
-            <tbody>{[...data.series].reverse().slice((page - 1) * 10, page * 10).map(row => <tr className="border-t border-gray-800" key={row.date}><td className="p-2"><Source fact={row} /></td><td className="p-2">{compact(row.value)}</td><td className="p-2">{row.split_between_dates ? 'Split · no comparable' : percent(row.net_change_pct)}{row.previous_date && <div className="text-xs text-gray-500">Desde {row.previous_date}</div>}</td></tr>)}</tbody>
+            <tbody>{[...data.series].reverse().slice((page - 1) * 10, page * 10).map(row => <tr className="border-t border-gray-800" key={row.date}><td className="p-2"><Source fact={row} /></td><td className="p-2">{compact(row.value)}</td><td className="p-2">{row.split_between_dates ? 'Split · no comparable' : row.abrupt_jump ? 'Salto brusco · posible split no registrado · no comparable' : percent(row.net_change_pct)}{row.previous_date && <div className="text-xs text-gray-500">Desde {row.previous_date}</div>}</td></tr>)}</tbody>
           </table> : <table className="w-full min-w-[640px] text-left text-sm"><thead><tr className="text-gray-400"><th className="p-2">Cierre</th><th className="p-2">Recompras (USD)</th><th className="p-2">Acciones recompradas</th><th className="p-2">Emisiones (USD)</th><th className="p-2">Compensación en acciones (USD)</th></tr></thead>
             <tbody>{[...data.annual_flows].reverse().slice((page - 1) * 10, page * 10).map(row => <tr className="border-t border-gray-800" key={row.date}><td className="p-2">{row.date}</td><td className="p-2"><Fact fact={row.common_stock_repurchased} /></td><td className="p-2"><Fact fact={row.shares_repurchased} /></td><td className="p-2"><Fact fact={row.common_stock_issued} /></td><td className="p-2"><Fact fact={row.stock_based_compensation} /></td></tr>)}</tbody>
           </table>}
