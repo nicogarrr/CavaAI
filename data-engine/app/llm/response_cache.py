@@ -517,10 +517,13 @@ class LLMResponseCache:
             else:
                 import redis.asyncio as redis_asyncio
 
+                from app.core.redis_retry import no_retry_async
+
                 self._client = redis_asyncio.from_url(
                     get_settings().redis_url,
                     socket_connect_timeout=self.connect_timeout,
                     socket_timeout=self.socket_timeout,
+                    retry=no_retry_async(),
                 )
         except Exception:  # noqa: BLE001 - fail-open: sin cache, no sin LLM
             self._client_failed = True

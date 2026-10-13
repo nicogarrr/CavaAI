@@ -41,7 +41,7 @@ dependencies = [
     "python-dateutil>=2.8.0,<3",
     "arch>=6.0,<9",
     "qdrant-client>=1.9.0,<1.15",
-    "redis>=5.0.0,<6",
+    "redis>=5.0.0,<7",
     # Embeddings RAG locales (all-MiniLM-L6-v2, ver app/services/rag.py).
     # torch es dependencia de sentence-transformers: se instala SIEMPRE la
     # variante CPU desde el indice de PyTorch (ver requirements.txt y los
