@@ -2,7 +2,7 @@
 # Prueba de restauracion del backup de Mongo en un mongod LOCAL desechable.
 # Nunca apunta a Atlas ni a produccion: usa un contenedor efimero en 127.0.0.1.
 #
-# Requiere docker y age. La clave PRIVADA (AGE_IDENTITY_FILE) la aporta Nico
+# Requiere docker y age. La clave PRIVADA (AGE_IDENTITY_FILE) la aporta el propietario
 # en su maquina; no vive en la VM ni en el repo.
 #
 # Uso: AGE_IDENTITY_FILE=~/.age/cavaai.key ./scripts/mongo-restore-drill.sh backups-mongo/mongo-XXXX.archive.gz.age

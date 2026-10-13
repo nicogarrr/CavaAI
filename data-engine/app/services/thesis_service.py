@@ -122,7 +122,7 @@ def latest_inputs_provenance(
     fact_ids = sorted({fid for it in items for fid in (it.get("source_fact_ids") or [])})
     sources = resolve_fact_sources(db, company_id, fact_ids)
     classified = classify_origin(items, sources)
-    # Politica de Nico: sin base documentada no hay etiqueta INFERIDO "disfrazada";
+    # Politica del producto: sin base documentada no hay etiqueta INFERIDO "disfrazada";
     # el input se omite (la seccion de datos pendientes lo declara N/D).
     classified = [
         item
@@ -1367,7 +1367,7 @@ class ThesisService:
             )
             for key in missing:
                 lines.append(f"- **{key}**: {self._pending_input_hint(key)}")
-        # Politica de Nico: un supuesto sin base documentada no se muestra como
+        # Politica del producto: un supuesto sin base documentada no se muestra como
         # INFERIDO; se declara N/D (sin datos), igual que cualquier input pendiente.
         nd_keys = sorted(
             {

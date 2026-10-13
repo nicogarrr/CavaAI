@@ -1,4 +1,4 @@
-"""Politica de Nico: cada numero es OFICIAL (URL oficial + fecha, verificada
+"""Politica del producto: cada numero es OFICIAL (URL oficial + fecha, verificada
 contra el documento persistido) o INFERIDO (base + URLs). Sin tercera categoria."""
 
 from datetime import UTC, datetime

@@ -670,7 +670,7 @@ def test_workflow_usa_las_imagenes_fijadas():
     assert _kit.QDRANT_IMAGE in text
     # La imagen oficial de MinIO (quay.io) ya no es publica: el servicio del drill
     # usa bitnamilegacy/minio con tag fijo. Prod sigue con _kit.MINIO_IMAGE
-    # (decision pendiente de Nico), por eso aqui NO se exige MINIO_SERVER_RELEASE.
+    # (decision pendiente), por eso aqui NO se exige MINIO_SERVER_RELEASE.
     assert "image: bitnamilegacy/minio:2025.7.23-debian-12-r5" in text
 
 

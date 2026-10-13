@@ -1,6 +1,6 @@
 /**
  * Datos del donut de distribución de /portfolio. Decisión de producto
- * (Nico, 11 oct 2026): los pesos se reparten SOLO entre las posiciones
+ * (11 oct 2026): los pesos se reparten SOLO entre las posiciones
  * (suman 100%) y la caja/margen se muestra como línea aparte fuera del
  * donut. Con caja negativa (margen), pesos sobre el valor total darían
  * porcentajes >100%: matemáticamente cierto y visualmente absurdo.

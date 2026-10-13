@@ -49,7 +49,7 @@ describe('propicks methodology honesty guard (F178)', () => {
 
     it('Descubrir ya no tiene el bloque «Sobre ProPicks IA» ni lista capacidades ausentes en v1', () => {
         const card = readSource('components/proPicks/EnhancedProPicksContent.tsx');
-        assert.ok(!card.includes('Sobre ProPicks IA'), 'el bloque se eliminó a petición de Nico');
+        assert.ok(!card.includes('Sobre ProPicks IA'), 'el bloque se eliminó a petición del propietario');
         assert.ok(!card.includes('✓ Evaluación de momentum'), 'momentum no se lista como capacidad actual');
         assert.ok(!card.includes('✓ Comparación con sector'), 'sin comparación sectorial prometida');
     });

@@ -7,7 +7,7 @@
 #
 # Requisitos: mongodump (database-tools) y age. Variables:
 #   MONGODB_URI          URI de Atlas (no se imprime nunca)
-#   AGE_RECIPIENT        clave PUBLICA age (age1...). La privada la guarda solo Nico
+#   AGE_RECIPIENT        clave PUBLICA age (age1...). La privada la guarda solo el propietario
 #   BACKUP_DIR           por defecto ./backups-mongo
 #   BACKUP_RETENTION_COUNT  por defecto 8
 #   RCLONE_REMOTE        opcional, p. ej. r2:cavaai-backups (free tier R2)

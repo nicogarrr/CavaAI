@@ -1,7 +1,7 @@
 import { test } from '@e2e-dev/web';
 import { z } from 'zod';
 
-// Pasada de SOLO LECTURA con la cuenta que indiquen los secrets (la cuenta real de Nico, con su OK).
+// Pasada de SOLO LECTURA con la cuenta que indiquen los secrets (la cuenta indicada, con autorizacion).
 // Las credenciales llegan por secrets del repo (E2E_USER_EMAIL / E2E_USER_PASSWORD),
 // nunca estan en el codigo ni en los logs. Sin ellas, el fichero se salta de forma
 // explicita (el resumen lo dice) en vez de pasar en verde sin haber mirado nada.
@@ -36,7 +36,7 @@ const SKIP_AUTH: string | false =
 test.describe('rutas autenticadas (solo lectura)', { skip: SKIP_AUTH }, () => {
 
   test.beforeEach(async ({ app, browser }) => {
-    // BLOQUEO MECANICO de escritura (la sesion es la cuenta real de Nico contra
+    // BLOQUEO MECANICO de escritura (la sesion es una cuenta real contra
     // produccion): todo metodo distinto de GET/HEAD/OPTIONS se aborta en el
     // contexto del navegador, salvo el POST del login. Un clic destructivo del
     // agente falla aunque lo intente; el prompt de solo lectura es la segunda capa.
