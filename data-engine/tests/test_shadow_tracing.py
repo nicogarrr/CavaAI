@@ -16,15 +16,11 @@ class FakeSpan:
         self.kind = kind
         self.kwargs = kwargs
 
-    def start_span(self, **kwargs):
-        span = FakeSpan(self.sink, "span", kwargs)
+    def start_observation(self, *, as_type="span", **kwargs):
+        # SDK 4.x: start_span/start_generation ya no existen.
+        span = FakeSpan(self.sink, as_type, kwargs)
         self.sink.append(span)
         return span
-
-    def start_generation(self, **kwargs):
-        gen = FakeSpan(self.sink, "generation", kwargs)
-        self.sink.append(gen)
-        return gen
 
     def update(self, **kwargs):
         self.kwargs.setdefault("updates", []).append(kwargs)
@@ -40,7 +36,7 @@ class FakeClient:
     def create_trace_id(self):
         return "trace-1"
 
-    def start_span(self, **kwargs):
+    def start_observation(self, **kwargs):
         span = FakeSpan(self.sink, "root", kwargs)
         self.sink.append(span)
         return span
@@ -200,3 +196,36 @@ def test_envelope_traces_full_run(factory, sink, monkeypatch):
     finally:
         _cleanup(db)
         db.close()
+
+
+def test_tracer_funciona_contra_el_sdk_real_de_langfuse():
+    """Contrato con langfuse 4.x real (sin red: tracing_enabled=False).
+
+    Los fakes de arriba no detectarian que el SDK renombre la API; el tracer
+    envuelve todo en try/except, asi que un renombrado perderia las trazas en silencio.
+    """
+    langfuse = pytest.importorskip("langfuse")
+    client = langfuse.Langfuse(
+        public_key="pk-lf-test",
+        secret_key="sk-lf-test",
+        host="http://127.0.0.1:9",
+        tracing_enabled=False,
+    )
+    tracer = tracing.ShadowTracer(
+        client_factory=lambda: client,
+        workflow_name="wf",
+        run_id=1,
+        metadata={},
+        active=True,
+    )
+    tracer._start_root()
+    assert type(tracer._root).__name__ == "LangfuseSpan"
+    child = tracer._root.start_observation(name="paso", metadata={"x": "y"})
+    child.end()
+    generation = tracer._root.start_observation(
+        as_type="generation", name="gen", model="m", usage_details={"input": 1, "output": 2}
+    )
+    assert type(generation).__name__ == "LangfuseGeneration"
+    generation.end()
+    tracer._root.end()
+    client.flush()
