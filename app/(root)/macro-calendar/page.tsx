@@ -63,6 +63,7 @@ export default async function MacroCalendarPage({ searchParams }: PageProps) {
         throw error;
     }
     const down = macro.sources.filter((s) => s.status === 'unavailable');
+    const short = macro.sources.filter((s) => s.status === 'partial');
 
     return (
         <main id="content" tabIndex={-1} className="mx-auto flex max-w-6xl flex-col gap-10">
@@ -78,8 +79,15 @@ export default async function MacroCalendarPage({ searchParams }: PageProps) {
                         Sin datos de: {down.map((s) => s.name).join(', ')}. No se muestran fechas de esas fuentes.
                     </p>
                 )}
+                {short.length > 0 && (
+                    <p role="status" className="mt-3 rounded-lg border border-amber-900/60 bg-amber-950/40 px-3 py-2 text-sm text-amber-300">
+                        El calendario oficial de {short.map((s) => s.name).join(', ')} no cubre todo el rango.
+                    </p>
+                )}
                 {macro.events.length === 0 ? (
-                    <p className="mt-4 text-sm text-gray-400">Sin eventos oficiales en los próximos 60 días.</p>
+                    macro.status === 'unavailable' ? null : (
+                        <p className="mt-4 text-sm text-gray-400">Sin eventos oficiales en los próximos 60 días.</p>
+                    )
                 ) : (
                     <ul className="mt-4 divide-y divide-gray-800 rounded-xl border border-gray-800">
                         {macro.events.map((event) => (
@@ -101,6 +109,7 @@ export default async function MacroCalendarPage({ searchParams }: PageProps) {
 
             <section aria-labelledby="k8-title">
                 <h2 id="k8-title" className="text-xl font-semibold text-gray-100">8-K de tus compañías</h2>
+                <p className="mt-1 text-xs text-gray-500">Se revisan como máximo los 300 8-K más recientes de tus compañías.</p>
                 {digest.items.length === 0 ? (
                     <p className="mt-4 text-sm text-gray-400">{digest.reason ?? 'Sin 8-K relevantes.'}</p>
                 ) : (

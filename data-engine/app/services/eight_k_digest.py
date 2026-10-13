@@ -63,7 +63,8 @@ _BOILERPLATE = re.compile(
     r"forward[- ]looking|safe harbor|incorporated (?:herein )?by reference|"
     r"the information (?:in|contained in) (?:this|the following)|"
     r"shall not be deemed|check the appropriate box|see exhibit index|"
-    r"emerging growth|commission file number",
+    r"emerging growth|commission file number|"
+    r"with the (?:U\.S\. )?Securities and Exchange Commission",
     re.I,
 )
 
@@ -88,11 +89,51 @@ def tracked_company_ids(db: Session) -> dict[int, list[str]]:
     return found
 
 
+# Final de frase que NO es final de frase: inicial ("Colette M."), siglas ("U.S.") y abreviaturas.
+_ABBREV_END = re.compile(
+    r"(?:\b[A-Z]|\b(?:Inc|Corp|Co|Ltd|LLC|No|Nos|Mr|Mrs|Ms|Dr|Jr|Sr|St|Messrs|vs|etc|approx))\.$"
+)
+_OFFICIAL_TITLE_START = (
+    "Entry into", "Termination of", "Completion of", "Results of Operations", "Creation of", "Triggering",
+    "Costs Associated", "Material Impairments", "Notice of Delisting", "Unregistered Sales", "Material Modification",
+    "Changes in Registrant", "Non-Reliance", "Changes in Control", "Departure of Directors", "Amendments to",
+    "Temporary Suspension", "Amendment to", "Submission of Matters", "Shareholder Nominations", "Regulation FD",
+    "Other Events", "Financial Statements", "Material Cybersecurity", "Bankruptcy", "Mine Safety",
+)
+
+
+def _looks_like_official_title(text: str) -> bool:
+    if len(text) > 250 or not text[:1].isupper():
+        return False
+    return (not text.endswith(".")) or ";" in text or text.startswith(_OFFICIAL_TITLE_START)
+
+
+def _rejoin_sentences(units: list[dict]) -> list[dict]:
+    """Une trozos partidos tras inicial/abreviatura dentro del mismo chunk.
+
+    ``excerpt_units`` parte en "punto + espacio + mayuscula", lo que corta
+    "Colette M. Kress" o "U.S. Securities...". Una cita nunca debe empezar a
+    mitad de frase.
+    """
+    merged: list[dict] = []
+    for unit in units:
+        previous = merged[-1] if merged else None
+        if (previous is not None and previous["chunk_id"] == unit["chunk_id"]
+                and _ABBREV_END.search(previous["text"])
+                and not _ITEM.match(previous["text"]) and not _ITEM.match(unit["text"])
+                and not _STOP.match(unit["text"])):
+            merged[-1] = {**previous, "text": f"{previous['text']} {unit['text']}"}
+        else:
+            merged.append(dict(unit))
+    return merged
+
+
 def summarize_items(chunks: list[dict]) -> list[dict[str, Any]]:
     """Apartados del 8-K con extractos literales. Puro, sin acceso a datos."""
     items: list[dict[str, Any]] = []
     current: dict[str, Any] | None = None
-    for unit in excerpt_units(chunks):
+    awaiting_title = False
+    for unit in _rejoin_sentences(excerpt_units(chunks)):
         text = unit["text"]
         if _STOP.match(text):
             break
@@ -105,11 +146,18 @@ def summarize_items(chunks: list[dict]) -> list[dict[str, Any]]:
             current = {"code": code, "title": ITEM_TITLES.get(code, f"Apartado {code}"),
                        "official_title": heading.group(2).strip() or None, "excerpts": []}
             items.append(current)
+            awaiting_title = current["official_title"] is None
             continue
+        if awaiting_title:
+            awaiting_title = False
+            if current is not None and _looks_like_official_title(text):
+                current["official_title"] = text  # titulo oficial en la linea siguiente: no es un extracto
+                continue
         if (current is None or current["code"] == "9.01"
                 or len(current["excerpts"]) >= MAX_EXCERPTS_PER_ITEM):
             continue
-        if MIN_SENTENCE <= len(text) <= MAX_SENTENCE and not _BOILERPLATE.search(text):
+        if (MIN_SENTENCE <= len(text) <= MAX_SENTENCE and text[:1].isupper()
+                and not _BOILERPLATE.search(text)):
             current["excerpts"].append({"text": text, "chunk_id": unit["chunk_id"]})
     return items
 

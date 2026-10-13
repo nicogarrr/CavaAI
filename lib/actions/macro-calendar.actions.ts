@@ -18,8 +18,9 @@ export type MacroEvent = {
 export type MacroSource = {
     name: string;
     url: string;
-    status: 'ready' | 'unavailable';
+    status: 'ready' | 'partial' | 'unavailable';
     fetched_at: string;
+    covered_until: string | null;
 };
 
 export type MacroEventsResult = {

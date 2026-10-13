@@ -100,13 +100,20 @@ async def get_macro_events(
         try:
             rows = await _cached(name, loader, use_cache=use_cache)
         except (httpx.HTTPError, ValueError):
-            sources.append({"name": name, "url": url, "status": "unavailable", "fetched_at": fetched_at})
+            sources.append({"name": name, "url": url, "status": "unavailable", "fetched_at": fetched_at,
+                            "covered_until": None})
             return
         converted = [item for item in (convert(row) for row in rows) if item is not None]
         # Una fuente que responde pero ya no tiene eventos (formato cambiado)
         # no es "sin eventos": es no disponible.
         status = "ready" if converted else "unavailable"
-        sources.append({"name": name, "url": url, "status": status, "fetched_at": fetched_at})
+        covered_until = max((row["date"] for row in rows), default=None)
+        # El calendario oficial solo llega hasta covered_until: si el rango pedido
+        # lo supera, no se puede afirmar que no haya mas eventos de esa fuente.
+        if status == "ready" and covered_until is not None and end.isoformat() > covered_until:
+            status = "partial"
+        sources.append({"name": name, "url": url, "status": status, "fetched_at": fetched_at,
+                        "covered_until": covered_until})
         events.extend(converted)
 
     await run("Reserva Federal (FOMC)", connector.FOMC_URL,
@@ -119,7 +126,8 @@ async def get_macro_events(
         (e for e in events if low <= e["date"] <= high),
         key=lambda e: (e["date"], e["time_et"] or "", e["kind"]),
     )
-    ready = [s for s in sources if s["status"] == "ready"]
-    status = "ready" if len(ready) == len(sources) else ("partial" if ready else "unavailable")
+    usable = [s for s in sources if s["status"] != "unavailable"]
+    status = ("ready" if all(s["status"] == "ready" for s in sources)
+              else ("partial" if usable else "unavailable"))
     return {"status": status, "from": low, "to": high, "total": len(inside),
             "events": inside, "sources": sources}

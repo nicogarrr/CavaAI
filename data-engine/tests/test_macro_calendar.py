@@ -33,6 +33,8 @@ FOMC_HTML = """
 <div class="fomc-meeting__date col">27-28</div></div>
 <div class="row fomc-meeting"><div class="fomc-meeting__month col"><strong>March</strong></div>
 <div class="fomc-meeting__date col">17-18*</div></div>
+<div class="row fomc-meeting"><div class="fomc-meeting__month col"><strong>December</strong></div>
+<div class="fomc-meeting__date col">8-9*</div></div>
 <div class="panel-heading"><h4><a id="2">2025 FOMC Meetings</a></h4></div>
 <div class="row fomc-meeting"><div class="fomc-meeting__month col"><strong>Apr/May</strong></div>
 <div class="fomc-meeting__date col">30-1</div></div>
@@ -59,6 +61,7 @@ def test_parse_fomc_uses_last_day_and_skips_notation_votes() -> None:
     assert [(e["start_date"], e["date"], e["projections"]) for e in events] == [
         ("2026-01-27", "2026-01-28", False),
         ("2026-03-17", "2026-03-18", True),
+        ("2026-12-08", "2026-12-09", True),
         ("2025-04-30", "2025-05-01", False),
     ]
 
@@ -75,7 +78,7 @@ def test_parse_bls_unfolds_lines_and_keeps_time() -> None:
 
 def _transport(fomc_status=200, bls_body=BLS_ICS):
     def handler(request: httpx.Request) -> httpx.Response:
-        if "federalreserve.gov" in request.url.host:
+        if request.url.host == "www.federalreserve.gov":
             return httpx.Response(fomc_status, text=FOMC_HTML)
         return httpx.Response(200, text=bls_body)
     return httpx.AsyncClient(transport=httpx.MockTransport(handler))
@@ -84,7 +87,7 @@ def _transport(fomc_status=200, bls_body=BLS_ICS):
 def test_macro_events_filtered_sorted_and_sourced() -> None:
     async def go():
         async with _transport() as client:
-            return await service.get_macro_events(date(2026, 1, 1), date(2026, 12, 31), client=client)
+            return await service.get_macro_events(date(2026, 1, 1), date(2026, 11, 6), client=client)
     result = run(go())
     assert result["status"] == "ready"
     assert [e["date"] for e in result["events"]] == [
@@ -98,7 +101,7 @@ def test_macro_events_filtered_sorted_and_sourced() -> None:
 def test_macro_events_partial_when_one_source_fails() -> None:
     async def go():
         async with _transport(bls_body="<html>Access Denied</html>") as client:
-            return await service.get_macro_events(date(2026, 1, 1), date(2026, 12, 31), client=client)
+            return await service.get_macro_events(date(2026, 1, 1), date(2026, 11, 6), client=client)
     result = run(go())
     assert result["status"] == "partial"
     assert {e["kind"] for e in result["events"]} == {"fomc"}
@@ -140,6 +143,47 @@ def test_summarize_items_extracts_literal_quotes_with_chunk_ids() -> None:
         "chunk_id": 7}]
     assert items[1]["excerpts"][0]["text"].startswith("The Board accepted")
     assert items[2]["excerpts"] == []
+
+
+REAL_NVDA = """Item 2.02 Results of Operations and Financial Condition.
+On August 27, 2025, NVIDIA announced financial results; see the quote from Colette M. Kress, NVIDIA's Executive Vice President and Chief Financial Officer, in the press release.
+Item 5.02
+Departure of Directors or Certain Officers; Election of Directors; Appointment of Certain Officers; Compensatory Arrangements of Certain Officers.
+The Board announced that Ajay K. Puri, Executive Vice President of Worldwide Field Operations, will retire effective January 2026.
+Item 7.01 Regulation FD Disclosure.
+Statements made by NVIDIA with the U.S. Securities and Exchange Commission are available on its website.
+Item 8.01 Other Events.
+NVIDIA expanded its U.S. Government contracts program during the quarter to include new customers.
+"""
+
+
+def test_quotes_never_start_mid_sentence_on_initials_or_us() -> None:
+    items = {i["code"]: i for i in summarize_items([{"id": 3, "chunk_index": 0, "text": REAL_NVDA}])}
+    assert "Colette M. Kress" in items["2.02"]["excerpts"][0]["text"]
+    assert "Ajay K. Puri" in items["5.02"]["excerpts"][0]["text"]
+    assert items["5.02"]["excerpts"][0]["text"].startswith("The Board")
+    assert "U.S. Government contracts" in items["8.01"]["excerpts"][0]["text"]
+    for item in items.values():
+        for excerpt in item["excerpts"]:
+            assert excerpt["text"][0].isupper()
+            assert not excerpt["text"].startswith("Securities and Exchange")
+
+
+def test_official_title_on_next_line_is_not_an_excerpt() -> None:
+    items = {i["code"]: i for i in summarize_items([{"id": 3, "chunk_index": 0, "text": REAL_NVDA}])}
+    assert items["5.02"]["official_title"].startswith("Departure of Directors or Certain Officers;")
+    assert all(not e["text"].startswith("Departure of Directors") for e in items["5.02"]["excerpts"])
+    assert len(items["5.02"]["excerpts"]) == 1
+
+
+def test_macro_range_beyond_source_calendar_is_partial() -> None:
+    async def go():
+        async with _transport() as client:
+            return await service.get_macro_events(date(2026, 10, 1), date(2027, 9, 30), client=client)
+    result = run(go())
+    bls = next(s for s in result["sources"] if s["name"] == "BLS")
+    assert bls["status"] == "partial" and bls["covered_until"] is not None
+    assert result["status"] == "partial"
 
 
 def test_is_material_ignores_exhibit_only_filings() -> None:
