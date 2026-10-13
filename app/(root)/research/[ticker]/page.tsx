@@ -1279,7 +1279,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
         {/* F249: las fichas enlazan a la fuente primaria cuando el
             documento tiene source_url (filings SEC la traen); sin URL la
             ficha queda como texto, nunca un enlace roto. */}
-        <Panel title="Documentos">
+        <Panel title="Documentos" actions={<Link className="text-sm text-teal-300" href={`/research/${encodeURIComponent(ticker)}/filings`}>Informe frente al año anterior</Link>}>
           {documents.length ? (
             <div className="space-y-3">{documents.map((document) => <div className="rounded-lg border border-gray-800 p-4" key={document.id}><div className="flex flex-wrap items-center gap-2"><FileText className="h-4 w-4 text-teal-300" />{safeHttpUrl(document.source_url) ? <a className="font-medium text-gray-200 underline decoration-gray-700 underline-offset-4 transition hover:text-teal-200" href={safeHttpUrl(document.source_url) ?? undefined} rel="noopener noreferrer" target="_blank">{document.title}</a> : <span className="font-medium text-gray-200">{document.title}</span>}<Badge variant="outline">{label(document.source_tier)}</Badge></div><p className="mt-2 text-xs text-gray-500">{label(document.source_type)} · {document.published_at ? formatDate(document.published_at) : 'fecha desconocida'}</p></div>)}</div>
           ) : (
