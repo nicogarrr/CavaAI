@@ -108,7 +108,9 @@ def _redis_client(client: Any = None):
         return None
     import redis as _redis
 
-    return _redis.from_url(url, socket_connect_timeout=2, socket_timeout=2)
+    from app.core.redis_retry import no_retry
+
+    return _redis.from_url(url, socket_connect_timeout=2, socket_timeout=2, retry=no_retry())
 
 
 def _len(client: Any, key: str) -> int:

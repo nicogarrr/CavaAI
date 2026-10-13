@@ -46,10 +46,12 @@ def _marketdata_breaker_client():
     try:
         import redis as _redis
 
+        from app.core.redis_retry import no_retry
+
         url = get_settings().redis_url
         if not url:
             return None
-        return _redis.from_url(url, socket_connect_timeout=2, socket_timeout=2)
+        return _redis.from_url(url, socket_connect_timeout=2, socket_timeout=2, retry=no_retry())
     except Exception:
         return None
 

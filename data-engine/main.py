@@ -233,10 +233,13 @@ def _probe_redis(settings) -> str:
     """Redis es opcional en SQLite local, pero su estado se reporta siempre."""
     import redis
 
+    from app.core.redis_retry import no_retry
+
     client = redis.from_url(
         settings.redis_url,
         socket_connect_timeout=HEALTH_READY_TIMEOUT_SECONDS,
         socket_timeout=HEALTH_READY_TIMEOUT_SECONDS,
+        retry=no_retry(),
     )
     client.ping()
     return "ok"
