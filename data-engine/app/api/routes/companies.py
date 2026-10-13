@@ -46,6 +46,7 @@ from app.services.driver_assumption_service import (
     driver_assumption_payload,
 )
 from app.services.extended_quote_service import ExtendedQuote, extended_quote_service
+from app.services.fact_source_links import attach_assumption_sources
 from app.services.financial_ingestion_service import FinancialIngestionService
 from app.services.financial_terminal_service import FinancialTerminalService
 from app.services.fundamental_model_repository import FundamentalModelRepository
@@ -448,11 +449,13 @@ def long_term_model(
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     payload = FundamentalModelRepository().latest_payload(db, company)
-    return payload if payload else {
-        "ticker": company.ticker,
-        "status": "not_generated",
-        "publishable": False,
-    }
+    if not payload:
+        return {
+            "ticker": company.ticker,
+            "status": "not_generated",
+            "publishable": False,
+        }
+    return attach_assumption_sources(db, company.id, payload)
 
 
 @router.post("/{ticker}/long-term-model/generate")
