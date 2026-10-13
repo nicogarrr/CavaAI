@@ -460,13 +460,13 @@ class RAGIndex:
                 else self._query_filter(ticker, tenant_id)
             )
             if not self._hybrid_wanted(hybrid):
-                results = client.search(
+                results = client.query_points(
                     collection_name=self._collection(),
-                    query_vector=vector,
+                    query=vector,
                     query_filter=query_filter,
                     limit=limit,
                     with_payload=True,
-                )
+                ).points
                 return [self._row(r, r.score) for r in results]
             return self._hybrid_search(client, query, vector, query_filter, limit)
         except Exception as exc:
@@ -481,23 +481,23 @@ class RAGIndex:
 
         sparse_vectors = self._sparse_embeddings([query])
         if sparse_vectors is None:
-            results = client.search(
+            results = client.query_points(
                 collection_name=self._collection(),
-                query_vector=dense_vector,
+                query=dense_vector,
                 query_filter=query_filter,
                 limit=limit,
                 with_payload=True,
-            )
+            ).points
             return [self._row(r, r.score) for r in results]
 
         fetch = _hybrid.prefetch_limit(limit)
-        dense_hits = client.search(
+        dense_hits = client.query_points(
             collection_name=self._collection(),
-            query_vector=dense_vector,
+            query=dense_vector,
             query_filter=query_filter,
             limit=fetch,
             with_payload=True,
-        )
+        ).points
         sparse_name = str(
             self._setting("rag_sparse_vector_name", _hybrid.DEFAULT_SPARSE_VECTOR_NAME)
             or _hybrid.DEFAULT_SPARSE_VECTOR_NAME

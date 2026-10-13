@@ -142,29 +142,27 @@ class KnowledgeStore:
         self.client.delete(self.collection, points_selector=FilterSelector(filter=Filter(must=must)), wait=True)
 
     def search_dense(self, vector: list[float], query_filter: Any, limit: int) -> list[Any]:
-        from qdrant_client.models import NamedVector
-
         return list(
-            self.client.search(
+            self.client.query_points(
                 self.collection,
-                query_vector=NamedVector(name=DENSE_NAME, vector=vector),
+                query=vector,
+                using=DENSE_NAME,
                 query_filter=query_filter,
                 limit=limit,
                 with_payload=True,
-            )
+            ).points
         )
 
     def search_sparse(self, vector: SparseEmbedding, query_filter: Any, limit: int) -> list[Any]:
-        from qdrant_client.models import NamedSparseVector, SparseVector
+        from qdrant_client.models import SparseVector
 
         return list(
-            self.client.search(
+            self.client.query_points(
                 self.collection,
-                query_vector=NamedSparseVector(
-                    name=SPARSE_NAME, vector=SparseVector(indices=vector.indices, values=vector.values)
-                ),
+                query=SparseVector(indices=vector.indices, values=vector.values),
+                using=SPARSE_NAME,
                 query_filter=query_filter,
                 limit=limit,
                 with_payload=True,
-            )
+            ).points
         )
