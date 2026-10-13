@@ -84,6 +84,8 @@ def test_meta_se_reconoce_como_ticker(db, question):
         "¿Qué es IT?",
         "what is the cat doing",
         "tu meta es analizar la cartera",
+        "mi nueva meta de ahorro y los riesgos",
+        "mi meta anual de ahorro y los riesgos",
     ],
 )
 def test_palabras_corrientes_y_cartera_no_son_ticker(db, question):
