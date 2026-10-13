@@ -67,7 +67,7 @@ services:
   # Qdrant - vector store for RAG
   # ==========================================
   qdrant:
-    image: qdrant/qdrant:v1.12.5
+    image: qdrant/qdrant:v1.19.2
     container_name: cavaai-qdrant
     restart: unless-stopped
     ports:

@@ -66,7 +66,7 @@ def _minimal_manifest(**overrides) -> dict:
             "pg_dump": {"version": "pg_dump (PostgreSQL) 17.11"},
             "pg_restore": {"version": "pg_dump (PostgreSQL) 17.11"},
             "minio": {"version": "7.2.20"},
-            "qdrant": {"version": "1.12.5"},
+            "qdrant": {"version": "1.19.2"},
         },
         "artifacts": [
             {
@@ -188,7 +188,7 @@ def test_manifest_build_declara_version_de_esquema_y_tamanos(tmp_path):
         ("pg_dump", "pg_dump (PostgreSQL) 17.11"),
         ("pg_restore", "pg_dump (PostgreSQL) 17.11"),
         ("minio", "7.2.20"),
-        ("qdrant", "1.12.5"),
+        ("qdrant", "1.19.2"),
     ):
         builder.add_tool(tool_name, version)
     for pillar, name in (
