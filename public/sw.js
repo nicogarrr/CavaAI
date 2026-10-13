@@ -13,7 +13,7 @@
  *      sintética «sin conexión» que pide reconectar. No pretende ser lectura
  *      offline: lo documenta en el propio mensaje.
  */
-const CACHE = 'cavaai-static-v2';
+const CACHE = 'cavaai-static-v3';
 const OFFLINE_HTML =
   '<!doctype html><html lang="es"><meta charset="utf-8">' +
   '<meta name="viewport" content="width=device-width, initial-scale=1">' +
