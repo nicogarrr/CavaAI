@@ -66,7 +66,11 @@ def reserve_quota(tenant_id: int | str | None, settings, *, namespace: QuotaName
     if settings.is_production:
         import redis
 
-        client = redis.Redis.from_url(settings.redis_url, socket_connect_timeout=0.25, socket_timeout=0.5)
+        from app.core.redis_retry import no_retry
+
+        client = redis.Redis.from_url(
+            settings.redis_url, socket_connect_timeout=0.25, socket_timeout=0.5, retry=no_retry()
+        )
         try:
             # redis-py tipa eval como Awaitable[str] en stubs; el cliente sync devuelve la lista del script
             allowed, minute, daily = cast("list[int]", client.eval(_SCRIPT, 2, minute_key, day_key, minute_cap, day_cap))

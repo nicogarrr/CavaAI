@@ -43,7 +43,9 @@ async def consume_nonce(
         try:
             import redis.asyncio as redis
 
-            client = redis.from_url(redis_url, socket_connect_timeout=0.25)
+            from app.core.redis_retry import no_retry_async
+
+            client = redis.from_url(redis_url, socket_connect_timeout=0.25, retry=no_retry_async())
             try:
                 acquired = await client.set(
                     nonce_key, "1", nx=True, ex=max(int(ttl_seconds), 1)
