@@ -173,3 +173,34 @@ def test_empty_cascade_and_bad_timeout_are_rejected() -> None:
         CascadeProvider([])
     with pytest.raises(ValueError):
         CascadeProvider([_member("a", lambda r: httpx.Response(200, json=OK))], total_timeout_seconds=0)
+
+
+def test_cost_guards_fail_closed_with_the_real_cascade() -> None:
+    from app.services.llm_proposal_runner import paid_model_risk as proposal_risk
+
+    provider = create_llm_provider(
+        _settings(gemini_api_key="g", openrouter_api_key="o", opencode_go_api_key="c")
+    )
+    resolved = provider.model_router.resolve(_request(task="cheap_extraction"))  # type: ignore[attr-defined]
+    assert resolved == (
+        "cascade[gemini=gemini-3.8-flash,openrouter=google/gemma-4-31b-it:free,"
+        "opencode-go=space-bunny-free]"
+    )
+    assert proposal_risk(provider) == "modelo_no_gratuito"
+    assert proposal_risk(provider, request=_request(model="space-bunny-free")) == "modelo_no_gratuito"
+
+
+def test_http_400_still_tries_the_next_member_but_request_errors_do_not() -> None:
+    calls: list[str] = []
+
+    def bad(request: httpx.Request) -> httpx.Response:
+        calls.append("a")
+        return httpx.Response(400, text="bad")
+
+    def ok(request: httpx.Request) -> httpx.Response:
+        calls.append("b")
+        return httpx.Response(200, json=OK)
+
+    cascade = CascadeProvider([_member("a", bad), _member("b", ok)])
+    assert asyncio.run(cascade.complete(_request())).provider == "b"
+    assert calls == ["a", "b"]

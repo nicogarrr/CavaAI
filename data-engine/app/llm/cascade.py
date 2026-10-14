@@ -13,14 +13,37 @@ from app.llm.errors import (
     ProviderResponseError,
     ProviderTransportError,
 )
-from app.llm.routing import TaskModelRouter
 
 logger = logging.getLogger(__name__)
 
 #: Errores del PROVEEDOR (caida, cuota, clave, respuesta ilegible): se pasa al
-#: siguiente. Un `ProviderRequestError` es un fallo NUESTRO (peticion mal
-#: construida) y se propaga: otro proveedor recibiria la misma peticion mala.
+#: siguiente. `ProviderHTTPError` cubre TODO status no 2xx, tambien 400/401/403/
+#: 404/422: una peticion rechazada con 400 prueba los miembros restantes (acotado
+#: por el tope total). Solo `ProviderRequestError`, un fallo NUESTRO detectado
+#: antes de enviar (peticion mal construida), se propaga sin probar otro miembro.
 _FALL_THROUGH = (ProviderHTTPError, ProviderTransportError, ProviderResponseError, ProviderDisabledError)
+
+
+class CascadeModelRouter:
+    """Router que NO se hace pasar por gratuito: guardia de coste fail-closed.
+
+    Las guardias de coste (`paid_model_risk`, `VERIFIED_FREE_MODELS`) preguntan a
+    `provider.model_router` que modelo se llamara. En la cascada la respuesta
+    depende del miembro que conteste y ningun modelo de Gemini/OpenRouter esta
+    en la lista de verificados gratis (una clave Gemini con facturacion SI
+    cobra). Por eso resuelve a un identificador compuesto, nunca verificado:
+    los flujos protegidos por esas guardias NO admiten la cascada.
+    """
+
+    def __init__(self, members: Sequence[LLMProvider]) -> None:
+        self._members = tuple(members)
+
+    def resolve(self, request: LLMRequest) -> str:
+        parts = []
+        for member in self._members:
+            router = getattr(member, "model_router", None)
+            parts.append(f"{member.name}={router.resolve(request) if router else '?'}")
+        return "cascade[" + ",".join(parts) + "]"
 
 
 class CascadeProvider(LLMProvider):
@@ -53,7 +76,7 @@ class CascadeProvider(LLMProvider):
         capabilities = frozenset.intersection(*(m.supported_capabilities for m in self.members))
         self.supported_capabilities = capabilities
         super().__init__(
-            model_router=TaskModelRouter(default_model="cascade"),
+            model_router=CascadeModelRouter(self.members),
             timeout_seconds=total_timeout_seconds,
             max_retries=0,
         )
