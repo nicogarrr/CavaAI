@@ -43,7 +43,7 @@ def make_store(s: Settings) -> KnowledgeStore:
 
 
 def make_embedder(s: Settings) -> LocalEmbedder:
-    return LocalEmbedder(s.knowledge_rag_dense_model, s.rag_sparse_model)
+    return LocalEmbedder(s.knowledge_rag_dense_model, s.rag_sparse_model, dims=s.knowledge_rag_dense_dims)
 
 
 @lru_cache(maxsize=2)

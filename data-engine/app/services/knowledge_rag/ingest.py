@@ -202,7 +202,7 @@ def index_source(
             texts = [c.embed_text for c in batch]
             store.upsert(
                 [c.id for c in batch],
-                embedder.dense(texts),
+                embedder.dense_docs(texts),
                 embedder.sparse_docs(texts),
                 [
                     payload_for_child(
