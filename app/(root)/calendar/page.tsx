@@ -10,12 +10,13 @@ export const revalidate = 0;
 
 export const metadata: Metadata = {
     title: 'Calendario de catalizadores',
-    description: 'Resultados y ex-dividendos de tus posiciones en EE. UU. (USD) y acciones corporativas de todas tus posiciones, en un solo calendario.',
+    description: 'Resultados, ex-dividendos y plazos de presentación 10-Q/10-K (inferidos por regla SEC) de tus posiciones en EE. UU. (USD) y acciones corporativas de todas tus posiciones, en un solo calendario.',
 };
 
 const TYPE_LABEL: Record<CatalystEvent['type'], string> = {
     earnings: 'Resultados',
     dividend_ex: 'Ex-dividendo',
+    filing_deadline: 'Plazo 10-Q/10-K (inferido)',
     corporate_action: 'Acción corporativa',
 };
 

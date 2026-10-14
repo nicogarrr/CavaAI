@@ -6,6 +6,7 @@ negativo entre parentesis ("($0.05)"), franjas "time-pre-market" /
 su fecha ex.
 """
 
+import asyncio
 from datetime import date
 from decimal import Decimal
 
@@ -20,6 +21,19 @@ from app.services import catalyst_calendar_service as svc
 from app.services.connectors import earnings_calendar as connector
 
 D0, D1 = date(2026, 10, 14), date(2026, 10, 28)
+
+
+@pytest.fixture(autouse=True)
+def _no_sec_network(monkeypatch):
+    """Hermetico: los plazos 10-Q/10-K consultan EDGAR; por defecto sin red ni datos."""
+
+    async def cik(*_args, **_kwargs):
+        return "0000000001"
+
+    async def empty_submissions(*_args, **_kwargs):
+        return {}
+
+    monkeypatch.setattr(svc, "_default_sec_fetchers", lambda: (cik, empty_submissions))
 
 
 @pytest.fixture
@@ -185,3 +199,150 @@ def test_catalysts_route_end_to_end_with_real_formats(engine, db, monkeypatch):
         ("2026-10-22", "LOOP", "earnings"),
     ]
     assert body["events"][1]["detail"] == "antes de la apertura, BPA estimado -0,05"
+
+
+# Formato REAL de data.sec.gov/submissions (medido con AAPL, 2026-10): category,
+# fiscalYearEnd "MMDD" y filings.recent con form/reportDate en listas paralelas.
+def _subs(rows, *, category="Large accelerated filer", fye="0926"):
+    return {
+        "category": category,
+        "fiscalYearEnd": fye,
+        "filings": {"recent": {"form": [f for f, _ in rows], "reportDate": [r for _, r in rows]}},
+    }
+
+
+NOISE = [("4", "2026-10-06"), ("8-K", "2026-07-30"), ("144", "")]
+APPLE = _subs([
+    *NOISE,
+    ("10-Q", "2026-06-27"), ("10-Q", "2026-03-28"), ("10-Q", "2025-12-27"),
+    ("10-K", "2025-09-27"), ("10-Q", "2025-06-28"),
+])
+
+
+def _ev(data, ticker):
+    event = svc.filing_deadline_event(data, ticker)
+    assert event is not None
+    return event
+
+
+def test_filing_deadline_10k_after_third_quarter_52_53_weeks():
+    event = _ev(APPLE, "aapl")
+    # Q3 FY26 (27-jun) -> el ejercicio anterior: 28-jun-25 seguido de 27-sep-25 (+364 d = 26-sep-26).
+    # Es el 10-K (fin de ejercicio 0926), 60 dias -> miercoles 25-nov (plazo real de Apple 2026).
+    assert event["type"] == "filing_deadline" and event["ticker"] == "AAPL"
+    assert event["date"] == "2026-11-25"
+    assert event["title"] == "Plazo para presentar el 10-K (INFERIDO)"
+    assert "60 dias" in event["detail"] and "Large accelerated filer" in event["detail"]
+    assert "52/53 semanas" in event["detail"]
+    assert event["source"] == svc.SOURCE_SEC_RULE
+
+
+def test_filing_deadline_52_53_week_issuers_get_the_right_form():
+    # Casos que el calendario +3 meses etiquetaba mal (10-K mostrado como 10-Q).
+    # Cierres representativos de ejercicios 52/53 semanas: AAPL 2023 y ADBE 2023.
+    aapl_2023 = _subs([("10-Q", "2023-07-01"), ("10-Q", "2023-04-01"), ("10-Q", "2022-12-31"),
+                       ("10-K", "2022-09-24"), ("10-Q", "2022-07-02")])
+    assert _ev(aapl_2023, "AAPL")["title"].startswith("Plazo para presentar el 10-K")
+    adbe = _subs([("10-Q", "2023-09-01"), ("10-Q", "2023-06-02"), ("10-Q", "2023-03-03"),
+                  ("10-K", "2022-12-02"), ("10-Q", "2022-09-02")], fye="1201")
+    assert _ev(adbe, "ADBE")["title"].startswith("Plazo para presentar el 10-K")
+    assert _ev(adbe, "ADBE")["date"] == "2024-01-30"  # 1-dic-23 + 60 d
+
+
+def test_filing_deadline_quarters_of_unequal_length_use_prior_year_not_13_weeks():
+    # Trimestres 16/12/12/12 semanas (tipo CAVA): tras el Q2 (12-jul-26) el Q3 cierra el
+    # 4-oct (84 dias), no el 11-oct (91 dias): +91 daba un plazo 7 dias tarde.
+    cava = _subs([("10-Q", "2026-07-12"), ("10-Q", "2026-04-19"), ("10-K", "2025-12-28"),
+                  ("10-Q", "2025-10-05"), ("10-Q", "2025-07-13"), ("10-Q", "2025-04-20")], fye="1228")
+    event = _ev(cava, "CAVA")
+    assert event["title"] == "Plazo para presentar el 10-Q (INFERIDO)"
+    assert event["date"] == "2026-11-13"  # 4-oct-26 + 40 d (large accelerated)
+
+
+def test_filing_deadline_month_end_issuer_and_category_variants():
+    q = _subs([("10-Q", "2025-09-30"), ("10-Q", "2025-06-30"), ("10-Q", "2025-03-31"), ("10-K", "2024-12-31")],
+              fye="1231")
+    assert _ev(q, "X")["title"].startswith("Plazo para presentar el 10-K")  # 31-dic-25 es fin de ejercicio
+    assert _ev(q, "X")["date"] == "2026-03-02"  # 31-dic + 60 d = sab 28-feb -> lunes 2-mar
+    accel = {**q, "category": "Accelerated filer"}
+    assert _ev(accel, "X")["date"] == "2026-03-16"  # 75 d = 16-mar
+    small = {**q, "category": "Non-accelerated filer"}
+    assert _ev(small, "X")["date"] == "2026-03-31"  # 90 d
+    mid = _subs([("10-Q", "2025-06-30"), ("10-Q", "2025-03-31"), ("10-K", "2024-12-31")], fye="1231")
+    assert _ev(mid, "X")["title"].startswith("Plazo para presentar el 10-Q")
+    assert _ev(mid, "X")["date"] == "2025-11-10"  # 30-sep + 40 d = 9-nov (dom) -> lunes 10
+
+
+def test_filing_deadline_unknown_category_uses_max_and_says_so():
+    event = _ev({**APPLE, "category": ""}, "AAPL")
+    assert event["date"] == "2026-12-25"  # 26-sep + 90 d (viernes; la Navidad no se modela)
+    assert "plazo maximo" in event["detail"]
+
+
+def test_filing_deadline_no_data_means_none_not_invented():
+    assert svc.filing_deadline_event({}, "X") is None
+    assert svc.filing_deadline_event({**APPLE, "fiscalYearEnd": None}, "X") is None
+    only_form4 = _subs([("4", "2026-10-06")])
+    assert svc.filing_deadline_event(only_form4, "X") is None
+    foreign = _subs([("20-F", "2026-06-30")])
+    assert svc.filing_deadline_event(foreign, "X") is None
+    # 52/53 semanas sin el informe del ejercicio anterior: no se adivina la longitud del trimestre.
+    young = _subs([("10-Q", "2026-06-27"), ("10-Q", "2026-03-28")])
+    assert svc.filing_deadline_event(young, "X") is None
+
+
+def test_add_months_end_of_month():
+    assert svc._add_months(date(2026, 11, 30), 3) == date(2027, 2, 28)
+    assert svc._add_months(date(2026, 12, 31), 3) == date(2027, 3, 31)
+    assert svc._add_months(date(2026, 6, 27), 3) == date(2026, 9, 27)
+
+
+def test_fetch_filing_deadlines_filters_range_and_reports_failures():
+    async def cik(ticker):
+        return None if ticker == "NOCIK" else "0000000001"
+
+    async def subs(cik_):
+        return APPLE
+
+    out = asyncio.run(svc.fetch_filing_deadlines(
+        {"AAPL", "NOCIK"}, date(2026, 11, 1), date(2026, 11, 30),
+        cik_fetcher=cik, submissions_fetcher=subs,
+    ))
+    assert [e["ticker"] for e in out["events"]] == ["AAPL"]
+    assert out["status"] == "partial"
+    assert out["errors"] == ["Plazos 10-Q/10-K: EDGAR no disponible para NOCIK"]
+    outside = asyncio.run(svc.fetch_filing_deadlines(
+        {"AAPL"}, date(2026, 10, 14), date(2026, 10, 28), cik_fetcher=cik, submissions_fetcher=subs,
+    ))
+    assert outside == {"status": "ok", "events": [], "errors": []}
+
+
+def test_fetch_filing_deadlines_exceptions_degrade_to_unavailable():
+    async def boom(_):
+        raise RuntimeError("secret-url-or-key")
+
+    out = asyncio.run(svc.fetch_filing_deadlines(
+        {"AAPL"}, D0, D1, cik_fetcher=boom, submissions_fetcher=boom,
+    ))
+    assert out["status"] == "unavailable" and out["events"] == []
+    assert "secret" not in str(out)
+
+
+def test_route_includes_filing_deadlines_sorted_and_status(engine, db, monkeypatch):
+    _company(db, "AAPL", 5)
+
+    async def cik(_ticker):
+        return "0000320193"
+
+    async def subs(_cik):
+        return APPLE
+
+    monkeypatch.setattr(svc, "_default_sec_fetchers", lambda: (cik, subs))
+    client, main = _route_client(engine, monkeypatch, earnings_rows=[], dividend_rows=[])
+    try:
+        res = client.get("/api/calendar/catalysts?desde=2026-11-20&hasta=2026-11-30")
+    finally:
+        main.app.dependency_overrides.clear()
+    body = res.json()
+    assert res.status_code == 200 and body["status"] == "ok"
+    assert [(e["date"], e["type"]) for e in body["events"]] == [("2026-11-25", "filing_deadline")]
