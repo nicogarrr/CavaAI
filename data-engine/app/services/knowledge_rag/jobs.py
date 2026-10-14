@@ -18,9 +18,11 @@ from app.services.knowledge_rag.ingest import (
     mark_failed,
     resolve_inbox_path,
 )
+from app.services.knowledge_rag.store import CollectionConfigError
 
 # Errores permanentes: reintentar no cambia nada (flag, disco, ruta, contenido).
 PERMANENT = (
+    CollectionConfigError,
     runtime.KnowledgeRagDisabled,
     InsufficientDisk,
     InboxPathError,
@@ -46,7 +48,9 @@ def run_ingest_job(db: Session, source_id: int, settings: Settings, **deps: Any)
         source = db.get(KnowledgeRagSource, source_id)
         filename = source.filename if source is not None else ""
         db.rollback()
-        path = resolve_inbox_path(settings.knowledge_rag_inbox_dir, filename, settings.knowledge_rag_max_file_mb)
+        path = resolve_inbox_path(
+            settings.knowledge_rag_inbox_dir, filename, settings.knowledge_rag_max_file_mb
+        )
         return index_source(
             db,
             source_id,
@@ -54,7 +58,7 @@ def run_ingest_job(db: Session, source_id: int, settings: Settings, **deps: Any)
             store=deps.get("store") or runtime.make_store(settings),
             embedder=deps.get("embedder") or runtime.make_embedder(settings),
             extractor=deps.get("extractor") or runtime.make_extractor(settings),
-            counter=deps.get("counter") or runtime.make_counter(settings.rag_dense_model),
+            counter=deps.get("counter") or runtime.make_counter(settings.knowledge_rag_dense_model),
             config=deps.get("config") or runtime.chunk_config(settings),
         )
     except PERMANENT as exc:
