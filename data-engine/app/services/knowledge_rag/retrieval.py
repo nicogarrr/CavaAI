@@ -55,7 +55,7 @@ def search_knowledge(
     if not query.strip():
         raise ValueError("query is empty")
     flt = build_filter(tenant_id, filters or SearchFilters())
-    dense_hits = store.search_dense(embedder.dense([query])[0], flt, candidates)
+    dense_hits = store.search_dense(embedder.dense_query(query), flt, candidates)
     sparse_hits = store.search_sparse(embedder.sparse_query(query), flt, candidates)
     payloads = {str(h.id): dict(h.payload or {}) for h in [*dense_hits, *sparse_hits]}
     fused = rrf_fuse(
