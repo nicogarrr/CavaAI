@@ -12,8 +12,9 @@ Diseno para produccion (VM CPU-only, RAM limitada):
   baten a los densos en similaridad financiera) con coste casi nulo:
   ~0.06 ms/doc y ~70 MB extra frente a ~9.7 ms/doc del denso.
 - Fusion RRF en Python (no ``query_points``+prefetch de servidor) para no
-  depender de la version de Qdrant: los pesos RRF de servidor exigen
-  Qdrant >= 1.17 y produccion va en 1.12.5. Formula (rank 1-based):
+  depender de la version de Qdrant (prod ya va en 1.19.2; los pesos de
+  servidor exigen >= 1.17, pero la fusion en cliente da el mismo resultado
+  sin acoplar al despliegue). Formula (rank 1-based):
   ``score = sum(w / (k + rank))`` por lista, con k y pesos configurables.
 
 Todo import de fastembed es perezoso: sin la dependencia instalada las

@@ -154,8 +154,9 @@ class Settings(BaseSettings):
     rag_sparse_model: str = "Qdrant/bm25"
     rag_sparse_vector_name: str = "bm25"
     # Fusion RRF (lado cliente, igual semantica que el RRF de Qdrant >= 1.10;
-    # k y pesos configurables sin depender de la version del servidor:
-    # los pesos RRF de servidor exigen Qdrant >= 1.17 y prod va en 1.12.5).
+    # k y pesos configurables sin depender de la version del servidor. Prod ya
+    # va en 1.19.2 (los pesos de servidor, >= 1.17, serian posibles; la fusion
+    # sigue en cliente: mismo resultado, sin acoplar al despliegue).
     rag_rrf_k: int = Field(default=60, ge=1, le=1000)
     rag_dense_weight: float = Field(default=1.0, ge=0.0, le=100.0)
     rag_sparse_weight: float = Field(default=1.0, ge=0.0, le=100.0)
