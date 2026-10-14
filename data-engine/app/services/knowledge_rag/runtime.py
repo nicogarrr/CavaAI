@@ -37,11 +37,13 @@ def chunk_config(s: Settings) -> ChunkConfig:
 def make_store(s: Settings) -> KnowledgeStore:
     from qdrant_client import QdrantClient
 
-    return KnowledgeStore(QdrantClient(url=s.qdrant_url), s.knowledge_rag_collection, dims=s.rag_dense_dims)
+    return KnowledgeStore(
+        QdrantClient(url=s.qdrant_url), s.knowledge_rag_collection, dims=s.knowledge_rag_dense_dims
+    )
 
 
 def make_embedder(s: Settings) -> LocalEmbedder:
-    return LocalEmbedder(s.rag_dense_model, s.rag_sparse_model)
+    return LocalEmbedder(s.knowledge_rag_dense_model, s.rag_sparse_model)
 
 
 @lru_cache(maxsize=2)

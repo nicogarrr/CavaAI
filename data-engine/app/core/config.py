@@ -69,14 +69,10 @@ def _url_credentials(url: str) -> tuple[str | None, str | None]:
 def _assert_strong_credentials(url: str, *, label: str) -> None:
     user, password = _url_credentials(url)
     if not user or not password:
-        raise ValueError(
-            f"{label} must include a username and password in production"
-        )
+        raise ValueError(f"{label} must include a username and password in production")
     pair = f"{user}:{password}".lower()
     if pair in _WEAK_CREDENTIAL_PAIRS or password.lower() in _WEAK_PASSWORDS:
-        raise ValueError(
-            f"{label} must not use default development credentials in production"
-        )
+        raise ValueError(f"{label} must not use default development credentials in production")
 
 
 class Settings(BaseSettings):
@@ -171,7 +167,7 @@ class Settings(BaseSettings):
     knowledge_rag_max_file_mb: int = Field(default=60, ge=1, le=500)
     # Guarda de disco: el VM va justo. Ingesta rechazada si queda menos libre.
     knowledge_rag_min_free_gb: float = Field(default=3.0, ge=0.0, le=1000.0)
-    # Chunks: all-MiniLM-L6-v2 trunca a 256 wordpieces (incluye [CLS]/[SEP]).
+    # Chunks: margen bajo el truncado de ambos densos (MiniLM 256 wp, e5-large 512 wp).
     knowledge_rag_child_max_tokens: int = Field(default=200, ge=32, le=250)
     knowledge_rag_child_overlap_tokens: int = Field(default=30, ge=0, le=100)
     knowledge_rag_parent_max_tokens: int = Field(default=900, ge=200, le=4000)
@@ -181,6 +177,13 @@ class Settings(BaseSettings):
     knowledge_rag_docling_table_mode: str = "fast"
     # Reranker CPU opcional (vacio = desactivado). Ver docs/knowledge-rag.md.
     knowledge_rag_reranker_model: str = ""
+    # Modelo denso PROPIO del conocimiento (ganador v2c del piloto: e5-large
+    # multilingue + reranker). NO se reusa rag_dense_model: ese queda en
+    # MiniLM 384 para el vector chat legacy (portfolio_research_documents esta
+    # indexada en 384 dims). Cambiar este modelo exige coleccion NUEVA:
+    # knowledge_rag_v2 lleva 1024 dims.
+    knowledge_rag_dense_model: str = "intfloat/multilingual-e5-large"
+    knowledge_rag_dense_dims: int = Field(default=1024, ge=1, le=4096)
     minio_endpoint: str = "localhost:9002"
     minio_access_key: str = "portfolio"
     minio_secret_key: str = "portfoliosecret"
@@ -426,7 +429,9 @@ class Settings(BaseSettings):
         """
         return not self.is_production
 
-    @field_validator("ibkr_flex_tenant_id", "ibkr_flex_account_id", "ibkr_flex_complete_query_id", mode="before")
+    @field_validator(
+        "ibkr_flex_tenant_id", "ibkr_flex_account_id", "ibkr_flex_complete_query_id", mode="before"
+    )
     @classmethod
     def _blank_flex_tenant_is_none(cls, value):
         # docker-compose pasa IBKR_FLEX_TENANT_ID="" cuando no esta definido.
@@ -457,9 +462,7 @@ class Settings(BaseSettings):
                 "also disable tenant isolation"
             )
         if any(origin.strip() == "*" for origin in self.cors_origins):
-            raise ValueError(
-                "CORS_ORIGINS must not contain '*' (CORS is mounted with allow_credentials)"
-            )
+            raise ValueError("CORS_ORIGINS must not contain '*' (CORS is mounted with allow_credentials)")
         if not self.research_auth_secret:
             raise ValueError("RESEARCH_AUTH_SECRET is required in production")
         if self.document_storage_backend != "minio":
