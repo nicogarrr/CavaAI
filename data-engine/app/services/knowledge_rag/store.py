@@ -35,9 +35,11 @@ class SearchFilters:
 def build_filter(tenant_id: int | None, filters: SearchFilters):
     from qdrant_client.models import FieldCondition, Filter, MatchAny, MatchValue, Range
 
-    must: Any = [FieldCondition(key="tenant_id", match=MatchValue(value=tenant_id))] if (
-        tenant_id is not None
-    ) else []
+    must: Any = (
+        [FieldCondition(key="tenant_id", match=MatchValue(value=tenant_id))]
+        if (tenant_id is not None)
+        else []
+    )
     if filters.corpus not in ("evergreen", "dated", "any"):
         raise ValueError("corpus must be evergreen, dated or any")
     if filters.corpus != "any":
@@ -75,6 +77,10 @@ def build_filter(tenant_id: int | None, filters: SearchFilters):
     return Filter(must=must)
 
 
+class CollectionConfigError(ValueError):
+    """La coleccion existe con otra geometria: reintentar no cambia nada."""
+
+
 class KnowledgeStore:
     def __init__(self, client: Any, collection: str, dims: int = 384) -> None:
         self.client = client
@@ -92,6 +98,13 @@ class KnowledgeStore:
 
         existing = {c.name for c in self.client.get_collections().collections}
         if self.collection in existing:
+            size = self.client.get_collection(self.collection).config.params.vectors[DENSE_NAME].size
+            if size != self.dims:
+                raise CollectionConfigError(
+                    f"la coleccion {self.collection!r} existe con {size} dims y la configuracion "
+                    f"pide {self.dims}: apunta KNOWLEDGE_RAG_COLLECTION a una coleccion nueva "
+                    f"(o vuelve al modelo anterior); mezclar geometrias corrompe la busqueda"
+                )
             return
         self.client.create_collection(
             self.collection,
@@ -139,7 +152,9 @@ class KnowledgeStore:
         must: Any = [FieldCondition(key="source_id", match=MatchValue(value=source_id))]
         if tenant_id is not None:
             must.append(FieldCondition(key="tenant_id", match=MatchValue(value=tenant_id)))
-        self.client.delete(self.collection, points_selector=FilterSelector(filter=Filter(must=must)), wait=True)
+        self.client.delete(
+            self.collection, points_selector=FilterSelector(filter=Filter(must=must)), wait=True
+        )
 
     def search_dense(self, vector: list[float], query_filter: Any, limit: int) -> list[Any]:
         return list(
