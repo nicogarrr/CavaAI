@@ -212,6 +212,14 @@ services:
       - MINIO_REGION=${OBJECT_STORAGE_REGION:-}
       - MINIO_BUCKET=research
       - DUCKDB_PATH=/data/analytics.duckdb
+      # RAG de conocimiento profesional (#924): la API responde 503 mientras
+      # el flag este a 0. La ingesta la hace worker-knowledge (cola knowledge).
+      - KNOWLEDGE_RAG_ENABLED=${KNOWLEDGE_RAG_ENABLED:-0}
+      - KNOWLEDGE_RAG_COLLECTION=${KNOWLEDGE_RAG_COLLECTION:-knowledge_rag_v1}
+      - KNOWLEDGE_RAG_INBOX_DIR=/data/knowledge-inbox
+      - KNOWLEDGE_RAG_MAX_FILE_MB=${KNOWLEDGE_RAG_MAX_FILE_MB:-60}
+      - KNOWLEDGE_RAG_MIN_FREE_GB=${KNOWLEDGE_RAG_MIN_FREE_GB:-3}
+      - KNOWLEDGE_RAG_RERANKER_MODEL=${KNOWLEDGE_RAG_RERANKER_MODEL:-}
       - FASTEMBED_CACHE_PATH=/data/fastembed-cache
       - LANGFUSE_ENABLED=false
       - SEC_USER_AGENT=${SEC_USER_AGENT:-CavaAI research contact@cavaai.local}
@@ -221,6 +229,7 @@ services:
     volumes:
       - duckdb_data:/data
       - ./data-esef-snapshots:/data/esef-snapshots:ro
+      - ./knowledge-inbox:/data/knowledge-inbox:ro
     healthcheck:
       # python:3.12-slim no trae curl: sonda equivalente a `curl -f http://localhost:8000/health/ready`.
       test:
@@ -572,6 +581,61 @@ services:
       resources:
         limits:
           memory: 2G
+
+  worker-knowledge:
+    image: cavaai-backend:prod
+    container_name: cavaai-worker-knowledge
+    restart: unless-stopped
+    # RAG de conocimiento profesional (#924): Docling pica CPU/RAM, asi que la
+    # cola knowledge va en worker dedicado de 1 proceso / 1 hilo (no compartir).
+    command: ["dramatiq", "app.workers.dramatiq_app", "--processes", "1", "--threads", "1", "-Q", "knowledge"]
+    environment:
+      - PYTHONUNBUFFERED=1
+      # Un job pesado en curso como mucho: sin prefetch extra.
+      - dramatiq_queue_prefetch=1
+      - dramatiq_delay_queue_prefetch=1
+      - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-portfolio}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cavaai_research}
+      - REDIS_URL=redis://redis:6379/0
+      - QDRANT_URL=http://qdrant:6333
+      - VECTOR_STORE=qdrant
+      - FASTEMBED_CACHE_PATH=/data/fastembed-cache
+      # Pesos Docling/HF fuera de la imagen, en el volumen con espacio.
+      - DOCLING_ARTIFACTS_PATH=/data/docling-artifacts
+      - HF_HOME=/data/hf-home
+      - SEC_USER_AGENT=${SEC_USER_AGENT:-CavaAI research contact@cavaai.local}
+      # Con el flag a 0 el actor rechaza el trabajo (apagado por defecto).
+      - KNOWLEDGE_RAG_ENABLED=${KNOWLEDGE_RAG_ENABLED:-0}
+      - KNOWLEDGE_RAG_COLLECTION=${KNOWLEDGE_RAG_COLLECTION:-knowledge_rag_v1}
+      - KNOWLEDGE_RAG_INBOX_DIR=/data/knowledge-inbox
+      - KNOWLEDGE_RAG_MAX_FILE_MB=${KNOWLEDGE_RAG_MAX_FILE_MB:-60}
+      - KNOWLEDGE_RAG_MIN_FREE_GB=${KNOWLEDGE_RAG_MIN_FREE_GB:-3}
+      - KNOWLEDGE_RAG_DOCLING_OCR=${KNOWLEDGE_RAG_DOCLING_OCR:-0}
+      - KNOWLEDGE_RAG_DOCLING_TABLE_MODE=${KNOWLEDGE_RAG_DOCLING_TABLE_MODE:-fast}
+      - KNOWLEDGE_RAG_RERANKER_MODEL=${KNOWLEDGE_RAG_RERANKER_MODEL:-}
+    volumes:
+      - duckdb_data:/data
+      - ./knowledge-inbox:/data/knowledge-inbox:ro
+    healthcheck:
+      # Sin HTTP: dramatiq vivo (PID 1) + Redis de cola accesible.
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import os,sys,redis; sys.exit(0 if 'dramatiq' in open('/proc/1/cmdline','rb').read().decode(errors='ignore') and redis.from_url(os.environ['REDIS_URL'], socket_connect_timeout=3).ping() else 1)"
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+    depends_on:
+      backend:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 3G
 
   scheduler:
     image: cavaai-backend:prod

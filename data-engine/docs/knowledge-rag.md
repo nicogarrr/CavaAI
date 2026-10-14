@@ -1,14 +1,15 @@
 # RAG de conocimiento profesional (cartas, libros, memos)
 
-Estado: **pipeline listo, apagado por defecto, sin corpus real ingerido.**
+Estado: **pipeline listo y cableado en prod (worker-knowledge en compose), apagado por defecto,
+sin corpus real ingerido ni piloto ejecutado.**
 Flag: `KNOWLEDGE_RAG_ENABLED=false`. API y actor responden 503 / rechazan el trabajo mientras este apagado.
 
 ## Stack (decidido, no se reabre)
 
 Qdrant + PostgreSQL + dramatiq + embeddings locales. Piezas nuevas: `llama-index-core` (MIT; solo
 `TextNode`/`NodeWithScore`/`QueryBundle`/postprocesadores) y Docling (MIT, ya era dependencia).
-No se anade `llama-index-vector-stores-qdrant`: exige `qdrant-client>=1.16` y prod pinea `<1.15`
-(servidor Qdrant 1.12.5). El store es propio sobre `qdrant-client` y reutiliza
+No se anade `llama-index-vector-stores-qdrant` (el store propio sobre `qdrant-client` ya cubre el
+caso; prod: servidor Qdrant 1.19.2, cliente >=1.16,<2) y se reutiliza
 `app/services/hybrid_retrieval.py` (RRF en cliente). Sin LlamaParse/LlamaCloud/OpenAI.
 
 ## Flujo
@@ -82,14 +83,16 @@ falla con "docling extracted no text" en vez de indexar vacio.
 `POST /sources` (ruta RELATIVA al inbox + metadatos; sin subir bytes; dedupe por sha256),
 `GET /sources`, `GET /sources/{id}`, `POST /query`, `GET /status`.
 
-## Integracion pendiente (la hace el integrador)
+## Integracion en prod
 
-1. Migracion `0052_knowledge_rag` (`alembic upgrade head`, paso de deploy).
-2. El actor va en la cola **`knowledge`**: ningun worker de `docker-compose.prod.yml` la consume hoy.
-   Anadir `knowledge` al `-Q` de un worker de 1 hilo (Docling es pesado en RAM; 12 GB de VM) o un worker
-   dedicado. No se ha tocado compose.
-3. Montar el inbox (`KNOWLEDGE_RAG_INBOX_DIR`) y activar el flag solo cuando haya disco.
-4. Regenerar `openapi.json` / `openapi.generated.ts` (ya hecho en este PR) si cambia la API.
+1. Migracion `0052_knowledge_rag`: **aplicada en prod** (`alembic upgrade head`, ya en 0059 head).
+2. Cola **`knowledge`**: la consume el servicio `worker-knowledge` de `docker-compose.prod.yml`
+   (worker dedicado, 1 proceso / 1 hilo: Docling es pesado en RAM; 12 GB de VM). El inbox
+   (`./knowledge-inbox`) se monta `:ro` en backend y worker-knowledge; los pesos Docling/HF van
+   al volumen `duckdb_data` (`DOCLING_ARTIFACTS_PATH` / `HF_HOME`).
+3. Activar `KNOWLEDGE_RAG_ENABLED=1` en `.env.production` solo con disco suficiente y el piloto
+   decidido; recrear backend + worker-knowledge.
+4. Regenerar `openapi.json` / `openapi.generated.ts` si cambia la API (sin cambios desde #924).
 
 ## Plan de piloto (aun no ejecutado)
 
@@ -115,7 +118,7 @@ Objetivo: decidir con datos si el pipeline sirve y si hace falta reranker, antes
   bbox correctos). No probado con libros reales largos, PDFs escaneados ni el A1 ARM del VM.
 - Tablas: se parten por filas sin repetir la cabecera en cada hijo.
 - El chunker corta frases con una regex (abreviaturas como "Mr." pueden partir una frase; la cita sigue siendo literal).
-- Qdrant local (`:memory:`) en los tests ignora los indices de payload; contra servidor 1.12.5 real no probado.
+- Qdrant local (`:memory:`) en los tests ignora los indices de payload; contra el servidor real (1.19.2) pendiente del piloto.
 - La verificacion contra el original exige conservar el fichero; no se guarda copia.
 - Embeddings multilingues: MiniLM es principalmente ingles; el recall en ES esta por medir (BM25 compensa en parte).
 
