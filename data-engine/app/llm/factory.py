@@ -5,6 +5,7 @@ import httpx
 from app.core.config import Settings, get_settings
 from app.llm.adapters import DisabledProvider, OpenAICompatibleProvider
 from app.llm.base import LLMProvider
+from app.llm.cascade import CascadeProvider
 from app.llm.response_cache import build_response_cache
 
 
@@ -25,16 +26,80 @@ def create_llm_provider(
     requested = settings.llm_provider.strip().lower()
     if requested in {"auto", "opencode", "opencode_go"}:
         requested = "opencode-go"
-    if requested not in {"opencode-go", "disabled"}:
+    if requested not in {"opencode-go", "cascade", "disabled"}:
         raise ValueError(
-            "CavaAI supports only the OpenCode Go provider; "
+            "CavaAI supports the OpenCode Go provider or the free cascade; "
             f"received {settings.llm_provider!r}"
         )
     if requested == "disabled":
         return DisabledProvider("disabled_by_configuration")
+    if requested == "cascade":
+        return _create_cascade(settings, client=client)
     if not _has_key(settings.opencode_go_api_key):
         return DisabledProvider("opencode_go_api_key_not_configured")
 
+    return _opencode_go(settings, client=client)
+
+
+def _pin_to_model(model: str) -> dict[str, str]:
+    """Overrides que mandan al modelo `model` toda ruta o alias interno de OpenCode.
+
+    Las rutas por tarea (`app/services/llm_router.py`) y los modelos fijados en
+    codigo usan alias de OpenCode (`space-bunny-free`...). Un miembro de otro
+    proveedor no los conoce y el registro de alias lo rechaza (alias de otro
+    proveedor); sin esto, cualquier peticion con `task` fallaria en Gemini u
+    OpenRouter. Los overrides del usuario (`llm_model_overrides`) siguen
+    siendo solo de OpenCode.
+    """
+    from app.llm.model_aliases import MODEL_ALIASES
+    from app.services.llm_router import ROUTES
+
+    names = {route.model for route in ROUTES.values()} | set(MODEL_ALIASES.aliases)
+    return dict.fromkeys(names, model)
+
+
+def _create_cascade(settings: Settings, *, client: httpx.AsyncClient | None) -> LLMProvider:
+    """Gemini -> OpenRouter :free -> OpenCode, solo los miembros con clave."""
+    members: list[LLMProvider] = []
+    shared = {
+        "client": client,
+        "timeout_seconds": settings.llm_cascade_member_timeout_seconds,
+        "max_retries": settings.llm_cascade_member_max_retries,
+        "total_timeout_seconds": settings.llm_cascade_member_total_timeout_seconds,
+        "max_output_tokens": settings.llm_max_output_tokens,
+    }
+    if _has_key(settings.gemini_api_key):
+        members.append(
+            OpenAICompatibleProvider(
+                api_key=str(settings.gemini_api_key),
+                base_url=settings.gemini_base_url,
+                default_model=settings.gemini_model,
+                provider_name="gemini",
+                model_overrides=_pin_to_model(settings.gemini_model),
+                response_cache=build_response_cache(settings),
+                **shared,
+            )
+        )
+    if _has_key(settings.openrouter_api_key):
+        members.append(
+            OpenAICompatibleProvider(
+                api_key=str(settings.openrouter_api_key),
+                base_url=settings.openrouter_base_url,
+                default_model=settings.openrouter_model,
+                provider_name="openrouter",
+                model_overrides=_pin_to_model(settings.openrouter_model),
+                response_cache=build_response_cache(settings),
+                **shared,
+            )
+        )
+    if _has_key(settings.opencode_go_api_key):
+        members.append(_opencode_go(settings, client=client))
+    if not members:
+        return DisabledProvider("cascade_without_any_api_key")
+    return CascadeProvider(members, total_timeout_seconds=settings.llm_cascade_total_timeout_seconds)
+
+
+def _opencode_go(settings: Settings, *, client: httpx.AsyncClient | None) -> OpenAICompatibleProvider:
     return OpenAICompatibleProvider(
         api_key=settings.opencode_go_api_key,
         base_url=settings.opencode_go_base_url,

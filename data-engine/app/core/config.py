@@ -353,6 +353,26 @@ class Settings(BaseSettings):
     # un nivel que rechazaria. Env: OPENCODE_GO_REASONING_EFFORT_MODELS.
     opencode_go_reasoning_effort_models: str = "space-bunny-free"
 
+    # Cascada gratuita (LLM_PROVIDER=cascade): Gemini AI Studio -> OpenRouter :free
+    # -> OpenCode, solo los que tengan clave. Env: GEMINI_API_KEY / OPENROUTER_API_KEY.
+    # Modelos verificados en las paginas publicas del proveedor (2026-10-14):
+    # gemini-3.8-flash tiene nivel gratuito (ai.google.dev/gemini-api/docs/pricing);
+    # el modelo :free de OpenRouter sale de https://openrouter.ai/api/v1/models
+    # (precio 0, admite tools y response_format). El nivel gratuito de Gemini puede
+    # usar los datos para mejorar el servicio: no enviar nada que no deba salir.
+    gemini_api_key: str | None = Field(default=None, repr=False)
+    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
+    gemini_model: str = "gemini-3.8-flash"
+    openrouter_api_key: str | None = Field(default=None, repr=False)
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_model: str = "google/gemma-4-31b-it:free"
+    # Por miembro de la cascada: poco margen para que el siguiente tenga tiempo.
+    llm_cascade_member_timeout_seconds: float = Field(default=20.0, gt=0)
+    llm_cascade_member_total_timeout_seconds: float = Field(default=25.0, gt=0)
+    llm_cascade_member_max_retries: int = Field(default=1, ge=0, le=3)
+    # Tope TOTAL de toda la cascada (todos los miembros).
+    llm_cascade_total_timeout_seconds: float = Field(default=60.0, gt=0)
+
     # TypeSafe Jev (capa de micro-decisiones, SystemOne API). Env: TYPESAFE_API_KEY.
     # Factura por uso ($0.042/MTok in); sin key el cliente no se construye.
     typesafe_api_key: str | None = None
