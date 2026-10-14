@@ -50,7 +50,7 @@ def test_factory_only_accepts_opencode_go_and_routes_to_default_model():
 
     assert isinstance(provider, OpenAICompatibleProvider)
     assert provider.name == "opencode-go"
-    with pytest.raises(ValueError, match="only the OpenCode Go provider"):
+    with pytest.raises(ValueError, match="OpenCode Go provider or the free cascade"):
         create_llm_provider(
             Settings(
                 _env_file=None,

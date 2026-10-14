@@ -32,6 +32,12 @@ def settings(db: Session = Depends(get_db)) -> dict:
         # Model only when active; the API key is never exposed here.
         "model": app_settings.opencode_go_model if provider.name != "disabled" else None,
     }
+    # Cascada gratuita: el modelo depende del miembro que responda; se listan
+    # los miembros en orden (sin claves ni URLs).
+    members = getattr(provider, "member_names", None)
+    if members:
+        llm_status["model"] = None
+        llm_status["members"] = members
     if provider.name == "disabled":
         llm_status["reason"] = getattr(provider, "reason", "disabled")
     return {
