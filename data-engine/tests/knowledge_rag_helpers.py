@@ -23,6 +23,12 @@ def _h(word: str, mod: int) -> int:
 class FakeEmbedder:
     dims = 384
 
+    def dense_docs(self, texts: list[str]) -> list[list[float]]:
+        return self.dense(texts)
+
+    def dense_query(self, text: str) -> list[float]:
+        return self.dense([text])[0]
+
     def dense(self, texts: list[str]) -> list[list[float]]:
         out = []
         for t in texts:

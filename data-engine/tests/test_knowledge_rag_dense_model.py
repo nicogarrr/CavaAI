@@ -58,7 +58,7 @@ def test_make_embedder_usa_el_modelo_del_conocimiento(monkeypatch) -> None:
     seen: dict[str, str] = {}
 
     class Spy:
-        def __init__(self, dense: str, sparse: str) -> None:
+        def __init__(self, dense: str, sparse: str, dims: int = 0) -> None:
             seen["dense"] = dense
             seen["sparse"] = sparse
 

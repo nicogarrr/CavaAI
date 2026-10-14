@@ -160,7 +160,9 @@ class Settings(BaseSettings):
     # PROPIA, separada de portfolio_research_documents. Apagado por defecto:
     # sin el flag la API responde 503 y el actor rechaza el trabajo.
     knowledge_rag_enabled: bool = False
-    knowledge_rag_collection: str = "knowledge_rag_v1"
+    # La coleccion por defecto va con el denso por defecto: v2 es 1024 dims
+    # (e5-large); knowledge_rag_v1 era la del piloto a 384 (MiniLM).
+    knowledge_rag_collection: str = "knowledge_rag_v2"
     # Directorio (montado) del que el actor puede leer ficheros. La API NUNCA
     # acepta rutas absolutas ni sube bytes: solo nombres relativos a este dir.
     knowledge_rag_inbox_dir: Path = Path("./storage/knowledge_inbox")

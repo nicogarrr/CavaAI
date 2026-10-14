@@ -127,10 +127,7 @@ def _units(section_text: str, spans: list[tuple[int, int]], budget: int, count: 
         pieces = _split_sentences(block_text, b_start)
         if section_text[b_start:b_end].count("\n") >= 2 and "|" in block_text:
             # tabla en markdown: una unidad por fila
-            pieces = [
-                (b_start + m.start(), b_start + m.end())
-                for m in re.finditer(r"[^\n]+", block_text)
-            ]
+            pieces = [(b_start + m.start(), b_start + m.end()) for m in re.finditer(r"[^\n]+", block_text)]
         for p_start, p_end in pieces:
             tokens = count(section_text[p_start:p_end]) - 2
             if tokens > budget:

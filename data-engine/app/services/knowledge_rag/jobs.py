@@ -18,9 +18,11 @@ from app.services.knowledge_rag.ingest import (
     mark_failed,
     resolve_inbox_path,
 )
+from app.services.knowledge_rag.store import CollectionConfigError
 
 # Errores permanentes: reintentar no cambia nada (flag, disco, ruta, contenido).
 PERMANENT = (
+    CollectionConfigError,
     runtime.KnowledgeRagDisabled,
     InsufficientDisk,
     InboxPathError,
