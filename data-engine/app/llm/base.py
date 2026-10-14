@@ -6,14 +6,13 @@ import re
 from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
-from typing import Any
+from typing import Any, Protocol
 
 import httpx
 
 from app.llm.contracts import LLMRequest, LLMResponse, ResponseFormat
 from app.llm.errors import LLMError, ProviderHTTPError, ProviderResponseError, ProviderTransportError
 from app.llm.json import parse_json_response
-from app.llm.routing import TaskModelRouter
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +70,12 @@ ADAPTER_CAPABILITIES: frozenset[str] = frozenset(
 TOOL_CALLING = "tool_calling"
 
 
+class ModelRouter(Protocol):
+    """Lo unico que el resto del codigo exige de un router: resolver el modelo de una peticion."""
+
+    def resolve(self, request: LLMRequest) -> str: ...
+
+
 class LLMProvider(ABC):
     name: str
     #: Lo que ESTE adaptador implementa. Vacio por defecto: un adaptador que no
@@ -80,7 +85,7 @@ class LLMProvider(ABC):
     def __init__(
         self,
         *,
-        model_router: TaskModelRouter,
+        model_router: ModelRouter,
         client: httpx.AsyncClient | None = None,
         timeout_seconds: float = 30.0,
         max_retries: int = 2,
