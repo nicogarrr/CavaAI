@@ -3,7 +3,7 @@
 import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 import { researchRequest } from '@/lib/research/client';
 
-export type CatalystType = 'earnings' | 'dividend_ex' | 'corporate_action';
+export type CatalystType = 'earnings' | 'dividend_ex' | 'filing_deadline' | 'corporate_action';
 
 export type CatalystEvent = {
     date: string;

@@ -23,7 +23,11 @@ evento.
 
 from __future__ import annotations
 
-from datetime import date
+import asyncio
+import calendar
+import logging
+from collections.abc import Awaitable, Callable
+from datetime import date, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -35,7 +39,11 @@ from app.services.market_refresh_service import _us_listed
 SOURCE_NASDAQ = "Calendario publico de NASDAQ"
 SOURCE_CAVAAI = "Accion corporativa registrada en CavaAI"
 
-_TYPE_ORDER = {"earnings": 0, "dividend_ex": 1, "corporate_action": 2}
+SOURCE_SEC_RULE = "Regla SEC (Form 10-Q/10-K) aplicada al ultimo informe en EDGAR"
+
+logger = logging.getLogger(__name__)
+
+_TYPE_ORDER = {"earnings": 0, "dividend_ex": 1, "filing_deadline": 2, "corporate_action": 3}
 
 # Valores reales de ``time`` del calendario NASDAQ (medidos), mas los alias antiguos.
 _TIME_LABEL = {
@@ -44,6 +52,182 @@ _TIME_LABEL = {
     "before-market": "antes de la apertura",
     "after-market": "tras el cierre",
 }
+
+
+# Plazos de presentacion (dias tras el cierre del periodo), Form 10-Q / 10-K:
+# large accelerated 40/60, accelerated 40/75, resto 45/90.
+_FILER_DEADLINES = {
+    "large accelerated filer": (40, 60),
+    "accelerated filer": (40, 75),
+    "non-accelerated filer": (45, 90),
+}
+_MAX_DEADLINES = (45, 90)
+_PERIODIC = {"10-Q", "10-K"}
+
+
+def _add_months(day: date, months: int) -> date:
+    """Suma meses de calendario; si `day` era fin de mes, devuelve el fin de mes destino."""
+    index = day.year * 12 + (day.month - 1) + months
+    year, month = divmod(index, 12)
+    month += 1
+    last = calendar.monthrange(year, month)[1]
+    was_month_end = day.day == calendar.monthrange(day.year, day.month)[1]
+    return date(year, month, last if was_month_end else min(day.day, last))
+
+
+def _next_business_day(day: date) -> date:
+    while day.weekday() >= 5:
+        day += timedelta(days=1)
+    return day
+
+
+def _is_month_end(day: date) -> bool:
+    return day.day == calendar.monthrange(day.year, day.month)[1]
+
+
+def _next_period_end(periods: list[date]) -> tuple[date, bool] | None:
+    """(siguiente cierre estimado, es_aproximado) a partir de los cierres ya presentados.
+
+    Cierre en fin de mes: +3 meses de calendario (exacto). Emisores de 52/53
+    semanas (cierre no en fin de mes, trimestres de 12/13/16 semanas): se toma el
+    informe del ejercicio anterior (cierre mas cercano a ultimo-364 dias), el
+    siguiente a ese, y se le suman 364 dias. Asi se respeta la longitud real de
+    cada trimestre; queda un error de hasta ~1 semana en ejercicios de 53
+    semanas. Sin ese historial no se estima nada (None)."""
+    last = periods[-1]
+    if _is_month_end(last):
+        return _add_months(last, 3), False
+    target = last - timedelta(days=364)
+    prior = min(periods, key=lambda d: abs((d - target).days))
+    if abs((prior - target).days) > 10:
+        return None
+    following = [d for d in periods if d > prior + timedelta(days=30)]
+    if not following or following[0] >= last:
+        return None
+    return following[0] + timedelta(days=364), True
+
+
+def _near_fiscal_year_end(day: date, fy_month: int, fy_day: int) -> bool:
+    """True si `day` esta a +-10 dias del fin de ejercicio (fiscalYearEnd MMDD)."""
+    for year in (day.year - 1, day.year, day.year + 1):
+        last = calendar.monthrange(year, fy_month)[1]
+        if abs((date(year, fy_month, min(fy_day, last)) - day).days) <= 10:
+            return True
+    return False
+
+
+def filing_deadline_event(submissions: dict[str, Any], ticker: str) -> dict[str, Any] | None:
+    """Proximo plazo de 10-Q/10-K de un emisor, INFERIDO por regla SEC. Funcion pura.
+
+    Base: cierres de periodo (``reportDate``) de los 10-Q/10-K ya presentados en
+    EDGAR; el siguiente cierre se estima como en `_next_period_end`. Es 10-K si
+    ese cierre cae a +-10 dias del fin de ejercicio (``fiscalYearEnd``), si no
+    10-Q. El plazo depende de la categoria de filer de EDGAR; sin ella se usa el
+    MAXIMO de la regla y se dice. Plazo en sabado/domingo pasa al lunes; los
+    festivos no se modelan. Sin historial suficiente o sin fiscalYearEnd, None:
+    no se inventa nada.
+    """
+    recent = (submissions.get("filings") or {}).get("recent") or {}
+    periods_set: set[date] = set()
+    for form, report in zip(recent.get("form") or [], recent.get("reportDate") or [], strict=False):
+        if form not in _PERIODIC:
+            continue
+        period = _parse_us_date(report)
+        if period is not None:
+            periods_set.add(period)
+    if not periods_set:
+        return None
+    periods = sorted(periods_set)
+    fy_end = str(submissions.get("fiscalYearEnd") or "")
+    if len(fy_end) != 4 or not fy_end.isdigit() or not 1 <= int(fy_end[:2]) <= 12 or not 1 <= int(fy_end[2:]) <= 31:
+        return None
+    estimate = _next_period_end(periods)
+    if estimate is None:
+        return None
+    next_period, approx = estimate
+    form = "10-K" if _near_fiscal_year_end(next_period, int(fy_end[:2]), int(fy_end[2:])) else "10-Q"
+    category = str(submissions.get("category") or "").strip().lower()
+    days_q_k = _FILER_DEADLINES.get(category)
+    days = (days_q_k or _MAX_DEADLINES)[1 if form == "10-K" else 0]
+    deadline = _next_business_day(next_period + timedelta(days=days))
+    basis = (
+        f"{days} dias tras el cierre de periodo estimado ({next_period.isoformat()}) "
+        f"sobre el ultimo informe periodico (cierre {periods[-1].isoformat()})"
+    )
+    if approx:
+        basis += "; emisor de 52/53 semanas: fecha aproximada (hasta ~1 semana)"
+    if days_q_k is None:
+        basis += "; categoria de filer no disponible: se usa el plazo maximo de la regla"
+    else:
+        basis += f"; categoria EDGAR: {submissions.get('category')}"
+    return {
+        "date": deadline.isoformat(),
+        "ticker": ticker.upper(),
+        "type": "filing_deadline",
+        "title": f"Plazo para presentar el {form} (INFERIDO)",
+        "detail": basis,
+        "source": SOURCE_SEC_RULE,
+    }
+
+
+def _default_sec_fetchers() -> tuple[Any, Any]:
+    from app.services.connectors.sec import SECClient
+
+    sec = SECClient()
+    return sec.cik_for_ticker, sec.submissions
+
+
+async def fetch_filing_deadlines(
+    tickers: set[str],
+    desde: date,
+    hasta: date,
+    *,
+    cik_fetcher: Callable[[str], Awaitable[str | None]] | None = None,
+    submissions_fetcher: Callable[[str], Awaitable[dict[str, Any] | None]] | None = None,
+    concurrency: int = 4,
+) -> dict[str, Any]:
+    """(events, status, errors) de plazos 10-Q/10-K para tickers US con posicion.
+
+    Nunca lanza por red: un emisor sin CIK/submissions cuenta como error visible
+    y el resto sigue. ``status``: ok / partial / unavailable (todos fallaron)."""
+    if not tickers:
+        return {"status": "ok", "events": [], "errors": []}
+    default_cik, default_subs = _default_sec_fetchers()  # solo construye el cliente, sin red
+    get_cik: Callable[[str], Awaitable[str | None]] = (
+        cik_fetcher if cik_fetcher is not None else default_cik
+    )
+    get_submissions: Callable[[str], Awaitable[dict[str, Any] | None]] = (
+        submissions_fetcher if submissions_fetcher is not None else default_subs
+    )
+    gate = asyncio.Semaphore(concurrency)
+
+    async def one(ticker: str) -> tuple[str, dict[str, Any] | None, bool]:
+        async with gate:
+            try:
+                cik = await get_cik(ticker)
+                if not cik:
+                    return ticker, None, True
+                data = await get_submissions(cik)
+            except Exception as exc:  # noqa: BLE001 - red/4xx/5xx: degradacion visible
+                logger.warning("plazos 10-Q/10-K %s: %s", ticker, type(exc).__name__)
+                return ticker, None, True
+            return ticker, data if isinstance(data, dict) else None, not isinstance(data, dict)
+
+    results = await asyncio.gather(*(one(t) for t in sorted(tickers)))
+    events: list[dict[str, Any]] = []
+    errors: list[str] = []
+    for ticker, data, failed in results:
+        if failed or data is None:
+            errors.append(f"Plazos 10-Q/10-K: EDGAR no disponible para {ticker}")
+            continue
+        event = filing_deadline_event(data, ticker)
+        if event is not None and desde <= date.fromisoformat(event["date"]) <= hasta:
+            events.append(event)
+    if errors and len(errors) == len(tickers):
+        status = "unavailable"
+    else:
+        status = "partial" if errors else "ok"
+    return {"status": status, "events": events, "errors": errors}
 
 
 def _es_number(value: float, decimals: int) -> str:

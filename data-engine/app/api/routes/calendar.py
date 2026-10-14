@@ -88,12 +88,13 @@ async def catalysts_calendar(
             "errors": [],
         }
     if held_us:
-        earnings, dividends = await asyncio.gather(
+        earnings, dividends, filings = await asyncio.gather(
             calendar_connector.fetch_earnings_range(start, end),
             calendar_connector.fetch_dividends_range(start, end),
+            catalyst_service.fetch_filing_deadlines(held_us, start, end),
         )
-    else:  # sin posiciones US no hay nada que cruzar con NASDAQ: no se le pregunta
-        earnings = dividends = {"status": "ok", "events": [], "errors": []}
+    else:  # sin posiciones US no hay nada que cruzar con NASDAQ/EDGAR: no se les pregunta
+        earnings = dividends = filings = {"status": "ok", "events": [], "errors": []}
     events = catalyst_service.build_catalysts(
         held=held,
         held_us=held_us,
@@ -103,12 +104,18 @@ async def catalysts_calendar(
         dividends=dividends["events"],
         actions=catalyst_service.pending_actions(db, start, end),
     )
+    events = sorted(
+        [*events, *filings["events"]],
+        key=lambda e: (e["date"], catalyst_service._TYPE_ORDER[e["type"]], e["ticker"]),  # noqa: SLF001
+    )
     return {
-        "status": catalyst_service.combine_status(earnings["status"], dividends["status"]),
+        "status": catalyst_service.combine_status(
+            earnings["status"], dividends["status"], filings["status"]
+        ),
         "desde": start.isoformat(),
         "hasta": end.isoformat(),
         "held_count": len(held),
         "count": len(events),
         "events": events,
-        "errors": earnings["errors"] + dividends["errors"],
+        "errors": earnings["errors"] + dividends["errors"] + filings["errors"],
     }
