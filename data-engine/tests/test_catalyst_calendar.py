@@ -203,14 +203,20 @@ def test_catalysts_route_end_to_end_with_real_formats(engine, db, monkeypatch):
 
 # Formato REAL de data.sec.gov/submissions (medido con AAPL, 2026-10): category,
 # fiscalYearEnd "MMDD" y filings.recent con form/reportDate en listas paralelas.
-APPLE = {
-    "category": "Large accelerated filer",
-    "fiscalYearEnd": "0926",
-    "filings": {"recent": {
-        "form": ["4", "10-Q", "8-K", "10-Q", "10-K"],
-        "reportDate": ["2026-10-06", "2026-06-27", "2026-07-30", "2026-03-28", "2025-09-27"],
-    }},
-}
+def _subs(rows, *, category="Large accelerated filer", fye="0926"):
+    return {
+        "category": category,
+        "fiscalYearEnd": fye,
+        "filings": {"recent": {"form": [f for f, _ in rows], "reportDate": [r for _, r in rows]}},
+    }
+
+
+NOISE = [("4", "2026-10-06"), ("8-K", "2026-07-30"), ("144", "")]
+APPLE = _subs([
+    *NOISE,
+    ("10-Q", "2026-06-27"), ("10-Q", "2026-03-28"), ("10-Q", "2025-12-27"),
+    ("10-K", "2025-09-27"), ("10-Q", "2025-06-28"),
+])
 
 
 def _ev(data, ticker):
@@ -219,39 +225,70 @@ def _ev(data, ticker):
     return event
 
 
-def test_filing_deadline_10k_after_third_quarter_large_accelerated():
+def test_filing_deadline_10k_after_third_quarter_52_53_weeks():
     event = _ev(APPLE, "aapl")
-    # 10-Q del 27-jun + 3 meses = cierre 27-sep (= mes de fin de ejercicio) -> 10-K, 60 dias.
+    # Q3 FY26 (27-jun) -> el ejercicio anterior: 28-jun-25 seguido de 27-sep-25 (+364 d = 26-sep-26).
+    # Es el 10-K (fin de ejercicio 0926), 60 dias -> miercoles 25-nov (plazo real de Apple 2026).
     assert event["type"] == "filing_deadline" and event["ticker"] == "AAPL"
-    assert event["date"] == "2026-11-26"
+    assert event["date"] == "2026-11-25"
     assert event["title"] == "Plazo para presentar el 10-K (INFERIDO)"
     assert "60 dias" in event["detail"] and "Large accelerated filer" in event["detail"]
+    assert "52/53 semanas" in event["detail"]
     assert event["source"] == svc.SOURCE_SEC_RULE
 
 
-def test_filing_deadline_10q_and_category_variants():
-    q1 = {**APPLE, "filings": {"recent": {"form": ["10-K"], "reportDate": ["2025-09-27"]}}}
-    assert _ev(q1, "AAPL")["date"] == "2026-02-05"  # 27-dic + 40 d (jueves)
-    accel = {**q1, "category": "Accelerated filer"}
-    assert _ev(accel, "X")["date"] == "2026-02-05"
-    small = {**q1, "category": "Non-accelerated filer"}
-    assert _ev(small, "X")["date"] == "2026-02-10"  # 45 d
+def test_filing_deadline_52_53_week_issuers_get_the_right_form():
+    # Casos que el calendario +3 meses etiquetaba mal (10-K mostrado como 10-Q).
+    # Cierres representativos de ejercicios 52/53 semanas: AAPL 2023 y ADBE 2023.
+    aapl_2023 = _subs([("10-Q", "2023-07-01"), ("10-Q", "2023-04-01"), ("10-Q", "2022-12-31"),
+                       ("10-K", "2022-09-24"), ("10-Q", "2022-07-02")])
+    assert _ev(aapl_2023, "AAPL")["title"].startswith("Plazo para presentar el 10-K")
+    adbe = _subs([("10-Q", "2023-09-01"), ("10-Q", "2023-06-02"), ("10-Q", "2023-03-03"),
+                  ("10-K", "2022-12-02"), ("10-Q", "2022-09-02")], fye="1201")
+    assert _ev(adbe, "ADBE")["title"].startswith("Plazo para presentar el 10-K")
+    assert _ev(adbe, "ADBE")["date"] == "2024-01-30"  # 1-dic-23 + 60 d
+
+
+def test_filing_deadline_quarters_of_unequal_length_use_prior_year_not_13_weeks():
+    # Trimestres 16/12/12/12 semanas (tipo CAVA): tras el Q2 (12-jul-26) el Q3 cierra el
+    # 4-oct (84 dias), no el 11-oct (91 dias): +91 daba un plazo 7 dias tarde.
+    cava = _subs([("10-Q", "2026-07-12"), ("10-Q", "2026-04-19"), ("10-K", "2025-12-28"),
+                  ("10-Q", "2025-10-05"), ("10-Q", "2025-07-13"), ("10-Q", "2025-04-20")], fye="1228")
+    event = _ev(cava, "CAVA")
+    assert event["title"] == "Plazo para presentar el 10-Q (INFERIDO)"
+    assert event["date"] == "2026-11-13"  # 4-oct-26 + 40 d (large accelerated)
+
+
+def test_filing_deadline_month_end_issuer_and_category_variants():
+    q = _subs([("10-Q", "2025-09-30"), ("10-Q", "2025-06-30"), ("10-Q", "2025-03-31"), ("10-K", "2024-12-31")],
+              fye="1231")
+    assert _ev(q, "X")["title"].startswith("Plazo para presentar el 10-K")  # 31-dic-25 es fin de ejercicio
+    assert _ev(q, "X")["date"] == "2026-03-02"  # 31-dic + 60 d = sab 28-feb -> lunes 2-mar
+    accel = {**q, "category": "Accelerated filer"}
+    assert _ev(accel, "X")["date"] == "2026-03-16"  # 75 d = 16-mar
+    small = {**q, "category": "Non-accelerated filer"}
+    assert _ev(small, "X")["date"] == "2026-03-31"  # 90 d
+    mid = _subs([("10-Q", "2025-06-30"), ("10-Q", "2025-03-31"), ("10-K", "2024-12-31")], fye="1231")
+    assert _ev(mid, "X")["title"].startswith("Plazo para presentar el 10-Q")
+    assert _ev(mid, "X")["date"] == "2025-11-10"  # 30-sep + 40 d = 9-nov (dom) -> lunes 10
 
 
 def test_filing_deadline_unknown_category_uses_max_and_says_so():
-    data = {**APPLE, "category": ""}
-    event = _ev(data, "AAPL")
-    assert event["date"] == "2026-12-28"  # 27-sep + 90 d = sab 26-dic -> lunes 28
+    event = _ev({**APPLE, "category": ""}, "AAPL")
+    assert event["date"] == "2026-12-25"  # 26-sep + 90 d (viernes; la Navidad no se modela)
     assert "plazo maximo" in event["detail"]
 
 
 def test_filing_deadline_no_data_means_none_not_invented():
     assert svc.filing_deadline_event({}, "X") is None
     assert svc.filing_deadline_event({**APPLE, "fiscalYearEnd": None}, "X") is None
-    only_form4 = {**APPLE, "filings": {"recent": {"form": ["4"], "reportDate": ["2026-10-06"]}}}
+    only_form4 = _subs([("4", "2026-10-06")])
     assert svc.filing_deadline_event(only_form4, "X") is None
-    foreign = {**APPLE, "filings": {"recent": {"form": ["20-F"], "reportDate": ["2026-06-30"]}}}
+    foreign = _subs([("20-F", "2026-06-30")])
     assert svc.filing_deadline_event(foreign, "X") is None
+    # 52/53 semanas sin el informe del ejercicio anterior: no se adivina la longitud del trimestre.
+    young = _subs([("10-Q", "2026-06-27"), ("10-Q", "2026-03-28")])
+    assert svc.filing_deadline_event(young, "X") is None
 
 
 def test_add_months_end_of_month():
@@ -308,4 +345,4 @@ def test_route_includes_filing_deadlines_sorted_and_status(engine, db, monkeypat
         main.app.dependency_overrides.clear()
     body = res.json()
     assert res.status_code == 200 and body["status"] == "ok"
-    assert [(e["date"], e["type"]) for e in body["events"]] == [("2026-11-26", "filing_deadline")]
+    assert [(e["date"], e["type"]) for e in body["events"]] == [("2026-11-25", "filing_deadline")]

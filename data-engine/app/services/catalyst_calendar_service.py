@@ -81,43 +81,81 @@ def _next_business_day(day: date) -> date:
     return day
 
 
+def _is_month_end(day: date) -> bool:
+    return day.day == calendar.monthrange(day.year, day.month)[1]
+
+
+def _next_period_end(periods: list[date]) -> tuple[date, bool] | None:
+    """(siguiente cierre estimado, es_aproximado) a partir de los cierres ya presentados.
+
+    Cierre en fin de mes: +3 meses de calendario (exacto). Emisores de 52/53
+    semanas (cierre no en fin de mes, trimestres de 12/13/16 semanas): se toma el
+    informe del ejercicio anterior (cierre mas cercano a ultimo-364 dias), el
+    siguiente a ese, y se le suman 364 dias. Asi se respeta la longitud real de
+    cada trimestre; queda un error de hasta ~1 semana en ejercicios de 53
+    semanas. Sin ese historial no se estima nada (None)."""
+    last = periods[-1]
+    if _is_month_end(last):
+        return _add_months(last, 3), False
+    target = last - timedelta(days=364)
+    prior = min(periods, key=lambda d: abs((d - target).days))
+    if abs((prior - target).days) > 10:
+        return None
+    following = [d for d in periods if d > prior + timedelta(days=30)]
+    if not following or following[0] >= last:
+        return None
+    return following[0] + timedelta(days=364), True
+
+
+def _near_fiscal_year_end(day: date, fy_month: int, fy_day: int) -> bool:
+    """True si `day` esta a +-10 dias del fin de ejercicio (fiscalYearEnd MMDD)."""
+    for year in (day.year - 1, day.year, day.year + 1):
+        last = calendar.monthrange(year, fy_month)[1]
+        if abs((date(year, fy_month, min(fy_day, last)) - day).days) <= 10:
+            return True
+    return False
+
+
 def filing_deadline_event(submissions: dict[str, Any], ticker: str) -> dict[str, Any] | None:
     """Proximo plazo de 10-Q/10-K de un emisor, INFERIDO por regla SEC. Funcion pura.
 
-    Base: ultimo 10-Q/10-K presentado (``reportDate`` = cierre del periodo en
-    EDGAR). El siguiente cierre se estima a 3 meses (aproximado en emisores de
-    52/53 semanas). Si ese cierre coincide con el mes de fin de ejercicio
-    (``fiscalYearEnd``) el informe es el 10-K; si no, un 10-Q. El plazo depende
-    de la categoria de filer de EDGAR; sin ella se usa el MAXIMO de la regla y
-    se dice. Plazo en sabado/domingo pasa al lunes; los festivos no se
-    modelan. Sin informe periodico o fecha utilizable, None: no se inventa nada.
+    Base: cierres de periodo (``reportDate``) de los 10-Q/10-K ya presentados en
+    EDGAR; el siguiente cierre se estima como en `_next_period_end`. Es 10-K si
+    ese cierre cae a +-10 dias del fin de ejercicio (``fiscalYearEnd``), si no
+    10-Q. El plazo depende de la categoria de filer de EDGAR; sin ella se usa el
+    MAXIMO de la regla y se dice. Plazo en sabado/domingo pasa al lunes; los
+    festivos no se modelan. Sin historial suficiente o sin fiscalYearEnd, None:
+    no se inventa nada.
     """
     recent = (submissions.get("filings") or {}).get("recent") or {}
-    forms = recent.get("form") or []
-    reports = recent.get("reportDate") or []
-    last: tuple[date, str] | None = None
-    for form, report in zip(forms, reports, strict=False):
+    periods_set: set[date] = set()
+    for form, report in zip(recent.get("form") or [], recent.get("reportDate") or [], strict=False):
         if form not in _PERIODIC:
             continue
         period = _parse_us_date(report)
-        if period is not None and (last is None or period > last[0]):
-            last = (period, form)
-    if last is None:
+        if period is not None:
+            periods_set.add(period)
+    if not periods_set:
         return None
+    periods = sorted(periods_set)
     fy_end = str(submissions.get("fiscalYearEnd") or "")
-    fy_month = int(fy_end[:2]) if len(fy_end) == 4 and fy_end[:2].isdigit() else None
-    if fy_month is None or not 1 <= fy_month <= 12:
+    if len(fy_end) != 4 or not fy_end.isdigit() or not 1 <= int(fy_end[:2]) <= 12 or not 1 <= int(fy_end[2:]) <= 31:
         return None
-    next_period = _add_months(last[0], 3)
-    form = "10-K" if next_period.month == fy_month else "10-Q"
+    estimate = _next_period_end(periods)
+    if estimate is None:
+        return None
+    next_period, approx = estimate
+    form = "10-K" if _near_fiscal_year_end(next_period, int(fy_end[:2]), int(fy_end[2:])) else "10-Q"
     category = str(submissions.get("category") or "").strip().lower()
     days_q_k = _FILER_DEADLINES.get(category)
     days = (days_q_k or _MAX_DEADLINES)[1 if form == "10-K" else 0]
     deadline = _next_business_day(next_period + timedelta(days=days))
     basis = (
         f"{days} dias tras el cierre de periodo estimado ({next_period.isoformat()}) "
-        f"sobre el ultimo informe ({last[1]} del {last[0].isoformat()})"
+        f"sobre el ultimo informe periodico (cierre {periods[-1].isoformat()})"
     )
+    if approx:
+        basis += "; emisor de 52/53 semanas: fecha aproximada (hasta ~1 semana)"
     if days_q_k is None:
         basis += "; categoria de filer no disponible: se usa el plazo maximo de la regla"
     else:
