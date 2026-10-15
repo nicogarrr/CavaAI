@@ -179,6 +179,11 @@ class Settings(BaseSettings):
     knowledge_rag_docling_table_mode: str = "fast"
     # Reranker CPU opcional (vacio = desactivado). Ver docs/knowledge-rag.md.
     knowledge_rag_reranker_model: str = ""
+    # Ventana de candidatos (denso+sparse fusionados por RRF) que llega al
+    # reranker. Medida offline sobre el dataset piloto (38 casos, hit@6):
+    # 40 -> 21/38; 100 -> 26/38. Por encima de 100 no entran mas aciertos
+    # cross-lingual con este reranker (limite conocido: ver docs/knowledge-rag.md).
+    knowledge_rag_candidates: int = Field(default=100, ge=10, le=500)
     # Modelo denso PROPIO del conocimiento (ganador v2c del piloto: e5-large
     # multilingue + reranker). NO se reusa rag_dense_model: ese queda en
     # MiniLM 384 para el vector chat legacy (portfolio_research_documents esta
