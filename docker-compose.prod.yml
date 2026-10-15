@@ -82,7 +82,10 @@ services:
     container_name: cavaai-qdrant
     restart: unless-stopped
     # Solo loopback: operaciones (snapshots) y diagnostico, sin exponer a internet.
-    ports:
+    # !override: sin el, compose fusiona con el "6333:6333" de docker-compose.yml
+    # y docker intenta bindear 6333 DOS veces (address already in use en cada
+    # recreate; detectado y corregido 2026-10-16).
+    ports: !override
       - "127.0.0.1:6333:6333"
     volumes:
       - qdrant_data:/qdrant/storage
@@ -198,7 +201,9 @@ services:
       - CAVAAI_ENABLE_VECTOR_CHAT=${CAVAAI_ENABLE_VECTOR_CHAT:-0}
       - OPENCODE_GO_API_KEY=${OPENCODE_GO_API_KEY:-}
       - OPENCODE_GO_BASE_URL=${OPENCODE_GO_BASE_URL:-https://opencode.ai/zen/v1}
-      - OPENCODE_GO_MODEL=${OPENCODE_GO_MODEL:-space-bunny-free}
+      - OPENCODE_GO_MODEL=${OPENCODE_GO_MODEL:-deepseek-v4.1-flash-free}
+      - OPENCODE_GO_REASONING_EFFORT=${OPENCODE_GO_REASONING_EFFORT:-max}
+      - OPENCODE_GO_REASONING_EFFORT_MODELS=${OPENCODE_GO_REASONING_EFFORT_MODELS:-space-bunny-free,deepseek-v4.1-flash-free}
       - LLM_MODEL_OVERRIDES=${LLM_MODEL_OVERRIDES:-{}}
       - OPENCODE_GO_FALLBACK_MODEL=${OPENCODE_GO_FALLBACK_MODEL:-}
       - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-portfolio}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cavaai_research}
@@ -291,7 +296,9 @@ services:
       - CAVAAI_ENABLE_VECTOR_CHAT=${CAVAAI_ENABLE_VECTOR_CHAT:-0}
       - OPENCODE_GO_API_KEY=${OPENCODE_GO_API_KEY:-}
       - OPENCODE_GO_BASE_URL=${OPENCODE_GO_BASE_URL:-https://opencode.ai/zen/v1}
-      - OPENCODE_GO_MODEL=${OPENCODE_GO_MODEL:-space-bunny-free}
+      - OPENCODE_GO_MODEL=${OPENCODE_GO_MODEL:-deepseek-v4.1-flash-free}
+      - OPENCODE_GO_REASONING_EFFORT=${OPENCODE_GO_REASONING_EFFORT:-max}
+      - OPENCODE_GO_REASONING_EFFORT_MODELS=${OPENCODE_GO_REASONING_EFFORT_MODELS:-space-bunny-free,deepseek-v4.1-flash-free}
       - LLM_MODEL_OVERRIDES=${LLM_MODEL_OVERRIDES:-{}}
       - OPENCODE_GO_FALLBACK_MODEL=${OPENCODE_GO_FALLBACK_MODEL:-}
       - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-portfolio}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cavaai_research}
@@ -353,7 +360,9 @@ services:
       - FRED_API_KEY=${FRED_API_KEY:-}
       - OPENCODE_GO_API_KEY=${OPENCODE_GO_API_KEY:-}
       - OPENCODE_GO_BASE_URL=${OPENCODE_GO_BASE_URL:-https://opencode.ai/zen/v1}
-      - OPENCODE_GO_MODEL=${OPENCODE_GO_MODEL:-space-bunny-free}
+      - OPENCODE_GO_MODEL=${OPENCODE_GO_MODEL:-deepseek-v4.1-flash-free}
+      - OPENCODE_GO_REASONING_EFFORT=${OPENCODE_GO_REASONING_EFFORT:-max}
+      - OPENCODE_GO_REASONING_EFFORT_MODELS=${OPENCODE_GO_REASONING_EFFORT_MODELS:-space-bunny-free,deepseek-v4.1-flash-free}
       - LLM_MODEL_OVERRIDES=${LLM_MODEL_OVERRIDES:-{}}
       - OPENCODE_GO_FALLBACK_MODEL=${OPENCODE_GO_FALLBACK_MODEL:-}
       - THESIS_NARRATIVE_LLM_ENABLED=${THESIS_NARRATIVE_LLM_ENABLED:-0}
@@ -432,7 +441,9 @@ services:
       - CAVAAI_ENABLE_VECTOR_CHAT=${CAVAAI_ENABLE_VECTOR_CHAT:-0}
       - OPENCODE_GO_API_KEY=${OPENCODE_GO_API_KEY:-}
       - OPENCODE_GO_BASE_URL=${OPENCODE_GO_BASE_URL:-https://opencode.ai/zen/v1}
-      - OPENCODE_GO_MODEL=${OPENCODE_GO_MODEL:-space-bunny-free}
+      - OPENCODE_GO_MODEL=${OPENCODE_GO_MODEL:-deepseek-v4.1-flash-free}
+      - OPENCODE_GO_REASONING_EFFORT=${OPENCODE_GO_REASONING_EFFORT:-max}
+      - OPENCODE_GO_REASONING_EFFORT_MODELS=${OPENCODE_GO_REASONING_EFFORT_MODELS:-space-bunny-free,deepseek-v4.1-flash-free}
       - LLM_MODEL_OVERRIDES=${LLM_MODEL_OVERRIDES:-{}}
       - OPENCODE_GO_FALLBACK_MODEL=${OPENCODE_GO_FALLBACK_MODEL:-}
       - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-portfolio}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cavaai_research}
@@ -677,6 +688,20 @@ services:
       resources:
         limits:
           memory: 512M
+
+
+  # 2026-10-16 (perf): frontend en MODO PRODUCCION. Antes heredaba de
+  # docker-compose.yml el servicio dev (Dockerfile.dev + next dev --turbopack
+  # + montaje del codigo vivo): cada pantalla compilaba al vuelo (TTFB de
+  # compilacion 1-6s) y servia react/react-dom de desarrollo. Con el Dockerfile
+  # multi-stage (next build -> standalone) las pantallas van precompiladas.
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes: !reset []
+    environment:
+      - NODE_ENV=production
 
 volumes:
   postgres_data:

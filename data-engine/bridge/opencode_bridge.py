@@ -50,7 +50,7 @@ def flatten_messages(messages) -> str:
     return "\n\n".join(out)
 
 
-def complete(model: str, messages, response_format=None) -> str:
+def complete(model: str, messages, response_format=None, reasoning_effort=None) -> str:
     prompt = flatten_messages(messages)
     if response_format and isinstance(response_format, dict):
         js = response_format.get("json_schema") or {}
@@ -62,9 +62,14 @@ def complete(model: str, messages, response_format=None) -> str:
     sid = serve_req("POST", "/session", {})["id"]
     t0 = time.time()
     try:
-        serve_req("POST", f"/session/{sid}/message", {
-            "model": {"providerID": PROVIDER_ID, "modelID": model},
-            "parts": [{"type": "text", "text": prompt}]})
+        msg = {"model": {"providerID": PROVIDER_ID, "modelID": model},
+               "parts": [{"type": "text", "text": prompt}]}
+        if reasoning_effort:
+            # variants del serve (verificado 2026-10-16: deepseek-v4.1-flash-free
+            # tiene low|high|max; space-bunny-free low|medium|high|xhigh|max)
+            msg["variant"] = reasoning_effort
+            print(f"bridge: {model} variant={reasoning_effort}", flush=True)
+        serve_req("POST", f"/session/{sid}/message", msg)
         textos = []
         while time.time() - t0 < TIMEOUT_S:
             for m in serve_req("GET", f"/session/{sid}/message"):
@@ -124,7 +129,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(400, {"error": "model y messages requeridos"})
             return
         try:
-            text = complete(model, messages, body.get("response_format"))
+            text = complete(model, messages, body.get("response_format"),
+                            body.get("reasoning_effort"))
         except Exception as e:
             self._send_json(502, {"type": "error", "error": {
                 "type": type(e).__name__, "message": str(e)[:400]}})
