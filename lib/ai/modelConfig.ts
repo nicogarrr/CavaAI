@@ -1,4 +1,4 @@
-export const DEFAULT_OPENCODE_GO_MODEL = 'space-bunny-free';
+export const DEFAULT_OPENCODE_GO_MODEL = "deepseek-v4.1-flash-free";
 
 export function getOpenCodeGoModel(): string {
   return process.env.OPENCODE_GO_MODEL || DEFAULT_OPENCODE_GO_MODEL;

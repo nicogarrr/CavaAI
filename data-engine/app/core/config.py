@@ -337,15 +337,16 @@ class Settings(BaseSettings):
     # Default cheap-but-good model. Overridable WITHOUT code change via env
     # OPENCODE_GO_MODEL (e.g. OPENCODE_GO_MODEL=qwen3.7-plus). Ver también
     # default_model_from_env() en app/llm/model_aliases.py.
-    opencode_go_model: str = "space-bunny-free"
+    opencode_go_model: str = "deepseek-v4.1-flash-free"
     # Fallback automatico: si el modelo resuelto falla (cualquier error de
     # capa LLM tras sus reintentos internos), la llamada se reintenta UNA
     # vez con este modelo antes de propagar el error. Cadena vacia = sin
-    # fallback. Env: OPENCODE_GO_FALLBACK_MODEL. Por defecto SIN fallback:
-    # verificado en produccion (1/10/2026, OCI) que todos los modelos free de
-    # Zen salvo space-bunny-free devuelven 403 FreeTierError ("free tier can
-    # only be used from within OpenCode"), asi que muse-spark como respaldo
-    # solo duplicaba el fallo.
+    # fallback. Env: OPENCODE_GO_FALLBACK_MODEL.
+    # 2026-10-16: TODOS los free de Zen (space-bunny incluido) devuelven 403
+    # FreeTierError por API directa; prod usa el puente local
+    # (data-engine/bridge/opencode_bridge.py -> serve opencode enjaulado),
+    # con deepseek-v4.1-flash-free principal y space-bunny-free de respaldo
+    # (verificado con generacion real en la VM ese mismo dia).
     opencode_go_fallback_model: str = ""
     # OpenCode Go exige cabecera x-opencode-session en todas las llamadas
     # (sin ella: MissingSessionID). ID estable por despliegue, mejora el

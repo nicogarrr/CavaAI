@@ -79,7 +79,7 @@ DEFAULT_MODEL_ENV_VAR = "OPENCODE_GO_MODEL"
 DEFAULT_MODEL_FALLBACK = "space-bunny-free"
 
 #: Modelos gratuitos verificados; los guards de tareas fijadas aceptan solo estos.
-VERIFIED_FREE_MODELS = frozenset({"space-bunny-free", "longcat-2.5-preview-free"})
+VERIFIED_FREE_MODELS = frozenset({"deepseek-v4.1-flash-free", "space-bunny-free"})
 
 
 def default_model_from_env(
