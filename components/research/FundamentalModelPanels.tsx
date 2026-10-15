@@ -186,6 +186,10 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
             la tabla de escenarios (min-w-[540px]) expandía la pista por
             encima del contenedor a 768-1279px en vez de dejar que el
             wrapper overflow-x-auto recortara con scroll interno. */}
+        {/* F27: un modelo no publicable (falta WACC u otro input) NO puede
+            ensenar escenarios con valor/accion: serian dos valoraciones
+            incompatibles a la vez. Se muestran solo cuando publishable. */}
+        {model.publishable ? (
         <div className="min-w-0">
           <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Bajista / Base / Alcista</div>
           {/* Móvil: cards sin scroll horizontal */}
@@ -235,6 +239,7 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
           </div>
           <ScenarioAssumptions />
         </div>
+        ) : null}
 
         <div className="space-y-3">
           <div className="rounded-md border border-gray-800 p-3">
