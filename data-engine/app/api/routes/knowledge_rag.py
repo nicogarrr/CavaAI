@@ -186,6 +186,7 @@ async def query(payload: QueryRequest, db: Session = Depends(get_db)) -> dict:
             resolve_parents=parent_resolver(db),
             filters=filters,
             top_k=payload.top_k,
+            candidates=settings.knowledge_rag_candidates,
             postprocessors=runtime.make_postprocessors(settings, payload.top_k * 2),
             rrf_k=settings.rag_rrf_k,
             dense_weight=settings.rag_dense_weight,
