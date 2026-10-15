@@ -27,8 +27,11 @@ test('F319: la pista del grid de escenarios puede encoger para que la tabla haga
     // Sin min-w-0 en la pista, el min-content de la tabla (min-w-[540px])
     // expandía el grid por encima del contenedor entre 768 y 1279px en vez
     // de dejar que el wrapper overflow-x-auto recortara.
-    assert.match(modelPanels, /lg:grid-cols-\[1\.2fr_0\.8fr\]">[\s\S]{0,500}<div className="min-w-0">/);
+    assert.match(modelPanels, /lg:grid-cols-\[1\.2fr_0\.8fr\]">[\s\S]{0,900}<div className="min-w-0">/);
     assert.match(modelPanels, /aria-label="Escenarios del modelo" className="hidden overflow-x-auto md:block"/);
+    // F27: la pista de escenarios solo se renderiza si el modelo es publicable
+    // (sin WACC publicable no se muestran escenarios; regla de Nico 2026-10-16).
+    assert.match(modelPanels, /\{model\.publishable \? \(/);
 });
 
 test('F320: el nombre de métrica irrompible no empuja el badge fuera de la tarjeta a 768px', () => {
