@@ -45,7 +45,7 @@ const envSchema = z.object({
   // Single application LLM provider
   OPENCODE_GO_API_KEY: z.string().optional(),
   OPENCODE_GO_BASE_URL: z.string().url().default('https://opencode.ai/zen/v1'),
-  OPENCODE_GO_MODEL: z.string().default('space-bunny-free'),
+  OPENCODE_GO_MODEL: z.string().default("deepseek-v4.1-flash-free"),
 
   // Vercel
   VERCEL_URL: z.string().optional(),

@@ -15,8 +15,11 @@ services:
     container_name: cavaai-caddy
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
+      # Solo la IP publica: tailscaled sirve :443 en la IP tailnet
+      # (100.109.106.23, tailscale serve -> 127.0.0.1:8080) y un bind
+      # 0.0.0.0 colisiona con el. Verificado 2026-10-16.
+      - "10.0.0.64:80:80"
+      - "10.0.0.64:443:443"
     volumes:
       - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
