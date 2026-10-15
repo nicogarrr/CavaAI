@@ -18,8 +18,8 @@ from __future__ import annotations
 import json
 import os
 import time
-import urllib.request
 import urllib.error
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 SERVE_URL = os.environ.get("SERVE_URL", "http://oc-serve2:4096").rstrip("/")
