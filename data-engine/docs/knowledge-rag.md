@@ -37,6 +37,15 @@ consulta: denso + sparse -> RRF -> [reranker] -> dedupe de solapes -> padre -> v
   (`KNOWLEDGE_RAG_RERANKER_MODEL`). `Xenova/ms-marco-MiniLM-L-6-v2` (~80 MB, Apache-2.0) es solo ingles;
   para espanol hace falta multilingue (`BAAI/bge-reranker-v2-m3-int8`, ~570 MB, Apache-2.0). No activar
   sin medir en el piloto. `jina-reranker-v2-base-multilingual` es CC-BY-NC: no usar.
+- **Ventana de candidatos** (`KNOWLEDGE_RAG_CANDIDATES`, por defecto 100): cuantos hijos fusionados por
+  RRF llegan al reranker. Medido sobre el dataset piloto (38 casos con cita, hit@6, 2026-10-14):
+  40 -> 21/38; 100 -> 26/38; subir `top_n` o bajar el peso de sparse no movio el resultado.
+  Comparacion int8 vs fp32 del reranker (15 casos): 6/15 identico, mismos aciertos, ranks a +-1;
+  el fp32 (~2.3 GB, ~4x mas lento en CPU) NO mejora. Limite conocido: en consultas en espanol sobre
+  documentos en ingles, el reranker m3 a veces prefiere chunks en espanol y hay casos cuyo chunk
+  correcto no entra ni en la ventana (BM25 no hace cross-lingual). Via futura: traduccion/expansion
+  de consulta con LLM. Coste: rerankear 100 pares int8 son ~80 s en una VM ARM de 2 nucleos (peor
+  caso medido; en un PC de sobremesa es varias veces menos).
 
 ## Procedencia por chunk (payload Qdrant)
 
