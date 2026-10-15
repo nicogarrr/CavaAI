@@ -108,11 +108,10 @@ export const maxDuration = 60;
 const readSnapshot = cache((ticker: string) => getResearchCompanySnapshot(ticker));
 
 /**
- * La ficha tiene 16 destinos (12 vistas + 4 subrutas). Pintados como 16
- * píldoras planas no se escanean: el usuario no llegaba a "ver la tesis" en
- * 5 segundos. Se agrupan en las 6 etapas del flujo inversor (ver → entender →
- * decidir → registrar) y el selector pasa a ser de grupo, con los módulos de
- * ese grupo debajo.
+ * La ficha tiene 16 destinos (12 vistas + 4 subrutas). El recorrido simple
+ * (WorldStocks punto 1, aprobado por Nico 2026-10-16) son 3 pasos:
+ * Entender → Valorar → Seguir. El selector agrupa los módulos existentes
+ * bajo esos 3 pasos; nada se borra, lo secundario queda un nivel debajo.
  *
  * COMPATIBILIDAD: los `?view=` antiguos siguen siendo URLs válidas. Cada
  * módulo conserva su clave histórica (`overview`, `thesis`, `chat`...) y
@@ -120,36 +119,46 @@ const readSnapshot = cache((ticker: string) => getResearchCompanySnapshot(ticker
  * `/research/AAPL?view=thesis` y `/research/AAPL?view=tesis` abren lo mismo.
  */
 const GROUPS = [
-  { key: 'resumen', label: 'Resumen', entry: 'overview' },
-  { key: 'tesis', label: 'Tesis', entry: 'thesis' },
-  { key: 'financieros', label: 'Financieros', entry: 'financials' },
-  { key: 'modelo', label: 'Modelo', entry: 'model' },
-  { key: 'evidencia', label: 'Evidencia', entry: 'documents' },
-  { key: 'seguimiento', label: 'Seguimiento', entry: 'changes' },
+  { key: 'entender', label: '1 · Entender', entry: 'overview' },
+  { key: 'valorar', label: '2 · Valorar', entry: 'model' },
+  { key: 'seguir', label: '3 · Seguir', entry: 'changes' },
 ] as const;
 
 const MODULES = [
-  { key: 'overview', label: 'Vista general', group: 'resumen' },
-  { key: 'moat', label: 'Foso', group: 'resumen' },
-  { key: 'satellites', label: 'Satélites AST', group: 'seguimiento' },
-  { key: 'thesis', label: 'Tesis', group: 'tesis' },
-  { key: 'financials', label: 'Financieros', group: 'financieros' },
-  { key: 'capital', label: 'Dilución y recompras', group: 'financieros', path: 'share-capital' },
-  { key: 'terminal', label: 'Terminal financiero', group: 'financieros', path: 'financial-terminal' },
-  { key: 'supuestos', label: 'Supuestos de drivers', group: 'financieros', path: 'driver-assumptions' },
-  { key: 'model', label: 'Modelo a largo plazo', group: 'modelo' },
-  { key: 'market-opportunity', label: 'Oportunidad de mercado', group: 'modelo' },
-  { key: 'valuation', label: 'Valoración', group: 'modelo' },
-  { key: 'peers', label: 'Comparables', group: 'modelo' },
-  { key: 'documents', label: 'Documentos', group: 'evidencia' },
-  { key: 'sources', label: 'Fuentes', group: 'evidencia' },
-  { key: 'chat', label: 'Chat con fuentes', group: 'evidencia' },
-  { key: 'changes', label: 'Cambios y revisiones', group: 'seguimiento' },
-  { key: 'lecciones', label: 'Lecciones de decisiones', group: 'seguimiento', path: 'decision-lessons' },
-  { key: 'directiva', label: 'Credibilidad de la directiva', group: 'seguimiento', path: 'management-credibility' },
+  { key: 'overview', label: 'Vista general', group: 'entender' },
+  { key: 'moat', label: 'Foso', group: 'entender' },
+  { key: 'satellites', label: 'Satélites AST', group: 'seguir' },
+  { key: 'thesis', label: 'Tesis', group: 'entender' },
+  { key: 'financials', label: 'Financieros', group: 'entender' },
+  { key: 'capital', label: 'Dilución y recompras', group: 'entender', path: 'share-capital' },
+  { key: 'terminal', label: 'Terminal financiero', group: 'entender', path: 'financial-terminal' },
+  { key: 'supuestos', label: 'Supuestos de drivers', group: 'valorar', path: 'driver-assumptions' },
+  { key: 'model', label: 'Modelo a largo plazo', group: 'valorar' },
+  { key: 'market-opportunity', label: 'Oportunidad de mercado', group: 'valorar' },
+  { key: 'valuation', label: 'Valoración', group: 'valorar' },
+  { key: 'peers', label: 'Comparables', group: 'valorar' },
+  { key: 'documents', label: 'Documentos', group: 'entender' },
+  { key: 'sources', label: 'Fuentes', group: 'entender' },
+  { key: 'chat', label: 'Chat con fuentes', group: 'entender' },
+  { key: 'changes', label: 'Cambios y revisiones', group: 'seguir' },
+  { key: 'lecciones', label: 'Lecciones de decisiones', group: 'seguir', path: 'decision-lessons' },
+  { key: 'directiva', label: 'Credibilidad de la directiva', group: 'seguir', path: 'management-credibility' },
 ] as const;
 
 type View = (typeof MODULES)[number]['key'];
+
+/**
+ * URLs antiguas: las claves de los 6 grupos previos a los 3 pasos
+ * (WorldStocks punto 1) siguen abriendo su módulo de entrada.
+ */
+const LEGACY_GROUP_ENTRIES: Record<string, View> = {
+  resumen: 'overview',
+  tesis: 'thesis',
+  financieros: 'financials',
+  modelo: 'model',
+  evidencia: 'documents',
+  seguimiento: 'changes',
+};
 
 type PageProps = {
   params: Promise<{ ticker: string }>;
@@ -167,6 +176,8 @@ function asView(value: string | undefined): View {
   if (asModule) return asModule.key;
   const asGroup = GROUPS.find((group) => group.key === value);
   if (asGroup) return asGroup.entry;
+  const legacy = value ? LEGACY_GROUP_ENTRIES[value] : undefined;
+  if (legacy) return legacy;
   return 'overview';
 }
 
@@ -1380,8 +1391,8 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
           </div>
         </header>
         {/*
-            Selector de grupo (6 etapas del flujo inversor) y, debajo, solo los
-            módulos de ese grupo. Antes eran 16 píldoras planas en una fila: no
+            Selector de paso (Entender → Valorar → Seguir) y, debajo, solo los
+            módulos de ese paso. Antes eran 16 píldoras planas en una fila: no
             se escaneaban y el usuario no encontraba la tesis. Los dos `nav`
             llevan su propia etiqueta porque cada uno es un nivel distinto.
         */}

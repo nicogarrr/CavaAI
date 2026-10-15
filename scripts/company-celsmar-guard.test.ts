@@ -21,7 +21,9 @@ describe('ficha: cifra grande y métricas compactas', () => {
     });
     it('pestañas limpias sin borrar rutas ni módulos', () => {
         assert.match(page, /activeModule.group === group.key \? 'border-teal-300 text-gray-100'/);
-        for (const view of ['resumen', 'tesis', 'financieros', 'modelo', 'evidencia', 'seguimiento']) assert.ok(page.includes(`key: '${view}'`));
+        for (const view of ['entender', 'valorar', 'seguir']) assert.ok(page.includes(`key: '${view}'`));
+        // Las 6 claves de grupo antiguas siguen abriendo su módulo (compat ?view=).
+        for (const legacy of ['resumen', 'tesis', 'financieros', 'modelo', 'evidencia', 'seguimiento']) assert.ok(page.includes(`${legacy}:`));
         assert.doesNotMatch(page, /captura de solo lectura/);
     });
 });
