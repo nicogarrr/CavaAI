@@ -5,7 +5,7 @@ const closeLabel: Record<string, string> = { stop: 'Stop', target: 'Objetivo', h
 function number(value: string | number | null | undefined) {
     if (value === null || value === undefined || String(value).trim() === '') return 'Sin datos';
     const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed.toLocaleString('es-ES', { maximumFractionDigits: 2 }) : 'Sin datos';
+    return Number.isFinite(parsed) ? parsed.toLocaleString('es-ES', { maximumFractionDigits: 6 }) : 'Sin datos';
 }
 function date(value: string | null | undefined) {
     if (!value || !Number.isFinite(Date.parse(value))) return 'Sin datos';

@@ -48,3 +48,10 @@ test('wiring is read-only, no generation batch, scheduler, manual close or mock 
     assert.match(view, /<PaperProposalCard key=\{trade.id\} trade=\{trade\}/);
     assert.doesNotMatch(view, /fetch\(|method:\s*['"]POST|llm-proposals|\/feed|\/close/);
 });
+
+test('preserves valid six-decimal levels and fractional quantities instead of rounding to fake zeros', async () => {
+    const html = await render({ proposed_entry: '0.004', stop: '0.003', target: '0.008', quantity: '0.0001' });
+    for (const text of ['0,004', '0,003', '0,008', '0,0001']) assert.ok(html.includes(text), text);
+    const smallest = await render({ proposed_entry: '0.000002', stop: '0.000001', target: '0.000003', quantity: '0.000001' });
+    for (const text of ['0,000001', '0,000002', '0,000003']) assert.ok(smallest.includes(text), text);
+});
