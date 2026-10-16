@@ -1,0 +1,266 @@
+import type { PortfolioDividendProjection } from '@/lib/actions/portfolio.actions';
+import { formatMoney, formatDate, formatPrice } from '@/lib/format';
+import { Panel } from '@/components/ui/panel';
+import {
+    declaredFutureNoteView,
+    fiscalCardRows,
+    fiscalYearNote,
+    formatPositionQuantity,
+} from '@/lib/portfolio-dividends-display';
+
+const monthLabel = (key: string): string => {
+    // "2027-01" -> "ene 2027". Se parsea el dia 2 para no caer en el mes
+    // anterior por zona horaria.
+    const parsed = new Date(`${key}-02T00:00:00`);
+    if (Number.isNaN(parsed.getTime())) return key;
+    return new Intl.DateTimeFormat('es-ES', { month: 'short', year: 'numeric' }).format(parsed);
+};
+
+function FiscalYearCard({ year, data, baseCurrency }: { year: string; data: PortfolioDividendProjection['fiscal_by_year'][string]; baseCurrency: string }) {
+    const money = (value: number | null) => formatMoney(value, baseCurrency);
+    const rows = fiscalCardRows(data);
+    const note = fiscalYearNote(data);
+    return (
+        <div className="rounded-lg border border-gray-800 p-4">
+            <p className="text-xs uppercase tracking-wide text-gray-500">Escenario {year}</p>
+            <dl className="mt-3 space-y-1.5">
+                {rows.map((row) => (
+                    <div className="flex items-baseline justify-between gap-3" key={row.label}>
+                        <dt className="text-xs text-gray-500">{row.label}</dt>
+                        <dd className="text-sm font-medium text-gray-100">{money(row.value)}</dd>
+                    </div>
+                ))}
+                {typeof data.effective_avg_rate === 'number' ? (
+                    <div className="flex items-baseline justify-between gap-3">
+                        <dt className="text-xs text-gray-500">Tipo medio efectivo</dt>
+                        <dd className="text-sm font-medium text-gray-100">
+                            {`${(data.effective_avg_rate * 100).toLocaleString('es-ES', { maximumFractionDigits: 1 })}%`}
+                        </dd>
+                    </div>
+                ) : null}
+            </dl>
+            {data.excluded_tickers.length > 0 ? (
+                <p className="mt-3 text-xs text-amber-400/90">
+                    Subconjunto cubierto: excluye {data.excluded_tickers.join(', ')} (sin datos, no cero).
+                </p>
+            ) : null}
+            {note !== null ? (
+                <p className="mt-2 text-xs leading-5 text-gray-500">{note}</p>
+            ) : null}
+        </div>
+    );
+}
+
+function DeclaredFuturePanel({ items }: { items: PortfolioDividendProjection['declared_future'] }) {
+    // La nota del backend ("según el proveedor de datos, no verificado contra
+    // fuente primaria; no alimenta la réplica") es una salvedad de veracidad:
+    // INGESTADO desde el proveedor no equivale a confirmación corporativa, y
+    // la nota siempre llega a la pantalla (declaredFutureNoteView).
+    const view = declaredFutureNoteView(items);
+    const description = [
+        view.sharedNote,
+        view.sharedAsOf !== null ? `Datos al ${formatDate(view.sharedAsOf)}.` : null,
+    ]
+        .filter((part): part is string => part !== null)
+        .join(' ') || undefined;
+    return (
+        <Panel title="Declarados con fecha futura" description={description}>
+            <ul className="space-y-1.5 text-sm text-gray-300">
+                {items.map((item, index) => (
+                    <li key={`${item.ticker}-${item.ex_date}`}>
+                        <span className="font-medium text-gray-100">{item.ticker}</span>
+                        {` · ex ${formatDate(item.ex_date)} · pago ${item.pay_date ? formatDate(item.pay_date) : 'N/D'} · `}
+                        {formatPrice(item.amount_per_share, item.currency)} por acción
+                        <span className="ml-2 rounded border border-gray-700 px-1.5 py-0.5 text-xs text-gray-400">
+                            {item.label} · {item.source}
+                        </span>
+                        {view.perItemNotes[index] !== null ? (
+                            <span className="block text-xs text-gray-500">{view.perItemNotes[index]}</span>
+                        ) : null}
+                    </li>
+                ))}
+            </ul>
+        </Panel>
+    );
+}
+
+/**
+ * Proyección mecánica de dividendos (idea 5 del listado 0-31). Toda cifra
+ * llega calculada del endpoint determinista /api/portfolio/dividends/projection:
+ * la UI no suma, infiere ni estima nada por su cuenta. Lo que el backend
+ * marca como null se pinta N/D (nunca 0,00); la etiqueta INFERIDO, las notas
+ * de veracidad y las condiciones del escenario fiscal viajan con los datos.
+ */
+export default function PortfolioDividends({ projection }: { projection: PortfolioDividendProjection }) {
+    const baseCurrency = projection.base_currency;
+    const activeMonths = projection.months.filter(
+        (month) => month.covered_tickers.length > 0 || month.excluded_tickers.length > 0,
+    );
+    const fiscalYears = Object.entries(projection.fiscal_by_year);
+    const coverageLists: Array<{ label: string; tickers: string[] }> = [
+        { label: 'Sin dividendos declarados ingeridos', tickers: projection.coverage.sin_datos },
+        { label: 'Sin tipo de cambio', tickers: projection.coverage.fx_missing },
+        { label: 'Retención de origen sin verificar', tickers: projection.coverage.unknown_source_withholding },
+    ].filter((entry) => entry.tickers.length > 0);
+
+    return (
+        <div className="space-y-6">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                <span className="rounded border border-amber-900/70 bg-amber-950/30 px-1.5 py-0.5 font-medium text-amber-300">
+                    {projection.label}
+                </span>
+                <span>
+                    Proyección a {projection.horizon_months} meses · datos al {formatDate(projection.as_of)}
+                </span>
+            </div>
+
+            {projection.positions.length === 0 && projection.declared_future.length === 0 ? (
+                <Panel title="Proyección de dividendos">
+                    <p className="text-sm text-gray-400">
+                        Sin datos: ninguna posición de la cartera tiene dividendos declarados ingeridos.
+                    </p>
+                </Panel>
+            ) : (
+                <>
+                    {fiscalYears.length > 0 ? (
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                            {fiscalYears.map(([year, data]) => (
+                                <FiscalYearCard baseCurrency={baseCurrency} data={data} key={year} year={year} />
+                            ))}
+                        </div>
+                    ) : null}
+
+                    <Panel
+                        title="Mes a mes"
+                        description={`Bruto y retención de origen en ${baseCurrency}, solo posiciones con cobertura fiscal completa.`}
+                    >
+                        {activeMonths.length === 0 ? (
+                            <p className="text-sm text-gray-400">
+                                Ningún pago proyectado en los próximos {projection.horizon_months} meses con los datos ingeridos.
+                            </p>
+                        ) : (
+                            <div className="overflow-x-auto" role="region" aria-label="Proyección mes a mes" tabIndex={0}>
+                                <table className="w-full text-left text-sm">
+                                    <thead>
+                                        <tr className="border-b border-gray-800 text-xs uppercase tracking-wide text-gray-500">
+                                            <th className="py-2 pr-4">Mes</th>
+                                            <th className="py-2 pr-4">Bruto</th>
+                                            <th className="py-2 pr-4">Retención origen</th>
+                                            <th className="py-2">Posiciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {activeMonths.map((month) => (
+                                            <tr className="border-b border-gray-900 text-gray-300" key={month.month}>
+                                                <td className="py-2 pr-4 font-medium text-gray-100">{monthLabel(month.month)}</td>
+                                                <td className="py-2 pr-4">
+                                                    {month.covered_tickers.length > 0
+                                                        ? formatMoney(month.gross_base, baseCurrency)
+                                                        : 'N/D'}
+                                                </td>
+                                                <td className="py-2 pr-4">
+                                                    {month.covered_tickers.length > 0
+                                                        ? formatMoney(month.source_withheld_base, baseCurrency)
+                                                        : 'N/D'}
+                                                </td>
+                                                <td className="py-2">
+                                                    {month.covered_tickers.join(', ')}
+                                                    {month.excluded_tickers.length > 0 ? (
+                                                        <span className="block text-xs text-amber-400/90">
+                                                            Excluidas sin datos: {month.excluded_tickers.join(', ')}
+                                                        </span>
+                                                    ) : null}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </Panel>
+
+                    <Panel title="Por posición">
+                        <div className="overflow-x-auto" role="region" aria-label="Proyección por posición" tabIndex={0}>
+                            <table className="w-full text-left text-sm">
+                                <thead>
+                                    <tr className="border-b border-gray-800 text-xs uppercase tracking-wide text-gray-500">
+                                        <th className="py-2 pr-4">Posición</th>
+                                        <th className="py-2 pr-4">Títulos</th>
+                                        <th className="py-2 pr-4">Pagos 12 m</th>
+                                        <th className="py-2 pr-4">Bruto ({baseCurrency})</th>
+                                        <th className="py-2 pr-4">Retención origen</th>
+                                        <th className="py-2">Retenido ({baseCurrency})</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {projection.positions.map((position) => (
+                                        <tr className="border-b border-gray-900 text-gray-300" key={position.ticker}>
+                                            <td className="py-2 pr-4 font-medium text-gray-100">{position.ticker}</td>
+                                            <td className="py-2 pr-4">
+                                                {formatPositionQuantity(position.quantity)}
+                                            </td>
+                                            <td className="py-2 pr-4">{position.frequency_last_year}</td>
+                                            <td className="py-2 pr-4">{formatMoney(position.gross_base, baseCurrency)}</td>
+                                            <td className="py-2 pr-4">
+                                                {position.source_withholding_rate === null
+                                                    ? 'N/D'
+                                                    : `${(position.source_withholding_rate * 100).toLocaleString('es-ES', { maximumFractionDigits: 1 })}%`}
+                                                {position.domicile_country ? (
+                                                    <span className="ml-1 text-xs text-gray-500">({position.domicile_country})</span>
+                                                ) : null}
+                                            </td>
+                                            <td className="py-2">{formatMoney(position.source_withheld_base, baseCurrency)}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </Panel>
+
+                    {projection.declared_future.length > 0 ? (
+                        <DeclaredFuturePanel items={projection.declared_future} />
+                    ) : null}
+                </>
+            )}
+
+            {coverageLists.length > 0 ? (
+                <div className="rounded-lg border border-amber-900/70 bg-amber-950/20 p-3">
+                    <p className="text-sm font-medium text-amber-200">Fuera de la proyección:</p>
+                    <ul className="mt-1 space-y-1 text-sm text-amber-100/80">
+                        {coverageLists.map((entry) => (
+                            <li key={entry.label}>
+                                {entry.label}: {entry.tickers.join(', ')}
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            ) : null}
+
+            <details className="rounded-lg border border-gray-800 p-3 text-xs text-gray-500">
+                <summary className="cursor-pointer select-none text-gray-400">Método y condiciones</summary>
+                <p className="mt-2 leading-5">{projection.method}</p>
+                <ul className="mt-2 list-disc space-y-1 pl-5 leading-5">
+                    {projection.fiscal_conditions.map((condition) => (
+                        <li key={condition}>{condition}</li>
+                    ))}
+                </ul>
+                {Object.keys(projection.sources).length > 0 ? (
+                    <p className="mt-2">
+                        Fuentes:{' '}
+                        {Object.values(projection.sources).map((url) => (
+                            <a
+                                className="mr-3 break-all text-teal-400 underline decoration-teal-800 underline-offset-2 hover:text-teal-300"
+                                href={url}
+                                key={url}
+                                rel="noopener noreferrer"
+                                target="_blank"
+                            >
+                                {new URL(url).hostname.replace(/^www\d*\./, '')}
+                            </a>
+                        ))}
+                    </p>
+                ) : null}
+            </details>
+        </div>
+    );
+}
