@@ -28,3 +28,13 @@ def test_greetings_are_recognized_with_accents(question):
     assert response.model == 'small-talk'
     assert 'CavaAI' in response.answer
     assert provider.requests == []
+
+
+def test_long_whitespace_input_is_not_small_talk_and_does_not_backtrack_quadratically():
+    import time
+
+    from app.services.chat_service import _SMALL_TALK_RE
+
+    start = time.monotonic()
+    assert _SMALL_TALK_RE.match(" " * 200000 + "x") is None
+    assert time.monotonic() - start < 1.0

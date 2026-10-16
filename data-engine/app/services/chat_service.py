@@ -55,7 +55,7 @@ def _short(text: str, limit: int = 420) -> str:
 
 
 _SMALL_TALK_RE = re.compile(
-    r"^\s*[¿¡]?\s*(hola|buenas|buenos d[ií]as|buenas tardes|buenas noches|hey|hi|hello|"
+    r"^\s*(?:[¿¡]\s*)?(hola|buenas|buenos d[ií]as|buenas tardes|buenas noches|hey|hi|hello|"
     r"qu[eé] tal|c[oó]mo est[aá]s|gracias|muchas gracias|ok|vale|adi[oó]s|hasta luego)"
     r"[\s!.,¡¿?]*$",
     re.IGNORECASE,
