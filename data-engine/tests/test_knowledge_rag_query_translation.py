@@ -22,6 +22,8 @@ from sqlalchemy.orm import Session
 from app.api.routes import knowledge_rag as route_module
 from app.core.config import Settings
 from app.core.database import Base, get_db
+from app.llm.adapters import OpenAICompatibleProvider
+from app.llm.model_aliases import MODEL_ALIASES, OPENCODE_GO_MODEL_ALIASES, ModelAlias
 from app.services.knowledge_rag import query_translation
 from app.services.knowledge_rag.chunking import ChunkConfig
 from app.services.knowledge_rag.domain import Block, DocType, ExtractedDocument, Section, SourceMetadata
@@ -211,6 +213,100 @@ async def test_english_variant_ignores_translation_equal_to_query() -> None:
     )
     assert (variant, note) == (None, None)
 
+
+
+# --- guard de coste sobre el ID resuelto, factory real y complete interceptado ---
+
+
+@pytest.fixture
+def restore_alias_registry():
+    yield
+    MODEL_ALIASES.replace(OPENCODE_GO_MODEL_ALIASES)
+
+
+def _remap_alias(alias: str, provider_model_id: str) -> None:
+    """Simula un alias persistido en DB apuntando a otro ID de proveedor."""
+    MODEL_ALIASES.replace(
+        ModelAlias(
+            internal_alias=a.internal_alias,
+            provider=a.provider,
+            provider_model_id=provider_model_id if a.internal_alias == alias else a.provider_model_id,
+            enabled=a.enabled,
+            context_window=a.context_window,
+            input_cost=a.input_cost,
+            output_cost=a.output_cost,
+            supported_capabilities=a.supported_capabilities,
+            cost_basis=a.cost_basis,
+        )
+        for a in OPENCODE_GO_MODEL_ALIASES
+    )
+
+
+@pytest.mark.anyio
+async def test_alias_remapped_to_paid_id_is_refused_before_complete(monkeypatch, restore_alias_registry) -> None:
+    """Canario: un alias "gratuito" cuyo ID resuelto es de pago NO se llama."""
+    _remap_alias("deepseek-v4.1-flash-free", "paid-model-canary")
+    settings = Settings(
+        _env_file=None, opencode_go_model="deepseek-v4.1-flash-free", opencode_go_api_key="sk-test"
+    )
+
+    async def forbidden_complete(self, request):
+        raise AssertionError("complete no debe llamarse con un ID resuelto de pago")
+
+    monkeypatch.setattr(OpenAICompatibleProvider, "complete", forbidden_complete)
+    variant, note = await query_translation.english_variant(
+        "¿Qué dice Buffett sobre las empresas?", settings=settings
+    )
+    assert variant is None and note is not None
+
+
+@pytest.mark.anyio
+async def test_cascade_provider_is_refused_without_network(monkeypatch, restore_alias_registry) -> None:
+    """La cascada (Gemini/OpenRouter pueden cobrar) no es un proveedor valido."""
+    settings = Settings(_env_file=None, llm_provider="cascade", opencode_go_api_key="sk-test")
+
+    async def forbidden_complete(self, request):
+        raise AssertionError("complete no debe llamarse con la cascada")
+
+    monkeypatch.setattr(OpenAICompatibleProvider, "complete", forbidden_complete)
+    variant, note = await query_translation.english_variant(
+        "¿Qué dice Buffett sobre las empresas?", settings=settings
+    )
+    assert variant is None and note is not None
+
+
+@pytest.mark.anyio
+async def test_factory_error_degrades_to_original_query(monkeypatch, restore_alias_registry) -> None:
+    """Un ValueError del factory degrada a la consulta original, nunca lanza."""
+    def broken_factory(settings, *, client=None):
+        raise ValueError("configuracion LLM invalida")
+
+    monkeypatch.setattr(query_translation, "create_llm_provider", broken_factory)
+    settings = Settings(_env_file=None, opencode_go_api_key="sk-test")
+    variant, note = await query_translation.english_variant(
+        "¿Qué dice Buffett sobre las empresas?", settings=settings
+    )
+    assert variant is None and note is not None and "ValueError" in note
+
+
+@pytest.mark.anyio
+async def test_real_factory_with_intercepted_complete(monkeypatch, restore_alias_registry) -> None:
+    """Cableado real (factory + router de aliases) con la red interceptada."""
+    settings = Settings(
+        _env_file=None, opencode_go_model="deepseek-v4.1-flash-free", opencode_go_api_key="sk-test"
+    )
+    seen: dict = {}
+
+    async def fake_complete(self, request):
+        seen["resolved_model"] = self.model_router.resolve(request)
+        return SimpleNamespace(text="What does Buffett say about companies?", degraded=False)
+
+    monkeypatch.setattr(OpenAICompatibleProvider, "complete", fake_complete)
+    variant, note = await query_translation.english_variant(
+        "¿Qué dice Buffett sobre las empresas?", settings=settings
+    )
+    assert variant == "What does Buffett say about companies?" and note is None
+    assert seen["resolved_model"] == "deepseek-v4.1-flash-free"
 
 # --- fusion de variantes en retrieval (Qdrant en memoria, embedder falso) ---
 

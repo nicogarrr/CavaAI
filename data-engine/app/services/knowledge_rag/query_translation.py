@@ -24,7 +24,7 @@ import time
 
 from app.core.config import Settings, get_settings
 from app.llm import LLMRequest, Message, create_llm_provider
-from app.llm.model_aliases import VERIFIED_FREE_MODELS
+from app.llm.model_aliases import MODEL_ALIASES, VERIFIED_FREE_MODELS
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +64,22 @@ def _clean_translation(raw: str) -> str | None:
     if not re.search(r"[a-zA-Z]", text):
         return None
     return text
+
+
+def _resolved_verified_free_model(model: str) -> str | None:
+    """ID de proveedor que se llamaria de verdad, o None si no es gratuito verificado.
+
+    No basta con el alias: el registro (persistido en DB, ``configure_model_aliases``)
+    puede apuntar un alias gratuito a un ID de proveedor de pago. Se verifica el ID
+    RESUELTO, el mismo que aplicara ``TaskModelRouter`` al enviar la peticion.
+    """
+    if model not in VERIFIED_FREE_MODELS:
+        return None
+    try:
+        resolved = MODEL_ALIASES.resolve(model, provider="opencode-go")
+    except ValueError:
+        return None
+    return resolved if resolved in VERIFIED_FREE_MODELS else None
 
 
 def _cache_key(query: str) -> str:
@@ -110,19 +126,8 @@ async def english_variant(
         return None, "traduccion de consulta no disponible (fallo reciente en cache)"
     settings = settings or get_settings()
     model = settings.opencode_go_model
-    if model not in VERIFIED_FREE_MODELS:
+    if _resolved_verified_free_model(model) is None:
         return None, "traduccion de consulta omitida: modelo no verificado como gratuito"
-    if provider is None:
-        # Mismo pin que knowledge_chat: solo el modelo gratuito verificado, sin
-        # overrides ni fallback, y nunca la cascada (sus claves pueden cobrar).
-        pinned = settings.model_copy(
-            update={
-                "llm_provider": "opencode-go",
-                "llm_model_overrides": {},
-                "opencode_go_fallback_model": "",
-            }
-        )
-        provider = create_llm_provider(pinned)
     request = LLMRequest(
         model=model,
         temperature=0,
@@ -138,7 +143,20 @@ async def english_variant(
             Message("user", query.strip()[:1000]),
         ],
     )
+    # Regla del repo para flujos con guardia de coste: la cascada NO se admite
+    # (sus claves de Gemini/OpenRouter pueden cobrar; ver llm/cascade.py).
+    requested = (settings.llm_provider or "").strip().lower()
+    if requested in {"auto", "opencode", "opencode_go"}:
+        requested = "opencode-go"
+    if requested != "opencode-go":
+        return None, "traduccion de consulta omitida: proveedor LLM no verificado como gratuito"
     try:
+        if provider is None:
+            # Sin overrides ni fallback: solo el modelo gratuito verificado.
+            pinned = settings.model_copy(
+                update={"llm_model_overrides": {}, "opencode_go_fallback_model": ""}
+            )
+            provider = create_llm_provider(pinned)
         response = await asyncio.wait_for(
             provider.complete(request), timeout=settings.knowledge_rag_query_translation_timeout_s
         )
