@@ -480,3 +480,14 @@ def test_legacy_composite_without_original_is_omitted(db):
     db.get(NewsEvent,1).metadata_ = {}
     db.commit()
     assert runner.load_headlines(db,'AAPL',NOW) == []
+
+
+@pytest.mark.parametrize("title,ticker,name,expected", [
+    ('Visa reports record revenue','V','Visa Inc.',True),
+    ('Ford reports record revenue','F','Ford Inc.',True),
+    ('Ford reports record revenue','F','Ford Motor Company',False),
+    ('A new market outlook','A','Agilent Technologies Inc.',False),
+    ('$V reports record revenue','V','Visa Inc.',True),
+])
+def test_short_names_and_single_letter_tickers(title,ticker,name,expected):
+    assert runner.headline_matches_company(title,ticker,name) is expected

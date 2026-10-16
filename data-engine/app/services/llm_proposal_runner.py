@@ -115,10 +115,12 @@ def save_within_quota(db: Session, proposal: PaperProposal, now: datetime) -> Pa
 
 def headline_matches_company(title: str, ticker: str, name: str) -> bool:
     """Match publisher headline only. No inference from legacy composite titles."""
-    if re.search(rf"(?<!\w){re.escape(ticker)}(?!\w)", title, re.I):
+    ticker_pattern = (rf"(?:\$|(?:NYSE|NASDAQ):){re.escape(ticker)}(?!\w)" if len(ticker) == 1
+                      else rf"(?<!\w){re.escape(ticker)}(?!\w)")
+    if re.search(ticker_pattern, title, re.I):
         return True
     clean_name = re.sub(r"(?:[,\s]+(?:inc\.?|corp\.?|corporation|plc|ltd\.?))+$", "", name.strip(), flags=re.I)
-    return len(clean_name) >= 5 and re.search(rf"(?<!\w){re.escape(clean_name)}(?!\w)", title, re.I) is not None
+    return bool(clean_name) and re.search(rf"(?<!\w){re.escape(clean_name)}(?!\w)", title, re.I) is not None
 
 
 def load_headlines(db: Session, ticker: str, now: datetime) -> list[dict]:
