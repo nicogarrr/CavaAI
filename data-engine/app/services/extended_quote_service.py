@@ -1,6 +1,7 @@
 """Read-only, timestamped Yahoo quotes. No database or stale-on-error fallback."""
 from __future__ import annotations
 
+import asyncio
 import math
 import time
 from datetime import datetime
@@ -28,10 +29,12 @@ class ExtendedQuote(BaseModel):
     trading_date: str | None = None
     previous_close: float | None = None
     previous_close_timestamp: int | None = None
+    previous_close_date: str | None = None
     change: float | None = None
     change_percent: float | None = None
     regular_close: float | None = None
     regular_close_timestamp: int | None = None
+    regular_close_date: str | None = None
     open: float | None = None
     high: float | None = None
     low: float | None = None
@@ -50,7 +53,7 @@ def _epoch(value: Any) -> int | None:
     return int(number) if number is not None and number.is_integer() else None
 
 
-def parse_extended_chart(ticker: str, node: dict[str, Any], now: int) -> ExtendedQuote:
+def parse_extended_chart(ticker: str, node: dict[str, Any], now: int, daily_node: dict[str, Any] | None = None) -> ExtendedQuote:
     meta = node.get("meta") or {}
     periods = meta.get("currentTradingPeriod") or {}
     bounds: dict[str, tuple[int, int]] = {}
@@ -184,13 +187,75 @@ def parse_extended_chart(ticker: str, node: dict[str, Any], now: int) -> Extende
         result.low = min(lows) if covered and len(lows) == len(regular_indices) else None
         result.metrics_timestamp = regular_indices[-1][0]
         result.metrics_session = datetime.fromtimestamp(regular_indices[-1][0], tz).date().isoformat()
+    # Yahoo's timestamped regular-market aggregates cover traded prices even
+    # when minute bars omit zero-trade minutes or append a sub-minute print.
+    # Never infer day extrema from incomplete candles. Require the metadata's
+    # own regularMarketTime on this exchange session's date and coherent range.
+    session_date = datetime.fromtimestamp(bounds["regular"][0], tz).date()
+    if result.regular_close_timestamp:
+        result.regular_close_date = datetime.fromtimestamp(result.regular_close_timestamp, tz).date().isoformat()
+    if regular_time and bounds["regular"][0] <= regular_time <= now and datetime.fromtimestamp(regular_time, tz).date() == session_date:
+        high = _number(meta.get("regularMarketDayHigh"))
+        low = _number(meta.get("regularMarketDayLow"))
+        if high is not None and low is not None and regular_price is not None and low <= regular_price <= high:
+            result.high, result.low = high, low
+            result.metrics_timestamp = regular_time
+            result.metrics_session = session_date.isoformat()
+
+    # A daily bar dates a session, not its exact closing second. Expose a
+    # date-only field, and only when its raw close matches previousClose.
+    # Never date it by calendar subtraction, current price or adjusted close.
+    if result.previous_close_timestamp:
+        result.previous_close_date = datetime.fromtimestamp(result.previous_close_timestamp, tz).date().isoformat()
+    if daily_node:
+        daily_meta = daily_node.get("meta") or {}
+        if (daily_meta.get("symbol") == meta.get("symbol") == ticker
+                and daily_meta.get("currency") == meta.get("currency")
+                and daily_meta.get("exchangeTimezoneName") == timezone
+                and daily_meta.get("dataGranularity") == "1d"):
+            daily_quotes = (daily_node.get("indicators") or {}).get("quote") or []
+            daily_closes = (daily_quotes[0].get("close") or []) if daily_quotes else []
+            dated = []
+            for i, raw in enumerate(daily_node.get("timestamp") or []):
+                ts = _epoch(raw)
+                close = _number(daily_closes[i]) if i < len(daily_closes) else None
+                if ts and ts <= now:
+                    dated.append((ts, datetime.fromtimestamp(ts, tz).date(), close))
+            prior = [row for row in dated if row[1] < session_date]
+            if prior:
+                _, day, close = max(prior, key=lambda row: row[0])
+                if (not result.previous_close_timestamp and close is not None
+                        and result.previous_close is not None
+                        and math.isclose(close, result.previous_close, rel_tol=1e-6, abs_tol=1e-5)):
+                    result.previous_close_date = day.isoformat()
+                # During an open session this is the last completed session,
+                # not today's intraday value relabelled as a close.
+                if result.regular_close is None and close is not None:
+                    result.regular_close, result.regular_close_date = close, day.isoformat()
+            today = [row for row in dated if row[1] == session_date]
+            daily_time = _epoch(daily_meta.get("regularMarketTime"))
+            daily_price = _number(daily_meta.get("regularMarketPrice"))
+            # Closed daily bar can include the real closing auction beyond the
+            # last regular minute. Require dated post-end regular metadata and
+            # matching daily raw close. Never promote an old intraday meta price.
+            if (today and now >= bounds["regular"][1] and daily_time is not None
+                    and bounds["regular"][1] <= daily_time <= now
+                    and datetime.fromtimestamp(daily_time, tz).date() == session_date):
+                _, day, close = max(today, key=lambda row: row[0])
+                if close is not None and daily_price is not None and math.isclose(close, daily_price, rel_tol=1e-6, abs_tol=1e-5):
+                    result.regular_close, result.regular_close_date = close, day.isoformat()
+                    result.regular_close_timestamp = None  # Date is known, exact close time is not.
+                    if (result.session == "cerrado" and result.price_session == "regular"
+                            and result.timestamp is not None and result.timestamp <= daily_time):
+                        result.price, result.timestamp = daily_price, daily_time
+                        result.trading_date = day.isoformat()
     return result
 
 
 class ExtendedQuoteService:
     def __init__(self) -> None:
         self.client = YahooFinanceClient()
-        self.cache: dict[str, tuple[float, dict[str, Any], int]] = {}
+        self.cache: dict[str, tuple[float, dict[str, Any], int, dict[str, Any] | None]] = {}
 
     async def get(self, ticker: str) -> ExtendedQuote:
         ticker = ticker.strip().upper()
@@ -198,13 +263,20 @@ class ExtendedQuoteService:
         try:
             cached = self.cache.get(ticker)
             if cached and time.monotonic() - cached[0] < 60:
-                node = cached[1]
+                node, daily = cached[1], cached[3]
             else:
-                node = await self.client.extended_chart(ticker)
+                intraday, daily_result = await asyncio.gather(
+                    self.client.extended_chart(ticker), asyncio.wait_for(self.client.recent_daily_chart(ticker), timeout=3),
+                    return_exceptions=True,
+                )
+                if isinstance(intraday, BaseException):
+                    raise intraday
+                node = intraday
+                daily = daily_result if isinstance(daily_result, dict) else None
                 self.cache = {k: v for k, v in self.cache.items() if time.monotonic() - v[0] < 60}
-                self.cache[ticker] = (time.monotonic(), node, int(time.time()))
+                self.cache[ticker] = (time.monotonic(), node, int(time.time()), daily)
             # Reclassify each read: cached candles can cross sessions/stale limit.
-            return parse_extended_chart(ticker, node, int(time.time())).model_copy(
+            return parse_extended_chart(ticker, node, int(time.time()), daily).model_copy(
                 update={"fetched_at": self.cache[ticker][2]}
             )
         except Exception:

@@ -26,7 +26,7 @@ test('visible-only 60s refresh and no stale/error or undated metric fallback', (
     assert.match(ui, /document.visibilityState !== 'visible'/);
     assert.match(ui, /setInterval\([\s\S]*60000\)/);
     assert.match(ui, /setQuote\(null\); \/\/ No stale-on-error/);
-    assert.match(ui, /previous_close_timestamp \? quote.previous_close : null/);
+    assert.match(ui, /previous_close_timestamp \|\| quote\?\.previous_close_date \? quote.previous_close : null/);
     assert.doesNotMatch(ui, /snapshot.quote|Precio de fecha desconocida/);
     assert.match(ui, /quoteSymbolFor/);
 });
@@ -58,4 +58,14 @@ test('extended fixture is dated and the test gate stays fail-closed', () => {
     assert.equal(quote.source, 'Fixture local');
     assert.equal(extendedQuoteLabel(quote), 'Mercado abierto · 17:00');
     assert.equal(quote.previous_close_timestamp, null);
+});
+
+test('date-only closes never claim the daily opening timestamp as a closing hour', async () => {
+    // @ts-expect-error explicit extension required by node strip-types.
+    const { quoteSessionDate } = await import('../lib/market/extended-quote.ts');
+    assert.equal(quoteSessionDate('2026-10-15'), '15 oct 2026');
+    assert.equal(quoteSessionDate(null), 'N/D');
+    const ui = readFileSync('components/research/CompanyHeaderQuote.tsx', 'utf8');
+    assert.match(ui, /quoteSessionDate\(quote.regular_close_date\)/);
+    assert.match(ui, /quoteSessionDate\(quote.previous_close_date\)/);
 });
