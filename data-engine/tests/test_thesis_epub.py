@@ -109,7 +109,7 @@ def test_build_epub_parseable_por_ebooklib_con_metadatos_byte_compatibles():
     assert book.get_metadata("DC", "title") == [("Tesis de inversión: SAN — Banco Santander", {})]
     assert book.get_metadata("DC", "creator") == [("GerarAI", {"id": "creator"})]
     assert book.get_metadata("DC", "language") == [("es", {})]
-    assert book.get_metadata("DC", "identifier") == [("gerarai-thesis-SAN-v2", {"id": "id"})]
+    assert book.get_metadata("DC", "identifier") == [("cavaai-thesis-SAN-v2", {"id": "id"})]
     assert book.get_metadata("DC", "date") == [("2026-09-21", {})]
 
 
@@ -179,7 +179,7 @@ def test_build_epub_escapa_html_inyectado():
 
     # Sigue siendo un EPUB válido aunque el contenido sea hostil.
     book = _read_book(payload)
-    assert book.get_metadata("DC", "identifier") == [("gerarai-thesis-SAN-v2", {"id": "id"})]
+    assert book.get_metadata("DC", "identifier") == [("cavaai-thesis-SAN-v2", {"id": "id"})]
 
     chapter = _chapter_raw(payload, "seccion-01-script-alert-1-script.xhtml")
     assert "<script>" not in chapter
@@ -195,7 +195,7 @@ def test_build_epub_identificador_estable_entre_generaciones():
     other_version = _sample_data()
     other_version.version = 3
     third = _read_book(build_thesis_epub(other_version))
-    assert third.get_metadata("DC", "identifier") == [("gerarai-thesis-SAN-v3", {"id": "id"})]
+    assert third.get_metadata("DC", "identifier") == [("cavaai-thesis-SAN-v3", {"id": "id"})]
 
 
 def test_build_epub_contenido_malformado_no_rompe_y_tipos_fallan_en_alto():
@@ -319,7 +319,7 @@ def test_epub_endpoint_devuelve_descarga_valida(client):
         assert zf.read("mimetype").decode("ascii") == EPUB_MIMETYPE
 
     book = _read_book(response.content)
-    assert book.get_metadata("DC", "identifier") == [("gerarai-thesis-SAN-v3", {"id": "id"})]
+    assert book.get_metadata("DC", "identifier") == [("cavaai-thesis-SAN-v3", {"id": "id"})]
     assert book.get_metadata("DC", "language") == [("es", {})]
     assert "Valoración" in _toc_titles(book)
 
@@ -331,3 +331,11 @@ def test_epub_endpoint_404_limpio_sin_tesis(client):
     response = client.get("/api/thesis/NADAAAA/epub")
     assert response.status_code == 404
     assert response.json() == {"detail": "No thesis for ticker"}
+
+
+def test_uid_epub_estable_tras_rebrand():
+    # Compatibilidad pre/post rebrand: el identificador DC no sigue la marca.
+    # Mismo ticker y version => mismo uid que antes del renombre CavaAI -> GerarAI.
+    from app.services.thesis_epub_service import EPUB_UID_TEMPLATE
+
+    assert EPUB_UID_TEMPLATE.format(ticker="SAN", version=2) == "cavaai-thesis-SAN-v2"

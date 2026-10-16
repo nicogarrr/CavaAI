@@ -231,6 +231,10 @@ def build_obsidian_vault(
             "",
             "# GerarAI - Índice del vault",
             "",
+            "> **Nota de migración:** antes del renombre de marca las notas se",
+            "> generaban en la carpeta `CavaAI/`. Si ya tenías un vault,",
+            "> mueve esa carpeta a `GerarAI/` a mano; este zip no la migra solo.",
+            "",
             "## Cartera",
             "",
         ]
