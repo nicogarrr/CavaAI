@@ -1,0 +1,191 @@
+import type { Metadata } from 'next';
+import Link from 'next/link';
+import { ExternalLink } from 'lucide-react';
+
+import BackendOffline from '@/components/system/BackendOffline';
+import { Badge } from '@/components/ui/badge';
+import {
+  getBottleneckDiscoveries,
+  getBottlenecks,
+  type DiscoveryView,
+} from '@/lib/actions/bottlenecks.actions';
+import { isBackendUnavailableError } from '@/lib/backend-offline';
+import { NA, formatUserDate } from '@/lib/format';
+
+export const metadata: Metadata = {
+  title: 'Cuellos de botella',
+  description:
+    'Escasez detectada en las fuentes guardadas y candidatos de empresas inferidos por el modelo, siempre etiquetados.',
+};
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+const PAGE_SIZE = 20;
+
+type PageProps = { searchParams: Promise<{ pagina?: string | string[] }> };
+
+function parsePage(raw: string | string[] | undefined): number {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  const page = Number(value);
+  return Number.isInteger(page) && page >= 1 ? page : 1;
+}
+
+function SignalCard({ signal }: { signal: Awaited<ReturnType<typeof getBottlenecks>>['signals'][number] }) {
+  const detected = signal.status === 'detectado';
+  return (
+    <li className="rounded-xl border border-gray-800 bg-gray-900/40 p-4">
+      <div className="flex items-start justify-between gap-2">
+        <h2 className="text-sm font-semibold text-gray-100">{signal.theme}</h2>
+        {detected ? (
+          <span className="rounded bg-teal-400/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-teal-300">
+            Detectado
+          </span>
+        ) : (
+          <span className="rounded bg-gray-800 px-1.5 py-0.5 text-[10px] font-bold uppercase text-gray-500">
+            {NA}
+          </span>
+        )}
+      </div>
+      <p className="mt-3 text-xs text-gray-400">
+        {detected
+          ? `${signal.n_sources} fuentes independientes · última señal ${formatUserDate(signal.last_seen)}`
+          : 'Sin evidencia suficiente en las fuentes guardadas'}
+      </p>
+    </li>
+  );
+}
+
+function DiscoveryCard({ item }: { item: DiscoveryView }) {
+  const known = item.ticker !== NA;
+  return (
+    <li className="rounded-xl border border-gray-800 bg-gray-900/40 p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        {known ? (
+          <Link
+            className="text-base font-semibold text-teal-300 hover:text-teal-200"
+            href={`/research/${item.ticker}`}
+          >
+            {item.ticker}
+          </Link>
+        ) : (
+          <span className="text-base font-semibold text-gray-300">Sin identificar</span>
+        )}
+        <span className="text-xs text-gray-500">{item.theme}</span>
+        <Badge className="border-amber-500/50 text-amber-300" variant="outline">
+          {item.label}
+        </Badge>
+      </div>
+      <p className="mt-2 text-sm leading-relaxed text-gray-300">{item.reasoning}</p>
+      {item.evidence.length > 0 ? (
+        <ul className="mt-3 space-y-1 border-t border-gray-800 pt-2">
+          {item.evidence.map((evidence) => (
+            <li className="flex items-center gap-1.5 text-xs" key={evidence.id}>
+              {evidence.status === 'verificada' && evidence.url ? (
+                <a
+                  className="inline-flex min-h-11 items-center gap-1 text-teal-300 underline hover:text-teal-200"
+                  href={evidence.url}
+                  rel="noopener noreferrer"
+                  target="_blank"
+                >
+                  {evidence.title ?? evidence.url}
+                  <ExternalLink aria-hidden="true" className="h-3 w-3" />
+                </a>
+              ) : (
+                <span className="text-gray-500">
+                  {evidence.title ?? 'Evidencia'} · {NA}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <p className="mt-3 text-[11px] text-gray-500">
+        {formatUserDate(item.created_at)} · modelo {item.model}
+      </p>
+    </li>
+  );
+}
+
+export default async function CuellosPage({ searchParams }: PageProps) {
+  const page = parsePage((await searchParams).pagina);
+  let bottlenecks: Awaited<ReturnType<typeof getBottlenecks>>;
+  let discoveries: Awaited<ReturnType<typeof getBottleneckDiscoveries>>;
+  try {
+    [bottlenecks, discoveries] = await Promise.all([
+      getBottlenecks(),
+      getBottleneckDiscoveries((page - 1) * PAGE_SIZE, PAGE_SIZE),
+    ]);
+  } catch (error) {
+    if (isBackendUnavailableError(error)) {
+      return <BackendOffline feature="Cuellos de botella" retryHref="/cuellos" />;
+    }
+    throw error;
+  }
+
+  const detectedCount = bottlenecks.signals.filter((signal) => signal.status === 'detectado').length;
+  const pageHref = (target: number) => (target <= 1 ? '/cuellos' : `/cuellos?pagina=${target}`);
+
+  return (
+    <main id="content" tabIndex={-1} className="mx-auto flex max-w-6xl flex-col gap-6">
+      <header>
+        <h1 className="text-3xl font-bold text-gray-100">Cuellos de botella</h1>
+        <p className="mt-1 text-sm text-gray-400">
+          {detectedCount} de {bottlenecks.signals.length} temas con escasez detectada
+        </p>
+      </header>
+
+      <section aria-label="Señales de escasez">
+        <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {bottlenecks.signals.map((signal) => (
+            <SignalCard key={signal.theme} signal={signal} />
+          ))}
+        </ul>
+      </section>
+
+      <section aria-label="Candidatos inferidos">
+        <h2 className="mb-3 text-xl font-semibold text-gray-100">Candidatos inferidos</h2>
+        {discoveries.items.length === 0 ? (
+          <div className="rounded-xl border border-gray-800 bg-surface-1 p-5">
+            <p className="font-semibold text-gray-100">Sin candidatos todavía</p>
+            <p className="mt-1 text-sm text-gray-400">
+              El barrido inferido todavía no ha guardado ningún candidato.
+            </p>
+          </div>
+        ) : (
+          <>
+            <ul className="grid gap-3 sm:grid-cols-2">
+              {discoveries.items.map((item) => (
+                <DiscoveryCard item={item} key={item.id} />
+              ))}
+            </ul>
+            <nav aria-label="Paginar candidatos" className="mt-4 flex items-center gap-2 text-sm">
+              {page > 1 ? (
+                <Link
+                  className="inline-flex min-h-11 items-center rounded-lg px-4 font-medium text-gray-400 hover:bg-gray-800 hover:text-gray-100"
+                  href={pageHref(page - 1)}
+                >
+                  Anterior
+                </Link>
+              ) : null}
+              <span className="px-2 text-gray-500">Página {page}</span>
+              {discoveries.has_more ? (
+                <Link
+                  className="inline-flex min-h-11 items-center rounded-lg px-4 font-medium text-gray-400 hover:bg-gray-800 hover:text-gray-100"
+                  href={pageHref(page + 1)}
+                >
+                  Siguiente
+                </Link>
+              ) : null}
+            </nav>
+          </>
+        )}
+      </section>
+
+      <footer className="border-t border-gray-800 pt-3 text-xs text-gray-500">
+        <p>{bottlenecks.method} · {bottlenecks.limitation}</p>
+        <p className="mt-1">{discoveries.note}</p>
+      </footer>
+    </main>
+  );
+}
