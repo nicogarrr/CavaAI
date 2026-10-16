@@ -161,7 +161,7 @@ Todos aceptan `--json` para volcar el informe. El eval del RAG indexa en
 ## Arquitectura en 30 segundos
 
 Next.js (App Router, server actions firmadas HMAC) habla con FastAPI
-(`/api/*`, firma X-GerarAI-*): Postgres como canónico, Qdrant como índice
+(`/api/*`, firma X-CavaAI-*): Postgres como canónico, Qdrant como índice
 semántico reconstruible, MinIO para originales y Redis/Dramatiq para jobs.
 OpenCode Go es el único LLM y Jev hace las micro-decisiones.
 

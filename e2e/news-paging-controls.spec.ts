@@ -18,14 +18,14 @@ function signedHeaders(method: string, path: string, body: Buffer) {
     .update(`${apiUser}:${apiUser}:${timestamp}:${nonce}:${method}:${path}:${bodyHash}`)
     .digest("hex");
   return {
-    "X-GerarAI-Tenant": apiUser,
-    "X-GerarAI-User": apiUser,
-    "X-GerarAI-Timestamp": timestamp,
-    "X-GerarAI-Nonce": nonce,
-    "X-GerarAI-Method": method,
-    "X-GerarAI-Path": path,
-    "X-GerarAI-Body-Hash": bodyHash,
-    "X-GerarAI-Signature": signature,
+    "X-CavaAI-Tenant": apiUser,
+    "X-CavaAI-User": apiUser,
+    "X-CavaAI-Timestamp": timestamp,
+    "X-CavaAI-Nonce": nonce,
+    "X-CavaAI-Method": method,
+    "X-CavaAI-Path": path,
+    "X-CavaAI-Body-Hash": bodyHash,
+    "X-CavaAI-Signature": signature,
     "Content-Type": "application/json",
   };
 }

@@ -8,7 +8,7 @@ export function GerarAIWordmark({ compact = false }: { compact?: boolean }) {
       </span>
       {!compact && (
         <span className="text-xl font-semibold tracking-tight text-white">
-          Cava<span className="text-teal-300">AI</span>
+          Gerar<span className="text-teal-300">AI</span>
         </span>
       )}
     </span>

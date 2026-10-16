@@ -37,14 +37,14 @@ function signedHeaders(method: string, path: string, body: Buffer) {
     .update(`${tenant}:${user}:${timestamp}:${nonce}:${method}:${path}:${bodyHash}`)
     .digest("hex");
   return {
-    "X-GerarAI-Tenant": tenant,
-    "X-GerarAI-User": user,
-    "X-GerarAI-Timestamp": timestamp,
-    "X-GerarAI-Nonce": nonce,
-    "X-GerarAI-Method": method,
-    "X-GerarAI-Path": path,
-    "X-GerarAI-Body-Hash": bodyHash,
-    "X-GerarAI-Signature": signature,
+    "X-CavaAI-Tenant": tenant,
+    "X-CavaAI-User": user,
+    "X-CavaAI-Timestamp": timestamp,
+    "X-CavaAI-Nonce": nonce,
+    "X-CavaAI-Method": method,
+    "X-CavaAI-Path": path,
+    "X-CavaAI-Body-Hash": bodyHash,
+    "X-CavaAI-Signature": signature,
   };
 }
 

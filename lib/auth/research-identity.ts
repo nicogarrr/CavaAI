@@ -95,13 +95,13 @@ export async function researchIdentityHeaders(
     .digest('hex');
 
   return {
-    'X-GerarAI-User': user.id,
-    'X-GerarAI-Tenant': tenantId,
-    'X-GerarAI-Timestamp': timestamp,
-    'X-GerarAI-Nonce': nonce,
-    'X-GerarAI-Method': method,
-    'X-GerarAI-Path': path,
-    'X-GerarAI-Body-Hash': bodyHash,
-    'X-GerarAI-Signature': signature,
+    'X-CavaAI-User': user.id,
+    'X-CavaAI-Tenant': tenantId,
+    'X-CavaAI-Timestamp': timestamp,
+    'X-CavaAI-Nonce': nonce,
+    'X-CavaAI-Method': method,
+    'X-CavaAI-Path': path,
+    'X-CavaAI-Body-Hash': bodyHash,
+    'X-CavaAI-Signature': signature,
   };
 }

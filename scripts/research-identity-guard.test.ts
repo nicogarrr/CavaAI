@@ -65,15 +65,15 @@ describe('researchIdentityHeaders: canonicalizacion HMAC', () => {
         body,
       });
       // Metodo en mayusculas y path sin query: parte del canon firmado.
-      assert.equal(headers['X-GerarAI-Method'], 'POST');
-      assert.equal(headers['X-GerarAI-Path'], '/api/memory/claims');
-      assert.equal(headers['X-GerarAI-Timestamp'], String(Math.floor(FIXED_MS / 1000)));
-      assert.equal(headers['X-GerarAI-Body-Hash'], sha256Hex(body));
+      assert.equal(headers['X-CavaAI-Method'], 'POST');
+      assert.equal(headers['X-CavaAI-Path'], '/api/memory/claims');
+      assert.equal(headers['X-CavaAI-Timestamp'], String(Math.floor(FIXED_MS / 1000)));
+      assert.equal(headers['X-CavaAI-Body-Hash'], sha256Hex(body));
       assert.equal(
-        headers['X-GerarAI-Signature'],
+        headers['X-CavaAI-Signature'],
         expectedSignature({
-          timestamp: headers['X-GerarAI-Timestamp'],
-          nonce: headers['X-GerarAI-Nonce'],
+          timestamp: headers['X-CavaAI-Timestamp'],
+          nonce: headers['X-CavaAI-Nonce'],
           method: 'POST',
           path: '/api/memory/claims',
           bodyHash: sha256Hex(body),
@@ -86,8 +86,8 @@ describe('researchIdentityHeaders: canonicalizacion HMAC', () => {
       const target = { method: 'GET', path: '/api/memory/claims', body: '' };
       const first = await researchIdentityHeaders(target);
       const second = await researchIdentityHeaders(target);
-      assert.notEqual(first['X-GerarAI-Nonce'], second['X-GerarAI-Nonce']);
-      assert.notEqual(first['X-GerarAI-Signature'], second['X-GerarAI-Signature']);
+      assert.notEqual(first['X-CavaAI-Nonce'], second['X-CavaAI-Nonce']);
+      assert.notEqual(first['X-CavaAI-Signature'], second['X-CavaAI-Signature']);
     }));
 
   it('cualquier tamper del body invalida la firma', () =>
@@ -98,13 +98,13 @@ describe('researchIdentityHeaders: canonicalizacion HMAC', () => {
         body: '{"statement":"original"}',
       });
       const tamperedHash = sha256Hex('{"statement":"tampered"}');
-      assert.notEqual(tamperedHash, original['X-GerarAI-Body-Hash']);
+      assert.notEqual(tamperedHash, original['X-CavaAI-Body-Hash']);
       // La firma original NO verifica contra el body manipulado.
       assert.notEqual(
-        original['X-GerarAI-Signature'],
+        original['X-CavaAI-Signature'],
         expectedSignature({
-          timestamp: original['X-GerarAI-Timestamp'],
-          nonce: original['X-GerarAI-Nonce'],
+          timestamp: original['X-CavaAI-Timestamp'],
+          nonce: original['X-CavaAI-Nonce'],
           method: 'POST',
           path: '/api/memory/claims',
           bodyHash: tamperedHash,
@@ -115,7 +115,7 @@ describe('researchIdentityHeaders: canonicalizacion HMAC', () => {
         method: 'POST',
         path: '/api/memory/claims',
       });
-      assert.notEqual(empty['X-GerarAI-Signature'], original['X-GerarAI-Signature']);
+      assert.notEqual(empty['X-CavaAI-Signature'], original['X-CavaAI-Signature']);
     }));
 
   it('mover la firma a otro metodo/path no verifica', () =>
@@ -126,13 +126,13 @@ describe('researchIdentityHeaders: canonicalizacion HMAC', () => {
         body: '',
       });
       const moved = expectedSignature({
-        timestamp: headers['X-GerarAI-Timestamp'],
-        nonce: headers['X-GerarAI-Nonce'],
+        timestamp: headers['X-CavaAI-Timestamp'],
+        nonce: headers['X-CavaAI-Nonce'],
         method: 'POST',
         path: '/api/alerts',
-        bodyHash: headers['X-GerarAI-Body-Hash'],
+        bodyHash: headers['X-CavaAI-Body-Hash'],
       });
-      assert.notEqual(headers['X-GerarAI-Signature'], moved);
+      assert.notEqual(headers['X-CavaAI-Signature'], moved);
     }));
 
   it('timestamp = floor(now): el cliente nunca emite skew futuro', () =>
@@ -142,7 +142,7 @@ describe('researchIdentityHeaders: canonicalizacion HMAC', () => {
         method: 'GET',
         path: '/api/memory/claims',
       });
-      const emitted = Number(headers['X-GerarAI-Timestamp']);
+      const emitted = Number(headers['X-CavaAI-Timestamp']);
       const after = Math.floor(Date.now() / 1000);
       assert.ok(emitted >= before && emitted <= after, 'timestamp fuera de ventana');
       assert.ok(emitted <= Math.floor(FIXED_MS / 1000), 'timestamp futuro prohibido');
@@ -195,4 +195,47 @@ describe('normalizeResearchBody: bytes identicos a los enviados', () => {
     assert.ok(normalized.body instanceof ArrayBuffer);
     assert.deepEqual(new Uint8Array(normalized.body as ArrayBuffer), bytes);
   });
+});
+
+describe("contrato frontend-backend: headers contra el cliente OpenAPI generado", () => {
+  // El oraculo es lib/research/openapi.generated.ts, generado DESDE el backend
+  // (data-engine) y vigilado por el job CI "OpenAPI generated client drift":
+  // si el backend cambiara los headers, el generado cambiaria y este test romperia.
+  // No es un grep del propio frontend: el codigo bajo test produce los headers y
+  // el artefacto generado por el backend decide si son los esperados.
+  const EXPECTED = [
+    "x-cavaai-user",
+    "x-cavaai-tenant",
+    "x-cavaai-timestamp",
+    "x-cavaai-nonce",
+    "x-cavaai-method",
+    "x-cavaai-path",
+    "x-cavaai-body-hash",
+    "x-cavaai-signature",
+  ];
+
+  it("los 8 headers firmados existen como parametros documentados en el spec generado", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const spec = await readFile(
+      new URL("../lib/research/openapi.generated.ts", import.meta.url),
+      "utf8",
+    );
+    for (const h of EXPECTED) {
+      assert.ok(
+        spec.includes(`"${h}"?: string | null;`),
+        `el cliente OpenAPI generado ya no documenta ${h}: deriva frontend-backend`,
+      );
+    }
+  });
+
+  it("researchIdentityHeaders emite exactamente esos 8 y ninguno mas", () =>
+    withFixedEnv(async () => {
+      const headers = await researchIdentityHeaders({
+        method: "get",
+        path: "/api/thesis/MSFT",
+        body: null,
+      });
+      const emitted = Object.keys(headers).map((k) => k.toLowerCase()).sort();
+      assert.deepEqual(emitted, [...EXPECTED].sort());
+    }));
 });

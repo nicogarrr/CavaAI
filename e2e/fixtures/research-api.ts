@@ -28,14 +28,14 @@ function signedHeaders(
     )
     .digest("hex");
   return {
-    "X-GerarAI-Tenant": apiTenant,
-    "X-GerarAI-User": apiUser,
-    "X-GerarAI-Timestamp": timestamp,
-    "X-GerarAI-Nonce": nonce,
-    "X-GerarAI-Method": method.toUpperCase(),
-    "X-GerarAI-Path": path,
-    "X-GerarAI-Body-Hash": bodyHash,
-    "X-GerarAI-Signature": signature,
+    "X-CavaAI-Tenant": apiTenant,
+    "X-CavaAI-User": apiUser,
+    "X-CavaAI-Timestamp": timestamp,
+    "X-CavaAI-Nonce": nonce,
+    "X-CavaAI-Method": method.toUpperCase(),
+    "X-CavaAI-Path": path,
+    "X-CavaAI-Body-Hash": bodyHash,
+    "X-CavaAI-Signature": signature,
   };
 }
 

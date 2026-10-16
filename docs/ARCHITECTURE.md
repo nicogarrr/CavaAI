@@ -12,8 +12,8 @@
 │                                                                         │
 │  lib/research/client.ts  ── researchRequest(path) ──►  FMP_BACKEND_URL  │
 │       │  headers firmados:                                              │
-│       │  X-GerarAI-User / X-GerarAI-Tenant / X-GerarAI-Timestamp /        │
-│       │  X-GerarAI-Signature (HMAC-SHA256 con RESEARCH_AUTH_SECRET,      │
+│       │  X-CavaAI-User / X-CavaAI-Tenant / X-CavaAI-Timestamp /        │
+│       │  X-CavaAI-Signature (HMAC-SHA256 con RESEARCH_AUTH_SECRET,      │
 │       │  tenant = user.id, TTL 300s)                                    │
 └───────┼─────────────────────────────────────────────────────────────────┘
         ▼
@@ -36,7 +36,7 @@
 - **Puente al backend**: `lib/research/client.ts` (`researchRequest`) firma la
   identidad del usuario autenticado con `RESEARCH_AUTH_SECRET`
   (HMAC-SHA256 sobre `{tenant}:{user}:{timestamp}`) y la envía en los headers
-  `X-GerarAI-*`. El navegador nunca construye estos headers: solo el servidor
+  `X-CavaAI-*`. El navegador nunca construye estos headers: solo el servidor
   Next.js los genera (server actions).
 - **Tenant**: el tenant del backend ES el `user.id` de better-auth
   (`lib/auth/research-identity.ts`, `tenantId = user.id`). FastAPI lo valida en

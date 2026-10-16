@@ -46,7 +46,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
   const buffer = await upstream.arrayBuffer();
   const disposition =
     upstream.headers.get('content-disposition') ??
-    `attachment; filename="cavaai-thesis-${encoded}.epub"`;
+    `attachment; filename="gerarai-thesis-${encoded}.epub"`;
   return new NextResponse(buffer, {
     headers: {
       'content-type': 'application/epub+zip',

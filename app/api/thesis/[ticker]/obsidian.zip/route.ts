@@ -31,7 +31,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
   return new NextResponse(await upstream.arrayBuffer(), {
     headers: {
       'content-type': 'application/zip',
-      'content-disposition': `attachment; filename="cavaai-obsidian-${clean}.zip"`,
+      'content-disposition': `attachment; filename="gerarai-obsidian-${clean}.zip"`,
       'cache-control': 'private, no-store',
       'x-content-type-options': 'nosniff',
     },
