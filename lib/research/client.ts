@@ -13,6 +13,8 @@ const BACKEND_URL = process.env.FMP_BACKEND_URL ?? 'http://localhost:8000';
  */
 export const RESEARCH_TIMEOUTS = {
   GLOBAL_MS: 15_000,
+  // 45s LLM + DB/guard/transport. Still below the 60s page budget.
+  CHAT_MS: 55_000,
   GET_FAST_MS: 8_000,
 } as const;
 
@@ -30,6 +32,9 @@ export function researchTimeoutFor(
 ): number {
   if (Number.isFinite(init.timeoutMs) && (init.timeoutMs as number) > 0) {
     return Math.floor(init.timeoutMs as number);
+  }
+  if (path === '/api/chat' && method.toUpperCase() === 'POST') {
+    return RESEARCH_TIMEOUTS.CHAT_MS;
   }
   const fastHomeOrPortfolioPath =
     path.startsWith('/api/portfolio/') ||

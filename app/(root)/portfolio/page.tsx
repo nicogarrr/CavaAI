@@ -10,6 +10,8 @@ import { sectionError } from '@/lib/section-error';
 // Forzar renderizado dinámico
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+// Server Actions on this page must outlive the 55s chat fetch budget.
+export const maxDuration = 60;
 
 export const metadata: Metadata = {
   title: 'Tu cartera',
