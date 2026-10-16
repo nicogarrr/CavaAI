@@ -34,7 +34,7 @@ def request():
     return LLMRequest(messages=[Message('user', 'x')], cache=False)
 
 
-def test_slow_primary_is_cancelled_and_real_factory_gives_fallback_time():
+def test_slow_primary_and_real_factory_gives_fallback_time():
     seen = []
     cancelled = []
 
@@ -77,7 +77,8 @@ def test_primary_budget_also_interrupts_retry_backoff():
             assert (await provider(client).complete(request())).model == FALLBACK
 
     asyncio.run(asyncio.wait_for(scenario(), timeout=2))
-    assert seen == [PRIMARY, FALLBACK]
+    assert seen[0] == PRIMARY
+    assert FALLBACK in seen
 
 
 def test_hung_fallback_still_obeys_total_deadline():
@@ -178,28 +179,77 @@ def test_fast_primary_failure_leaves_all_remaining_time_for_fallback():
     assert seen == [PRIMARY, FALLBACK]
 
 
-def test_primary_setup_time_cannot_shift_its_deadline():
+
+def test_valid_slow_primary_survives_backup_failure_without_restart():
     seen = []
+    cancelled = []
 
     async def handler(req):
         model = json.loads(req.content)['model']
         seen.append(model)
-        if model == PRIMARY:
-            await asyncio.sleep(5)
+        if model == FALLBACK:
+            return httpx.Response(403, json={'error': 'backup unavailable'})
+        try:
+            await asyncio.sleep(0.25)  # After hedge at 0.2, before total 0.3.
+        except asyncio.CancelledError:
+            cancelled.append(model)
+            raise
         return httpx.Response(200, json={**BODY, 'model': model})
 
     async def scenario():
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-            instance = provider(client)
-            traced = instance._complete_traced
-
-            async def setup_then_trace(req, model, extra_metadata=None, *, deadline=None):
-                if model == PRIMARY:
-                    await asyncio.sleep(0.15)
-                return await traced(req, model, extra_metadata, deadline=deadline)
-
-            instance._complete_traced = setup_then_trace
-            assert (await instance.complete(request())).model == FALLBACK
+            assert (await provider(client, retries=0).complete(request())).model == PRIMARY
 
     asyncio.run(asyncio.wait_for(scenario(), timeout=2))
     assert seen == [PRIMARY, FALLBACK]
+    assert cancelled == []
+
+
+def test_valid_slow_primary_wins_and_cancels_hung_backup():
+    seen = []
+    cancelled = []
+
+    async def handler(req):
+        model = json.loads(req.content)['model']
+        seen.append(model)
+        try:
+            await asyncio.sleep(0.25 if model == PRIMARY else 5)
+        except asyncio.CancelledError:
+            cancelled.append(model)
+            raise
+        return httpx.Response(200, json={**BODY, 'model': model})
+
+    async def scenario():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            assert (await provider(client).complete(request())).model == PRIMARY
+
+    asyncio.run(asyncio.wait_for(scenario(), timeout=2))
+    assert seen == [PRIMARY, FALLBACK]
+    assert cancelled == [FALLBACK]
+
+
+def test_caller_cancellation_after_hedge_collects_both_generations():
+    backup_started = asyncio.Event()
+    cancelled = []
+
+    async def handler(req):
+        model = json.loads(req.content)['model']
+        if model == FALLBACK:
+            backup_started.set()
+        try:
+            await asyncio.sleep(5)
+        except asyncio.CancelledError:
+            cancelled.append(model)
+            raise
+        return httpx.Response(200, json=BODY)
+
+    async def scenario():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            job = asyncio.create_task(provider(client).complete(request()))
+            await backup_started.wait()
+            job.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await job
+
+    asyncio.run(asyncio.wait_for(scenario(), timeout=2))
+    assert sorted(cancelled) == sorted([PRIMARY, FALLBACK])

@@ -277,40 +277,53 @@ class OpenAICompatibleProvider(LLMProvider):
     async def _complete_with_fallback(
         self, request: LLMRequest, model: str
     ) -> tuple[LLMResponse, bool]:
-        """Resuelve el modelo y devuelve la respuesta con si hubo fallback."""
+        """Respaldo tardio sin interrumpir una respuesta primaria aun valida."""
         fallback = self._fallback_model
-        # Reserva el ultimo tercio del plazo total para un respaldo distinto.
-        # Con 45 s: primario (incluidos retries/backoff) <= 30 s y respaldo
-        # dispone de los 15 s restantes. El wait_for exterior sigue acotando
-        # ambos; un fallo rapido permite al respaldo usar todo lo que quede.
-        # Sin respaldo utilizable no se recorta el presupuesto del primario.
-        primary_deadline = (
-            asyncio.get_running_loop().time() + self._total_timeout_seconds * (2 / 3)
-            if fallback and fallback != model and self._total_timeout_seconds
-            else None
-        )
+        if not fallback or fallback == model:
+            return await self._complete_traced(request, model), False
+
+        primary = asyncio.create_task(self._complete_traced(request, model))
+        tasks = [primary]
         try:
-            return await self._complete_traced(
-                request, model, deadline=primary_deadline
-            ), False
-        except Exception as primary_exc:
-            if not fallback or fallback == model:
-                raise
-            # El modelo resuelto fallo tras sus reintentos: una unica
-            # oportunidad con el modelo de respaldo (con sus propios
-            # reintentos). La traza del respaldo registra de que modelo y
-            # de que clase de error se viene.
-            response = await self._complete_traced(
-                request,
-                fallback,
-                extra_metadata={
-                    "fallback_from": model,
-                    "primary_error": type(primary_exc).__name__,
-                },
+            # Esperar NO cancela el primario. Si tarda mas de 2/3 del plazo,
+            # lanzar respaldo en paralelo; el primario conserva hasta el final
+            # los mismos 45 s que tenia antes. Fallo rapido = respaldo inmediato.
+            delay = self._total_timeout_seconds * (2 / 3) if self._total_timeout_seconds else None
+            done, _ = await asyncio.wait({primary}, timeout=delay)
+            metadata = {"fallback_from": model}
+            if done:
+                try:
+                    return primary.result(), False
+                except Exception as exc:
+                    metadata["primary_error"] = type(exc).__name__
+            else:
+                metadata["fallback_trigger"] = "primary_slow"
+
+            backup = asyncio.create_task(
+                self._complete_traced(request, fallback, extra_metadata=metadata)
             )
-            # Una respuesta obtenida por el camino degradado NO se cachea:
-            # congelaria en cache un resultado que solo se dio poracceptable.
-            return response, True
+            tasks.append(backup)
+            pending = {backup} | ({primary} if not done else set())
+            last_error: Exception | None = None
+            while pending:
+                done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+                # Si ambos terminan a la vez, preferir el primario valido.
+                for task in tasks:
+                    if task not in done:
+                        continue
+                    try:
+                        return task.result(), task is backup
+                    except Exception as exc:
+                        last_error = exc
+            assert last_error is not None
+            raise last_error
+        finally:
+            # Recoger errores y cancelaciones tambien al cancelar el caller o
+            # al agotarse el limite exterior. Ninguna generacion queda suelta.
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     def _build_payload(self, request: LLMRequest, model: str) -> dict[str, Any]:
         """Sobre OpenAI-compatible. Unico lugar que decide que se envia."""
@@ -378,8 +391,6 @@ class OpenAICompatibleProvider(LLMProvider):
         request: LLMRequest,
         model: str,
         extra_metadata: Mapping[str, str] | None = None,
-        *,
-        deadline: float | None = None,
     ) -> LLMResponse:
         # Stage 3: generation span sobre la traza activa (si la hay). Solo
         # metadatos y contadores; prompts y completaciones jamas salen.
@@ -389,13 +400,7 @@ class OpenAICompatibleProvider(LLMProvider):
 
         _started = _time.monotonic()
         try:
-            if deadline is not None:
-                # Plazo absoluto: preparar la traza tambien consume tiempo del
-                # primario, sin desplazar la reserva del respaldo.
-                async with asyncio.timeout_at(deadline):
-                    response = await self._complete(request, model)
-            else:
-                response = await self._complete(request, model)
+            response = await self._complete(request, model)
         except Exception as exc:
             _tracing.trace_generation(
                 name=f"llm.{request.task or 'complete'}",
