@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { register } from 'node:module';
 import { afterEach, test } from 'node:test';
 register('./quote-recovery.loader.mjs', import.meta.url);
@@ -40,4 +41,15 @@ test('master error is unavailable, not a fallback to US', async () => {
 test('known listing retains direct one-request path', async () => {
   const paths:string[]=[];globalThis.fetch=(async(url:RequestInfo|URL)=>{paths.push(String(url));return Response.json({status:'available'});}) as typeof fetch;
   assert.equal((await invoke('AENA.MC',false)).status,200);assert.equal(paths.length,1);assert.match(paths[0]??'',/AENA.MC\/extended-quote$/);
+});
+
+test('effective specific function budget exceeds the shared 18s recovery deadline', () => {
+  const config = JSON.parse(readFileSync('vercel.json','utf8'));
+  const functions = Object.keys(config.functions);
+  const specific = 'app/api/companies/**/extended-quote/route.ts';
+  assert.ok(functions.indexOf(specific) < functions.indexOf('app/**/route.ts'));
+  assert.equal(config.functions[specific].maxDuration,30);
+  assert.ok(config.functions[specific].maxDuration * 1000 > 18000 + 6000);
+  const route=readFileSync('app/api/companies/[ticker]/extended-quote/route.ts','utf8');
+  assert.match(route,/AbortSignal.timeout\(18000\)/);
 });

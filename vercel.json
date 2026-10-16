@@ -12,6 +12,9 @@
     "fra1"
   ],
   "functions": {
+    "app/api/companies/**/extended-quote/route.ts": {
+      "maxDuration": 30
+    },
     "app/(root)/research/**": {
       "maxDuration": 60
     },
