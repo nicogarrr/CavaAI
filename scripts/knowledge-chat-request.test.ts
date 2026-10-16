@@ -9,9 +9,11 @@ const { askKnowledge } = await import('../lib/actions/knowledge-chat.actions.ts'
 const { AppError } = await import('../lib/types/errors.ts');
 const savedFetch = globalThis.fetch;
 const savedTimeout = AbortSignal.timeout;
-afterEach(() => { globalThis.fetch = savedFetch; AbortSignal.timeout = savedTimeout; });
+const savedNow = Date.now;
+afterEach(() => { globalThis.fetch = savedFetch; AbortSignal.timeout = savedTimeout; Date.now = savedNow; });
 
 test('chat POST tiene 60s explícitos y request abortable, sin retry de POST', async () => {
+  Date.now = () => 1792157400000; // A deterministic deadline, independent of CI scheduling.
   let calls = 0;
   let budget = 0;
   AbortSignal.timeout = (ms: number) => { budget = ms; return savedTimeout(5); };
