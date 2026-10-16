@@ -12,7 +12,7 @@ import { isBackendUnavailableError } from '@/lib/backend-offline';
 export const metadata: Metadata = {
   title: 'Movers',
   description:
-    'Mayores subidas y caídas sobre los precios que CavaAI tiene ingeridos, con el origen del dato declarado.',
+    'Mayores subidas y caídas sobre los precios que GerarAI tiene ingeridos, con el origen del dato declarado.',
 };
 
 export const dynamic = 'force-dynamic';

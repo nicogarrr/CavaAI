@@ -1,6 +1,6 @@
 # Financial Document Privacy and Data Retention
 
-CavaAI treats uploaded filings, earnings material, research notes, portfolio data and generated theses as private financial research data. Data is tenant-scoped in PostgreSQL and object storage; one tenant must never be able to query another tenant's records or document objects.
+GerarAI treats uploaded filings, earnings material, research notes, portfolio data and generated theses as private financial research data. Data is tenant-scoped in PostgreSQL and object storage; one tenant must never be able to query another tenant's records or document objects.
 
 ## Processing policy
 

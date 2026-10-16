@@ -44,7 +44,7 @@ export default function AccessRequestForm() {
     }
 
     return (
-        <form onSubmit={onSubmit} className="space-y-4" aria-label="Pedir acceso a CavaAI" noValidate>
+        <form onSubmit={onSubmit} className="space-y-4" aria-label="Pedir acceso a GerarAI" noValidate>
             <div>
                 <label htmlFor="ar-name" className="form-label">Nombre</label>
                 <input id="ar-name" name="name" required maxLength={ACCESS_REQUEST_LIMITS.nameMax} autoComplete="name" className="form-input" aria-invalid={error?.field === 'name'} />
@@ -55,7 +55,7 @@ export default function AccessRequestForm() {
             </div>
             <div>
                 <label htmlFor="ar-note" className="form-label">Nota (opcional)</label>
-                <textarea id="ar-note" name="note" rows={3} maxLength={ACCESS_REQUEST_LIMITS.noteMax} placeholder="Qué quieres analizar con CavaAI" className="form-input" aria-invalid={error?.field === 'note'} />
+                <textarea id="ar-note" name="note" rows={3} maxLength={ACCESS_REQUEST_LIMITS.noteMax} placeholder="Qué quieres analizar con GerarAI" className="form-input" aria-invalid={error?.field === 'note'} />
             </div>
             {/* Campo trampa: fuera de pantalla y fuera del orden de tabulacion. */}
             <div aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 overflow-hidden">

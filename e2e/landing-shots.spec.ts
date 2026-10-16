@@ -72,14 +72,14 @@ async function landingAsentada(page: import("@playwright/test").Page, alts: RegE
 test("landing shots: landing desktop fullpage", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
-  await landingAsentada(page, [/Ficha de empresa de CavaAI/, /CavaAI en tablet/, /CavaAI en móvil/]);
+  await landingAsentada(page, [/Ficha de empresa de GerarAI/, /GerarAI en tablet/, /GerarAI en móvil/]);
   await page.screenshot({ path: "test-results/landing-page-desktop.png", fullPage: true });
 });
 
 test("landing shots: landing movil fullpage", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
-  await landingAsentada(page, [/Ficha de empresa de CavaAI/, /CavaAI en móvil/]);
+  await landingAsentada(page, [/Ficha de empresa de GerarAI/, /GerarAI en móvil/]);
   // Sin desbordamiento horizontal: el layout debe caber en 390px de verdad.
   // El mensaje nombra a los culpables: la próxima CI roja dice QUÉ se sale,
   // no solo cuánto.

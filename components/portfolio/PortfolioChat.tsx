@@ -21,7 +21,7 @@ export function PortfolioChat({ userId }: PortfolioChatProps) {
     const [isOpen, setIsOpen] = useState(false);
     const [isMaximized, setIsMaximized] = useState(false); // State for maximize
     const [messages, setMessages] = useState<Message[]>([
-        { role: 'assistant', content: '¡Hola! Soy CavaAI. Pregúntame sobre tu cartera, tus tesis de inversión o conceptos de Value Investing.' }
+        { role: 'assistant', content: '¡Hola! Soy GerarAI. Pregúntame sobre tu cartera, tus tesis de inversión o conceptos de Value Investing.' }
     ]);
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
@@ -174,7 +174,7 @@ export function PortfolioChat({ userId }: PortfolioChatProps) {
                     <div className="p-2 bg-indigo-500/20 rounded-full">
                         <Brain aria-hidden="true" className="h-4 w-4 text-indigo-400" />
                     </div>
-                    <CardTitle id="portfolio-chat-title" className="text-sm font-medium">CavaAI Assistant</CardTitle>
+                    <CardTitle id="portfolio-chat-title" className="text-sm font-medium">GerarAI Assistant</CardTitle>
                 </div>
                 <div className="flex items-center gap-1">
                     <Button
@@ -245,7 +245,7 @@ export function PortfolioChat({ userId }: PortfolioChatProps) {
                                 </div>
                                 <div role="status" aria-live="polite" className="p-3 rounded-lg bg-slate-800 border border-slate-700 rounded-tl-none">
                                     <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin text-indigo-400" />
-                                    <span className="sr-only">CavaAI está escribiendo la respuesta.</span>
+                                    <span className="sr-only">GerarAI está escribiendo la respuesta.</span>
                                 </div>
                             </div>
                         </div>

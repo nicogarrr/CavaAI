@@ -19,7 +19,7 @@ $running = docker ps --format "{{.Names}}" | Where-Object {
     $_ -like "cavaai-*" -or $_ -like "jlcava-*"
 }
 if ($running) {
-    throw "Stop CavaAI containers before migrating volumes: $($running -join ', ')"
+    throw "Stop GerarAI containers before migrating volumes: $($running -join ', ')"
 }
 
 foreach ($entry in $mappings.GetEnumerator()) {

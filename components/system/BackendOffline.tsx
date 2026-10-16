@@ -25,7 +25,7 @@ export default function BackendOffline({ feature, retryHref }: Props) {
         {feature} no está disponible ahora mismo
       </h1>
       <p className="max-w-md text-sm leading-6 text-gray-400">
-        Esta pantalla necesita el servidor de CavaAI.
+        Esta pantalla necesita el servidor de GerarAI.
       </p>
       <Button asChild className="min-h-[44px] px-6">
         <Link href={retryHref}>
@@ -34,7 +34,7 @@ export default function BackendOffline({ feature, retryHref }: Props) {
         </Link>
       </Button>
       <p className="text-xs text-gray-500">
-        El servidor de CavaAI no ha podido completar la consulta. Reintenta en unos segundos.
+        El servidor de GerarAI no ha podido completar la consulta. Reintenta en unos segundos.
       </p>
     </main>
   );

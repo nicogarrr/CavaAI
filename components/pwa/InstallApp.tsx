@@ -64,9 +64,9 @@ export default function InstallApp() {
             data-testid="install-app"
             className="rounded-lg border border-gray-700/60 bg-surface-1 p-4 space-y-3"
         >
-            <h2 className="text-lg font-semibold text-white">Instalar CavaAI</h2>
+            <h2 className="text-lg font-semibold text-white">Instalar GerarAI</h2>
             {mode === 'checking' ? null : mode === 'installed' ? (
-                <p className="text-sm text-gray-300">CavaAI ya está instalada en este dispositivo.</p>
+                <p className="text-sm text-gray-300">GerarAI ya está instalada en este dispositivo.</p>
             ) : mode === 'prompt' ? (
                 <>
                     <p className="text-sm text-gray-400">
@@ -85,7 +85,7 @@ export default function InstallApp() {
             ) : (
                 <p className="text-sm text-gray-400" data-testid="install-manual">
                     Tu navegador no ofrece el botón de instalar aquí. En Chrome o Edge abre el menú y elige
-                    «Instalar CavaAI» (o «Añadir a la pantalla de inicio» en el móvil).
+                    «Instalar GerarAI» (o «Añadir a la pantalla de inicio» en el móvil).
                 </p>
             )}
         </section>

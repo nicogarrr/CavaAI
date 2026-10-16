@@ -4,7 +4,7 @@ Date: 2026-08-16
 
 ## Decision
 
-CavaAI uses **OpenCode (Zen API) as its only LLM provider**. All backend
+GerarAI uses **OpenCode (Zen API) as its only LLM provider**. All backend
 research workflows use the same OpenAI-compatible API:
 
 ```text
@@ -87,7 +87,7 @@ to OpenCode Go; it never selects another provider.
 
 ## Cost and reliability
 
-OpenCode Go applies its own subscription quotas and model limits. CavaAI keeps
+OpenCode Go applies its own subscription quotas and model limits. GerarAI keeps
 request timeout, retry, daily cap, and monthly cap controls in the backend so
 expensive workflows remain bounded. Provider failures are surfaced as typed
 LLM errors and do not create unsupported financial facts.

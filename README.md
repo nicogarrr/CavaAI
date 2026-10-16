@@ -1,9 +1,9 @@
-# CavaAI — Research OS de inversión personal
+# GerarAI — Research OS de inversión personal
 
 ![CI](https://github.com/nicogarrr/CavaAI/actions/workflows/ci.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
 
-**CavaAI es tu memoria de inversor a largo plazo.** No es un terminal más ni una fábrica de DCF: es donde vive por qué sigues o posees cada empresa, qué evidencias sostienen tu tesis, qué la contradice y qué ha cambiado con el tiempo.
+**GerarAI es tu memoria de inversor a largo plazo.** No es un terminal más ni una fábrica de DCF: es donde vive por qué sigues o posees cada empresa, qué evidencias sostienen tu tesis, qué la contradice y qué ha cambiado con el tiempo.
 
 > Esto no es asesoramiento financiero. Los datos pueden llegar con retraso o estar incompletos según el proveedor.
 
@@ -161,7 +161,7 @@ Todos aceptan `--json` para volcar el informe. El eval del RAG indexa en
 ## Arquitectura en 30 segundos
 
 Next.js (App Router, server actions firmadas HMAC) habla con FastAPI
-(`/api/*`, firma X-CavaAI-*): Postgres como canónico, Qdrant como índice
+(`/api/*`, firma X-GerarAI-*): Postgres como canónico, Qdrant como índice
 semántico reconstruible, MinIO para originales y Redis/Dramatiq para jobs.
 OpenCode Go es el único LLM y Jev hace las micro-decisiones.
 

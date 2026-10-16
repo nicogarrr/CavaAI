@@ -23,14 +23,14 @@ function signedHeaders(method: string, path: string, body: Buffer) {
     .update(`${apiUser}:${apiUser}:${timestamp}:${nonce}:${method}:${path}:${bodyHash}`)
     .digest("hex");
   return {
-    "X-CavaAI-Tenant": apiUser,
-    "X-CavaAI-User": apiUser,
-    "X-CavaAI-Timestamp": timestamp,
-    "X-CavaAI-Nonce": nonce,
-    "X-CavaAI-Method": method,
-    "X-CavaAI-Path": path,
-    "X-CavaAI-Body-Hash": bodyHash,
-    "X-CavaAI-Signature": signature,
+    "X-GerarAI-Tenant": apiUser,
+    "X-GerarAI-User": apiUser,
+    "X-GerarAI-Timestamp": timestamp,
+    "X-GerarAI-Nonce": nonce,
+    "X-GerarAI-Method": method,
+    "X-GerarAI-Path": path,
+    "X-GerarAI-Body-Hash": bodyHash,
+    "X-GerarAI-Signature": signature,
     "Content-Type": "application/json",
   };
 }
@@ -51,7 +51,7 @@ test("tarjetas de /research sin sector en inglés", async ({ page }) => {
   await page.screenshot({ path: "test-results/news-es-research-cards.png" });
 });
 
-// Procedencia: un titular SEC generado por CavaAI (headline_from_source=false)
+// Procedencia: un titular SEC generado por GerarAI (headline_from_source=false)
 // no repite el ticker como prefijo — la UI muestra el título recortado y la
 // API expone el flag que lo gobierna.
 test("titular sintético SEC sin prefijo de ticker duplicado", async ({ page, request }) => {

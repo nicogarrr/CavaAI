@@ -65,15 +65,15 @@ describe('researchIdentityHeaders: canonicalizacion HMAC', () => {
         body,
       });
       // Metodo en mayusculas y path sin query: parte del canon firmado.
-      assert.equal(headers['X-CavaAI-Method'], 'POST');
-      assert.equal(headers['X-CavaAI-Path'], '/api/memory/claims');
-      assert.equal(headers['X-CavaAI-Timestamp'], String(Math.floor(FIXED_MS / 1000)));
-      assert.equal(headers['X-CavaAI-Body-Hash'], sha256Hex(body));
+      assert.equal(headers['X-GerarAI-Method'], 'POST');
+      assert.equal(headers['X-GerarAI-Path'], '/api/memory/claims');
+      assert.equal(headers['X-GerarAI-Timestamp'], String(Math.floor(FIXED_MS / 1000)));
+      assert.equal(headers['X-GerarAI-Body-Hash'], sha256Hex(body));
       assert.equal(
-        headers['X-CavaAI-Signature'],
+        headers['X-GerarAI-Signature'],
         expectedSignature({
-          timestamp: headers['X-CavaAI-Timestamp'],
-          nonce: headers['X-CavaAI-Nonce'],
+          timestamp: headers['X-GerarAI-Timestamp'],
+          nonce: headers['X-GerarAI-Nonce'],
           method: 'POST',
           path: '/api/memory/claims',
           bodyHash: sha256Hex(body),
@@ -86,8 +86,8 @@ describe('researchIdentityHeaders: canonicalizacion HMAC', () => {
       const target = { method: 'GET', path: '/api/memory/claims', body: '' };
       const first = await researchIdentityHeaders(target);
       const second = await researchIdentityHeaders(target);
-      assert.notEqual(first['X-CavaAI-Nonce'], second['X-CavaAI-Nonce']);
-      assert.notEqual(first['X-CavaAI-Signature'], second['X-CavaAI-Signature']);
+      assert.notEqual(first['X-GerarAI-Nonce'], second['X-GerarAI-Nonce']);
+      assert.notEqual(first['X-GerarAI-Signature'], second['X-GerarAI-Signature']);
     }));
 
   it('cualquier tamper del body invalida la firma', () =>
@@ -98,13 +98,13 @@ describe('researchIdentityHeaders: canonicalizacion HMAC', () => {
         body: '{"statement":"original"}',
       });
       const tamperedHash = sha256Hex('{"statement":"tampered"}');
-      assert.notEqual(tamperedHash, original['X-CavaAI-Body-Hash']);
+      assert.notEqual(tamperedHash, original['X-GerarAI-Body-Hash']);
       // La firma original NO verifica contra el body manipulado.
       assert.notEqual(
-        original['X-CavaAI-Signature'],
+        original['X-GerarAI-Signature'],
         expectedSignature({
-          timestamp: original['X-CavaAI-Timestamp'],
-          nonce: original['X-CavaAI-Nonce'],
+          timestamp: original['X-GerarAI-Timestamp'],
+          nonce: original['X-GerarAI-Nonce'],
           method: 'POST',
           path: '/api/memory/claims',
           bodyHash: tamperedHash,
@@ -115,7 +115,7 @@ describe('researchIdentityHeaders: canonicalizacion HMAC', () => {
         method: 'POST',
         path: '/api/memory/claims',
       });
-      assert.notEqual(empty['X-CavaAI-Signature'], original['X-CavaAI-Signature']);
+      assert.notEqual(empty['X-GerarAI-Signature'], original['X-GerarAI-Signature']);
     }));
 
   it('mover la firma a otro metodo/path no verifica', () =>
@@ -126,13 +126,13 @@ describe('researchIdentityHeaders: canonicalizacion HMAC', () => {
         body: '',
       });
       const moved = expectedSignature({
-        timestamp: headers['X-CavaAI-Timestamp'],
-        nonce: headers['X-CavaAI-Nonce'],
+        timestamp: headers['X-GerarAI-Timestamp'],
+        nonce: headers['X-GerarAI-Nonce'],
         method: 'POST',
         path: '/api/alerts',
-        bodyHash: headers['X-CavaAI-Body-Hash'],
+        bodyHash: headers['X-GerarAI-Body-Hash'],
       });
-      assert.notEqual(headers['X-CavaAI-Signature'], moved);
+      assert.notEqual(headers['X-GerarAI-Signature'], moved);
     }));
 
   it('timestamp = floor(now): el cliente nunca emite skew futuro', () =>
@@ -142,7 +142,7 @@ describe('researchIdentityHeaders: canonicalizacion HMAC', () => {
         method: 'GET',
         path: '/api/memory/claims',
       });
-      const emitted = Number(headers['X-CavaAI-Timestamp']);
+      const emitted = Number(headers['X-GerarAI-Timestamp']);
       const after = Math.floor(Date.now() / 1000);
       assert.ok(emitted >= before && emitted <= after, 'timestamp fuera de ventana');
       assert.ok(emitted <= Math.floor(FIXED_MS / 1000), 'timestamp futuro prohibido');

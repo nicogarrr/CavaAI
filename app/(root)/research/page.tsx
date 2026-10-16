@@ -32,7 +32,7 @@ export const revalidate = 0;
 export const metadata: Metadata = {
     title: 'Índice de research',
     description:
-        'Índice de las empresas con research en CavaAI: cobertura de su research, rating de la última tesis y fecha de la última versión.',
+        'Índice de las empresas con research en GerarAI: cobertura de su research, rating de la última tesis y fecha de la última versión.',
 };
 
 /**

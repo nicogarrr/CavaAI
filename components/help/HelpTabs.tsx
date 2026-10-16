@@ -64,12 +64,12 @@ const modules = [
 
 const faqs = [
   {
-    question: "¿Cuánto cuesta usar CavaAI?",
+    question: "¿Cuánto cuesta usar GerarAI?",
     answer: "La app no tiene planes de pago ni cobra por usarla. Funciona con proveedores de datos de capa gratuita (Finnhub, Yahoo Finance, SEC EDGAR), lo que limita la cobertura y la frescura de algunos datos."
   },
   {
     question: "¿Esto es asesoramiento financiero?",
-    answer: "No. CavaAI es una herramienta de análisis: los modelos y las tesis dependen de supuestos visibles y pueden fallar. Las decisiones de inversión son tuyas."
+    answer: "No. GerarAI es una herramienta de análisis: los modelos y las tesis dependen de supuestos visibles y pueden fallar. Las decisiones de inversión son tuyas."
   },
   {
     question: "¿Cómo sigo una compañía?",

@@ -56,7 +56,7 @@ const createAuthInstance = (database?: ReturnType<typeof mongodbAdapter>) => bet
     plugins: [
         nextCookies(),
         twoFactor({
-            issuer: "CavaAI",
+            issuer: "GerarAI",
         }),
     ],
 });

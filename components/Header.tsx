@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { CavaAIWordmark } from '@/components/CavaAIWordmark';
+import { GerarAIWordmark } from '@/components/GerarAIWordmark';
 import UserDropdown from '@/components/UserDropdown';
 import SearchCommand from '@/components/SearchCommand';
 import MobileNav from '@/components/MobileNav';
@@ -20,7 +20,7 @@ const Header = ({ user, initialStocks }: { user: User; initialStocks?: StockWith
                 <div className="flex min-w-0 shrink-0 items-center gap-1">
                     <MobileNav initialStocks={initialStocks} />
                     <Link href="/inicio" prefetch={false} className="flex min-h-11 items-center justify-center gap-2">
-                        <CavaAIWordmark />
+                        <GerarAIWordmark />
                     </Link>
                 </div>
 

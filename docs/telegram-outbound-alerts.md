@@ -1,6 +1,6 @@
 # Alertas salientes por el bot de Asistenta
 
-Sin API de pago. CavaAI usa `sendMessage` de Telegram Bot API y el bot ya
+Sin API de pago. GerarAI usa `sendMessage` de Telegram Bot API y el bot ya
 existente de Asistenta, sin crear otro bot ni consumir `getUpdates`.
 Asistenta sigue siendo el único consumidor de actualizaciones/webhook.
 
@@ -11,9 +11,9 @@ Asistenta sigue siendo el único consumidor de actualizaciones/webhook.
 2. `TELEGRAM_ENABLED=true` habilita el adaptador, pero **no** crea suscripciones.
 3. Asistenta debe obtener `message.chat.id` de una conversación privada iniciada
    por el usuario y verificar su asociación con la identidad autenticada de
-   CavaAI. No confiar en un chat reenviado ni permitir grupos para esta conexión.
+   GerarAI. No confiar en un chat reenviado ni permitir grupos para esta conexión.
 4. El propietario confirma el chat y los tipos deseados desde la sesión firmada
-   de CavaAI. La API no permite que otro usuario modifique la suscripción del
+   de GerarAI. La API no permite que otro usuario modifique la suscripción del
    propietario. El chat positivo privado se guarda por workspace personal/tipo;
    nunca se reutiliza `TELEGRAM_CHAT_ID` global para estos eventos.
 5. `PUT /api/alerts/telegram-subscriptions/{event_type}`:
@@ -25,7 +25,7 @@ Asistenta sigue siendo el único consumidor de actualizaciones/webhook.
    no una pantalla nueva. Hasta verificar el chat y activar cada tipo no se envía nada.
 
 Una suscripción requiere tenant y usuario verificados por el puente de auth
-existente, nunca IDs suministrados en el cuerpo. El modelo actual de CavaAI es
+existente, nunca IDs suministrados en el cuerpo. El modelo actual de GerarAI es
 un workspace personal de un propietario; no es un servicio multiusuario dentro
 del mismo workspace. Para añadir miembros se necesitaría un outbox por destinatario.
 
@@ -76,7 +76,7 @@ El chat_id ya no se acepta como prueba de propiedad. Suscripciones existentes
 sin vínculo confirmado quedan bloqueadas, y ningún tipo de alerta desconocido
 puede usar el chat global.
 
-1. Con sesión CavaAI firmada, `POST /api/alerts/telegram-link` devuelve un
+1. Con sesión GerarAI firmada, `POST /api/alerts/telegram-link` devuelve un
    `challenge_id` y `/link <código de un solo uso>` que caduca en 10 minutos.
    Solo se guarda SHA-256 del código. Un nuevo inicio invalida códigos anteriores.
 2. El propietario envía ese comando al bot de Asistenta en su chat privado.
@@ -93,13 +93,13 @@ puede usar el chat global.
      `timestamp + "." + bytes_exactos_del_JSON`.
    - `Content-Type: application/json`.
    La clave compartida `TELEGRAM_LINK_SECRET` debe tener >=32 caracteres y
-   existir SOLO en el entorno servidor de Asistenta y CavaAI. Es distinta del
-   bot token y de la clave de identidad CavaAI. Nunca frontend, chat ni Git.
-   CavaAI valida firma y edad <=60 s, exige chat privado y remitente igual al
+   existir SOLO en el entorno servidor de Asistenta y GerarAI. Es distinta del
+   bot token y de la clave de identidad GerarAI. Nunca frontend, chat ni Git.
+   GerarAI valida firma y edad <=60 s, exige chat privado y remitente igual al
    chat, y consume el código una vez de forma atómica. Este endpoint no necesita
-   firma de usuario CavaAI: la autenticación es HMAC del bot, fail-closed si falta.
+   firma de usuario GerarAI: la autenticación es HMAC del bot, fail-closed si falta.
 5. El propietario consulta `GET /api/alerts/telegram-link/{challenge_id}` en
-   CavaAI, revisa el chat candidato y confirma con
+   GerarAI, revisa el chat candidato y confirma con
    `POST /api/alerts/telegram-link/{challenge_id}/confirm`, cuerpo
    `{ "chat_id": "<candidato revisado>" }`. No puede confirmar otro usuario
    ni un chat diferente del probado por el bot. Solo entonces se persiste el

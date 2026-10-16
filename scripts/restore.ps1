@@ -5,7 +5,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 if (-not $ConfirmRestore) {
-    throw "Restore replaces current CavaAI data. Re-run with -ConfirmRestore."
+    throw "Restore replaces current GerarAI data. Re-run with -ConfirmRestore."
 }
 $workspace = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $backup = [System.IO.Path]::GetFullPath($BackupPath)

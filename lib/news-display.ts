@@ -1,6 +1,6 @@
 /**
  * Representación del titular de noticias (quick win UX 4): los titulares
- * de display generados por CavaAI (metadata.headline_from_source ===
+ * de display generados por GerarAI (metadata.headline_from_source ===
  * false, p.ej. «AAPL 8-K presentado ante la SEC») llevan el ticker como
  * prefijo legado F175; cuando la superficie ya muestra el ticker en su
  * propia columna/campo, el prefijo se omite para no pintarlo dos veces.

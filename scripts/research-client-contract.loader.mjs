@@ -40,7 +40,7 @@ export async function load(url, context, nextLoad) {
         "  return typeof body === 'string' ? { body } : {};",
         '}',
         'export async function researchIdentityHeaders() {',
-        "  return { 'X-CavaAI-User': 'contract-test-user' };",
+        "  return { 'X-GerarAI-User': 'contract-test-user' };",
         '}',
       ].join('\n'),
       shortCircuit: true,

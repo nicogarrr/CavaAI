@@ -13,9 +13,9 @@ test('research controls cannot accept input before their client handlers exist',
     .update(`e2e-api-tenant:e2e-api-user:${timestamp}:${nonce}:POST:${path}:${hash}`).digest('hex');
   const response = await request.post(`${process.env.E2E_UI_BACKEND_URL ?? 'http://127.0.0.1:8100'}${path}`, {
     data: body, headers: {
-      'Content-Type': 'application/json', 'X-CavaAI-Tenant': 'e2e-api-tenant', 'X-CavaAI-User': 'e2e-api-user',
-      'X-CavaAI-Timestamp': timestamp, 'X-CavaAI-Nonce': nonce, 'X-CavaAI-Method': 'POST',
-      'X-CavaAI-Path': path, 'X-CavaAI-Body-Hash': hash, 'X-CavaAI-Signature': signature,
+      'Content-Type': 'application/json', 'X-GerarAI-Tenant': 'e2e-api-tenant', 'X-GerarAI-User': 'e2e-api-user',
+      'X-GerarAI-Timestamp': timestamp, 'X-GerarAI-Nonce': nonce, 'X-GerarAI-Method': 'POST',
+      'X-GerarAI-Path': path, 'X-GerarAI-Body-Hash': hash, 'X-GerarAI-Signature': signature,
     },
   });
   expect(response.ok()).toBeTruthy();
