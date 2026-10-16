@@ -278,10 +278,22 @@ class OpenAICompatibleProvider(LLMProvider):
         self, request: LLMRequest, model: str
     ) -> tuple[LLMResponse, bool]:
         """Resuelve el modelo y devuelve la respuesta con si hubo fallback."""
+        fallback = self._fallback_model
+        # Reserva el ultimo tercio del plazo total para un respaldo distinto.
+        # Con 45 s: primario (incluidos retries/backoff) <= 30 s y respaldo
+        # dispone de los 15 s restantes. El wait_for exterior sigue acotando
+        # ambos; un fallo rapido permite al respaldo usar todo lo que quede.
+        # Sin respaldo utilizable no se recorta el presupuesto del primario.
+        primary_deadline = (
+            asyncio.get_running_loop().time() + self._total_timeout_seconds * (2 / 3)
+            if fallback and fallback != model and self._total_timeout_seconds
+            else None
+        )
         try:
-            return await self._complete_traced(request, model), False
+            return await self._complete_traced(
+                request, model, deadline=primary_deadline
+            ), False
         except Exception as primary_exc:
-            fallback = self._fallback_model
             if not fallback or fallback == model:
                 raise
             # El modelo resuelto fallo tras sus reintentos: una unica
@@ -366,6 +378,8 @@ class OpenAICompatibleProvider(LLMProvider):
         request: LLMRequest,
         model: str,
         extra_metadata: Mapping[str, str] | None = None,
+        *,
+        deadline: float | None = None,
     ) -> LLMResponse:
         # Stage 3: generation span sobre la traza activa (si la hay). Solo
         # metadatos y contadores; prompts y completaciones jamas salen.
@@ -375,7 +389,13 @@ class OpenAICompatibleProvider(LLMProvider):
 
         _started = _time.monotonic()
         try:
-            response = await self._complete(request, model)
+            if deadline is not None:
+                # Plazo absoluto: preparar la traza tambien consume tiempo del
+                # primario, sin desplazar la reserva del respaldo.
+                async with asyncio.timeout_at(deadline):
+                    response = await self._complete(request, model)
+            else:
+                response = await self._complete(request, model)
         except Exception as exc:
             _tracing.trace_generation(
                 name=f"llm.{request.task or 'complete'}",

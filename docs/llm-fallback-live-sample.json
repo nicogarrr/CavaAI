@@ -1,0 +1,1 @@
+{"probe": "candidate_isolated_slow_primary_real_space_fallback", "models_attempted": ["deepseek-v4.1-flash-free", "space-bunny-free"], "cancelled_primary": ["deepseek-v4.1-flash-free"], "seconds": 33.054, "total_budget_s": 45.0, "model": "space-bunny-free", "content": "OK"}
