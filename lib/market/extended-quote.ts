@@ -38,3 +38,9 @@ export function quoteDate(timestamp: number | null | undefined): string {
         timeZone: 'Europe/Madrid', day: 'numeric', month: 'short',
     }).format(new Date(timestamp * 1000)) : 'N/D';
 }
+
+/** Session date only: never claim the daily bar's opening time is its close. */
+export function quoteSessionDate(value: string | null | undefined): string {
+    if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return 'N/D';
+    return new Intl.DateTimeFormat('es-ES', { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(`${value}T12:00:00Z`));
+}

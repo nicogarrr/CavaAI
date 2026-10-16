@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { NA, formatMoney, formatNumber, formatPercent, isValidCurrencyCode } from '@/lib/format';
-import { extendedQuoteLabel, quoteDate, quoteTime, type ExtendedQuote } from '@/lib/market/extended-quote';
+import { extendedQuoteLabel, quoteDate, quoteTime, quoteSessionDate, type ExtendedQuote } from '@/lib/market/extended-quote';
 import { quoteSymbolFor } from '@/lib/market/quote-symbol';
 import { CompanyTechnicalWorkspace } from './CompanyTechnicalWorkspace';
 import type { CompanyMarketSnapshot } from '@/lib/actions/market-workspace.actions';
@@ -64,7 +64,7 @@ export function CompanyHeaderQuote({ snapshot }: { snapshot: CompanyMarketSnapsh
                     </div>
                 ) : null}
                 <p className="mt-2 text-xs text-gray-500">
-                    Cierre regular: {showPrice && quote?.regular_close_timestamp ? `${formatMoney(quote.regular_close, currency)} · ${quoteDate(quote.regular_close_timestamp)} · ${quoteTime(quote.regular_close_timestamp)}` : NA}
+                    Cierre regular: {showPrice && quote?.regular_close != null && (quote.regular_close_timestamp || quote.regular_close_date) ? `${formatMoney(quote.regular_close, currency)} · ${quote.regular_close_timestamp ? `${quoteDate(quote.regular_close_timestamp)} · ${quoteTime(quote.regular_close_timestamp)}` : quoteSessionDate(quote.regular_close_date)}` : NA}
                 </p>
                 {showPrice ? <p className="mt-1 text-xs text-gray-500">{quote!.source} · {quoteTime(quote!.timestamp)} (Madrid)</p> : null}
             </div>
@@ -74,12 +74,12 @@ export function CompanyHeaderQuote({ snapshot }: { snapshot: CompanyMarketSnapsh
                         ['Apertura', hasDatedMetrics ? quote!.open : null],
                         ['Máximo', hasDatedMetrics ? quote!.high : null],
                         ['Mínimo', hasDatedMetrics ? quote!.low : null],
-                        ['Cierre anterior', quote?.previous_close_timestamp ? quote.previous_close : null],
+                        ['Cierre anterior', quote?.previous_close_timestamp || quote?.previous_close_date ? quote.previous_close : null],
                     ].map(([metricLabel, value]) => (
                         <div className="min-w-0 px-2 py-3 first:pl-0 sm:px-3" key={String(metricLabel)}>
                             <dt className="text-xs text-gray-500">{metricLabel}</dt>
                             <dd className="mt-1 text-sm font-medium text-gray-200">{value == null || !isValidCurrencyCode(currency) ? NA : formatMoney(value as number, currency)}</dd>
-                            {metricLabel === 'Cierre anterior' && quote?.previous_close_timestamp ? <p className="text-[11px] text-gray-500">{quoteDate(quote.previous_close_timestamp)} · {quoteTime(quote.previous_close_timestamp)}</p> : null}
+                            {metricLabel === 'Cierre anterior' && (quote?.previous_close_timestamp || quote?.previous_close_date) ? <p className="text-[11px] text-gray-500">{quote.previous_close_timestamp ? `${quoteDate(quote.previous_close_timestamp)} · ${quoteTime(quote.previous_close_timestamp)}` : quoteSessionDate(quote.previous_close_date)}</p> : null}
                         </div>
                     ))}
                 </dl>

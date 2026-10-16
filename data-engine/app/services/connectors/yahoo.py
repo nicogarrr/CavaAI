@@ -28,8 +28,10 @@ class YahooFinanceClient:
         # La chart API de Yahoo no necesita key: siempre disponible.
         return True
 
-    async def _chart(self, ticker: str, *, events: bool = False, extended: bool = False) -> dict[str, Any]:
+    async def _chart(self, ticker: str, *, events: bool = False, extended: bool = False, recent_daily: bool = False) -> dict[str, Any]:
         params: dict[str, Any] = {"range": "max", "interval": "1d"}
+        if recent_daily:
+            params = {"interval": "1d", "range": "5d"}
         if extended:
             params = {"includePrePost": "true", "interval": "1m", "range": "1d"}
         if events:
@@ -53,6 +55,10 @@ class YahooFinanceClient:
     async def extended_chart(self, ticker: str) -> dict[str, Any]:
         """Intraday candles and session boundaries, including extended hours."""
         return await self._chart(ticker, extended=True)
+
+    async def recent_daily_chart(self, ticker: str) -> dict[str, Any]:
+        """Dated raw daily closes, used only to date a matching previousClose."""
+        return await self._chart(ticker, recent_daily=True)
 
     async def quote(self, ticker: str) -> dict[str, Any]:
         """Meta de cotización (regularMarketPrice, previousClose, ...)."""

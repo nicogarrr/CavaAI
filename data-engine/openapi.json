@@ -3009,6 +3009,17 @@
             ],
             "title": "Previous Close"
           },
+          "previous_close_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Close Date"
+          },
           "previous_close_timestamp": {
             "anyOf": [
               {
@@ -3058,6 +3069,17 @@
               }
             ],
             "title": "Regular Close"
+          },
+          "regular_close_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Regular Close Date"
           },
           "regular_close_timestamp": {
             "anyOf": [

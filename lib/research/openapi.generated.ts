@@ -5543,6 +5543,8 @@ export interface components {
             open?: number | null;
             /** Previous Close */
             previous_close?: number | null;
+            /** Previous Close Date */
+            previous_close_date?: string | null;
             /** Previous Close Timestamp */
             previous_close_timestamp?: number | null;
             /** Price */
@@ -5551,6 +5553,8 @@ export interface components {
             price_session?: ("pre" | "regular" | "post" | "cerrado") | null;
             /** Regular Close */
             regular_close?: number | null;
+            /** Regular Close Date */
+            regular_close_date?: string | null;
             /** Regular Close Timestamp */
             regular_close_timestamp?: number | null;
             /**
