@@ -401,7 +401,7 @@ class OpenAICompatibleProvider(LLMProvider):
         _started = _time.monotonic()
         try:
             response = await self._complete(request, model)
-        except Exception as exc:
+        except (Exception, asyncio.CancelledError) as exc:
             _tracing.trace_generation(
                 name=f"llm.{request.task or 'complete'}",
                 model=model,
@@ -410,10 +410,13 @@ class OpenAICompatibleProvider(LLMProvider):
                     "task": request.task,
                     "route": model,
                     "duration_ms": int((_time.monotonic() - _started) * 1000),
-                    **dict(extra_metadata or {}),
                     **dict(request.metadata or {}),
+                    **dict(extra_metadata or {}),
+                    "status": "cancelled" if isinstance(exc, asyncio.CancelledError) else "failed",
                 },
-                error_class=type(exc).__name__,
+                # La tarea perdedora se cancela tambien en corridas exitosas:
+                # conservar su span sin marcar toda la corrida como fallo.
+                error_class=None if isinstance(exc, asyncio.CancelledError) else type(exc).__name__,
             )
             raise
         _tracing.trace_generation(
@@ -424,8 +427,8 @@ class OpenAICompatibleProvider(LLMProvider):
                 "task": request.task,
                 "route": model,
                 "duration_ms": int((_time.monotonic() - _started) * 1000),
-                **dict(extra_metadata or {}),
                 **dict(request.metadata or {}),
+                **dict(extra_metadata or {}),
             },
             usage={
                 "input": response.usage.input_tokens,

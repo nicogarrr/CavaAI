@@ -253,3 +253,67 @@ def test_caller_cancellation_after_hedge_collects_both_generations():
 
     asyncio.run(asyncio.wait_for(scenario(), timeout=2))
     assert sorted(cancelled) == sorted([PRIMARY, FALLBACK])
+
+
+@pytest.mark.parametrize('slow_primary', [True, False])
+def test_real_shadow_tracer_keeps_fallback_reason_and_cancelled_generation(slow_primary):
+    from app.services import tracing
+
+    sink = []
+
+    class Span:
+        def start_observation(self, **kwargs):
+            sink.append(kwargs)
+            return self
+
+        def end(self):
+            pass
+
+    class Client:
+        def create_trace_id(self):
+            return 'isolated-trace'
+
+        def start_observation(self, **kwargs):
+            return Span()
+
+    async def handler(req):
+        model = json.loads(req.content)['model']
+        if model == PRIMARY:
+            if slow_primary:
+                await asyncio.sleep(5)
+            else:
+                return httpx.Response(403, json={'error': 'private upstream body'})
+        return httpx.Response(200, json={**BODY, 'model': model})
+
+    async def scenario():
+        tracer = tracing.ShadowTracer(
+            client_factory=Client, workflow_name='test', run_id=None,
+            metadata={}, active=True,
+        )
+        token = tracing.set_current_tracer(tracer)
+        try:
+            async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+                req = LLMRequest(messages=[Message('user', 'PRIVATE PROMPT')], cache=False,
+                                 metadata={'prompt': 'PRIVATE PROMPT', 'completion': 'PRIVATE ANSWER'})
+                assert (await provider(client, retries=0).complete(req)).model == FALLBACK
+        finally:
+            tracing.reset_current_tracer(token)
+
+    asyncio.run(asyncio.wait_for(scenario(), timeout=2))
+    generations = [item for item in sink if item.get('as_type') == 'generation']
+    assert len(generations) == 2
+    backup = next(item for item in generations if item['model'] == FALLBACK)
+    assert backup['metadata']['fallback_from'] == PRIMARY
+    if slow_primary:
+        assert backup['metadata']['fallback_trigger'] == 'primary_slow'
+        primary = next(item for item in generations if item['model'] == PRIMARY)
+        assert primary['metadata']['status'] == 'cancelled'
+        assert primary['status_message'] is None
+        assert primary['level'] == 'DEFAULT'
+        assert 'duration_ms' in primary['metadata']
+    else:
+        assert backup['metadata']['primary_error'] == 'ProviderHTTPError'
+    assert 'PRIVATE PROMPT' not in repr(sink)
+    assert 'PRIVATE ANSWER' not in repr(sink)
+    assert 'private upstream body' not in repr(sink)
+    assert tracing.sanitize_metadata({'prompt': 'x', 'content': 'y'}) == {}

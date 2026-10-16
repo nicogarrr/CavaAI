@@ -53,7 +53,7 @@ la latencia y capacidad reales de los proveedores quedan fuera del control local
 ## Pruebas aisladas
 
 `tests/test_llm_fallback_budget.py` usa factoría/adaptador reales y MockTransport,
-sin llamadas de red. Once canarios cubren primario lento con respaldo válido,
+sin llamadas de red. Trece canarios cubren primario lento con respaldo válido,
 backoff, ambos colgados, sin respaldo, respaldo idéntico, éxito temprano,
 cancelación antes/después de arrancar respaldo, fallo rápido, primario válido
 entre 2/3 y el final con backup403 y con backup colgado.
@@ -62,11 +62,11 @@ El canario del auditor, escalado a 0.3 s total y primario válido a 0.25 s con
 backup403, devuelve el primario original sin cancelación ni reinicio. El diseño
 anterior lo cancelaba a 0.2 s. Los primeros siete canarios contra base exacta
 reprodujeron tres fallos (nunca llegaba al respaldo); el candidato revisado pasa
-los once. Suite relacionada: **138/138**, exit 0. Ruff: exit 0.
+los trece. Suite relacionada (incluida ShadowTracer): **147/147**, exit 0. Ruff: exit 0.
 
 ```sh
 cd data-engine
-python -m pytest -o addopts= -q tests/test_llm_provider.py tests/test_llm_total_timeout.py tests/test_llm_fallback_budget.py tests/test_llm_cascade.py tests/test_llm_router.py tests/test_llm_tool_calling.py tests/test_llm_http_error_logging.py tests/test_llm_transport_diagnostics.py tests/test_response_cache.py
+python -m pytest -o addopts= -q tests/test_llm_provider.py tests/test_llm_total_timeout.py tests/test_llm_fallback_budget.py tests/test_llm_cascade.py tests/test_llm_router.py tests/test_llm_tool_calling.py tests/test_llm_http_error_logging.py tests/test_llm_transport_diagnostics.py tests/test_response_cache.py tests/test_shadow_tracing.py
 ```
 
 ## Canario con respaldo real
@@ -78,3 +78,16 @@ primario se cancela **después del éxito del respaldo**, no al activar el respa
 No se modifican procesos ni configuración de la API real. Cache desactivada.
 Resultado y tiempo total en `llm-fallback-live-sample.json`. La lentitud primaria
 es inducida solo en ese cliente; no demuestra que DeepSeek esté lento ahora.
+
+## R3: observabilidad verificada
+
+Se incluyen `fallback_trigger`, `fallback_from` y `primary_error` en la allowlist
+real de ShadowTracer. Dos canarios adicionales atraviesan `trace_generation`,
+`ShadowTracer.generation` y `sanitize_metadata`, con un sink SDK falso sin red.
+Comprueban disparador por lentitud y clase de error en fallo rápido, eliminando
+prompt/completion/cuerpo HTTP. El campo de error contiene solo nombre de clase.
+
+La tarea perdedora deja span de duración con `status=cancelled`. No se registra
+contenido ni se convierte una cancelación normal de la perdedora en fallo de toda
+la corrida. La cancelación se relanza para conservar el control de tareas.
+La metadata interna del respaldo prevalece sobre metadata de la petición.
