@@ -545,6 +545,15 @@ class ChatSynthesisService:
         datos. Esta ruta general no recibe fuentes; responde con conocimiento
         natural sin atribuirlo a documentos que no ha consultado.
         """
+        from app.llm.general_concepts import local_definition
+
+        definition = local_definition(question)
+        if definition is not None:
+            return ChatResponse(
+                answer=definition, sources=[], proposed_actions=[],
+                model="local-educational", prompt_version="local-glossary-v1", confidence=0.8,
+                llm_trace={"path": "local_educational", "generated": False, "provider_calls": 0},
+            )
         scope = _general_scope(question)
         if scope == "abstain":
             # Cartera privada u ordenes: nunca deducir del generador libre.
@@ -586,7 +595,6 @@ class ChatSynthesisService:
                 ),
             ],
             task="chat",
-            metadata={"public_general_concept": scope == "concept"},
             temperature=0.3,
             max_tokens=600,
         )

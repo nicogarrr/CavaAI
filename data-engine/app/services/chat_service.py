@@ -7,7 +7,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.llm.base import LLMProvider
-from app.llm.chat_provider import create_chat_llm_provider
+from app.llm.factory import create_llm_provider
 from app.models import (
     Claim,
     Company,
@@ -101,7 +101,7 @@ def _small_talk_answer(question: str) -> str:
 class ChatService:
     def __init__(self, provider: LLMProvider | None = None) -> None:
         self.memory = MemoryService()
-        self.provider = provider or create_chat_llm_provider()
+        self.provider = provider or create_llm_provider()
 
     def _resolve_company(self, db: Session, question: str, scope: str, ticker: str | None) -> Company | None:
         if ticker:

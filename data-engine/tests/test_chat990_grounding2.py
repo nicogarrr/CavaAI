@@ -97,7 +97,7 @@ def test_company_knowledge_question_can_reach_llm():
     assert result.model == "stub-model"
 
 
-def test_round8_financial_concepts_reach_llm_via_service():
+def test_reviewed_financial_concepts_are_local_via_service():
     # Ronda 8 auditor: clasificador unificado. Los conceptos genericos ya no
     # caen en un gate previo y llegan al LLM como alcance "concept".
     for q, ans in [
@@ -108,8 +108,9 @@ def test_round8_financial_concepts_reach_llm_via_service():
         db = _db()
         provider = StubProvider(ans)
         result = asyncio.run(ChatService(provider).answer(db, q, "portfolio", None))
-        assert len(provider.requests) == 1, q
-        assert result.model == "stub-model" and ans in result.answer, q
+        from app.llm.general_concepts import local_definition
+        assert not provider.requests, q
+        assert result.model == "local-educational" and result.answer == local_definition(q), q
 
 
 def test_round8_specific_still_abstains_without_llm():
@@ -187,7 +188,7 @@ def test_round7_auditor_round6_outputs_rejected():
         _, r1 = _general("Cuéntame algo", text)  # ordinaria
         assert r1.llm_trace.get("fallback") is True, text
         _, r2 = _general("¿Qué es el PER?", text)  # concepto
-        assert r2.llm_trace.get("fallback") is True, text
+        assert r2.model == "local-educational" and text not in r2.answer, text
 
 
 def test_round7_conversation_and_concepts_stay_natural():

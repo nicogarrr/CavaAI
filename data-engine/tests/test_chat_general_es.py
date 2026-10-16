@@ -65,17 +65,16 @@ def test_small_talk_respuesta_natural_sin_llm():
     assert provider.requests == [], "small talk NO debe llamar al LLM"
 
 
-def test_pregunta_general_sin_ticker_va_al_llm_en_espanol():
+def test_concepto_revisado_sin_ticker_es_local_en_espanol():
     db = _db()
     provider = StubProvider(text="El PER es el precio entre beneficios.")
     response = asyncio.run(
         ChatService(provider).answer(db, "que es el PER", "portfolio", None, use_jev=False)
     )
-    assert provider.requests, "la pregunta general debe llegar al LLM"
-    assert response.answer == "El PER es el precio entre beneficios."
-    assert response.prompt_version == "chat-general-v2"
-    system = provider.requests[0].messages[0].content
-    assert "espanol" in system
+    assert not provider.requests
+    from app.llm.general_concepts import DEFINITIONS
+    assert response.answer == DEFINITIONS["PER"]
+    assert response.prompt_version == "local-glossary-v1"
 
 
 def test_synthesize_general_no_inventa_si_vacio():
@@ -141,7 +140,7 @@ def test_general_provenance_uses_response_not_wrapper_name():
             return replace(response, model="openai/gpt-oss-120b", provider="groq")
 
     result = asyncio.run(ChatSynthesisService(Wrapper("El PER compara precio y beneficios.")).synthesize_general(
-        question="que es el PER", baseline=ChatResponse(answer="", sources=[]),
+        question="Cuéntame un chiste", baseline=ChatResponse(answer="", sources=[]),
     ))
     assert result.model == "openai/gpt-oss-120b"
     assert result.llm_trace["provider"] == "groq"

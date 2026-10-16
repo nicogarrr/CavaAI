@@ -76,7 +76,13 @@ def test_generic_concepts_are_available_in_both_languages(question):
     result = asyncio.run(ChatSynthesisService(p).synthesize_general(
         question=question, baseline=ChatResponse(answer='', sources=[]),
     ))
-    assert p.requests and result.model == 'stub-model'
+    from app.llm.general_concepts import local_definition
+    definition = local_definition(question)
+    if definition is not None:
+        assert not p.requests and result.model == 'local-educational'
+        assert result.answer == definition
+    else:
+        assert p.requests and result.model == 'stub-model' 
 
 
 @pytest.mark.parametrize('question', ['Dame una plantilla para un correo', 'necesito una plantilla de email'])
@@ -185,7 +191,7 @@ def test_concept_can_include_a_natural_approximate_example():
     answer = 'Los ingresos son ventas: unos 100 productos a unos 20 cada uno dan alrededor de 2000.'
     p = StubProvider(answer)
     result = asyncio.run(ChatSynthesisService(p).synthesize_general(
-        question='Define revenue', baseline=ChatResponse(answer='', sources=[]),
+        question='Explica los ingresos con un ejemplo sencillo', baseline=ChatResponse(answer='', sources=[]),
     ))
     assert result.answer == answer
 
