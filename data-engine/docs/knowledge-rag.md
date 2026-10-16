@@ -42,10 +42,13 @@ consulta: denso + sparse -> RRF -> [reranker] -> dedupe de solapes -> padre -> v
   40 -> 21/38; 100 -> 26/38; subir `top_n` o bajar el peso de sparse no movio el resultado.
   Comparacion int8 vs fp32 del reranker (15 casos): 6/15 identico, mismos aciertos, ranks a +-1;
   el fp32 (~2.3 GB, ~4x mas lento en CPU) NO mejora. Limite conocido: en consultas en espanol sobre
-  documentos en ingles, el reranker m3 a veces prefiere chunks en espanol y hay casos cuyo chunk
-  correcto no entra ni en la ventana (BM25 no hace cross-lingual). Via futura: traduccion/expansion
-  de consulta con LLM. Coste: rerankear 100 pares int8 son ~80 s en una VM ARM de 2 nucleos (peor
-  caso medido; en un PC de sobremesa es varias veces menos).
+  documentos en ingles, el reranker m3 a veces prefiere chunks en espanol y habia casos cuyo chunk
+  correcto no entraba ni en la ventana (BM25 no hace cross-lingual). Cubierto con traduccion de
+  consulta ES->EN (F372, `query_translation.py`): si la pregunta parece espanol se busca con la
+  original Y con su traduccion (RRF entre variantes) usando solo el modelo gratuito verificado;
+  sin LLM disponible degrada a la original con nota en la respuesta. Pendiente de medir en el
+  piloto: rerankear tambien con la variante y quedarse el maximo. Coste: rerankear 100 pares int8
+  son ~80 s en una VM ARM de 2 nucleos (peor caso medido; en un PC de sobremesa es varias veces menos).
 
 ## Procedencia por chunk (payload Qdrant)
 
@@ -85,7 +88,8 @@ falla con "docling extracted no text" en vez de indexar vacio.
 `KNOWLEDGE_RAG_ENABLED`, `_COLLECTION` (`knowledge_rag_v1`, aparte de `portfolio_research_documents`),
 `_INBOX_DIR`, `_MAX_FILE_MB` (60), `_MIN_FREE_GB` (3: la ingesta se niega si queda menos), `_CHILD_MAX_TOKENS`
 (200), `_CHILD_OVERLAP_TOKENS` (30), `_PARENT_MAX_TOKENS` (900), `_DOCLING_OCR`, `_DOCLING_TABLE_MODE`,
-`_RERANKER_MODEL`.
+`_RERANKER_MODEL`, `_CANDIDATES` (100),
+`_QUERY_TRANSLATION` (true) y `_QUERY_TRANSLATION_TIMEOUT_S` (12).
 
 ## API (`/api/knowledge-rag`)
 

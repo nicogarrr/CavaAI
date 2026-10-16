@@ -9,7 +9,7 @@ from typing import Any
 from llama_index.core.postprocessor.types import BaseNodePostprocessor
 from llama_index.core.schema import NodeRelationship, NodeWithScore, QueryBundle, RelatedNodeInfo, TextNode
 
-from app.services.hybrid_retrieval import RankedId, rrf_fuse
+from app.services.hybrid_retrieval import FusedHit, RankedId, rrf_fuse
 from app.services.knowledge_rag.citations import Citation, format_context, verify_citation
 from app.services.knowledge_rag.embedding import Embedder
 from app.services.knowledge_rag.store import KnowledgeStore, SearchFilters, build_filter
@@ -26,6 +26,29 @@ class SearchResult:
     dropped_unverified: int = 0
     candidates: int = 0
     notes: list[str] = field(default_factory=list)
+    # Variantes de la consulta usadas ademas de la original (p. ej. la
+    # traduccion ES->EN de query_translation). Vacio = solo la original.
+    query_variants: list[str] = field(default_factory=list)
+
+
+def _fuse_query_variants(per_query: list[list[FusedHit]], *, k: int) -> list[FusedHit]:
+    """Una variante: la fusion denso+sparse tal cual. Varias (original +
+    traduccion): RRF de segundo nivel sobre los rankings por variante, misma
+    formula 1/(k+rank). La trazabilidad denso/sparse la conserva la primera
+    variante que aporto el id (la original va primero).
+    """
+    if len(per_query) == 1:
+        return per_query[0]
+    combined: dict[str, FusedHit] = {}
+    for ranking in per_query:
+        for rank, hit in enumerate(ranking, start=1):
+            entry = combined.setdefault(hit.point_id, FusedHit(point_id=hit.point_id, fused_score=0.0))
+            entry.fused_score += 1.0 / (k + rank)
+            if entry.dense_rank is None and hit.dense_rank is not None:
+                entry.dense_rank, entry.dense_score = hit.dense_rank, hit.dense_score
+            if entry.sparse_rank is None and hit.sparse_rank is not None:
+                entry.sparse_rank, entry.sparse_score = hit.sparse_rank, hit.sparse_score
+    return sorted(combined.values(), key=lambda h: (-h.fused_score, h.point_id))
 
 
 def _overlaps(a: dict[str, Any], b: dict[str, Any]) -> bool:
@@ -51,20 +74,34 @@ def search_knowledge(
     rrf_k: int = 60,
     dense_weight: float = 1.0,
     sparse_weight: float = 1.0,
+    query_variants: Sequence[str] = (),
 ) -> SearchResult:
     if not query.strip():
         raise ValueError("query is empty")
+    # Original + variantes (p. ej. traduccion ES->EN), deduplicadas: cada una
+    # busca en denso y sparse y los rankings se fusionan (ver _fuse_query_variants).
+    queries = [query]
+    for variant in query_variants:
+        v = " ".join(variant.split())
+        if v and v.casefold() not in {q.casefold() for q in queries}:
+            queries.append(v)
     flt = build_filter(tenant_id, filters or SearchFilters())
-    dense_hits = store.search_dense(embedder.dense_query(query), flt, candidates)
-    sparse_hits = store.search_sparse(embedder.sparse_query(query), flt, candidates)
-    payloads = {str(h.id): dict(h.payload or {}) for h in [*dense_hits, *sparse_hits]}
-    fused = rrf_fuse(
-        [RankedId(str(h.id), float(h.score)) for h in dense_hits],
-        [RankedId(str(h.id), float(h.score)) for h in sparse_hits],
-        k=rrf_k,
-        dense_weight=dense_weight,
-        sparse_weight=sparse_weight,
-    )
+    payloads: dict[str, dict] = {}
+    per_query: list[list[FusedHit]] = []
+    for q in queries:
+        dense_hits = store.search_dense(embedder.dense_query(q), flt, candidates)
+        sparse_hits = store.search_sparse(embedder.sparse_query(q), flt, candidates)
+        payloads.update({str(h.id): dict(h.payload or {}) for h in [*dense_hits, *sparse_hits]})
+        per_query.append(
+            rrf_fuse(
+                [RankedId(str(h.id), float(h.score)) for h in dense_hits],
+                [RankedId(str(h.id), float(h.score)) for h in sparse_hits],
+                k=rrf_k,
+                dense_weight=dense_weight,
+                sparse_weight=sparse_weight,
+            )
+        )
+    fused = _fuse_query_variants(per_query, k=rrf_k)
     nodes: list[NodeWithScore] = []
     for hit in fused[:candidates]:
         p = payloads[hit.point_id]
@@ -153,4 +190,5 @@ def search_knowledge(
         dropped_unverified=dropped,
         candidates=len(nodes),
         notes=notes,
+        query_variants=queries[1:],
     )
