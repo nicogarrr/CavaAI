@@ -1,3 +1,4 @@
+import { publicSans } from "@/lib/public-fonts";
 import Link from "next/link";
 import React from "react";
 import {headers} from "next/headers";
@@ -19,7 +20,7 @@ const Layout = async ({ children }: { children : React.ReactNode }) => {
         if (session?.user) redirect('/inicio');
     }
     return (
-        <main className="auth-layout">
+        <main className={`auth-layout ${publicSans.className}`}>
             <section className="auth-left-section scrollbar-hide-default">
                 {/* Tope de ancho: sin el, en pantallas ultrawide (2560px) el
                     formulario se estiraba a ~1150px y las lineas de texto
