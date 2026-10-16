@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { modelConditionState } from '@/lib/research/coverage-state';
 import { formatCompact, formatNumber, formatPercent, NA } from '@/lib/format';
 import { metricLabel } from '@/lib/research/metric-labels';
@@ -121,7 +122,7 @@ function ModelStat({ label, value, positive = false }: { label: string; value: s
   );
 }
 
-export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | null }) {
+export function LongTermModelPanel({ model, ticker }: { model: ResearchLongTermModel | null; ticker?: string }) {
   if (!model) {
     return (
       <section className="rounded-lg border border-gray-800 bg-surface-1 p-5">
@@ -159,7 +160,20 @@ export function LongTermModelPanel({ model }: { model: ResearchLongTermModel | n
       <p className="mb-4 text-xs leading-5 text-gray-500">
         El «valor por acción» de cada escenario es un cálculo interno del modelo
         (versión {model.model_version}{model.as_of_period ? ` · datos a ${model.as_of_period}` : ' · fecha s/d'}).
-        Puede no coincidir con la vista Valoración persistida: compara versión y fecha antes de usarlo.
+        {/* Una sola fuente de verdad (WorldStocks punto 3): la valoración de
+            referencia de la ficha es la vista Valoración (motor persistido y
+            publicable). Este cálculo interno puede no coincidir con ella. */}
+        La valoración de referencia de la ficha es la de la vista Valoración
+        {ticker ? (
+          <>
+            {' ('}
+            <Link className="text-teal-300 underline decoration-gray-700 underline-offset-4 hover:text-teal-200" href={`/research/${encodeURIComponent(ticker)}?view=valuation`}>
+              ver sus 3 escenarios
+            </Link>
+            )
+          </>
+        ) : null}
+        : si no coincide con este cálculo interno, manda ella; compara versión y fecha antes de usarlo.
       </p>
 
       {model.missing_inputs.length ? (
