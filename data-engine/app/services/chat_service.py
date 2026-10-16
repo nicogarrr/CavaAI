@@ -503,6 +503,7 @@ class ChatService:
                         document_id=document.id,
                         source_type=document.source_type,
                         source_tier=source_tier_key(document.source_type),
+                        url=document.source_url,
                         text=_short(chunk.text, 240),
                     )
                 )
@@ -521,6 +522,7 @@ class ChatService:
                         source_type=chunk.get("source_type"),
                         source_tier=source_tier_key(chunk.get("source_type")),
                         score=chunk.get("score"),
+                        url=chunk.get("url"),
                         text=_short(chunk.get("text", ""), 240),
                     )
                 )

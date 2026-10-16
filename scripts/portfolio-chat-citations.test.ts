@@ -1,0 +1,31 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+// @ts-expect-error Node strip-types requires explicit extension.
+import { toPortfolioChatCitations } from '../lib/chat/citations.ts';
+test('preserves backend URL, page and locator; internal source has no invented URL', () => {
+    const result = toPortfolioChatCitations([
+        { type: 'document_chunk', id: 8, title: 'Informe anual de prueba', page_number: 12, url: 'https://example.org/report.pdf' },
+        { type: 'financial_fact', id: 9, title: 'Ingresos 2025' },
+    ]);
+    assert.equal(result[0]?.url, 'https://example.org/report.pdf');
+    assert.equal(result[0]?.page, 12);
+    assert.equal(result[0]?.locator, 'document_chunk:8');
+    assert.equal(result[1]?.url, null);
+    assert.equal(result[1]?.locator, 'financial_fact:9');
+});
+test('no sources stays empty; unsafe URLs never become links', () => {
+    assert.deepEqual(toPortfolioChatCitations([]), []);
+    for (const url of ['javascript:alert(1)', 'data:text/html,bad', 'file:///etc/passwd', 'https://user:pass@example.org', 'nvidia.com/fake']) {
+        assert.equal(toPortfolioChatCitations([{type: 'document_chunk', id: 1, title: 'Fixture', url}])[0]?.url, null);
+    }
+});
+
+test('portfolio action and UI pass citations through; company chat keeps its mapper', async () => {
+    const { readFileSync } = await import('node:fs');
+    const action = readFileSync(new URL('../lib/actions/chat.actions.ts', import.meta.url), 'utf8');
+    const ui = readFileSync(new URL('../components/portfolio/PortfolioChat.tsx', import.meta.url), 'utf8');
+    assert.match(action.slice(0, action.indexOf('export async function chatWithCompany')), /citations: toPortfolioChatCitations\(response.sources\)/);
+    assert.match(action.slice(action.indexOf('export async function chatWithCompany')), /citations: toChatCitations\(response.sources\)/);
+    assert.match(ui, /citations: result.citations/);
+    assert.match(ui, /<PortfolioChatSources citations=\{m.citations\}/);
+});
