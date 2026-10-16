@@ -2,6 +2,7 @@ import { healthText, listingStatus } from '@/lib/research/listing-status';
 import { formatPeerValue, peerMedianText } from '@/lib/research/peer-format';
 import { factDisplayAudit } from '@/lib/research/fact-display-audit';
 import { groupClaimsByVersion } from '@/lib/research/claim-groups';
+import { GROUPS, MODULES, asView, moduleHref, type View } from '@/lib/research/research-views';
 import { researchValuability } from '@/lib/research/coverage-state';
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -107,74 +108,13 @@ export const maxDuration = 60;
  */
 const readSnapshot = cache((ticker: string) => getResearchCompanySnapshot(ticker));
 
-/**
- * La ficha tiene 16 destinos (12 vistas + 4 subrutas). Pintados como 16
- * píldoras planas no se escanean: el usuario no llegaba a "ver la tesis" en
- * 5 segundos. Se agrupan en las 6 etapas del flujo inversor (ver → entender →
- * decidir → registrar) y el selector pasa a ser de grupo, con los módulos de
- * ese grupo debajo.
- *
- * COMPATIBILIDAD: los `?view=` antiguos siguen siendo URLs válidas. Cada
- * módulo conserva su clave histórica (`overview`, `thesis`, `chat`...) y
- * `asView` acepta tanto una clave de módulo como una clave de grupo, así que
- * `/research/AAPL?view=thesis` y `/research/AAPL?view=tesis` abren lo mismo.
- */
-const GROUPS = [
-  { key: 'resumen', label: 'Resumen', entry: 'overview' },
-  { key: 'tesis', label: 'Tesis', entry: 'thesis' },
-  { key: 'financieros', label: 'Financieros', entry: 'financials' },
-  { key: 'modelo', label: 'Modelo', entry: 'model' },
-  { key: 'evidencia', label: 'Evidencia', entry: 'documents' },
-  { key: 'seguimiento', label: 'Seguimiento', entry: 'changes' },
-] as const;
-
-const MODULES = [
-  { key: 'overview', label: 'Vista general', group: 'resumen' },
-  { key: 'moat', label: 'Foso', group: 'resumen' },
-  { key: 'satellites', label: 'Satélites AST', group: 'seguimiento' },
-  { key: 'thesis', label: 'Tesis', group: 'tesis' },
-  { key: 'financials', label: 'Financieros', group: 'financieros' },
-  { key: 'capital', label: 'Dilución y recompras', group: 'financieros', path: 'share-capital' },
-  { key: 'terminal', label: 'Terminal financiero', group: 'financieros', path: 'financial-terminal' },
-  { key: 'supuestos', label: 'Supuestos de drivers', group: 'financieros', path: 'driver-assumptions' },
-  { key: 'model', label: 'Modelo a largo plazo', group: 'modelo' },
-  { key: 'market-opportunity', label: 'Oportunidad de mercado', group: 'modelo' },
-  { key: 'valuation', label: 'Valoración', group: 'modelo' },
-  { key: 'peers', label: 'Comparables', group: 'modelo' },
-  { key: 'documents', label: 'Documentos', group: 'evidencia' },
-  { key: 'sources', label: 'Fuentes', group: 'evidencia' },
-  { key: 'chat', label: 'Chat con fuentes', group: 'evidencia' },
-  { key: 'changes', label: 'Cambios y revisiones', group: 'seguimiento' },
-  { key: 'lecciones', label: 'Lecciones de decisiones', group: 'seguimiento', path: 'decision-lessons' },
-  { key: 'directiva', label: 'Credibilidad de la directiva', group: 'seguimiento', path: 'management-credibility' },
-] as const;
-
-type View = (typeof MODULES)[number]['key'];
+/* Los 3 pasos (Entender/Valorar/Seguir) y sus 18 modulos viven en
+   lib/research/research-views.ts; test funcional: scripts/research-views-guard.test.ts. */
 
 type PageProps = {
   params: Promise<{ ticker: string }>;
   searchParams: Promise<{ view?: string; chat?: string }>;
 };
-
-/**
- * Acepta la clave de un módulo (`?view=thesis`) o la de un grupo (`?view=tesis`).
- * Los módulos de subruta se ignoran: no son `?view=`, son rutas propias, así que
- * una clave suelta cae en la vista general en vez de abrir un documento que no
- * existe en este árbol.
- */
-function asView(value: string | undefined): View {
-  const asModule = MODULES.find((module) => module.key === value && !('path' in module));
-  if (asModule) return asModule.key;
-  const asGroup = GROUPS.find((group) => group.key === value);
-  if (asGroup) return asGroup.entry;
-  return 'overview';
-}
-
-/** `?view=` para un módulo; los de subruta conservan su ruta propia. */
-function moduleHref(ticker: string, module: (typeof MODULES)[number]): string {
-  const base = `/research/${encodeURIComponent(ticker)}`;
-  return 'path' in module ? `${base}/${module.path}` : `${base}?view=${module.key}`;
-}
 
 
 /** Fecha de la noticia con su provenance: nunca afirmar fecha de publicacion
@@ -883,7 +823,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
         <p role="status" className="rounded-lg border border-amber-900/70 bg-amber-950/20 p-3 text-sm text-amber-200">
           {researchValuability(snapshot)}
         </p>
-        <Panel
+        <Panel collapsible="mobile"
           description="Las 5 noticias de mayor materialidad entre las 25 más recientes de esta empresa, con fuente y fecha."
           title="Últimas noticias"
         >
@@ -907,7 +847,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
           )}
         </Panel>
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-          <Panel title="Última tesis">
+          <Panel collapsible="mobile" title="Última tesis">
             {snapshot.latest_thesis ? (
               <>
                 <div className="flex flex-wrap gap-2">
@@ -937,7 +877,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
               />
             )}
           </Panel>
-          <Panel title="Modelo fundamental a largo plazo">
+          <Panel collapsible="mobile" title="Modelo fundamental a largo plazo">
             {snapshot.model_summary ? (
               <div className="space-y-3 text-sm text-gray-300">
                 <div className="flex flex-wrap gap-2">
@@ -956,7 +896,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
           </Panel>
         </div>
         {moatScore ? (
-          <Panel
+          <Panel collapsible="mobile"
             actions={
               <Link
                 className="text-sm text-teal-300 hover:text-teal-200"
@@ -975,7 +915,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
             ninguna vista: son la respuesta a "¿esto sigue valiendo lo que
             valía la última vez?".
         */}
-        <Panel
+        <Panel collapsible="mobile"
           actions={
             <Link
               className="text-sm text-teal-300 hover:text-teal-200"
@@ -1033,7 +973,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
             Están aquí, en el resumen, y no repartidos por las 16 píldoras
             planas que había antes.
         */}
-        <Panel
+        <Panel collapsible="mobile"
           description="Dónde está el resto del análisis de esta empresa."
           density="compact"
           title="Por dónde seguir"
@@ -1051,7 +991,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
             ))}
           </div>
         </Panel>
-        {ticker === 'ASTS' ? <Panel title="Satélites AST"><p className="text-sm text-gray-400">Elementos orbitales de CelesTrak y evolución del semieje mayor.</p><Link className="mt-2 inline-block text-sm text-teal-300" href={`/research/${encodeURIComponent(ticker)}?view=satellites`}>Ver señal orbital exploratoria</Link></Panel> : null}
+        {ticker === 'ASTS' ? <Panel collapsible="mobile" title="Satélites AST"><p className="text-sm text-gray-400">Elementos orbitales de CelesTrak y evolución del semieje mayor.</p><Link className="mt-2 inline-block text-sm text-teal-300" href={`/research/${encodeURIComponent(ticker)}?view=satellites`}>Ver señal orbital exploratoria</Link></Panel> : null}
         {/* Price chart lives once in the company header, across all views. */}
       </div>
     );
@@ -1380,8 +1320,8 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
           </div>
         </header>
         {/*
-            Selector de grupo (6 etapas del flujo inversor) y, debajo, solo los
-            módulos de ese grupo. Antes eran 16 píldoras planas en una fila: no
+            Selector de paso (Entender → Valorar → Seguir) y, debajo, solo los
+            módulos de ese paso. Antes eran 16 píldoras planas en una fila: no
             se escaneaban y el usuario no encontraba la tesis. Los dos `nav`
             llevan su propia etiqueta porque cada uno es un nivel distinto.
         */}
