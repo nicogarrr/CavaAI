@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -52,7 +53,19 @@ def flatten_messages(messages) -> str:
     return "\n\n".join(out)
 
 
+class FreeTierLimitError(RuntimeError):
+    pass
+
+
+# Only the affected model is paused, using the serve's explicit next-attempt time.
+_free_retry_at: dict[str, float] = {}
+_free_retry_lock = threading.Lock()
+
+
 def complete(model: str, messages, response_format=None, reasoning_effort=None) -> str:
+    with _free_retry_lock:
+        if _free_retry_at.get(model, 0) > time.time():
+            raise FreeTierLimitError("El límite gratuito del modelo está agotado; inténtalo más tarde.")
     prompt = flatten_messages(messages)
     if response_format and isinstance(response_format, dict):
         js = response_format.get("json_schema") or {}
@@ -73,6 +86,21 @@ def complete(model: str, messages, response_format=None, reasoning_effort=None) 
             print(f"bridge: {model} variant={reasoning_effort}", flush=True)
         serve_req("POST", f"/session/{sid}/prompt_async", msg)
         while time.monotonic() - t0 < TIMEOUT_S:
+            # Status inspection is optional. A broken status endpoint must not
+            # discard a valid primary response available through /message.
+            try:
+                statuses = serve_req("GET", "/session/status", timeout=2)
+            except (urllib.error.URLError, TimeoutError, ValueError):
+                statuses = None
+            status = statuses.get(sid) if isinstance(statuses, dict) else None
+            action = status.get("action") if isinstance(status, dict) else None
+            if isinstance(action, dict) and status.get("type") == "retry" and action.get("reason") == "free_tier_limit":
+                retry_ms = status.get("next")
+                # Do not guess a reset or widen one model's limit to another model.
+                if type(retry_ms) in (int, float) and time.time() < retry_ms / 1000 < time.time() + 7 * 86400:
+                    with _free_retry_lock:
+                        _free_retry_at[model] = retry_ms / 1000
+                raise FreeTierLimitError("El límite gratuito del modelo está agotado; inténtalo más tarde.")
             textos = []
             for m in serve_req("GET", f"/session/{sid}/message"):
                 info = m.get("info", {})
@@ -135,7 +163,7 @@ class Handler(BaseHTTPRequestHandler):
             text = complete(model, messages, body.get("response_format"),
                             body.get("reasoning_effort"))
         except Exception as e:
-            self._send_json(502, {"type": "error", "error": {
+            self._send_json(429 if isinstance(e, FreeTierLimitError) else 502, {"type": "error", "error": {
                 "type": type(e).__name__, "message": str(e)[:400]}})
             return
         self._send_json(200, {
