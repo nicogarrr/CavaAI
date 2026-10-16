@@ -372,6 +372,11 @@ class Settings(BaseSettings):
     # el modelo :free de OpenRouter sale de https://openrouter.ai/api/v1/models
     # (precio 0, admite tools y response_format). El nivel gratuito de Gemini puede
     # usar los datos para mejorar el servicio: no enviar nada que no deba salir.
+    groq_api_key: str | None = Field(default=None, repr=False)
+    groq_chat_fallback_enabled: bool = False
+    groq_free_plan_confirmed: bool = False
+    groq_zdr_confirmed: bool = False
+
     gemini_api_key: str | None = Field(default=None, repr=False)
     gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
     gemini_model: str = "gemini-3.8-flash"
