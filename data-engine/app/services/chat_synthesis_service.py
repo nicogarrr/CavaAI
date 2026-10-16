@@ -193,7 +193,9 @@ _FIN_WORDS_RE = re.compile(
     r"rendimiento|cotiza\w*|cotizaci[oó]n|precio|bolsa|burs[aá]til\w*|dividendos?|"
     r"inversi[oó]n(?:es)?|invertir|ganancias?|p[eé]rdidas?|beneficios?|"
     r"capitalizaci[oó]n|valoraci[oó]n|stock|shares?|earnings|etf|ebitda|"
-    r"sube|suben|baja|bajan|cae|caen|duplic\w*|tripl\w*|vale|valen)\b"
+    r"ingresos?|facturaci[oó]n|ventas?|revenue|sales|empleados?|employees?|headcount|"
+    r"plantilla|deuda|debt|flujo\s+de\s+caja|cash\s+flow|cuota\s+de\s+mercado|"
+    r"market\s+share|sube|suben|baja|bajan|cae|caen|duplic\w*|tripl\w*|vale|valen)\b"
     r"|[$€£%]"
 )
 # Tickers: 2-5 mayusculas, SENSIBLE a mayusculas (el flag (?i) de arriba no
@@ -455,12 +457,14 @@ class ChatSynthesisService:
             # Consulta financiera especifica/ambigua: nunca al generador libre.
             return ChatResponse(
                 answer=(
-                    "No tengo datos de mercado sobre eso en tu research. Si te "
-                    "refieres a una empresa, dime su nombre o ticker y lo consulto."
+                    "[SIN_DATOS] No tengo fuentes verificadas en esta ruta para responder "
+                    "a esa consulta sobre empresas o inversiones. Los datos actuales "
+                    "necesitan una fuente y fecha; los futuros no son hechos oficiales. "
+                    "Selecciona la empresa o su ticker para consultar sus fuentes."
                 ),
                 sources=[],
                 model="abstain",
-                prompt_version="chat-general-v1",
+                prompt_version="chat-general-v2",
                 confidence=0.2,
                 llm_trace={"path": "general", "abstain": True, "reason": "financial_scope"},
             )
@@ -537,7 +541,7 @@ class ChatSynthesisService:
             sources=[],
             proposed_actions=[],
             model=getattr(self.provider, "name", "unknown"),
-            prompt_version="chat-general-v1",
+            prompt_version="chat-general-v2",
             confidence=0.35 if baseline.sources else 0.2,
             llm_trace={"path": "general", "cost": spent["cost"]},
         )
@@ -553,7 +557,7 @@ class ChatSynthesisService:
             sources=baseline.sources,
             proposed_actions=baseline.proposed_actions,
             model="fallback",
-            prompt_version="chat-general-v1",
+            prompt_version="chat-general-v2",
             confidence=0.2,
             llm_trace={"path": "general", "fallback": True, "reason": reason},
         )
