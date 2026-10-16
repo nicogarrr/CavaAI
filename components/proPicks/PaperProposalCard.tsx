@@ -21,7 +21,7 @@ export function PaperProposalCard({ trade }: { trade: PaperTradeView }) {
     const horizon = trade.horizon === 'five_years' ? 'Tesis 5 años' : trade.horizon === 'short' ? 'Trade 30 días' : 'Sin horizonte';
     return <article className="min-w-0 space-y-4 rounded-lg border border-gray-700 p-4 text-sm text-gray-300" aria-label={`Propuesta simulada ${trade.ticker}`}>
         <div className="flex flex-wrap justify-between gap-2"><h3 className="font-semibold text-gray-100">{trade.ticker} · {direction} · {horizon}</h3><span>{stateLabel[trade.status] ?? 'Estado no disponible'}</span></div>
-        <p className="text-xs text-gray-400">Simulación sin capital real. No es una orden al broker.</p>
+        <p className="text-xs text-gray-400">Operación simulada sin capital real. No es una orden al broker.</p>
         <section aria-label="Propuesta del modelo" className="space-y-2">
             <h4 className="font-medium text-teal-300">Propuesta del modelo · {trade.currency || 'Sin divisa'}</h4>
             <p className="break-words whitespace-pre-wrap">{trade.thesis || 'Tesis no disponible.'}</p>
