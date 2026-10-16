@@ -113,6 +113,20 @@ def save_within_quota(db: Session, proposal: PaperProposal, now: datetime) -> Pa
             raise
 
 
+def headline_matches_company(title: str, ticker: str, name: str) -> bool:
+    """A feed-added ticker prefix alone does not establish article relevance.
+
+    Conservative lexical evidence, not a claim that the article is true. A company
+    name or ticker must occur in the substantive title after stripping one prefix.
+    """
+    body = re.sub(rf"^\s*{re.escape(ticker)}(?:\s*[:|\-]\s*|\s+)", "", title, count=1, flags=re.I)
+    if re.search(rf"(?<![A-Za-z0-9]){re.escape(ticker)}(?![A-Za-z0-9])", body, re.I):
+        return True
+    # Strip legal suffixes, not meaningful business words.
+    clean_name = re.sub(r"(?:[,\s]+(?:inc\.?|corp\.?|corporation|plc|ltd\.?))+$", "", name.strip(), flags=re.I)
+    return len(clean_name) >= 5 and clean_name.casefold() in body.casefold()
+
+
 def load_headlines(db: Session, ticker: str, now: datetime) -> list[dict]:
     company = db.scalar(select(Company).where(Company.ticker == ticker))
     if company is None:
@@ -124,13 +138,13 @@ def load_headlines(db: Session, ticker: str, now: datetime) -> list[dict]:
             NewsEvent.date <= _utc(now),  # sin evidencia con fecha futura
         )
         .order_by(NewsEvent.date.desc(), NewsEvent.id.desc())
-        .limit(MAX_HEADLINES)
+        .limit(MAX_HEADLINES * 4)
     ).all()
     # Copia escalares: la sesion se libera antes de cualquier E/S de red.
     return [
         {"id": f"news:{n.id}", "title": n.title, "published_at": _utc(n.date).isoformat(), "source": n.source}
-        for n in rows
-    ]
+        for n in rows if headline_matches_company(n.title, ticker, company.name)
+    ][:MAX_HEADLINES]
 
 
 async def generate_proposal(

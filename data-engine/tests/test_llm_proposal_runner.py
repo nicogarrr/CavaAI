@@ -439,3 +439,26 @@ def test_passes_dated_momentum_context_even_when_unavailable(db, monkeypatch):
     run(db, Provider(good()))
     assert seen['momentum']['aviso'] == 'sin_serie_ajustada_reciente'
     assert seen['momentum']['calculado_en'] == NOW.isoformat()
+
+
+@pytest.mark.parametrize("title,expected", [
+    ("ASTS Rocket Lab Has Imploded For 3 Months", False),
+    ("ASTS AST SpaceMobile Is Down 67%", True),
+    ("ASTS Why Is AST SpaceMobile Stock Falling Friday?", True),
+    ("ASTS: Competencia para ASTS y otros operadores", True),
+    ("ASTS Broad markets move after inflation", False),
+    ("ASTS ASTSpaceMobileFake stock rises", False),
+])
+def test_ticker_feed_prefix_is_not_evidence_of_article_relevance(title, expected):
+    assert runner.headline_matches_company(title, 'ASTS', 'AST SpaceMobile Inc.') is expected
+
+
+def test_irrelevant_title_never_reaches_proposal_context(db):
+    db.get(Company, 1).name = 'AST SpaceMobile Inc.'
+    db.get(Company, 1).ticker = 'ASTS'
+    db.get(NewsEvent, 1).title = 'ASTS Rocket Lab Has Imploded For 3 Months'
+    db.commit()
+    p = Provider(good())
+    with pytest.raises(ProposalRejected, match='sin_titulares'):
+        run(db, p, ticker='ASTS')
+    assert p.calls == 0
