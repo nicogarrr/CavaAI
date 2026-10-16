@@ -19,8 +19,9 @@ const Header = ({ user, initialStocks }: { user: User; initialStocks?: StockWith
             <div className="container header-wrapper">
                 <div className="flex min-w-0 shrink-0 items-center gap-1">
                     <MobileNav initialStocks={initialStocks} />
-                    <Link href="/inicio" prefetch={false} className="flex min-h-11 items-center justify-center gap-2">
-                        <GerarAIWordmark />
+                    <Link href="/inicio" prefetch={false} aria-label="GerarAI, inicio" className="flex min-h-11 items-center justify-center gap-2">
+                        <span className="min-[360px]:hidden"><GerarAIWordmark compact /></span>
+                        <span className="hidden min-[360px]:inline-flex"><GerarAIWordmark /></span>
                     </Link>
                 </div>
 

@@ -219,6 +219,17 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
     // visualmente IDENTICO al boton hidratado (input sutil), no una pildora
     // primaria con el label crudo. Sin onClick hasta montar.
     if (!mounted) {
+        if (renderAs === 'icon') {
+            return (
+                <button type="button" tabIndex={-1} aria-hidden="true"
+                    className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg p-2 text-gray-300">
+                    <Search aria-hidden="true" className="h-5 w-5" />
+                </button>
+            );
+        }
+        if (renderAs === 'text') {
+            return <button type="button" tabIndex={-1} aria-hidden="true" className="search-text">{label}</button>;
+        }
         return (
             <button
                 type="button"
