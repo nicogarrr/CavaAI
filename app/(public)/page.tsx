@@ -1,3 +1,4 @@
+import { readSessionWhenCookies } from "@/lib/anonymous-session";
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
@@ -39,10 +40,11 @@ export default async function LandingPage() {
     const browserTestBypass =
         process.env.E2E_AUTH_BYPASS === '1' && process.env.NODE_ENV !== 'production';
     if (!browserTestBypass) {
-        const auth = await getAuth().catch(() => null);
-        const session = auth
-            ? await auth.api.getSession({ headers: await headers() }).catch(() => null)
-            : null;
+        const requestHeaders = await headers();
+        const session = await readSessionWhenCookies(requestHeaders, async () => {
+            const auth = await getAuth().catch(() => null);
+            return auth ? auth.api.getSession({ headers: requestHeaders }).catch(() => null) : null;
+        });
         const target = landingTargetForSession(Boolean(session?.user));
         if (target) redirect(target);
     }
