@@ -11,7 +11,15 @@ export interface PaperTradeView {
     mark_at: string | null; entry_at: string | null; exit_at: string | null;
     realized_pnl: string | null; unrealized_pnl: string | null; close_reason: string | null;
 }
+export interface PaperCalibration {
+    base: string; calculado_en: string; propuestas_llm: number; cerradas_con_resultado: number;
+    muestra_insuficiente: boolean; minimo_cerradas: number; aviso: string | null;
+    brier: number | null; brier_referencia_sin_informacion: number | null;
+    bins: Array<{ rango: string; cerradas: number; conviction_media: number | null;
+        tasa_acierto: number | null; hueco: number | null; aviso: string | null }>;
+}
 export interface PaperScore {
+    calibracion?: PaperCalibration;
     groups: Array<{ horizon: string; currency: string; proposals: number; closed: number;
         open: number; wins: number; losses: number; flat: number; hit_rate: number | null;
         realized_pnl: string | null; unrealized_pnl: string | null; missing_marks: number }>;

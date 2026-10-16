@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { PaperCalibrationView } from './PaperCalibrationView';
 import { getPaperTrading, type PaperState } from '@/lib/actions/paper-trading.actions';
 
 const number = (value: string | number | null) => value === null ? 'Sin datos' : Number(value).toLocaleString('es-ES', { maximumFractionDigits: 2 });
@@ -23,6 +24,7 @@ export function PaperTradingContent({ data }: { data: PaperState }) {
                 </dl>
             </article>)}
         </div>
+        <PaperCalibrationView data={data.score.calibracion} />
         {data.trades.length === 0 && <p className="text-gray-400">Sin propuestas LLM registradas.</p>}
         {data.trades.map(trade => <article key={trade.id} className="min-w-0 space-y-3 rounded-lg border border-gray-700 p-4 text-sm text-gray-300">
             <div className="flex flex-wrap justify-between gap-2"><h3 className="font-semibold text-gray-100">{trade.ticker} · {trade.direction === 'long' ? 'Largo' : 'Corto'} · {horizon(trade.horizon)}</h3><span>{stateLabel[trade.status] ?? trade.status}</span></div>
