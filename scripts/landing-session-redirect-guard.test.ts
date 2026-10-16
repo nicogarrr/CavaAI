@@ -12,7 +12,9 @@ test('la raiz redirige al panel solo cuando hay sesion (semantica del helper)', 
 });
 
 test('la landing resuelve la sesion en servidor y usa el helper', () => {
-    assert.match(page, /getSession\(\{ headers: await headers\(\) \}\)/);
+    assert.match(page, /const requestHeaders = await headers\(\)/);
+    assert.match(page, /readSessionWhenCookies\(requestHeaders, async \(\) =>/);
+    assert.match(page, /getSession\(\{ headers: requestHeaders \}\)/);
     assert.match(page, /landingTargetForSession\(Boolean\(session\?\.user\)\)/);
     assert.match(page, /if \(target\) redirect\(target\)/);
 });

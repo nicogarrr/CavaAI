@@ -1,0 +1,44 @@
+{
+  "date": "2026-10-16",
+  "environment": "isolated VM, standalone production, unreachable loopback Mongo, no production accounts/data",
+  "base_sha": "cfecb5f0139d0f7c30e459a256b5e24924103a2a",
+  "samples": [
+    {
+      "at": "2026-10-16T08:13:06.453518+00:00",
+      "build": "base-cfecb5",
+      "path": "/sign-in",
+      "cookie": false,
+      "status": 500,
+      "ttfb_s": 30.759644,
+      "total_s": 30.76396
+    },
+    {
+      "at": "2026-10-16T08:13:37.239450+00:00",
+      "build": "base-cfecb5",
+      "path": "/",
+      "cookie": false,
+      "status": 200,
+      "ttfb_s": 30.090782,
+      "total_s": 30.091632
+    },
+    {
+      "at": "2026-10-16T08:14:07.342804+00:00",
+      "build": "candidate",
+      "path": "/sign-in",
+      "cookie": false,
+      "status": 200,
+      "ttfb_s": 0.594934,
+      "total_s": 0.597947
+    },
+    {
+      "at": "2026-10-16T08:14:07.949172+00:00",
+      "build": "candidate",
+      "path": "/",
+      "cookie": false,
+      "status": 200,
+      "ttfb_s": 0.07095,
+      "total_s": 0.071567
+    }
+  ],
+  "candidate_no_cookie_log": "\u25b2 Next.js 16.4.0\n- Local:         http://127.0.0.1:3116\n- Network:       http://127.0.0.1:3116\n\u2713 Ready in 0ms\n\u2713 Running next.config took 11ms\n"
+}

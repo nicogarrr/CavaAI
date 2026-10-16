@@ -1,3 +1,4 @@
+import { readSessionWhenCookies } from "@/lib/anonymous-session";
 import { publicSans, publicEditorial } from "@/lib/public-fonts";
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -51,8 +52,11 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
     const browserTestBypass = process.env.E2E_AUTH_BYPASS === '1' && process.env.NODE_ENV !== 'production';
     let signedIn = false;
     if (!browserTestBypass) {
-        const auth = await getAuth().catch(() => null);
-        const session = auth ? await auth.api.getSession({ headers: await headers() }).catch(() => null) : null;
+        const requestHeaders = await headers();
+        const session = await readSessionWhenCookies(requestHeaders, async () => {
+            const auth = await getAuth().catch(() => null);
+            return auth ? auth.api.getSession({ headers: requestHeaders }).catch(() => null) : null;
+        });
         signedIn = Boolean(session?.user);
     }
 

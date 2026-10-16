@@ -1,3 +1,4 @@
+import { readSessionWhenCookies } from "@/lib/anonymous-session";
 import { publicSans } from "@/lib/public-fonts";
 import Link from "next/link";
 import React from "react";
@@ -15,8 +16,11 @@ export const revalidate = 0;
 const Layout = async ({ children }: { children : React.ReactNode }) => {
     const browserTestBypass = process.env.E2E_AUTH_BYPASS === '1' && process.env.NODE_ENV !== 'production';
     if (!browserTestBypass) {
-        const auth = await getAuth();
-        const session = await auth.api.getSession({headers: await headers()});
+        const requestHeaders = await headers();
+        const session = await readSessionWhenCookies(requestHeaders, async () => {
+            const auth = await getAuth();
+            return auth.api.getSession({ headers: requestHeaders });
+        });
         if (session?.user) redirect('/inicio');
     }
     return (
