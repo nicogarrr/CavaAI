@@ -128,7 +128,7 @@ def export_obsidian(ticker: str, db: Session = Depends(get_db)) -> Response:
     if not notes:
         raise HTTPException(status_code=404, detail="No thesis for ticker")
     content = build_obsidian_zip(company.ticker, notes)
-    return _zip_response(content, f"cavaai-obsidian-{company.ticker}.zip")
+    return _zip_response(content, f"gerarai-obsidian-{company.ticker}.zip")
 
 
 @vault_router.get("/vault.zip")
@@ -194,4 +194,4 @@ def export_obsidian_vault(db: Session = Depends(get_db)) -> Response:
         if (found := find_mentions(text, {other: name for other, name in names.items() if other != ticker}))
     }
     content = build_obsidian_vault(entries, notes_by_ticker, mentions, unresolved_symbols=unresolved)
-    return _zip_response(content, "cavaai-obsidian-vault.zip")
+    return _zip_response(content, "gerarai-obsidian-vault.zip")

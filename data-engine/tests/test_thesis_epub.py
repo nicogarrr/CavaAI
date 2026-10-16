@@ -2,7 +2,7 @@
 
 Sin red y sin binarios externos: el EPUB se construye 100 % en Python con
 EbookLib y aquí se valida la estructura (mimetype primero y sin comprimir,
-container, OPF, capítulos), los metadatos (título, CavaAI, es, identificador
+container, OPF, capítulos), los metadatos (título, GerarAI, es, identificador
 estable, fecha), el TOC desde las secciones reales, las tildes/ñ/€, las
 tablas como tablas y el escape de HTML inyectado; además del endpoint
 GET /api/thesis/{ticker}/epub (200 descarga / 404 limpio sin tesis).
@@ -107,9 +107,9 @@ def test_build_epub_parseable_por_ebooklib_con_metadatos_byte_compatibles():
     book = _read_book(payload)
 
     assert book.get_metadata("DC", "title") == [("Tesis de inversión: SAN — Banco Santander", {})]
-    assert book.get_metadata("DC", "creator") == [("CavaAI", {"id": "creator"})]
+    assert book.get_metadata("DC", "creator") == [("GerarAI", {"id": "creator"})]
     assert book.get_metadata("DC", "language") == [("es", {})]
-    assert book.get_metadata("DC", "identifier") == [("cavaai-thesis-SAN-v2", {"id": "id"})]
+    assert book.get_metadata("DC", "identifier") == [("gerarai-thesis-SAN-v2", {"id": "id"})]
     assert book.get_metadata("DC", "date") == [("2026-09-21", {})]
 
 
@@ -179,7 +179,7 @@ def test_build_epub_escapa_html_inyectado():
 
     # Sigue siendo un EPUB válido aunque el contenido sea hostil.
     book = _read_book(payload)
-    assert book.get_metadata("DC", "identifier") == [("cavaai-thesis-SAN-v2", {"id": "id"})]
+    assert book.get_metadata("DC", "identifier") == [("gerarai-thesis-SAN-v2", {"id": "id"})]
 
     chapter = _chapter_raw(payload, "seccion-01-script-alert-1-script.xhtml")
     assert "<script>" not in chapter
@@ -195,7 +195,7 @@ def test_build_epub_identificador_estable_entre_generaciones():
     other_version = _sample_data()
     other_version.version = 3
     third = _read_book(build_thesis_epub(other_version))
-    assert third.get_metadata("DC", "identifier") == [("cavaai-thesis-SAN-v3", {"id": "id"})]
+    assert third.get_metadata("DC", "identifier") == [("gerarai-thesis-SAN-v3", {"id": "id"})]
 
 
 def test_build_epub_contenido_malformado_no_rompe_y_tipos_fallan_en_alto():
@@ -311,7 +311,7 @@ def test_epub_endpoint_devuelve_descarga_valida(client):
     assert response.status_code == 200, response.text[:300]
     assert response.headers["content-type"] == "application/epub+zip"
     assert "attachment" in response.headers["content-disposition"]
-    assert "cavaai-thesis-SAN-v3.epub" in response.headers["content-disposition"]
+    assert "gerarai-thesis-SAN-v3.epub" in response.headers["content-disposition"]
 
     with _open_epub(response.content) as zf:
         names = zf.namelist()
@@ -319,7 +319,7 @@ def test_epub_endpoint_devuelve_descarga_valida(client):
         assert zf.read("mimetype").decode("ascii") == EPUB_MIMETYPE
 
     book = _read_book(response.content)
-    assert book.get_metadata("DC", "identifier") == [("cavaai-thesis-SAN-v3", {"id": "id"})]
+    assert book.get_metadata("DC", "identifier") == [("gerarai-thesis-SAN-v3", {"id": "id"})]
     assert book.get_metadata("DC", "language") == [("es", {})]
     assert "Valoración" in _toc_titles(book)
 

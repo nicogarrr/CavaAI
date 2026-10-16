@@ -16,7 +16,7 @@ Decisiones documentadas:
   sparklines/charts y `ThesisVersion`/`ThesisSection` no guardan
   binarios). Si el pipeline las añade, el punto de anclaje es
   `epub.EpubImage` junto a cada `EpubHtml`.
-- Identificador estable `cavaai-thesis-{TICKER}-v{versión}` para que el
+- Identificador estable `gerarai-thesis-{TICKER}-v{versión}` para que el
   e-reader no duplique al re-descargar. `dcterms:modified` lo escribe
   EbookLib con la hora actual (estándar EPUB); la estabilidad
   garantizada es la del identificador, no byte a byte.
@@ -229,8 +229,8 @@ def build_thesis_epub(data: ThesisEpubData) -> bytes:
     """Construye un .epub válido con EbookLib a partir de los datos de la tesis.
 
     Contrato intacto: recibe `ThesisEpubData` y devuelve `bytes` listos para
-    servir como `application/epub+zip`. Metadatos: título, autor `CavaAI`,
-    idioma `es`, identificador estable `cavaai-thesis-{TICKER}-v{versión}` y
+    servir como `application/epub+zip`. Metadatos: título, autor `GerarAI`,
+    idioma `es`, identificador estable `gerarai-thesis-{TICKER}-v{versión}` y
     fecha de generación. El TOC se construye desde las secciones reales.
     """
     if not isinstance(data, ThesisEpubData):
@@ -251,7 +251,7 @@ def build_thesis_epub(data: ThesisEpubData) -> bytes:
     else:
         citations = [_as_text(cite, name="citations[]") for cite in data.citations]
 
-    uid = f"cavaai-thesis-{ticker}-v{data.version}"
+    uid = f"gerarai-thesis-{ticker}-v{data.version}"
     title = f"Tesis de inversión: {ticker}"
     if company_name:
         title += f" — {company_name}"
@@ -260,7 +260,7 @@ def build_thesis_epub(data: ThesisEpubData) -> bytes:
     book.set_identifier(uid)
     book.set_title(title)
     book.set_language("es")
-    book.add_author("CavaAI")
+    book.add_author("GerarAI")
     if generated:
         book.add_metadata("DC", "date", generated)
 
