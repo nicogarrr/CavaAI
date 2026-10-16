@@ -198,7 +198,7 @@ def thesis_epub(ticker: str, db: Session = Depends(get_db)) -> Response:
         citations=_epub_citations(db, list(claims)),
     )
     content = build_thesis_epub(data)
-    filename = f"cavaai-thesis-{company.ticker}-v{thesis.version}.epub"
+    filename = f"gerarai-thesis-{company.ticker}-v{thesis.version}.epub"
     return Response(
         content=content,
         media_type="application/epub+zip",

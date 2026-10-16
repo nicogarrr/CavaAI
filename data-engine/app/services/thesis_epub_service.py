@@ -35,6 +35,10 @@ from io import BytesIO
 
 from ebooklib import epub
 
+# Identidad DC estable: NO sigue la marca (rebrand CavaAI -> GerarAI).
+# Cambiarla duplicaria las tesis ya descargadas en los lectores epub.
+EPUB_UID_TEMPLATE = "cavaai-thesis-{ticker}-v{version}"
+
 EPUB_MIMETYPE = "application/epub+zip"
 
 DISCLAIMER_ES = (
@@ -229,8 +233,8 @@ def build_thesis_epub(data: ThesisEpubData) -> bytes:
     """Construye un .epub válido con EbookLib a partir de los datos de la tesis.
 
     Contrato intacto: recibe `ThesisEpubData` y devuelve `bytes` listos para
-    servir como `application/epub+zip`. Metadatos: título, autor `CavaAI`,
-    idioma `es`, identificador estable `cavaai-thesis-{TICKER}-v{versión}` y
+    servir como `application/epub+zip`. Metadatos: título, autor `GerarAI`,
+    idioma `es`, identificador estable `cavaai-thesis-{TICKER}-v{versión}` (historico pre-rebrand, no cambia con la marca) y
     fecha de generación. El TOC se construye desde las secciones reales.
     """
     if not isinstance(data, ThesisEpubData):
@@ -251,7 +255,7 @@ def build_thesis_epub(data: ThesisEpubData) -> bytes:
     else:
         citations = [_as_text(cite, name="citations[]") for cite in data.citations]
 
-    uid = f"cavaai-thesis-{ticker}-v{data.version}"
+    uid = EPUB_UID_TEMPLATE.format(ticker=ticker, version=data.version)
     title = f"Tesis de inversión: {ticker}"
     if company_name:
         title += f" — {company_name}"
@@ -260,7 +264,7 @@ def build_thesis_epub(data: ThesisEpubData) -> bytes:
     book.set_identifier(uid)
     book.set_title(title)
     book.set_language("es")
-    book.add_author("CavaAI")
+    book.add_author("GerarAI")
     if generated:
         book.add_metadata("DC", "date", generated)
 
