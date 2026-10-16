@@ -73,7 +73,7 @@ def test_pregunta_general_sin_ticker_va_al_llm_en_espanol():
     )
     assert provider.requests, "la pregunta general debe llegar al LLM"
     assert response.answer == "El PER es el precio entre beneficios."
-    assert response.prompt_version == "chat-general-v1"
+    assert response.prompt_version == "chat-general-v2"
     system = provider.requests[0].messages[0].content
     assert "espanol" in system
 
@@ -93,7 +93,7 @@ def test_synthesize_general_no_inventa_si_vacio():
 
 def test_prompt_chat_general_registrado():
     prompt = get_prompt("chat_general")
-    assert prompt.version == "chat-general-v1"
+    assert prompt.version == "chat-general-v2"
     assert "cifras" in prompt.text
 
 
