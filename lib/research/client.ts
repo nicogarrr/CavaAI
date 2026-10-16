@@ -112,20 +112,35 @@ export async function researchRequest<T>(
       headers: await buildHeaders(),
       cache: requestInit.cache ?? 'no-store',
       // Sin timeout un backend colgado deja la página entera esperando.
-      signal: requestSignal(requestInit.signal, timeoutMs),
+      // El presupuesto es ÚNICO para toda la operación (retry 429 incluido):
+      // cada intento recibe solo el tiempo que queda hasta el deadline.
+      signal: requestSignal(requestInit.signal, remainingMs()),
     });
+
+  // Deadline compartido: el peor caso real (intento + espera 429 + reintento)
+  // queda acotado por timeoutMs en lugar de multiplicarlo. Sin esta cota un
+  // GET lento (~15s) seguido de 429 disparaba ~35s de función en Vercel y la
+  // plataforma devolvía un 504 crudo antes de que la página pudiera degradar.
+  const deadlineMs = Date.now() + timeoutMs;
+  const remainingMs = () => Math.max(deadlineMs - Date.now(), 1);
 
   let response: Response;
   try {
     response = await doFetch();
     // 429 = ráfaga legítima contra el rate-limit, no un fallo: un único
     // retry con backoff (Retry-After, máx 5s) en métodos idempotentes evita
-    // la pantalla de error genérica por navegar rápido.
+    // la pantalla de error genérica por navegar rápido. La espera también
+    // sale del mismo presupuesto: si no queda tiempo para esperar y aún
+    // lanzar el reintento, se devuelve el 429 tal cual (error honesto, sin
+    // gastar más cuota de función que timeoutMs).
     if (response.status === 429 && (method === 'GET' || method === 'HEAD')) {
       const retryAfter = Number(response.headers.get('Retry-After') ?? '1');
       const waitMs = Math.min(Number.isFinite(retryAfter) ? retryAfter : 1, 5) * 1000;
-      await new Promise((resolve) => setTimeout(resolve, waitMs));
-      response = await doFetch();
+      const budgetLeftMs = deadlineMs - Date.now();
+      if (budgetLeftMs > waitMs + 250) {
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+        response = await doFetch();
+      }
     }
   } catch (error) {
     const timedOut = error instanceof DOMException && error.name === 'TimeoutError';
