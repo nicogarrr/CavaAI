@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import replace
+import json
 
 import httpx
 
@@ -13,6 +13,7 @@ from app.llm.cascade import _FALL_THROUGH, CascadeModelRouter
 from app.llm.contracts import LLMRequest, LLMResponse, Message
 from app.llm.errors import ProviderRequestError, ProviderResponseError, ProviderTransportError
 from app.llm.factory import create_llm_provider
+from app.llm.general_concepts import canonical_concept, educational_output
 from app.llm.model_aliases import VERIFIED_FREE_MODELS
 
 GROQ_MODEL = "openai/gpt-oss-120b"
@@ -32,7 +33,7 @@ class ChatFallbackProvider(LLMProvider):
 
     async def complete(self, request: LLMRequest) -> LLMResponse:
         # Chat synthesis only. Other uses retain their own provider/cost gates.
-        if request.task not in {"chat", "main_financial_analysis"} or request.tools:
+        if request.task != "chat" or request.tools or not self._public_concept(request):
             return await self.primary.complete(request)
         if self.primary.name == "opencode-go" and self.primary.model_router.resolve(request) not in VERIFIED_FREE_MODELS:
             raise ProviderRequestError("Chat fallback refuses a primary not verified free")
@@ -40,6 +41,22 @@ class ChatFallbackProvider(LLMProvider):
             return await asyncio.wait_for(self._race(request), timeout=self.total)
         except TimeoutError:
             raise ProviderTransportError(self.name, "timeout", 1) from None
+
+    @staticmethod
+    def _public_concept(request: LLMRequest) -> str | None:
+        if request.metadata.get("public_general_concept") is not True:
+            return None
+        users = [m for m in request.messages if m.role == "user"]
+        if len(users) != 1:
+            return None
+        try:
+            payload = json.loads(users[0].content)
+        except (ValueError, TypeError):
+            return None
+        if not isinstance(payload, dict) or payload.get("scope") != "concept":
+            return None
+        question = payload.get("question")
+        return canonical_concept(question) if isinstance(question, str) else None
 
     async def _race(self, request: LLMRequest) -> LLMResponse:
         primary = asyncio.create_task(self.primary.complete(request))
@@ -55,9 +72,12 @@ class ChatFallbackProvider(LLMProvider):
                 except _FALL_THROUGH:
                     pass
             # Pin backup explicitly. Never send DeepSeek aliases or effort=max.
-            backup = asyncio.create_task(self.backup.complete(replace(
-                request, model=GROQ_MODEL,
-                messages=(*request.messages, Message("system", "Limita la respuesta a explicación y análisis factual educativo. No des asesoramiento financiero personalizado ni recomendaciones de compra, venta o asignación. Si te lo piden, explica ese límite y ofrece datos y riesgos verificables sin aconsejar una decisión.")),
+            backup = asyncio.create_task(self.backup.complete(LLMRequest(
+                task="chat", model=GROQ_MODEL, temperature=0.3, max_tokens=600,
+                messages=(
+                    Message("system", "Explica conceptos financieros generales en español, solo con fines educativos. No des asesoramiento financiero personalizado ni recomendaciones de compra, venta o asignación. No uses lenguaje personalizado ni enlaces. Máximo 100 palabras. Texto plano, sin Markdown, LaTeX, corchetes ni términos en inglés. Solo definición, fórmula y limitaciones generales. No menciones oportunidades ni decisiones de compra, venta o inversión."),
+                    Message("user", f"Define el concepto general: {self._public_concept(request)}."),
+                ), metadata={}, response_format=None, cache=None, tools=(), tool_choice=None,
             )))
             tasks.append(backup)
             pending = {backup} | ({primary} if not done else set())
@@ -71,6 +91,8 @@ class ChatFallbackProvider(LLMProvider):
                         response = task.result()
                         if response.degraded or response.finish_reason == "length":
                             raise ProviderResponseError("chat response was truncated")
+                        if task is backup and not educational_output(response.text):
+                            raise ProviderResponseError("Groq output rejected by educational boundary")
                         return response
                     except _FALL_THROUGH as exc:
                         last = exc

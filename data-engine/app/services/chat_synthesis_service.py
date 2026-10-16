@@ -586,6 +586,7 @@ class ChatSynthesisService:
                 ),
             ],
             task="chat",
+            metadata={"public_general_concept": scope == "concept"},
             temperature=0.3,
             max_tokens=600,
         )
