@@ -1,17 +1,18 @@
-"""Ronda 5 auditor #990: la ruta general NO emite datos de mercado.
+"""Canarios historicos #990, adaptados a la regla natural del 2026-10-16.
 
-Decidido por main bajo preferencias del propietario (cero terminal / secretos
-fuera de chat): cualquier cifra con divisa o porcentaje en contexto
-financiero cae a la abstencion honesta; los datos cuantitativos viven
-solo en la ruta estructurada con ticker. La charla ordinaria queda
-natural.
+Sin fuentes se permite conocimiento cualitativo o aproximado, nunca citas
+inventadas ni precision empresarial falsa. No se deduce una cartera privada.
 """
 
 import asyncio
 
 from app.schemas import ChatResponse
 from app.services.chat_service import ChatService
-from app.services.chat_synthesis_service import ChatSynthesisService
+from app.services.chat_synthesis_service import (
+    ChatSynthesisService,
+    _general_quantity_context,
+    _inferred_general_text_valid,
+)
 from tests.test_chat_general_es import StubProvider, _db
 
 SRC = [
@@ -25,9 +26,7 @@ SRC = [
 
 
 def _grounded(text, sources):
-    return ChatSynthesisService._general_text_grounded(
-        text, ChatResponse(answer="", sources=sources)
-    )
+    return _inferred_general_text_valid(text, quantitative=_general_quantity_context(text))
 
 
 def test_no_market_figures_even_with_perfect_source_and_citation():
@@ -57,7 +56,8 @@ def test_auditor_round6_repros():
     assert not _grounded("ASTS cotiza a $-999", [])  # signo
     assert not _grounded("ASTS cotiza a 999CAD", [])  # divisa no listada
     assert not _grounded("Microsoft cotiza a novecientos dólares", [])  # sin ticker
-    assert not _grounded("AAPL ha subido mucho esta semana", [])  # sin cifra
+    # La regla actual permite conocimiento cualitativo sin etiquetas.
+    assert _grounded("AAPL ha subido mucho esta semana", [])
     assert not _grounded("Mi cartera va muy bien este año", [])  # posicion propia
 
 
@@ -84,7 +84,7 @@ def test_ordinary_chat_stays_natural():
     assert _grounded("¡Hola! ¿Qué tal tu día?", [])
 
 
-def test_financial_intent_without_company_abstains_without_llm():
+def test_company_knowledge_question_can_reach_llm():
     db = _db()
     provider = StubProvider()
     result = asyncio.run(
@@ -92,10 +92,9 @@ def test_financial_intent_without_company_abstains_without_llm():
             db, "¿a cuánto cotiza FooCorp?", "portfolio", None
         )
     )
-    # Updated owner rule: an unlabelled model answer is rejected, but a
-    # company question may use explicitly labelled knowledge/inference.
+    # Owner now permits natural knowledge without citations or labels.
     assert provider.requests
-    assert result.model == "fallback"
+    assert result.model == "stub"
 
 
 def test_round8_financial_concepts_reach_llm_via_service():
