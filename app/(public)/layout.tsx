@@ -1,3 +1,4 @@
+import { publicSans, publicEditorial } from "@/lib/public-fonts";
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import React from 'react';
@@ -58,13 +59,13 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
     const signUpOpen = isPublicSignUpOpen() && !signedIn;
 
     return (
-        <div className="public-shell">
+        <div className={`public-shell ${publicSans.className} ${publicEditorial.variable}`}>
             <a href="#content" className="skip-link">Saltar al contenido</a>
 
             <header className="sticky top-3 z-50 sm:top-4">
                 <div className="container">
-                    <div className="public-header-inner rounded-full border border-gray-700/60 bg-surface-1/80 px-4 shadow-lg shadow-black/30 backdrop-blur">
-                    <Link href="/" className="flex min-h-11 items-center" aria-label="GerarAI, inicio">
+                    <div className="public-header-inner rounded-2xl sm:rounded-full border border-gray-700/60 bg-surface-1/80 px-3 min-[360px]:px-4 shadow-lg shadow-black/30 backdrop-blur">
+                    <Link href="/" className="flex min-h-11 shrink-0 items-center" aria-label="GerarAI, inicio">
                         <GerarAIWordmark />
                     </Link>
                     <nav aria-label="Páginas de GerarAI" className="public-nav">
@@ -74,7 +75,7 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
                             </Link>
                         ))}
                     </nav>
-                    <div className="flex items-center gap-2">
+                    <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
                         {signedIn ? (
                             <Button asChild className="h-11" size="sm">
                                 <Link href="/inicio">Ir a mi panel</Link>
@@ -85,7 +86,7 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
                                     <Link href="/sign-in">Iniciar sesión</Link>
                                 </Button>
                                 {signUpOpen ? (
-                                    <Button asChild className="h-11 hidden min-[400px]:inline-flex" size="sm">
+                                    <Button asChild className="h-11 hidden sm:inline-flex" size="sm">
                                         <Link href="/sign-up">Crear cuenta</Link>
                                     </Button>
                                 ) : null}

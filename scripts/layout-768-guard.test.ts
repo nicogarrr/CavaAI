@@ -17,7 +17,12 @@ test('F285: los CTAs del hero envuelven en sm en vez de desbordar a 768px', () =
     // Los Button llevan whitespace-nowrap + shrink-0: en una fila sm sin wrap
     // la suma supera 768px (scrollWidth 847). flex-wrap manda el segundo CTA
     // a la siguiente línea.
-    assert.match(landing, /mt-9 flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-center/);
+    const heroActions = landing.match(/<div className="([^"]*)">\s*\{signUpOpen \?/);
+    assert.ok(heroActions, 'Debe existir el contenedor de CTAs del hero');
+    const classes = new Set(heroActions[1].split(/\s+/));
+    for (const token of ['flex', 'flex-col', 'sm:flex-row', 'sm:flex-wrap']) {
+        assert.ok(classes.has(token), `El contenedor de CTAs necesita ${token}`);
+    }
 });
 
 const modelPanels = readFileSync('components/research/FundamentalModelPanels.tsx', 'utf8');

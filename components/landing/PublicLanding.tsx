@@ -34,19 +34,19 @@ export default function PublicLanding() {
 
     return (
         <main id="content" tabIndex={-1} className="w-full overflow-x-clip">
-            <section className="container pb-20 pt-12 text-center sm:pb-28 sm:pt-20">
-                <p className="inline-flex items-center gap-2 rounded-full border border-teal-300/30 bg-teal-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-teal-300">
+            <section className="container pb-16 pt-10 text-left sm:pb-28 sm:pt-20 sm:text-center">
+                <p className="inline-flex max-w-full items-center text-[10px] font-semibold uppercase leading-5 tracking-[0.16em] text-teal-300 sm:text-xs sm:tracking-[0.2em]">
                     Research OS de inversión fundamental
                 </p>
-                <h1 className="mx-auto mt-6 max-w-3xl text-balance text-4xl font-bold leading-[1.1] tracking-tight text-gray-100 sm:text-6xl">
+                <h1 style={{ fontFamily: "var(--font-editorial), Georgia, serif" }} className="mx-auto mt-4 max-w-3xl text-balance text-[clamp(2.7rem,11vw,3.1rem)] font-normal leading-[1.12] tracking-[-0.015em] text-gray-100 sm:mt-6 sm:text-7xl">
                     Tesis <span className="text-teal-300">trazables</span> que se revisan contra la
                     realidad
                 </h1>
-                <p className="mx-auto mt-6 max-w-2xl text-balance text-lg leading-8 text-gray-400">
+                <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-gray-400 sm:mt-6 sm:text-balance sm:text-lg sm:leading-8">
                     Cada afirmación conserva su documento y su fecha, y cada tesis tiene versión. Si un
                     dato no está, GerarAI lo dice en lugar de inventarlo.
                 </p>
-                <div className="mt-9 flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-center">
+                <div className="mt-7 flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-center">
                     {signUpOpen ? (
                         <Button asChild size="lg">
                             <Link href="/sign-up">
@@ -69,7 +69,7 @@ export default function PublicLanding() {
 
                 {/* Mockups: capturas reales de la app (fixture E2E etiquetado
                     como "Fuente de ejemplo" dentro de la propia interfaz). */}
-                <div className="relative mx-auto mt-14 max-w-5xl sm:mt-16">
+                <div className="relative mx-auto mt-12 max-w-5xl sm:mt-16">
                     <div
                         aria-hidden="true"
                         className="pointer-events-none absolute -inset-x-16 -inset-y-16 -z-10 bg-[radial-gradient(ellipse_closest-side_at_50%_45%,rgba(45,212,191,0.14),transparent)]"

@@ -155,13 +155,13 @@ export default function PublicMobileNav({ links, cta }: { links: PublicNavLinkIt
                                 }}
                             >
                                 {/* La CTA de registro viaja aqui cuando no cabe en
-                                    la fila (<400px): ocultarla sin copia seria
+                                    la fila (<640px): ocultarla sin copia seria
                                     perderla en los moviles mas estrechos. */}
                                 {cta ? (
                                     <Link
                                         href={cta.href}
                                         onClick={close}
-                                        className="mb-3 flex min-h-11 items-center justify-center rounded-lg bg-teal-500 px-3 text-sm font-semibold text-gray-950 transition-colors hover:bg-teal-400 min-[400px]:hidden"
+                                        className="mb-3 flex min-h-11 items-center justify-center rounded-lg bg-teal-500 px-3 text-sm font-semibold text-gray-950 transition-colors hover:bg-teal-400 sm:hidden"
                                     >
                                         {cta.label}
                                     </Link>
