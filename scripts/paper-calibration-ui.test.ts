@@ -33,7 +33,7 @@ test('missing calibration is unavailable, never a manufactured zero', async () =
     const html=await render(); assert.match(html,/Calibración no disponible/);assert.doesNotMatch(html,/Error Brier/);
 });
 test('shows Brier, reference and bins in Spanish, difference in points not returns', async () => {
-    const html=await render(payload);for(const word of ['0,1234','0,25','80','60','20 p.p.','30','50','No es una rentabilidad'])assert.ok(html.includes(word),word);
+    const html=await render(payload);for(const word of ['0,1234','0,25','80','60','20 p.p.','50 % - 75 %','30','50','No es una rentabilidad'])assert.ok(html.includes(word),word);
     assert.doesNotMatch(html,/Muestra insuficiente/);
 });
 test('empty or tiny sample keeps warning and missing bins rates', async () => {
@@ -44,4 +44,9 @@ test('empty or tiny sample keeps warning and missing bins rates', async () => {
 test('zero Brier remains a real zero, non-finite remains N/D', async () => {
     const html=await render({...payload,brier:0,brier_referencia_sin_informacion:Number.NaN});
     assert.match(html,/Error Brier<\/dt><dd>0<\/dd>/);assert.match(html,/Referencia sin información<\/dt><dd>N\/D<\/dd>/);
+});
+
+test('real backend decimal bins become explicit percentages without changing values', async () => {
+    const html=await render({...payload,bins:[{...payload.bins[0],rango:'0.00-0.10'}]});
+    assert.match(html,/0 % - 10 %/);assert.doesNotMatch(html,/>0.00-0.10</);
 });

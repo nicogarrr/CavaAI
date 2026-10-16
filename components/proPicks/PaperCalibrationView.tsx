@@ -5,6 +5,12 @@ const metric = (value: number | null | undefined, ratio = false) =>
         ? `${(ratio ? value * 100 : value).toLocaleString('es-ES', { maximumFractionDigits: ratio ? 1 : 4 })}${ratio ? ' %' : ''}`
         : 'N/D';
 
+const rangeLabel = (value: string) => {
+    const match = /^(0(?:\.\d+)?|1(?:\.0+)?)-(0(?:\.\d+)?|1(?:\.0+)?)$/.exec(value);
+    if (!match || Number(match[1]) > Number(match[2])) return value;
+    return `${metric(Number(match[1]), true)} - ${metric(Number(match[2]), true)}`;
+};
+
 /** Read-only calibration of recorded paper outcomes. Never claims forecast accuracy. */
 export function PaperCalibrationView({ data }: { data?: PaperCalibration }) {
     return <section className="min-w-0 space-y-3 rounded-lg border border-gray-700 p-4 text-sm text-gray-300" aria-label="Calibración del LLM">
@@ -21,7 +27,7 @@ export function PaperCalibrationView({ data }: { data?: PaperCalibration }) {
             {data.bins.length ? <div>
                 <div className="space-y-2 sm:hidden" aria-label="Grupos de convicción">
                     {data.bins.map(bin => <article key={bin.rango} className="rounded border border-gray-800 p-3">
-                        <h4 className="font-medium">Rango {bin.rango} · {bin.cerradas} cerradas</h4>
+                        <h4 className="font-medium">Rango {rangeLabel(bin.rango)} · {bin.cerradas} cerradas</h4>
                         <dl className="mt-2 grid grid-cols-2 gap-2 text-xs">
                             <dt>Convicción media</dt><dd>{metric(bin.conviction_media, true)}</dd>
                             <dt>Aciertos</dt><dd>{metric(bin.tasa_acierto, true)}</dd>
@@ -35,7 +41,7 @@ export function PaperCalibrationView({ data }: { data?: PaperCalibration }) {
                     <caption className="pb-2 text-left text-gray-400">Convicción declarada frente a aciertos observados</caption>
                     <thead><tr>{['Rango', 'Cerradas', 'Convicción media', 'Aciertos', 'Diferencia (p.p.)'].map(label => <th className="px-2 py-2 first:pl-0" key={label} scope="col">{label}</th>)}</tr></thead>
                     <tbody>{data.bins.map(bin => <tr key={bin.rango} className="border-t border-gray-800">
-                        <th scope="row" className="px-2 py-2 first:pl-0 font-normal">{bin.rango}{bin.aviso ? <p className="mt-1 text-gray-400">{bin.aviso}</p> : null}</th>
+                        <th scope="row" className="px-2 py-2 first:pl-0 font-normal">{rangeLabel(bin.rango)}{bin.aviso ? <p className="mt-1 text-gray-400">{bin.aviso}</p> : null}</th>
                         <td className="px-2 py-2">{bin.cerradas}</td>
                         <td className="px-2 py-2">{metric(bin.conviction_media, true)}</td>
                         <td className="px-2 py-2">{metric(bin.tasa_acierto, true)}</td>
