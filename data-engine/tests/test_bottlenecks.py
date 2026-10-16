@@ -278,3 +278,30 @@ def test_chunk_parent_must_share_tenant(db):
     refresh_signals(db)
     db.commit()
     assert all(s.evidence_ids == [] for s in list_bottlenecks(db).signals)
+
+
+def test_run_endpoint_enqueues_manual_sweep_without_calling_any_model(db, monkeypatch):
+    from app.workers import dramatiq_app
+
+    sent = []
+
+    class _Message:
+        message_id = "mid-1"
+
+    def fake_send(tenant_id, user_id):
+        sent.append((tenant_id, user_id))
+        return _Message()
+
+    monkeypatch.setattr(dramatiq_app.discover_bottlenecks, "send", fake_send)
+    db.info["user_id"] = "owner"
+    app = FastAPI()
+    app.include_router(router, prefix="/api/bottlenecks")
+    app.dependency_overrides[get_db] = lambda: db
+    with TestClient(app) as client:
+        response = client.post("/api/bottlenecks/discoveries/run")
+        assert response.status_code == 202
+        assert response.json() == {"status": "queued", "message_id": "mid-1"}
+        # Solo encola: el GET sigue respondiendo desde lo persistido, sin llamadas.
+        assert client.get("/api/bottlenecks/discoveries").status_code == 200
+    assert sent == [(1, "owner")]
+    assert db.scalars(select(BottleneckSignal)).all() == []

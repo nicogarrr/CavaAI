@@ -112,3 +112,18 @@ def list_discoveries(
             evidence=evidence, model=row.model, created_at=row.created_at))
     return DiscoveriesOut(items=items, total=total, limit=limit, offset=offset,
                           has_more=offset + len(items) < total)
+
+
+@router.post("/discoveries/run", status_code=202)
+def run_discovery(db: Session = Depends(get_db)) -> dict:
+    """Encola un barrido manual de candidatos INFERIDOS para el tenant actual.
+
+    Sin scheduler automatico: el barrido solo arranca cuando alguien lo pide.
+    La cuota diaria y las guardas de modelo gratuito las aplica
+    ``bottleneck_discovery_service.discover`` dentro del worker; aqui solo se
+    encola, nunca se llama al modelo desde la peticion.
+    """
+    from app.workers.dramatiq_app import discover_bottlenecks
+
+    message = discover_bottlenecks.send(db.info.get("tenant_id"), db.info.get("user_id"))
+    return {"status": "queued", "message_id": str(message.message_id)}
