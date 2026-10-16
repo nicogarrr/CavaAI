@@ -302,6 +302,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bottlenecks/discoveries/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Discovery
+         * @description Encola un barrido manual de candidatos INFERIDOS para el tenant actual.
+         *
+         *     Sin scheduler automatico: el barrido solo arranca cuando alguien lo pide.
+         *     La cuota diaria y las guardas de modelo gratuito las aplica
+         *     ``bottleneck_discovery_service.discover`` dentro del worker; aqui solo se
+         *     encola, nunca se llama al modelo desde la peticion.
+         */
+        post: operations["run_discovery_api_bottlenecks_discoveries_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/calendar/catalysts": {
         parameters: {
             query?: never;
@@ -8085,6 +8110,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DiscoveriesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_discovery_api_bottlenecks_discoveries_run_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-cavaai-user"?: string | null;
+                "x-cavaai-tenant"?: string | null;
+                "x-cavaai-timestamp"?: string | null;
+                "x-cavaai-signature"?: string | null;
+                "x-cavaai-nonce"?: string | null;
+                "x-cavaai-method"?: string | null;
+                "x-cavaai-path"?: string | null;
+                "x-cavaai-body-hash"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
