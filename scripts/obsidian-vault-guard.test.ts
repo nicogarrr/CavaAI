@@ -34,7 +34,7 @@ describe('vault Obsidian detrás del proxy same-origin', () => {
         const proxy = source(proxyPath);
         assert.match(proxy, /private, no-store/);
         assert.match(proxy, /'x-content-type-options': 'nosniff'/);
-        assert.match(proxy, /cavaai-obsidian-vault\.zip/);
+        assert.match(proxy, /gerarai-obsidian-vault\.zip/);
     });
 
     it('la UI enlaza al proxy y nunca al backend directo', () => {
