@@ -6,7 +6,7 @@ import { AppError } from '@/lib/types/errors';
 export interface PaperTradeView {
     id: number; ticker: string; direction: 'long' | 'short'; horizon: 'short' | 'five_years';
     thesis: string; conviction: string; proposed_entry: string; stop: string; target: string;
-    inference_basis: string; status: string; currency: string | null; created_at: string;
+    quantity?: string; price_source?: string | null; inference_basis: string; status: string; currency: string | null; created_at: string;
     entry_price: string | null; exit_price: string | null; mark_price: string | null;
     mark_at: string | null; entry_at: string | null; exit_at: string | null;
     realized_pnl: string | null; unrealized_pnl: string | null; close_reason: string | null;

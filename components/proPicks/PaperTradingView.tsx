@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
+import { PaperProposalCard } from './PaperProposalCard';
 import { PaperCalibrationView } from './PaperCalibrationView';
 import { getPaperTrading, type PaperState } from '@/lib/actions/paper-trading.actions';
 
 const number = (value: string | number | null) => value === null ? 'Sin datos' : Number(value).toLocaleString('es-ES', { maximumFractionDigits: 2 });
 const horizon = (value: string) => value === 'five_years' ? 'Tesis 5 años' : 'Trade 30 días';
-const stateLabel: Record<string, string> = { pending: 'Pendiente de entrada', open: 'Abierta', closed: 'Cerrada' };
-const dateLabel = (value: string | null) => value ? new Date(value).toLocaleString('es-ES') : 'Sin datos';
 
 export function PaperTradingContent({ data }: { data: PaperState }) {
     if (data.error) return <p role="alert" className="text-red-300">{data.error}</p>;
@@ -25,16 +24,8 @@ export function PaperTradingContent({ data }: { data: PaperState }) {
             </article>)}
         </div>
         <PaperCalibrationView data={data.score.calibracion} />
-        {data.trades.length === 0 && <p className="text-gray-400">Sin propuestas LLM registradas.</p>}
-        {data.trades.map(trade => <article key={trade.id} className="min-w-0 space-y-3 rounded-lg border border-gray-700 p-4 text-sm text-gray-300">
-            <div className="flex flex-wrap justify-between gap-2"><h3 className="font-semibold text-gray-100">{trade.ticker} · {trade.direction === 'long' ? 'Largo' : 'Corto'} · {horizon(trade.horizon)}</h3><span>{stateLabel[trade.status] ?? trade.status}</span></div>
-            <p className="break-words whitespace-pre-wrap">{trade.thesis}</p>
-            <p>Inferencia LLM: convicción {number(Number(trade.conviction) * 100)} % · entrada {number(trade.proposed_entry)} · stop {number(trade.stop)} · objetivo {number(trade.target)}</p>
-            <p className="break-words">Base: {trade.inference_basis}</p>
-            <p>Dato de mercado · {trade.currency ?? 'Sin divisa'}: entrada {number(trade.entry_price)} · último precio {number(trade.mark_price)} · cierre {number(trade.exit_price)}</p>
-            <p>P&amp;L bruto simulado: {number(trade.status === 'closed' ? trade.realized_pnl : trade.unrealized_pnl)}</p>
-            <p className="text-xs text-gray-400">Propuesta: {dateLabel(trade.created_at)} · precio: {dateLabel(trade.mark_at)}</p>
-        </article>)}
+        {data.trades.length === 0 && <p className="text-gray-400">Sin propuestas LLM registradas. No se ha generado una operación simulada para mostrar.</p>}
+        {data.trades.map(trade => <PaperProposalCard key={trade.id} trade={trade} />)}
         <details className="text-xs text-gray-400"><summary>Base de medición</summary><p className="mt-2">Acierto = P&amp;L bruto positivo al cerrar. Divisas separadas. Sin comisiones, dividendos, financiación ni ajustes por splits. Una salida anticipada no valida una tesis a 5 años. Cantidad simulada: supuesto.</p></details>
     </section>;
 }
