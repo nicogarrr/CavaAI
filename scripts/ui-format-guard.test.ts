@@ -50,7 +50,7 @@ describe('formato numérico es-ES', () => {
 describe('guardas de UI', () => {
   it('la lista de ProPicks usa scroll horizontal real en móvil', () => {
     const tabs = source('components/proPicks/ProPicksTabs.tsx');
-    for (const token of ['flex h-auto w-full min-w-0 max-w-full', 'min-w-full', 'overflow-x-auto', 'snap-x', 'pb-2', 'sm:inline-flex']) {
+    for (const token of ['flex h-auto w-full min-w-0 max-w-full', 'justify-start', 'overflow-x-auto', 'snap-x', 'pb-2', 'sm:inline-flex']) {
       assert.ok(tabs.includes(token), `ProPicksTabs debe contener ${token}`);
     }
     const triggers = tabs.slice(tabs.indexOf('<TabsList'), tabs.indexOf('</TabsList>'));
@@ -66,7 +66,7 @@ describe('guardas de UI', () => {
       assert.ok(block.includes('min-w-fit'), 'cada trigger debe conservar su ancho natural');
       assert.ok(block.includes('whitespace-nowrap'), 'cada trigger no debe partir su etiqueta');
     }
-    for (const token of ['w-max', 'min-w-full', 'overflow-x-auto']) assert.ok(tabs.includes(token), `ProPicksTabs debe contener ${token}`);
+    for (const token of ['w-max', 'justify-start', 'overflow-x-auto']) assert.ok(tabs.includes(token), `ProPicksTabs debe contener ${token}`);
   });
 
   it('ninguna pestaña queda huérfana: cada trigger tiene su TabsContent', () => {
