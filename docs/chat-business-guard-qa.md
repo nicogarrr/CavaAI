@@ -51,7 +51,7 @@ No se certifica que el proveedor esté recuperado.
 | ID | Pregunta | Replay local | Tiempo original del modelo |
 | --- | --- | --- | ---: |
 | C1 | ingresos de apple | respuesta natural admitida, sin fuentes | 7.561 s |
-| C2 | deuda de nvidia | respuesta natural admitida, sin fuentes | 13.844 s |
+| C2 | deuda de nvidia | rechazada: precisión 2,85% sin fuente | 13.844 s |
 | C3 | how large is the workforce at nvidia | respuesta natural admitida, sin fuentes | 6.192 s |
 | C4 | Define revenue | respuesta natural admitida, sin fuentes | 15.653 s |
 | C5 | Dame una plantilla para un correo | respuesta natural admitida, sin fuentes | 4.133 s |
@@ -84,3 +84,13 @@ dominios sin esquema, uno como cantidad empresarial y falsa precision de dos
 decimales aunque se anteponga unos. Los aproximadores no lavan otra cifra.
 Se conservan segun la epoca y normativa contable como usos no atribucionales
 acotados; el guard sigue siendo lexico, no comprension universal.
+
+
+## Replay regenerado tras R4
+
+Resultado actual: 5 admitidas / 1 rechazada. Deuda de Nvidia se rechaza por el
+cupón 2,85%: la regla conservadora veta dos decimales aunque haya aproximación.
+También se rechaza la negación No es un dato oficial por contener oficial.
+Son falsos positivos conocidos, no evidencia de falsedad del texto. No se
+lanzaron llamadas live para este replay. El JSONL se regenera con el guard
+actual; no se arrastra el 6/6 de una versión anterior.
