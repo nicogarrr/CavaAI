@@ -28,7 +28,7 @@ fuentes no obliga a abstenerse de toda consulta empresarial.
 
 ## Pruebas
 
-Suite relacionada de chat, grounding y Jev: **172/172**, exit 0. Ruff: exit 0.
+Suite relacionada de chat, grounding y Jev: **184/184**, exit 0. Ruff: exit 0.
 Incluye los contraejemplos del auditor adaptados al contrato sin etiquetas,
 precisión falsa local, cantidades escritas con palabras, fechas, rangos,
 mayúsculas, conceptos ES/EN, campos de correo y citas falsas.
@@ -75,3 +75,12 @@ casos con una cifra exacta mezclada con otras aproximadas. No se ocultan como
 La pregunta de extracción del prompt es un canario, no prueba de resistencia
 universal. No se prueba aquí sesión autenticada en producción, tesis E2E, tool
 calling ni todas las pestañas: forman parte de la QA aislada más amplia.
+
+
+## R4: contraejemplos de atribucion y enlaces
+
+Se rechazan atribuciones segun sin distinguir mayusculas (incluida la web de X),
+dominios sin esquema, uno como cantidad empresarial y falsa precision de dos
+decimales aunque se anteponga unos. Los aproximadores no lavan otra cifra.
+Se conservan segun la epoca y normativa contable como usos no atribucionales
+acotados; el guard sigue siendo lexico, no comprension universal.

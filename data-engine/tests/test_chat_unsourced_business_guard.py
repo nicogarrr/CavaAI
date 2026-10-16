@@ -117,7 +117,7 @@ def test_each_claim_needs_local_approximation(answer):
     'El ratio se queda cerca del 10%.',
     'Apple ingresa del orden de 380.000 a 400.000 millones.',
     'La caja supera holgadamente los 40.000 millones.',
-    'Los cupones rondan entre el 2,85% y el 3,7%.',
+    'Los cupones rondan entre el 2,8% y el 3,7%.',
     'Los ingresos son cercanos a los 380-390 mil millones.',
     'La cifra está entre unos 85 y 95 mil millones por trimestre.',
     'Para el dato exacto conviene consultar los resultados oficiales.',
@@ -188,3 +188,27 @@ def test_concept_can_include_a_natural_approximate_example():
         question='Define revenue', baseline=ChatResponse(answer='', sources=[]),
     ))
     assert result.answer == answer
+
+
+@pytest.mark.parametrize('answer', [
+    'Según nvidia, tiene unos 36000 empleados.',
+    'según NVIDIA, tiene unos 36000 empleados.',
+    'SEGÚN nViDiA, tiene unos 36000 empleados.',
+    'Puedes ver el dato en nvidia.com/informe.',
+    'Consulta investor.nvidia.com para verlo.',
+    'El dato está en sec.gov/Archives.',
+    'Puedes verlo en ejemplo.es/datos.',
+])
+def test_auditor_lowercase_attribution_and_bare_domains(answer):
+    assert not _inferred_general_text_valid(answer)
+
+
+@pytest.mark.parametrize('answer', [
+    'según apple sus ingresos son de unos 390000 millones.',
+    'Según la web de nvidia tiene unos 36000 empleados.',
+    'La plantilla de apple es uno.',
+    'La deuda ronda unos12.345,67millones.',
+    'Los ingresos son de unos 12345,67 millones.',
+])
+def test_auditor_attribution_paraphrase_one_and_excess_precision(answer):
+    assert not _inferred_general_text_valid(answer)

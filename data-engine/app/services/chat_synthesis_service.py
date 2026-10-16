@@ -211,7 +211,7 @@ _CONCEPT_Q_RE = re.compile(
 )
 _PERSONAL_RE = re.compile(r"(?i)\b(mi|mis|tu|tus|su|sus|nuestr[oa]s?|m[ií]o|m[ií]a)\b")
 _NUMBER_WORD_RE = re.compile(
-    r"(?i)\b(cero|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|"
+    r"(?i)\b(cero|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|"
     r"catorce|quince|veinte\w*|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|"
     r"noventa|cien|ciento|doscientos|trescientos|cuatrocientos|quinientos|"
     r"seiscientos|setecientos|ochocientos|novecientos|mil|mill[oó]n|millones|"
@@ -246,6 +246,12 @@ def _inferred_general_text_valid(
     """Prosa natural: no atribuciones/citas falsas, cifras aproximadas locales."""
     if len(text) > 8000 or not text.strip() or re.search(r"https?://|www[.]|\bdoi:", text, re.I):
         return False
+    if re.search(
+        r"(?i)\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+"
+        r"(?:com|org|net|io|ai|es|gov|edu|co|uk|de|fr|app|dev|info|biz|eu)\b(?:/[^\s]*)?",
+        text,
+    ):
+        return False
     if allow_placeholders:
         def placeholder(match: re.Match[str]) -> str:
             content = match.group(1).strip()
@@ -276,7 +282,11 @@ def _inferred_general_text_valid(
         r"(?:informe|fuentes?|documentos?|datos|comunicado|reporte|balance|estudio|sec))\b", attribution
     ):
         return False
-    if re.search(r"(?i:seg[uú]n)\s+[A-ZÁÉÍÓÚÑ]", attribution):
+    attribution = re.sub(r"(?i)seg[uú]n (?:la [eé]poca|normativa contable)\b", "", attribution)
+    if re.search(r"(?i)\bseg[uú]n\b", attribution):
+        return False
+    # Aproximar no convierte una cifra contable con decimales en estimacion.
+    if re.search(r"\d[\d.,]*[.,]\d{2}(?!\d)", text):
         return False
     hits, total = _english_hits(text)
     if hits >= 2 and hits / max(total, 1) >= 0.15:
@@ -302,6 +312,8 @@ def _inferred_general_text_valid(
             # Periodos/fechas no son una cifra empresarial. No convertirlos
             # en fuente: solo se permite el formato de fecha o año aislado.
             prefix = clause[max(0, match.start() - 90):match.start()]
+            if token.lower() == "uno" and re.search(r"(?i)\bcada\s+$", prefix):
+                continue
             if (
                 re.fullmatch(r"(?:19|20)\d{2}", token)
                 and prefix.rstrip().endswith("(")
