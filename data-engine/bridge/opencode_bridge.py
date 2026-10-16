@@ -25,17 +25,19 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 SERVE_URL = os.environ.get("SERVE_URL", "http://oc-serve2:4096").rstrip("/")
 PROVIDER_ID = os.environ.get("PROVIDER_ID", "opencode")
 POLL_S = float(os.environ.get("POLL_S", "2"))
-TIMEOUT_S = float(os.environ.get("TIMEOUT_S", "150"))
+TIMEOUT_S = float(os.environ.get("TIMEOUT_S", "30"))
+REQUEST_TIMEOUT_S = float(os.environ.get("REQUEST_TIMEOUT_S", "10"))
 LISTEN_PORT = int(os.environ.get("LISTEN_PORT", "4098"))
 
 
-def serve_req(method: str, path: str, body=None):
+def serve_req(method: str, path: str, body=None, timeout=None):
     req = urllib.request.Request(
         SERVE_URL + path, method=method,
         data=json.dumps(body).encode() if body is not None else None,
         headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=60) as res:
-        return json.load(res)
+    with urllib.request.urlopen(req, timeout=timeout or REQUEST_TIMEOUT_S) as res:
+        raw = res.read()
+        return json.loads(raw) if raw else None
 
 
 def flatten_messages(messages) -> str:
@@ -50,6 +52,10 @@ def flatten_messages(messages) -> str:
     return "\n\n".join(out)
 
 
+class ProviderRateLimitError(RuntimeError):
+    pass
+
+
 def complete(model: str, messages, response_format=None, reasoning_effort=None) -> str:
     prompt = flatten_messages(messages)
     if response_format and isinstance(response_format, dict):
@@ -59,8 +65,8 @@ def complete(model: str, messages, response_format=None, reasoning_effort=None) 
             prompt += ("\n\nResponde SOLO con JSON valido que cumpla este "
                        "esquema, sin texto extra ni markdown:\n"
                        + json.dumps(schema, ensure_ascii=False))
-    sid = serve_req("POST", "/session", {})["id"]
-    t0 = time.time()
+    sid = serve_req("POST", "/session", {"title": "CavaAI chat"})["id"]
+    t0 = time.monotonic()
     try:
         msg = {"model": {"providerID": PROVIDER_ID, "modelID": model},
                "parts": [{"type": "text", "text": prompt}]}
@@ -69,9 +75,15 @@ def complete(model: str, messages, response_format=None, reasoning_effort=None) 
             # tiene low|high|max; space-bunny-free low|medium|high|xhigh|max)
             msg["variant"] = reasoning_effort
             print(f"bridge: {model} variant={reasoning_effort}", flush=True)
-        serve_req("POST", f"/session/{sid}/message", msg)
-        textos = []
-        while time.time() - t0 < TIMEOUT_S:
+        serve_req("POST", f"/session/{sid}/prompt_async", msg)
+        while time.monotonic() - t0 < TIMEOUT_S:
+            statuses = serve_req("GET", "/session/status") or {}
+            status = statuses.get(sid, {})
+            if status.get("type") == "retry":
+                message = str(status.get("message", ""))
+                if any(marker in message.lower() for marker in ("rate limit", "quota", "429", "free tier")):
+                    raise ProviderRateLimitError("El proveedor gratuito ha limitado las solicitudes; inténtalo más tarde.")
+            textos = []
             for m in serve_req("GET", f"/session/{sid}/message"):
                 info = m.get("info", {})
                 if info.get("role") != "assistant":
@@ -86,10 +98,11 @@ def complete(model: str, messages, response_format=None, reasoning_effort=None) 
             time.sleep(POLL_S)
         raise TimeoutError(f"serve no termino en {TIMEOUT_S}s")
     finally:
-        try:
-            serve_req("DELETE", f"/session/{sid}")
-        except Exception:
-            pass
+        for method, path in (("POST", f"/session/{sid}/abort"), ("DELETE", f"/session/{sid}")):
+            try:
+                serve_req(method, path, {} if method == "POST" else None, timeout=2)
+            except Exception:
+                pass
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -132,7 +145,7 @@ class Handler(BaseHTTPRequestHandler):
             text = complete(model, messages, body.get("response_format"),
                             body.get("reasoning_effort"))
         except Exception as e:
-            self._send_json(502, {"type": "error", "error": {
+            self._send_json(429 if isinstance(e, ProviderRateLimitError) else 502, {"type": "error", "error": {
                 "type": type(e).__name__, "message": str(e)[:400]}})
             return
         self._send_json(200, {
