@@ -62,6 +62,40 @@ _free_retry_at: dict[str, float] = {}
 _free_retry_lock = threading.Lock()
 
 
+class _StatusProbe:
+    """Best-effort, one daemon thread per active request; no response-path wait."""
+
+    def __init__(self, sid: str):
+        self.sid = sid
+        self.stopped = threading.Event()
+        self.status = None
+        self.lock = threading.Lock()
+        self.thread = threading.Thread(target=self._run, daemon=True)
+
+    def start(self):
+        self.thread.start()
+
+    def _run(self):
+        while not self.stopped.is_set():
+            try:
+                statuses = serve_req("GET", "/session/status", timeout=2)
+                status = statuses.get(self.sid) if isinstance(statuses, dict) else None
+                with self.lock:
+                    self.status = status
+            except (urllib.error.URLError, TimeoutError, ValueError):
+                pass
+            if self.stopped.wait(max(POLL_S, 0.05)):
+                break
+
+    def latest(self):
+        with self.lock:
+            return self.status
+
+    def close(self):
+        # Do not join a potentially slow HTTP request on the primary response path.
+        self.stopped.set()
+
+
 def complete(model: str, messages, response_format=None, reasoning_effort=None) -> str:
     with _free_retry_lock:
         if _free_retry_at.get(model, 0) > time.time():
@@ -76,6 +110,7 @@ def complete(model: str, messages, response_format=None, reasoning_effort=None) 
                        + json.dumps(schema, ensure_ascii=False))
     sid = serve_req("POST", "/session", {"title": "CavaAI chat"})["id"]
     t0 = time.monotonic()
+    probe = _StatusProbe(sid)
     try:
         msg = {"model": {"providerID": PROVIDER_ID, "modelID": model},
                "parts": [{"type": "text", "text": prompt}]}
@@ -85,22 +120,8 @@ def complete(model: str, messages, response_format=None, reasoning_effort=None) 
             msg["variant"] = reasoning_effort
             print(f"bridge: {model} variant={reasoning_effort}", flush=True)
         serve_req("POST", f"/session/{sid}/prompt_async", msg)
+        probe.start()
         while time.monotonic() - t0 < TIMEOUT_S:
-            # Status inspection is optional. A broken status endpoint must not
-            # discard a valid primary response available through /message.
-            try:
-                statuses = serve_req("GET", "/session/status", timeout=2)
-            except (urllib.error.URLError, TimeoutError, ValueError):
-                statuses = None
-            status = statuses.get(sid) if isinstance(statuses, dict) else None
-            action = status.get("action") if isinstance(status, dict) else None
-            if isinstance(action, dict) and status.get("type") == "retry" and action.get("reason") == "free_tier_limit":
-                retry_ms = status.get("next")
-                # Do not guess a reset or widen one model's limit to another model.
-                if type(retry_ms) in (int, float) and time.time() < retry_ms / 1000 < time.time() + 7 * 86400:
-                    with _free_retry_lock:
-                        _free_retry_at[model] = retry_ms / 1000
-                raise FreeTierLimitError("El límite gratuito del modelo está agotado; inténtalo más tarde.")
             textos = []
             for m in serve_req("GET", f"/session/{sid}/message"):
                 info = m.get("info", {})
@@ -113,9 +134,20 @@ def complete(model: str, messages, response_format=None, reasoning_effort=None) 
                     raise RuntimeError("serve error: " + json.dumps(info["error"])[:300])
                 if info.get("finish") and info.get("finish") != "tool-calls":
                     return " ".join(textos).strip()
+            # Optional status reads run off the response path. Never wait for
+            # status when the primary can already have a complete message.
+            status = probe.latest()
+            action = status.get("action") if isinstance(status, dict) else None
+            if isinstance(action, dict) and status.get("type") == "retry" and action.get("reason") == "free_tier_limit":
+                retry_ms = status.get("next")
+                if type(retry_ms) in (int, float) and time.time() < retry_ms / 1000 < time.time() + 7 * 86400:
+                    with _free_retry_lock:
+                        _free_retry_at[model] = retry_ms / 1000
+                raise FreeTierLimitError("El límite gratuito del modelo está agotado; inténtalo más tarde.")
             time.sleep(POLL_S)
         raise TimeoutError(f"serve no termino en {TIMEOUT_S}s")
     finally:
+        probe.close()
         for method, path in (("POST", f"/session/{sid}/abort"), ("DELETE", f"/session/{sid}")):
             try:
                 serve_req(method, path, {} if method == "POST" else None, timeout=2)
