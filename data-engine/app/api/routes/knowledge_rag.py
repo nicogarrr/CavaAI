@@ -19,7 +19,7 @@ from starlette.concurrency import run_in_threadpool
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.models.knowledge_rag import KnowledgeRagSource
-from app.services.knowledge_rag import runtime
+from app.services.knowledge_rag import query_translation, runtime
 from app.services.knowledge_rag.domain import DocType, SourceMetadata, SourceMetadataError
 from app.services.knowledge_rag.ingest import (
     InboxPathError,
@@ -177,6 +177,17 @@ async def query(payload: QueryRequest, db: Session = Depends(get_db)) -> dict:
         as_of_to=payload.as_of_to,
     )
 
+    # F372: si la pregunta parece espanol se busca tambien con su traduccion
+    # al ingles. Sin LLM disponible degrada a solo la original, con nota.
+    query_variants: list[str] = []
+    translation_notes: list[str] = []
+    if settings.knowledge_rag_query_translation:
+        variant, note = await query_translation.english_variant(payload.query, settings=settings)
+        if variant:
+            query_variants.append(variant)
+        if note:
+            translation_notes.append(note)
+
     def run():
         return search_knowledge(
             payload.query,
@@ -191,6 +202,7 @@ async def query(payload: QueryRequest, db: Session = Depends(get_db)) -> dict:
             rrf_k=settings.rag_rrf_k,
             dense_weight=settings.rag_dense_weight,
             sparse_weight=settings.rag_sparse_weight,
+            query_variants=query_variants,
         )
 
     try:
@@ -200,11 +212,12 @@ async def query(payload: QueryRequest, db: Session = Depends(get_db)) -> dict:
         raise HTTPException(status_code=503, detail="Knowledge index unavailable") from exc
     return {
         "query": result.query,
+        "query_variants": result.query_variants,
         "citations": [c.public(include_context=payload.include_context) for c in result.citations],
         "context": result.context if payload.include_context else None,
         "dropped_unverified": result.dropped_unverified,
         "abstain": not result.citations,
-        "notes": result.notes,
+        "notes": [*translation_notes, *result.notes],
     }
 
 
