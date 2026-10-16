@@ -18,6 +18,9 @@
     "app/(root)/export/**": {
       "maxDuration": 60
     },
+    "app/(root)/calendar/**": {
+      "maxDuration": 30
+    },
     "app/api/thesis/**": {
       "maxDuration": 60
     },
