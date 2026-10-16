@@ -43,6 +43,8 @@ class RiskService:
             })
         cash_native: dict[str, float] = {}
         cash_base = 0.0
+        cash_assets_base = 0.0
+        margin_debt_base = 0.0
         cash_rows = list(db.scalars(select(CashBalance)).all())
         cash_table = fx.fx_table(
             db,
@@ -68,7 +70,10 @@ class RiskService:
                     }
                 )
                 continue
-            cash_base += float(row.balance * rate)
+            converted = float(row.balance * rate)
+            cash_base += converted
+            cash_assets_base += max(converted, 0.0)
+            margin_debt_base += max(-converted, 0.0)
         result = calculate_portfolio_risk(
             positions,
             [{"currency": base_currency, "balance": cash_base}],
@@ -78,6 +83,8 @@ class RiskService:
                 "status": "incomplete_fx" if missing_fx else "ok",
                 "base_currency": base_currency,
                 "cash_native": cash_native,
+                "cash_assets_base": cash_assets_base,
+                "margin_debt_base": margin_debt_base,
                 "missing_fx": missing_fx,
             }
         )

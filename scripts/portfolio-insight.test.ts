@@ -101,7 +101,8 @@ describe('guardas de regresion de /inicio', () => {
   it('el valor total de la cartera se formatea en su divisa base, no en USD fijo (F42)', () => {
     const overview = source('components/PersonalizedOverview.tsx');
     assert.ok(
-      overview.includes('formatMoney(portfolioSummary.totalValue, portfolioSummary.baseCurrency)'),
+      overview.includes('<PortfolioValueBreakdown summary={portfolioSummary} />')
+        && source('components/portfolio/PortfolioValueBreakdown.tsx').includes('formatMoney(totalValue, baseCurrency)'),
       'el total de "Tu Cartera Hoy" debe usar portfolioSummary.baseCurrency',
     );
   });
