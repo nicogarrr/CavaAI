@@ -29,6 +29,39 @@ MAX_DAYS_PER_REQUEST = 31
 # semana por defecto en prod); sin tope, 31 dias a la vez martirizan NASDAQ.
 RANGE_CONCURRENCY = 4
 
+# Deadline TOTAL del rango (16 oct 2026: /api/calendar/catalysts tardaba >10s
+# en prod y la pagina moria con un 504 de plataforma). Los dias ya resueltos
+# se conservan; los que no alcanzan el deadline van a ``errors`` con el
+# motivo explicito. Nunca se rellenan huecos.
+RANGE_DEADLINE_S = 8.0
+# Por debajo de este resto no merece abrir otra consulta: no daria tiempo.
+_MIN_DAY_BUDGET_S = 0.5
+
+# Cache breve por dia (el calendario publico cambia intradia) + singleflight:
+# peticiones concurrentes al mismo dia comparten UNA consulta en vuelo.
+# Solo aplica sin cliente inyectado (produccion); con cliente inyectado
+# (tests) la cache queda fuera para que cada test controle su red.
+_DAY_CACHE_TTL_S = 900.0
+_day_cache: dict[tuple[str, date], tuple[float, list[dict[str, Any]]]] = {}
+_day_inflight: dict[tuple[str, date], asyncio.Task[list[dict[str, Any]] | None]] = {}
+
+# Pool HTTP compartido. Antes cada dia abria un AsyncClient nuevo (TLS nueva
+# por consulta); el pool reutiliza conexiones entre dias y entre rangos.
+_SHARED_CLIENT: httpx.AsyncClient | None = None
+
+
+def _pooled_client() -> httpx.AsyncClient:
+    """Cliente compartido del conector; se crea una vez por proceso."""
+    global _SHARED_CLIENT
+    if _SHARED_CLIENT is None:
+        _SHARED_CLIENT = httpx.AsyncClient(
+            timeout=20,
+            headers=BROWSER_HEADERS,
+            limits=httpx.Limits(max_connections=16, max_keepalive_connections=8),
+        )
+    return _SHARED_CLIENT
+
+
 BROWSER_HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; CavaAI/0.1) CavaAI Research",
     "Accept": "application/json",
@@ -90,11 +123,11 @@ async def _get_json(
         except Exception:  # noqa: BLE001 — el calendario nunca debe romper el flujo
             return None
     try:
-        async with httpx.AsyncClient(timeout=20, headers=BROWSER_HEADERS) as owned:
-            response = await owned.get(url, params=params)
-            response.raise_for_status()
-            payload = response.json()
-            return payload if isinstance(payload, dict) else None
+        pooled = _pooled_client()
+        response = await pooled.get(url, params=params)
+        response.raise_for_status()
+        payload = response.json()
+        return payload if isinstance(payload, dict) else None
     except Exception:  # noqa: BLE001 — ver nota anterior
         return None
 
@@ -134,18 +167,58 @@ def _check_range(desde: date, hasta: date) -> None:
         raise ValueError(f"rango maximo: {MAX_DAYS_PER_REQUEST} dias")
 
 
+# Marca interna para "el rango agoto su deadline": NO es un fallo del
+# proveedor (None) ni un dato; se traduce a un error explicito por dia.
+_DEADLINE: Any = object()
+
+
+async def _fetch_day_pooled(
+    kind: str,
+    day: date,
+    fetch_day: Any,
+    client: httpx.AsyncClient | None,
+) -> list[dict[str, Any]] | None:
+    """Cache breve + singleflight por (tipo, dia) en el camino de produccion.
+
+    Con cliente inyectado (tests) va directo a ``fetch_day``: la cache es
+    estado de proceso y los tests deben controlar su red exacta.
+    """
+    if client is not None:
+        return await fetch_day(day, client)
+    key = (kind, day)
+    loop = asyncio.get_running_loop()
+    hit = _day_cache.get(key)
+    if hit is not None and loop.time() - hit[0] < _DAY_CACHE_TTL_S:
+        return hit[1]
+    task = _day_inflight.get(key)
+    if task is None:
+        task = asyncio.ensure_future(fetch_day(day, None))
+        _day_inflight[key] = task
+        task.add_done_callback(lambda _t: _day_inflight.pop(key, None))
+    events = await task
+    if events is not None:
+        _day_cache[key] = (loop.time(), events)
+    return events
+
+
 async def _fetch_days(
     fetch_day: Any,
     desde: date,
     hasta: date,
     client: httpx.AsyncClient | None,
+    *,
+    kind: str = "earnings",
+    deadline_s: float = RANGE_DEADLINE_S,
 ) -> tuple[list[dict[str, Any]], list[str]]:
-    """Consulta los dias del rango en paralelo acotado.
+    """Consulta los dias del rango en paralelo acotado, con deadline total.
 
     ``asyncio.gather`` conserva el orden de los dias en el resultado, asi el
     orden por dia de ``events`` y ``errors`` es identico al bucle secuencial
     original, y cada dia que falla sigue yendo a ``errors`` sin abortar el
-    rango.
+    rango. Ningun dia espera mas alla del deadline del rango: los dias sin
+    presupuesto se declaran en ``errors`` con el motivo; los ya resueltos se
+    conservan. La espera del singleflight va con ``shield``: que este rango se
+    quede sin tiempo nunca cancela la consulta compartida en vuelo.
     """
     days: list[date] = []
     current = desde
@@ -153,16 +226,29 @@ async def _fetch_days(
         days.append(current)
         current += timedelta(days=1)
     semaphore = asyncio.Semaphore(RANGE_CONCURRENCY)
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + deadline_s
 
     async def _one(day: date) -> list[dict[str, Any]] | None:
         async with semaphore:
-            return await fetch_day(day, client)
+            remaining = deadline - loop.time()
+            if remaining < _MIN_DAY_BUDGET_S:
+                return _DEADLINE
+            try:
+                return await asyncio.wait_for(
+                    asyncio.shield(_fetch_day_pooled(kind, day, fetch_day, client)),
+                    timeout=remaining,
+                )
+            except TimeoutError:  # builtin TimeoutError a partir de 3.11; asyncio.* cubre ambas
+                return _DEADLINE
 
     per_day = await asyncio.gather(*(_one(day) for day in days))
     events: list[dict[str, Any]] = []
     errors: list[str] = []
     for day, day_events in zip(days, per_day, strict=True):
-        if day_events is None:
+        if day_events is _DEADLINE:
+            errors.append(f"{day.isoformat()}: sin datos (deadline del rango de {deadline_s:g}s agotado)")
+        elif day_events is None:
             errors.append(f"{day.isoformat()}: calendario no disponible")
         else:
             events.extend(day_events)
@@ -180,7 +266,7 @@ async def fetch_earnings_range(
     ``[]``; si solo fallan algunos, ``status`` es ``"partial"``.
     """
     _check_range(desde, hasta)
-    events, errors = await _fetch_days(fetch_earnings_day, desde, hasta, client)
+    events, errors = await _fetch_days(fetch_earnings_day, desde, hasta, client, kind="earnings")
     if errors and not events:
         status = "unavailable"
     elif errors:
@@ -204,7 +290,7 @@ async def fetch_dividends_range(
 ) -> dict[str, Any]:
     """Agrega dividendos dia a dia con la misma semantica de degradacion."""
     _check_range(desde, hasta)
-    events, errors = await _fetch_days(fetch_dividends_day, desde, hasta, client)
+    events, errors = await _fetch_days(fetch_dividends_day, desde, hasta, client, kind="dividends")
     if errors and not events:
         status = "unavailable"
     elif errors:
