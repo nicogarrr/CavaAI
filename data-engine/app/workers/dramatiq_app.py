@@ -1051,7 +1051,7 @@ def sync_ibkr_flex() -> dict[str, Any]:
     """
     from app.core.config import get_settings
     from app.services.connectors.ibkr import IBKRFlexClient
-    from app.services.ibkr_import_service import IBKRImportError, IBKRImportService
+    from app.services.ibkr_import_service import IBKRImportError, IBKRImportService, IBKRPnlNotReadyError
 
     client = IBKRFlexClient()
     tenant_id = get_settings().ibkr_flex_tenant_id
@@ -1089,6 +1089,11 @@ def sync_ibkr_flex() -> dict[str, Any]:
             "cash_removed": result["cash_removed"],
             "reconcile_blocked": result["reconcile_blocked"],
         }
+    except IBKRPnlNotReadyError as exc:
+        _rollback(db)
+        # At most the actor's two retries, one hour apart. Each retry obtains
+        # a new statement; no repeated polling of the incomplete report.
+        raise dramatiq.Retry("IBKR PyG aun no disponible; reintento en una hora", delay=3_600_000) from exc
     except IBKRImportError as exc:
         _rollback(db)
         return _failure("sync_ibkr_flex", exc)
