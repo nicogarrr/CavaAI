@@ -196,3 +196,49 @@ async def test_structured_context_backup_is_explicit_and_preserved():
     assert out.provider == "groq"
     assert tuple(b.calls[0].messages[:-1]) == tuple(req.messages)
     assert "No des asesoramiento financiero personalizado" in b.calls[0].messages[-1].content
+
+@pytest.mark.parametrize("bad", ["not_json", "citation", "language"])
+@run_async
+async def test_invalid_fast_backup_keeps_valid_slow_primary_through_synthesis(bad):
+    import json
+
+    from app.services.chat_synthesis_service import ChatSynthesisService
+    from tests.test_chat_synthesis_service import _baseline, _llm_payload
+    payload = _llm_payload()
+    valid = json.dumps(payload)
+    if bad == "not_json":
+        invalid = "Texto español correcto pero no JSON"
+    elif bad == "citation":
+        invalid = json.dumps(_llm_payload(citations=["financial_fact:999"]))
+    else:
+        for section in payload["sections"]:
+            section["body"] = "The company is profitable and the earnings are growing because the market is strong."
+        invalid = json.dumps(payload)
+    p = Fake(response(valid, model="valid-primary"), delay=.08)
+    b = Fake(response(invalid, model=GROQ_MODEL, provider="groq"), delay=.01)
+    provider = ChatFallbackProvider(p, b, total=.4, delay=.001)
+    result = await ChatSynthesisService(provider).synthesize(
+        question="Resumen sintético", ticker="AAA", baseline=_baseline(), enable_debate=False,
+    )
+    assert result.model == "valid-primary"
+    assert result.llm_trace["citation_verification"] is True
+    assert not p.cancelled and b.calls
+
+
+@run_async
+async def test_invalid_fast_general_backup_preserves_valid_slow_primary():
+    from app.schemas import ChatResponse
+    from app.services.chat_synthesis_service import ChatSynthesisService
+    p = Fake(response("Respuesta breve en español.", model="valid-primary"), delay=.08)
+    b = Fake(response("The company is profitable and the earnings are growing.", model=GROQ_MODEL, provider="groq"), delay=.01)
+    result = await ChatSynthesisService(ChatFallbackProvider(p, b, total=.4, delay=.001)).synthesize_general(
+        question="Cuéntame algo", baseline=ChatResponse(answer="", sources=[]),
+    )
+    assert result.model == "valid-primary" and not p.cancelled
+
+
+def test_candidate_validation_context_is_per_call_not_shared():
+    provider = ChatFallbackProvider(Fake(), Fake())
+    a = provider.with_candidate_validator(lambda r: None)
+    b = provider.with_candidate_validator(lambda r: None)
+    assert a is not b and a.validator is not b.validator and provider.validator is None

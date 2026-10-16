@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import re
 import unicodedata
+from collections.abc import Callable
 from dataclasses import replace
 
 import httpx
@@ -30,7 +31,9 @@ def educational_output(text: str) -> bool:
 class ChatFallbackProvider(LLMProvider):
     name = "chat-independent-fallback"
 
-    def __init__(self, primary: LLMProvider, backup: LLMProvider, *, total: float = 45, delay: float = 25):
+    def __init__(self, primary: LLMProvider, backup: LLMProvider, *, total: float = 45, delay: float = 25, validator: Callable[[LLMResponse], None] | None = None, on_response: Callable[[LLMResponse], None] | None = None):
+        self.validator = validator
+        self.on_response = on_response
         self.primary = primary
         self.backup = backup
         self.total = total
@@ -38,6 +41,26 @@ class ChatFallbackProvider(LLMProvider):
         self.supported_capabilities = primary.supported_capabilities & backup.supported_capabilities
         # Honest composite route, never masquerades as the primary's free model.
         super().__init__(model_router=CascadeModelRouter((primary, backup)), max_retries=0)
+
+    def with_candidate_validator(self, validator, on_response=None):
+        # Per-call clone: concurrent requests never share validation context.
+        return ChatFallbackProvider(self.primary, self.backup, total=self.total,
+                                    delay=self.delay, validator=validator, on_response=on_response)
+
+    async def _candidate(self, provider, request, *, backup=False):
+        response = await provider.complete(request)
+        if self.on_response is not None:
+            self.on_response(response)
+        try:
+            if response.degraded or response.finish_reason == "length":
+                raise ValueError("truncated or degraded")
+            if backup and not educational_output(response.text):
+                raise ValueError("educational boundary")
+            if self.validator is not None:
+                self.validator(response)
+        except Exception as exc:
+            raise ProviderResponseError(f"Candidate rejected: {exc}") from exc
+        return response
 
     async def complete(self, request: LLMRequest) -> LLMResponse:
         # Chat synthesis only. Other uses retain their own provider/cost gates.
@@ -51,7 +74,7 @@ class ChatFallbackProvider(LLMProvider):
             raise ProviderTransportError(self.name, "timeout", 1) from None
 
     async def _race(self, request: LLMRequest) -> LLMResponse:
-        primary = asyncio.create_task(self.primary.complete(request))
+        primary = asyncio.create_task(self._candidate(self.primary, request))
         tasks = [primary]
         try:
             done, _ = await asyncio.wait({primary}, timeout=self.delay)
@@ -64,10 +87,10 @@ class ChatFallbackProvider(LLMProvider):
                 except _FALL_THROUGH:
                     pass
             # Pin backup explicitly. Never send DeepSeek aliases or effort=max.
-            backup = asyncio.create_task(self.backup.complete(replace(
+            backup = asyncio.create_task(self._candidate(self.backup, replace(
                 request, model=GROQ_MODEL,
                 messages=(*request.messages, Message("system", "Limita la respuesta a explicación y análisis factual educativo. No des asesoramiento financiero personalizado ni recomendaciones de compra, venta o asignación. Si te lo piden, explica ese límite y ofrece datos y riesgos verificables sin aconsejar una decisión.")),
-            )))
+            ), backup=True))
             tasks.append(backup)
             pending = {backup} | ({primary} if not done else set())
             last = None

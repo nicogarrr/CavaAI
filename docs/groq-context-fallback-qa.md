@@ -37,3 +37,11 @@ Respaldo tras25s o fallo previo, primario conserva45s totales y puede ganar. Per
 ## Rollout
 
 No activado en producción ni mergeautorizado aún. NuevoSHA necesita auditoría+autorizaciónexacta+CIgreen. Activación exige rollback deimagen/configypruebaacotadasindatosNico. Rollback apagarGROQ_CHAT_FALLBACK_ENABLED y restaurarimagen/config. No se promete disponibilidadtotalrestaurada. #1091local es independiente.
+
+## Corrección de la carrera tras auditoría
+
+El head inicial cancelaba al primario al recibir HTTP200 de Groq, antes de las guardas del producto. Se rechazó ese comportamiento. Ahora cada candidato se valida dentro de su tarea y antes de que pueda ganar: idioma/integridad, JSON y secciones/citas del mismo contrato estructurado y campos de confianza; en general, idioma y guarda de salida general existente. El filtro educativo adicional sigue aplicándose a Groq. Si Groq se rechaza, el primario permanece vivo hasta responder o agotar su plazo. La respuesta ganadora vuelve a pasar por el flujo habitual; no se relaja su guarda.
+
+La validación se liga a una copia por petición del wrapper, sin estado mutable global de contexto. El registro de presupuesto se ejecuta una vez por cada candidato devuelto, incluso si se rechaza, y no otra vez al publicar al ganador. Las excepciones de validación se convierten en candidato rechazado, no en éxito de transporte.
+
+230regresiones nuevas pasan+Ruff. Canarios reproducen primario válido a0.08s frente a respaldo rápido inválido a0.01s: noJSON, citas inexistentes e idioma inglés. En todos gana el primario válido con citation_verification=true y no se cancela. Canario general de idioma inválido y aislamiento entre dos validadores por petición también pasan. No QAcon datos reales ni nuevas llamadas upstream para estos canarios.

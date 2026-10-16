@@ -16,7 +16,7 @@ from app.llm.base import LLMProvider
 from app.schemas import ChatResponse, SynthesisSection
 from app.services.budget import BudgetController, BudgetExceededError
 from app.services.langfuse_client import LangfuseTracer
-from app.services.llm_output_guard import _english_hits, complete_guarded
+from app.services.llm_output_guard import _english_hits, complete_guarded, inspect_response_text
 from app.services.prompt_registry import get_prompt
 
 PROMPT_VERSION = get_prompt("chat_source_synthesis", allow_remote=False).version
@@ -436,11 +436,21 @@ class ChatSynthesisService:
                     if db is not None and not budget.can_spend(db, 0.02):
                         raise BudgetExceededError("LLM budget exhausted")
 
+                def _validate_candidate(resp):
+                    if inspect_response_text(resp.text):
+                        raise ValueError("Invalid response language")
+                    data = parse_json_response(resp.text)
+                    self._verified_sections(data, baseline, set(retrieval_ids))
+                    float(data["confidence"])
+                    data["insufficient_data"]
+
+                bind = getattr(self.provider, "with_candidate_validator", None)
+                provider = bind(_validate_candidate, _record) if bind else self.provider
                 guarded = await complete_guarded(
-                    self.provider,
+                    provider,
                     request,
                     source="chat_synthesis",
-                    on_response=_record,
+                    on_response=None if bind else _record,
                     before_retry=_can_retry,
                 )
                 response = guarded.response
@@ -623,12 +633,23 @@ class ChatSynthesisService:
                 raise BudgetExceededError("LLM budget exhausted")
 
         try:
+            def _validate_candidate(resp):
+                if inspect_response_text(resp.text, english="strict"):
+                    raise ValueError("Invalid response language")
+                if not _inferred_general_text_valid(
+                    resp.text.strip(), allow_placeholders=scope == "ordinary",
+                    quantitative=scope != "ordinary" or _general_quantity_context(resp.text),
+                ):
+                    raise ValueError("Ungrounded general output")
+
+            bind = getattr(self.provider, "with_candidate_validator", None)
+            provider = bind(_validate_candidate, _record) if bind else self.provider
             guarded = await complete_guarded(
-                self.provider,
+                provider,
                 request,
                 source="chat_general",
                 english="strict",
-                on_response=_record,
+                on_response=None if bind else _record,
                 before_retry=_can_retry,
             )
         except Exception:  # proveedor caido, guard agotado o presupuesto: fallback honesto
