@@ -6,6 +6,7 @@ import { GlossaryTerm } from '@/components/GlossaryTerm';
 import ScenarioAssumptions from '@/components/research/ScenarioAssumptions';
 import ThesisHumanInputForm from '@/components/research/ThesisHumanInputForm';
 import ThesisDebatePanel from '@/components/research/ThesisDebatePanel';
+import ThesisAudioPlayer from '@/components/research/ThesisAudioPlayer';
 import { Badge } from '@/components/ui/badge';
 import type { ResearchThesis } from '@/lib/actions/research.actions';
 import type { GlossaryKey } from '@/lib/glossary';
@@ -164,6 +165,16 @@ export default function ThesisMemo({
     thesis.valuation_basis,
   );
   const generatedLabel = formatGeneratedDate(thesis.created_at);
+
+  // Lo que se lee en voz alta: solo texto persistido y ya visible en esta
+  // vista (resumen, narrativa, hipótesis e invalidación). Nada se genera
+  // para el audio: si un bloque no existe, no se lee.
+  const audioParagraphs = [
+    thesis.executive_summary,
+    ...(thesis.narrative_sections ?? []).flatMap((section) => [section.titulo, ...section.parrafos]),
+    thesis.hypothesis ? `Hipótesis: ${thesis.hypothesis}` : null,
+    ...(thesis.invalidation_criteria ?? []).map((criterion) => `Criterio de invalidación: ${criterion}`),
+  ].filter((paragraph): paragraph is string => typeof paragraph === 'string' && paragraph.trim().length > 0);
 
   return (
     <div className="space-y-5">
@@ -416,6 +427,10 @@ export default function ThesisMemo({
           {thesis.thesis_markdown}
         </div>
       </section>
+
+      {/* Audio básico al final (WorldStocks punto 6): el resumen, la narrativa,
+          la hipótesis y los criterios de invalidación, leídos en local. */}
+      <ThesisAudioPlayer label={`Tesis de ${ticker ?? 'la empresa'}`} paragraphs={audioParagraphs} />
     </div>
   );
 }
