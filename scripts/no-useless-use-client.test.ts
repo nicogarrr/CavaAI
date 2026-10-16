@@ -316,6 +316,7 @@ describe('el escaner y el guard cuentan lo mismo', () => {
   });
 
   it('el numero de directivas client del repo no crece sin explicacion', () => {
+    // 95 = PublicMobileNav: useState del drawer, listeners de teclado (Escape/Tab), matchMedia para cerrar al cruzar md y bloqueo de scroll del body en el header publico.
     // 94 = AccessRequestForm: useState (envio, error y confirmacion) y onSubmit del formulario de solicitud de acceso con el registro cerrado.
     // 93 = HistoricalStressView: useState (paginacion de la tabla de ventanas) en la pagina /portfolio/stress.
     // 92 = ShareCapitalPanel: useState (pestanas saldos/flujos y paginacion) y recharts, que solo funciona en cliente.
@@ -332,7 +333,7 @@ describe('el escaner y el guard cuentan lo mismo', () => {
     assert.equal(inherited, 5, 'cambian las excepciones: revisa COMPONENTS_EXCEPTIONS y su motivo');
     assert.equal(
       total,
-      94,
+      95,
       `han aparecido directivas 'use client' sin revisar (total ${total}, justificadas ${justified}, heredadas ${inherited})`,
     );
   });
