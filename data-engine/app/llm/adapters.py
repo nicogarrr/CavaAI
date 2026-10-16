@@ -277,28 +277,53 @@ class OpenAICompatibleProvider(LLMProvider):
     async def _complete_with_fallback(
         self, request: LLMRequest, model: str
     ) -> tuple[LLMResponse, bool]:
-        """Resuelve el modelo y devuelve la respuesta con si hubo fallback."""
-        try:
+        """Respaldo tardio sin interrumpir una respuesta primaria aun valida."""
+        fallback = self._fallback_model
+        if not fallback or fallback == model:
             return await self._complete_traced(request, model), False
-        except Exception as primary_exc:
-            fallback = self._fallback_model
-            if not fallback or fallback == model:
-                raise
-            # El modelo resuelto fallo tras sus reintentos: una unica
-            # oportunidad con el modelo de respaldo (con sus propios
-            # reintentos). La traza del respaldo registra de que modelo y
-            # de que clase de error se viene.
-            response = await self._complete_traced(
-                request,
-                fallback,
-                extra_metadata={
-                    "fallback_from": model,
-                    "primary_error": type(primary_exc).__name__,
-                },
+
+        primary = asyncio.create_task(self._complete_traced(request, model))
+        tasks = [primary]
+        try:
+            # Esperar NO cancela el primario. Si tarda mas de 2/3 del plazo,
+            # lanzar respaldo en paralelo; el primario conserva hasta el final
+            # los mismos 45 s que tenia antes. Fallo rapido = respaldo inmediato.
+            delay = self._total_timeout_seconds * (2 / 3) if self._total_timeout_seconds else None
+            done, _ = await asyncio.wait({primary}, timeout=delay)
+            metadata = {"fallback_from": model}
+            if done:
+                try:
+                    return primary.result(), False
+                except Exception as exc:
+                    metadata["primary_error"] = type(exc).__name__
+            else:
+                metadata["fallback_trigger"] = "primary_slow"
+
+            backup = asyncio.create_task(
+                self._complete_traced(request, fallback, extra_metadata=metadata)
             )
-            # Una respuesta obtenida por el camino degradado NO se cachea:
-            # congelaria en cache un resultado que solo se dio poracceptable.
-            return response, True
+            tasks.append(backup)
+            pending = {backup} | ({primary} if not done else set())
+            last_error: Exception | None = None
+            while pending:
+                done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+                # Si ambos terminan a la vez, preferir el primario valido.
+                for task in tasks:
+                    if task not in done:
+                        continue
+                    try:
+                        return task.result(), task is backup
+                    except Exception as exc:
+                        last_error = exc
+            assert last_error is not None
+            raise last_error
+        finally:
+            # Recoger errores y cancelaciones tambien al cancelar el caller o
+            # al agotarse el limite exterior. Ninguna generacion queda suelta.
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     def _build_payload(self, request: LLMRequest, model: str) -> dict[str, Any]:
         """Sobre OpenAI-compatible. Unico lugar que decide que se envia."""
@@ -376,7 +401,7 @@ class OpenAICompatibleProvider(LLMProvider):
         _started = _time.monotonic()
         try:
             response = await self._complete(request, model)
-        except Exception as exc:
+        except (Exception, asyncio.CancelledError) as exc:
             _tracing.trace_generation(
                 name=f"llm.{request.task or 'complete'}",
                 model=model,
@@ -385,10 +410,13 @@ class OpenAICompatibleProvider(LLMProvider):
                     "task": request.task,
                     "route": model,
                     "duration_ms": int((_time.monotonic() - _started) * 1000),
-                    **dict(extra_metadata or {}),
                     **dict(request.metadata or {}),
+                    **dict(extra_metadata or {}),
+                    "status": "cancelled" if isinstance(exc, asyncio.CancelledError) else "failed",
                 },
-                error_class=type(exc).__name__,
+                # La tarea perdedora se cancela tambien en corridas exitosas:
+                # conservar su span sin marcar toda la corrida como fallo.
+                error_class=None if isinstance(exc, asyncio.CancelledError) else type(exc).__name__,
             )
             raise
         _tracing.trace_generation(
@@ -399,8 +427,8 @@ class OpenAICompatibleProvider(LLMProvider):
                 "task": request.task,
                 "route": model,
                 "duration_ms": int((_time.monotonic() - _started) * 1000),
-                **dict(extra_metadata or {}),
                 **dict(request.metadata or {}),
+                **dict(extra_metadata or {}),
             },
             usage={
                 "input": response.usage.input_tokens,
