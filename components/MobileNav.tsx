@@ -36,11 +36,15 @@ export default function MobileNav({ initialStocks }: { initialStocks?: StockWith
             if (e.key !== 'Tab') return;
             const dialog = dialogRef.current;
             if (!dialog) return;
+            // El backdrop lleva tabIndex=-1 a proposito (cierra por fondo, no es
+            // un control del ciclo) y la CTA del drawer puede estar display:none
+            // por breakpoint: un focusable invisible o sin tab stop rompe el
+            // ciclo (Shift+Tab escapaba al backdrop - auditor #1076).
             const focusable = Array.from(
                 dialog.querySelectorAll<HTMLElement>(
                     'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
                 ),
-            );
+            ).filter((el) => el.tabIndex >= 0 && el.getClientRects().length > 0);
             if (focusable.length === 0) {
                 e.preventDefault();
                 dialog.focus();
@@ -56,14 +60,27 @@ export default function MobileNav({ initialStocks }: { initialStocks?: StockWith
                 first.focus();
             }
         };
+        // Cruzar a md+ con el drawer abierto lo oculta (md:hidden) sin
+        // cerrarlo: el body quedaria con overflow:hidden y el listener Tab
+        // activo contra un menu invisible. Se cierra al cambiar el breakpoint.
+        const mq = window.matchMedia('(min-width: 768px)');
+        const onBreakpoint = () => {
+            if (mq.matches) setOpen(false);
+        };
+        mq.addEventListener('change', onBreakpoint);
         document.addEventListener('keydown', onKey);
         closeButtonRef.current?.focus();
         const prevOverflow = document.body.style.overflow;
         document.body.style.overflow = 'hidden';
         return () => {
+            mq.removeEventListener('change', onBreakpoint);
             document.removeEventListener('keydown', onKey);
             document.body.style.overflow = prevOverflow;
-            trigger?.focus();
+            // Al cerrar por breakpoint (resize a md+) el trigger esta oculto:
+            // enfocarlo seria mandar el foco a un elemento invisible; se suelta
+            // al documento en su lugar (auditor #1076).
+            if (trigger && trigger.getClientRects().length > 0) trigger.focus();
+            else (document.activeElement as HTMLElement | null)?.blur?.();
         };
     }, [open]);
 

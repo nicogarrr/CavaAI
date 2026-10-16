@@ -6,6 +6,7 @@ import { getAuth } from '@/lib/better-auth/auth';
 import { GerarAIWordmark } from '@/components/GerarAIWordmark';
 import { Button } from '@/components/ui/button';
 import { SUPPORT_EMAIL } from '@/lib/config/brand';
+import PublicMobileNav from '@/components/PublicMobileNav';
 import { isPublicSignUpOpen } from '@/lib/config/product';
 
 /**
@@ -84,12 +85,16 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
                                     <Link href="/sign-in">Iniciar sesión</Link>
                                 </Button>
                                 {signUpOpen ? (
-                                    <Button asChild className="h-11" size="sm">
+                                    <Button asChild className="h-11 hidden min-[400px]:inline-flex" size="sm">
                                         <Link href="/sign-up">Crear cuenta</Link>
                                     </Button>
                                 ) : null}
                             </>
                         )}
+                        <PublicMobileNav
+                            links={legalLinks}
+                            cta={signUpOpen ? { href: '/sign-up', label: 'Crear cuenta' } : undefined}
+                        />
                     </div>
                     </div>
                 </div>
