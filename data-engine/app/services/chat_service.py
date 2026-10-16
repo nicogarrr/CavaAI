@@ -55,8 +55,8 @@ def _short(text: str, limit: int = 420) -> str:
 
 
 _SMALL_TALK_RE = re.compile(
-    r"^\s*(hola|buenas|buenos dias|buenas tardes|buenas noches|hey|hi|hello|"
-    r"que tal|como estas|gracias|muchas gracias|ok|vale|adios|hasta luego)"
+    r"^\s*[¿¡]?\s*(hola|buenas|buenos d[ií]as|buenas tardes|buenas noches|hey|hi|hello|"
+    r"qu[eé] tal|c[oó]mo est[aá]s|gracias|muchas gracias|ok|vale|adi[oó]s|hasta luego)"
     r"[\s!.,¡¿?]*$",
     re.IGNORECASE,
 )
@@ -80,6 +80,22 @@ _SMALL_TALK_ANSWER = (
     "y, ademas, tengo acceso a tu cartera, tus tesis, tu research y tus "
     "documentos. Preguntame lo que quieras."
 )
+
+
+def _small_talk_answer(question: str) -> str:
+    import unicodedata
+
+    normalized = "".join(
+        char for char in unicodedata.normalize("NFD", question.lower())
+        if unicodedata.category(char) != "Mn"
+    ).strip(" \t\n!.,¡¿?")
+    if normalized in {"gracias", "muchas gracias"}:
+        return "De nada."
+    if normalized in {"adios", "hasta luego"}:
+        return "Hasta luego."
+    if normalized in {"ok", "vale"}:
+        return "De acuerdo."
+    return _SMALL_TALK_ANSWER
 
 
 class ChatService:
@@ -307,7 +323,7 @@ class ChatService:
     ) -> ChatResponse:
         if _SMALL_TALK_RE.match(question or ""):
             return ChatResponse(
-                answer=_SMALL_TALK_ANSWER,
+                answer=_small_talk_answer(question),
                 sources=[],
                 model="small-talk",
                 prompt_version="small-talk-v1",
