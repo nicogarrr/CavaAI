@@ -327,11 +327,16 @@
     }
     /* Dos filas en movil (marca + CTA encima, enlaces debajo) y una sola a
      * partir de md, sin necesitar un menu cliente. */
+    /* Una sola fila en TODOS los viewports: la lista de paginas vive en el
+     * drawer de PublicMobileNav por debajo de md en vez de en una segunda fila
+     * sticky permanente. */
     .public-header-inner {
-        @apply flex flex-col gap-2 py-2 md:h-[var(--header-h)] md:flex-row md:items-center md:justify-between md:gap-3 md:py-0;
+        @apply flex h-[var(--header-h)] flex-row items-center justify-between gap-2 md:gap-3;
     }
+    /* El breakpoint es md en los dos lados (esta regla y el hamburger de
+     * PublicMobileNav): entre sm y md no puede quedar un hueco sin navegacion. */
     .public-nav {
-        @apply flex flex-wrap items-center gap-1;
+        @apply hidden md:flex md:flex-wrap md:items-center md:gap-1;
     }
     .public-nav-link {
         @apply inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-medium text-gray-400 transition-colors hover:bg-gray-700/30 hover:text-gray-300;
