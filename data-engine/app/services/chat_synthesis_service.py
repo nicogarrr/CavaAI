@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import ValidationError
@@ -141,59 +142,25 @@ RESPONSE_SCHEMA = {
 
 
 _CURRENCY_WORDS = r"(?:USD|EUR|GBP|JPY|CHF|dólares?|dolares?|euros?|libras?)"
-_CURRENCY_WORDS_RE = re.compile(rf"\b" + _CURRENCY_WORDS + r"\b", re.IGNORECASE)
-# Cifra junto a divisa (cualquier orden, con hasta dos palabras de escala
-# como "millones" en medio): la ruta general NO emite datos de mercado
-# cuantitativos, asi que basta detectar su presencia para abstenerse.
 _MONEY_NEAR_RE = re.compile(
     rf"(?:[$€£]\s*\d|\d[\d.,]*(?:\s+\w+){{0,2}}\s*(?:[$€£]|{_CURRENCY_WORDS}\b)|\b{_CURRENCY_WORDS}\s*\d)",
     re.IGNORECASE,
-)
-_PERCENT_RE = re.compile(r"[-+−]?\d[\d.,]*\s*%")
-# Ronda 6 auditor: candado semantico, no mas formatos de numero. La ruta
-# general no publica afirmaciones de mercado/cartera actuales en NINGUN
-# formato: la cifra puede ir sin divisa ("cotiza a 999"), deletreada
-# ("novecientos dolares"), con signo ("$-999") o con un codigo no listado
-# ("999CAD"). Se bloquea la AFIRMACION (ticker/posicion + verbo de estado
-# de mercado), no el numero. La prosa conceptual (que es el PER, como
-# funciona X) sigue natural: sin ticker ni posicion propia no hay candado.
-_MARKET_CLAIM_VERB_RE = re.compile(
-    r"(?i)\b(cotiza|cotizan|cotizando|cotizaci[oó]n|cotizad[oa]s?|vale|valen|"
-    r"sube|suben|ha subido|han subido|baja|bajan|ha bajado|han bajado|"
-    r"cae|caen|rinde|rinden|se paga|se pagan|precio de mercado)\b"
-)
-_TICKER_TOKEN_RE = re.compile(r"\b[A-Z]{2,5}\b")
-_TICKER_ALLOWLIST = frozenset(
-    {
-        "PER", "ROE", "ROA", "ROIC", "ETF", "PEG", "EPS", "IPO", "ROI",
-        "CAGR", "YTD", "USD", "EUR", "GBP", "JPY", "CHF", "API", "OK",
-        "FCF", "TIR", "BPA", "IV", "CAD", "AUD", "NZD", "SEK", "NOK",
-    }
 )
 _PORTFOLIO_CLAIM_RE = re.compile(
     r"(?i)\b(?:tu|mi|su|vuestra|nuestra)\s+"
     r"(?:rentabilidad|rendimiento|cartera|posici[oó]n|posiciones|inversi[oó]n)\b"
 )
-_FINANCIAL_HINT_RE = re.compile(
-    r"(?i)\b(rentabilidad|beneficio|dividendo|margen|crecimiento|cotiza(?:ción|do)?|"
-    r"precio|sube|subida|baja|caída|cae|earnings|valoración|PER|market cap)\b"
-)
 
-
-# Ronda 7 (decision de producto, main bajo preferencias del propietario: veracidad
-# primero): se LIMITA la ruta. El generador libre solo atiende
-#   - charla/preguntas ordinarias NO financieras, y
-#   - conceptos financieros genericos ("que es el PER", "como funciona un ETF").
-# Cualquier otra consulta financiera (ticker, cartera propia, precio,
-# rentabilidad, cifras) se abstiene SIN llamar al LLM, y el generador libre
-# NUNCA recibe contexto privado (fuentes/cartera). El guard de salida es
-# defensa en profundidad, no la garantia.
+# Alcance de entrada: conceptos, charla y conocimiento empresarial pueden
+# llegar al modelo. Cartera privada y ordenes no se deducen de esa ruta.
 _FIN_WORDS_RE = re.compile(
     r"(?i)\b(acci[oó]n(?:es)?|cartera|portfolio|posici[oó]n(?:es)?|rentabilidad|"
     r"rendimiento|cotiza\w*|cotizaci[oó]n|precio|bolsa|burs[aá]til\w*|dividendos?|"
     r"inversi[oó]n(?:es)?|invertir|ganancias?|p[eé]rdidas?|beneficios?|"
     r"capitalizaci[oó]n|valoraci[oó]n|stock|shares?|earnings|etf|ebitda|"
-    r"sube|suben|baja|bajan|cae|caen|duplic\w*|tripl\w*|vale|valen)\b"
+    r"ingresos?|facturaci[oó]n|ventas?|revenue|sales|empleados?|employees?|headcount|"
+    r"workforce|personnel|staffing|deuda|debt|flujo\s+de\s+caja|cash\s+flow|cuota\s+de\s+mercado|"
+    r"market\s+share|sube|suben|baja|bajan|cae|caen|duplic\w*|tripl\w*|vale|valen)\b"
     r"|[$€£%]"
 )
 # Tickers: 2-5 mayusculas, SENSIBLE a mayusculas (el flag (?i) de arriba no
@@ -212,40 +179,168 @@ class _FinScope:
     def search(text: str) -> bool:
         return (
             bool(_FIN_WORDS_RE.search(text))
+            or (
+                bool(re.search(r"(?i)\bplantilla\b", text))
+                and not re.search(r"(?i)\b(correo|email|e-mail|carta|curr[ií]culum|documento)\b", text)
+            )
             or _has_ticker(text)
             or any(t in _FIN_ACRONYMS for t in _TICKER_RE.findall(text))
         )
 
 
 _FIN_SCOPE_RE = _FinScope
+# Solo una peticion COMPLETA de concepto conocido entra al generador de
+# definiciones. Un prefijo "explica" no basta: "de apple", fechas, posiciones
+# personales o cualquier resto no consumido queda en consulta especifica.
+_CONCEPT_TERM = (
+    r"(?:PER|ETF|ROE|ROA|ROIC|EPS|FCF|EBITDA|PEG|IPO|CAGR|"
+    r"ingresos?|revenue|ventas?|sales|facturaci[oó]n|deuda|debt|"
+    r"dividendo|dividendos|rentabilidad|rendimiento|inversi[oó]n|"
+    r"precio(?: de mercado)?|cotizaci[oó]n(?: burs[aá]til)?|"
+    r"flujo de caja|cash flow|market cap|capitalizaci[oó]n|"
+    r"margen|beneficios?|earnings|employees?|empleados?|"
+    r"cuota de mercado|market share)"
+)
 _CONCEPT_Q_RE = re.compile(
-    r"(?i)^\W*(?:¿\s*)?(?:qu[eé]\s+(?:es|son|significa)|c[oó]mo\s+(?:funciona|funcionan|se\s+calcula)|"
-    r"expl[ií]ca(?:me)?|para\s+qu[eé]\s+sirve|cu[aá]l\s+es\s+la\s+diferencia)\b"
+    r"(?i)\s*[¿¡]?\s*(?:"
+    r"(?:qu[eé] (?:es|son|significa)|c[oó]mo (?:funciona|funcionan|se calcula)|"
+    r"expl[ií]ca(?:me)?|define|para qu[eé] sirve|what (?:is|are)|explain)\s+"
+    r"(?:(?:el|la|los|las|un|una|the|an|a)\s+)?" + _CONCEPT_TERM +
+    r"|how does (?:(?:the|an|a)\s+)?" + _CONCEPT_TERM + r" work)"
+    r"(?:\s+(?:en general|de una empresa|de un negocio|in general|of a company))?\s*[?!.]*\s*"
 )
 _PERSONAL_RE = re.compile(r"(?i)\b(mi|mis|tu|tus|su|sus|nuestr[oa]s?|m[ií]o|m[ií]a)\b")
 _NUMBER_WORD_RE = re.compile(
-    r"(?i)\b(cero|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|"
+    r"(?i)\b(cero|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|"
     r"catorce|quince|veinte\w*|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|"
     r"noventa|cien|ciento|doscientos|trescientos|cuatrocientos|quinientos|"
     r"seiscientos|setecientos|ochocientos|novecientos|mil|mill[oó]n|millones|"
     r"billones?|por\s+ciento|porcentaje|duplic\w*|tripl\w*|doblad\w*)\b"
 )
-_NAMED_ENTITY_RE = re.compile(r"(?<![.¿¡\n])\s[A-Z][a-záéíóúñ]{3,}\b")
 
 
 def _general_scope(question: str) -> str:
-    """'ordinary' | 'concept' | 'abstain' (determinista, sin LLM)."""
+    """Clasifica charla, concepto, conocimiento empresarial o contexto privado."""
     q = (question or "").strip()
     if not _FIN_SCOPE_RE.search(q):
         return "ordinary"
-    if (
-        _CONCEPT_Q_RE.match(q)
-        and not _PERSONAL_RE.search(q)
-        and not re.search(r"\d", q)
-        and not _has_ticker(q)
-    ):
+    if _CONCEPT_Q_RE.fullmatch(q):
         return "concept"
-    return "abstain"
+    # Datos privados y ordenes no se deducen del conocimiento del modelo.
+    if _PERSONAL_RE.search(q) or re.search(
+        r"(?i)\b(my|your|our|buy|sell|compra|vende|ejecuta)\b", q
+    ):
+        return "abstain"
+    return "inferred"
+
+
+def _general_quantity_context(text: str) -> bool:
+    # Un porcentaje de bateria no es un dato financiero. Moneda junto a una
+    # cantidad si lo es, incluso cuando falta un nombre de empresa.
+    return bool(_FIN_SCOPE_RE.search(re.sub(r"[$€£%]", "", text)) or _MONEY_NEAR_RE.search(text))
+
+
+def _inferred_general_text_valid(
+    text: str, *, allow_placeholders: bool = False, quantitative: bool = True,
+) -> bool:
+    """Prosa natural: no atribuciones/citas falsas, cifras aproximadas locales."""
+    if len(text) > 8000 or not text.strip() or re.search(r"https?://|www[.]|\bdoi:", text, re.I):
+        return False
+    if re.search(
+        r"(?i)\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+"
+        r"(?:com|org|net|io|ai|es|gov|edu|co|uk|de|fr|app|dev|info|biz|eu)\b(?:/[^\s]*)?",
+        text,
+    ):
+        return False
+    if allow_placeholders:
+        def placeholder(match: re.Match[str]) -> str:
+            content = match.group(1).strip()
+            human = re.sub(r"(?i)\b\d\s*[-–]\s*\d\s+frases\b", "frases", content)
+            human = re.sub(r"(?i)acci[oó]n o siguiente paso", "siguiente paso", human)
+            if content.upper() in {"INFERIDO", "SIN_DATOS", "OFICIAL"}:
+                return match.group()
+            if _FIN_WORDS_RE.search(human) or _NUMBER_WORD_RE.search(human) or re.search(r"\d", human):
+                return match.group()
+            if re.match(r"[a-z_]+:", human, re.I) and not re.match(
+                r"(?i)(?:motivo|asunto|nombre|cargo|correo|telefono):", human,
+            ):
+                return match.group()
+            return ""
+        text = re.sub(r"\[([^\]]+)\]", placeholder, text)
+    if re.search(r"\[[^\]]+\]", text):
+        return False
+    attribution = re.sub(r"(?i)seg[uú]n lo que (?:s[eé]|recuerdo)", "", text)
+    # Una recomendacion sin cantidades no atribuye datos a esa fuente.
+    attribution = re.sub(
+        r"(?i)(?:consultar|verificar|mirar|revisar)[^.!?\d]*(?:informe anual|annual report|resultados oficiales|cifras oficiales)",
+        "", attribution,
+    )
+    if re.search(
+        r"(?i)\b(oficial(?:es|mente)?|reportad[oa]s?|reported|official|according to|"
+        r"informe anual|annual report|present[oó]|declar[oó]|public[oó]|"
+        r"seg[uú]n\s+(?:(?:su|el|la|los|las|un|una)\s+)?"
+        r"(?:informe|fuentes?|documentos?|datos|comunicado|reporte|balance|estudio|sec))\b", attribution
+    ):
+        return False
+    attribution = re.sub(r"(?i)seg[uú]n (?:la [eé]poca|normativa contable)\b", "", attribution)
+    if re.search(r"(?i)\bseg[uú]n\b", attribution):
+        return False
+    # Aproximar no convierte una cifra contable con decimales en estimacion.
+    if re.search(r"\d[\d.,]*[.,]\d{2}(?!\d)", text):
+        return False
+    hits, total = _english_hits(text)
+    if hits >= 2 and hits / max(total, 1) >= 0.15:
+        return False
+    if _PORTFOLIO_CLAIM_RE.search(text):
+        return False
+    if not quantitative:
+        return True
+    # Cada clausula con cantidad requiere su propio aproximador. Una frase
+    # previa o una cantidad marcada no legitima otra cantidad exacta.
+    clauses = re.split(r"[;!?\n]|(?<!\d)[.](?!\d)|\b(?:y(?!\s*(?:el\s+)?\d)|pero|and|but)\b", text)
+    number = re.compile(r"\d[\d.,]*|" + _NUMBER_WORD_RE.pattern.replace("(?i)", ""), re.I)
+    approximate = re.compile(
+        r"(?i)(?:unos?|unas?|aproximadamente|aproximad\w*|estimad\w*|"
+        r"estimaci[oó]n|alrededor de|en torno a|cerca de(?:l)?|del orden de|"
+        r"en el orden de|algo m[aá]s de|m[aá]s de|menos de|por encima de|por debajo de|"
+        r"superan?(?: holgadamente| con holgura)?|rondar[ií]a|"
+        r"rondar[ií]an|ronda|rondan|rondaba|rondaban|cercan[oa]s? a|decenas de|cientos de|miles de|entre)\s+(?:(?:el|la|los|las|de|del)\s+){0,3}$"
+    )
+    for clause in clauses:
+        for match in number.finditer(clause):
+            token = match.group().strip().rstrip(".,")
+            # Periodos/fechas no son una cifra empresarial. No convertirlos
+            # en fuente: solo se permite el formato de fecha o año aislado.
+            prefix = clause[max(0, match.start() - 90):match.start()]
+            if token.lower() == "uno" and re.search(r"(?i)\bcada\s+$", prefix):
+                continue
+            if (
+                re.fullmatch(r"(?:19|20)\d{2}", token)
+                and prefix.rstrip().endswith("(")
+                and re.match(r"[-–](?:19|20)\d{2}\)", clause[match.end():])
+            ):
+                continue
+            date_not_quantity = not re.match(
+                r"(?i)\s*(?:empleados?|millones?|mil\b|d[oó]lares?|euros?|%|acciones?|personas?)",
+                clause[match.end():],
+            )
+            if date_not_quantity and re.fullmatch(r"(?:19|20)\d{2}", token) and re.search(
+                r"(?i)(?:\b(?:en|de|del|para|hacia|desde|hasta|fiscal|ejercicio|a[nñ]o|periodo)|"
+                r"\b(?:19|20)\d{2}\s*(?:[-–]|y))\s*(?:el\s+)?$", prefix,
+            ):
+                continue
+            # Unidad de escala que sigue a una cifra ya aproximada, no otra
+            # cantidad independiente (8000 millones).
+            if re.fullmatch(r"(?i)(?:mil|mill[oó]n|millones|billones?)", token) and re.search(r"(?:\d[\d.,]*|\bmil|\bmill[oó]n|\bmillones)\s*$", prefix, re.I):
+                continue
+            if not approximate.search(prefix):
+                # Rango: el segundo extremo comparte aproximador SOLO cuando
+                # lo une 'a'/guion, no una nueva afirmacion.
+                previous = clause[:match.start()]
+                range_start = re.search(r"\d[\d.,]*%?\s*(?:-|–|a|y(?:\s+el)?)\s*$", previous)
+                if range_start is None or not approximate.search(previous[:range_start.start()]):
+                    return False
+    return True
 
 
 class ChatSynthesisService:
@@ -447,20 +542,22 @@ class ChatSynthesisService:
         """Respuesta natural en espanol para preguntas sin ticker.
 
         El contrato estructurado (HECHO/CALCULO/...) es para respuestas de
-        datos; una pregunta general merece prosa natural con citas cuando
-        use las fuentes recuperadas.
+        datos. Esta ruta general no recibe fuentes; responde con conocimiento
+        natural sin atribuirlo a documentos que no ha consultado.
         """
         scope = _general_scope(question)
         if scope == "abstain":
-            # Consulta financiera especifica/ambigua: nunca al generador libre.
+            # Cartera privada u ordenes: nunca deducir del generador libre.
             return ChatResponse(
                 answer=(
-                    "No tengo datos de mercado sobre eso en tu research. Si te "
-                    "refieres a una empresa, dime su nombre o ticker y lo consulto."
+                    "No tengo fuentes verificadas en esta ruta para responder "
+                    "a esa consulta sobre empresas o inversiones. Los datos actuales "
+                    "necesitan una fuente y fecha; los futuros no son hechos oficiales. "
+                    "Selecciona la empresa o su ticker para consultar sus fuentes."
                 ),
                 sources=[],
                 model="abstain",
-                prompt_version="chat-general-v1",
+                prompt_version="chat-general-v2",
                 confidence=0.2,
                 llm_trace={"path": "general", "abstain": True, "reason": "financial_scope"},
             )
@@ -471,7 +568,7 @@ class ChatSynthesisService:
             return self._general_fallback(baseline, reason="budget_exhausted")
         request = LLMRequest(
             messages=[
-                Message("system", get_prompt("chat_general").text),
+                Message("system", get_prompt("chat_general", allow_remote=False).text),
                 Message(
                     "user",
                     json.dumps(
@@ -479,6 +576,9 @@ class ChatSynthesisService:
                             # Sin contexto privado (cartera/memorias/fuentes):
                             # el generador libre solo ve la pregunta.
                             "question": question,
+                            "scope": scope,
+                            "reviewed_at_utc": datetime.now(UTC).date().isoformat(),
+                            "sources_available": False,
                         },
                         default=str,
                         ensure_ascii=False,
@@ -525,10 +625,10 @@ class ChatSynthesisService:
         except Exception:  # proveedor caido, guard agotado o presupuesto: fallback honesto
             return self._general_fallback(baseline, reason="provider_or_guard_failure")
         text = (guarded.response.text or "").strip()
-        if (
-            not text
-            or not self._general_text_grounded(text, ChatResponse(answer="", sources=[]))
-            or not self._general_output_in_scope(text, scope)
+        if not _inferred_general_text_valid(
+            text,
+            allow_placeholders=scope == "ordinary",
+            quantitative=scope != "ordinary" or _general_quantity_context(text),
         ):
             return self._general_fallback(baseline, reason="ungrounded")
         return ChatResponse(
@@ -537,7 +637,7 @@ class ChatSynthesisService:
             sources=[],
             proposed_actions=[],
             model=getattr(self.provider, "name", "unknown"),
-            prompt_version="chat-general-v1",
+            prompt_version="chat-general-v2",
             confidence=0.35 if baseline.sources else 0.2,
             llm_trace={"path": "general", "cost": spent["cost"]},
         )
@@ -553,72 +653,10 @@ class ChatSynthesisService:
             sources=baseline.sources,
             proposed_actions=baseline.proposed_actions,
             model="fallback",
-            prompt_version="chat-general-v1",
+            prompt_version="chat-general-v2",
             confidence=0.2,
             llm_trace={"path": "general", "fallback": True, "reason": reason},
         )
-
-    @staticmethod
-    def _general_output_in_scope(text: str, scope: str) -> bool:
-        """Defensa en profundidad sobre el alcance acotado.
-
-        ordinary: la respuesta no puede contener lenguaje financiero.
-        concept: solo definicion generica; sin cifras, numerales, posesivos
-        de cartera ni nombres propios de empresas.
-        """
-        if scope == "ordinary":
-            return not _FIN_SCOPE_RE.search(text)
-        if scope == "concept":
-            if re.search(r"\d", text) or _NUMBER_WORD_RE.search(text):
-                return False
-            if _MARKET_CLAIM_VERB_RE.search(text) or _PORTFOLIO_CLAIM_RE.search(text):
-                return False
-            if re.search(r"(?i)\b(tus|tu|mis|mi)\s+(acciones|cartera|posici)", text):
-                return False
-            if _NAMED_ENTITY_RE.search(text):
-                return False
-            return True
-        return False
-
-    @staticmethod
-    def _general_text_grounded(text: str, baseline: ChatResponse) -> bool:
-        """La ruta general NO emite datos de mercado cuantitativos.
-
-        Regla estructural (ronda 5 auditor): el texto libre general es prosa
-        natural; cualquier cifra con divisa o porcentaje en contexto
-        financiero hace la salida no publicable y cae a la abstencion
-        honesta. Los datos cuantitativos viven solo en la ruta estructurada
-        con ticker (HECHO/CALCULO/... con fuentes verificadas). Las citas
-        deben existir en las fuentes y el ingles sigue OFF.
-        """
-        allowed = {
-            f"{source.get('type')}:{source.get('id')}"
-            for source in baseline.sources
-            if source.get("id") is not None
-        }
-        for match in re.finditer(r"\[([a-z_]+):([^\]]+)\]", text):
-            if f"{match.group(1)}:{match.group(2)}" not in allowed:
-                return False
-        hits, total = _english_hits(text)
-        if hits >= 2 and hits / max(total, 1) >= 0.15:
-            return False
-        if _MONEY_NEAR_RE.search(text):
-            return False
-        if _FINANCIAL_HINT_RE.search(text) and _PERCENT_RE.search(text):
-            return False
-        # Candado semantico (ronda 6): afirmacion de mercado/cartera actual,
-        # con o sin cifra detectable.
-        if _PORTFOLIO_CLAIM_RE.search(text):
-            return False
-        if _MARKET_CLAIM_VERB_RE.search(text):
-            tickers = {
-                token
-                for token in _TICKER_TOKEN_RE.findall(text)
-                if token not in _TICKER_ALLOWLIST
-            }
-            if tickers or _CURRENCY_WORDS_RE.search(text):
-                return False
-        return True
 
     @staticmethod
     def _verified_sections(
