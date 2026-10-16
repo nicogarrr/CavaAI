@@ -41,7 +41,10 @@ test('real zero values stay zero, short versus five-year and short direction are
 });
 test('model text is escaped, never treated as HTML or an instruction', async () => {
     const html = await render({ thesis: '<script>alert(1)</script>', inference_basis: '<img src=x onerror=alert(1)>' });
-    assert.doesNotMatch(html, /<script>|<img /);assert.match(html, /&lt;script&gt;/);
+    assert.ok(html.includes('&lt;script&gt;alert(1)&lt;/script&gt;'));
+    assert.ok(html.includes('&lt;img src=x onerror=alert(1)&gt;'));
+    const upper = await render({ thesis: '<SCRIPT>alert(1)</SCRIPT>' });
+    assert.ok(upper.includes('&lt;SCRIPT&gt;alert(1)&lt;/SCRIPT&gt;'));
 });
 test('wiring is read-only, no generation batch, scheduler, manual close or mock production data', () => {
     const view = readFileSync('components/proPicks/PaperTradingView.tsx', 'utf8');
