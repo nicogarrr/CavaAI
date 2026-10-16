@@ -425,3 +425,17 @@ def test_transport_retry_does_not_reset_the_single_output_retry(db, fast_retry):
     # de salida, no hay 4a llamada y la propuesta valida (good) nunca se alcanza
     assert exc.value.reason == "salida_rechazada:cjk"
     assert provider.n == 3 and len(provider.outs) == 1
+
+
+def test_passes_dated_momentum_context_even_when_unavailable(db, monkeypatch):
+    seen = {}
+    original = runner.propose
+
+    async def capture(*args, **kwargs):
+        seen.update(kwargs)
+        return await original(*args, **kwargs)
+
+    monkeypatch.setattr(runner, 'propose', capture)
+    run(db, Provider(good()))
+    assert seen['momentum']['aviso'] == 'sin_serie_ajustada_reciente'
+    assert seen['momentum']['calculado_en'] == NOW.isoformat()
