@@ -1,6 +1,7 @@
 """Canarios del registro cerrado de lecturas, sin red ni proveedor LLM."""
 
 import asyncio
+import json
 import unittest
 from datetime import UTC, datetime
 
@@ -124,3 +125,28 @@ class ReadRegistryTests(unittest.TestCase):
         with self.assertRaises(ReadToolError):
             self.run_call(registry)
         self.assertEqual(len(self.calls), 1)
+
+    def test_fuente_id_acotada_y_no_texto_arbitrario(self):
+        date = datetime.now(UTC)
+        for source in ("a" * 1_000_000, "a" * 257, "fuente con espacios", "\nsource", "é"):
+            with self.subTest(length=len(source)), self.assertRaises(ReadToolError):
+                ReadResult(source_id=source, as_of=date, data={})
+        self.assertEqual(ReadResult(source_id="a" * 256, as_of=date, data={}).source_id, "a" * 256)
+
+    def test_frontera_presupuesto_incluye_fuente_fecha_y_sobre(self):
+        date = datetime(2026, 10, 16, tzinfo=UTC)
+        source = "doc:1"
+        empty = {"source_id": source, "as_of": date.isoformat(), "data": {"text": ""}}
+        overhead = len(json.dumps(empty, allow_nan=False, ensure_ascii=False).encode("utf-8"))
+        for delta, allowed in ((-1, True), (0, True), (1, False)):
+            text = "x" * (32768 - overhead + delta)
+            if allowed:
+                self.assertEqual(
+                    ReadResult(source_id=source, as_of=date, data={"text": text}).data["text"], text
+                )
+            else:
+                with self.assertRaises(ReadToolError):
+                    ReadResult(source_id=source, as_of=date, data={"text": text})
+        # No basta con que data sola quepa: la fecha y la fuente cuentan.
+        with self.assertRaises(ReadToolError):
+            ReadResult(source_id="a" * 256, as_of=date, data={"text": "x" * (32768 - overhead)})

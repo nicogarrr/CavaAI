@@ -7,6 +7,7 @@ No hay red, SQL, shell ni herramientas con efectos en este módulo.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
@@ -18,6 +19,7 @@ from app.llm.contracts import ToolCall, ToolDefinition
 
 _ALLOWED = frozenset({"company_facts", "company_thesis", "company_news", "company_documents"})
 _MAX_RESULT_BYTES = 32_768
+_SOURCE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9:._/-]{0,255}")
 
 
 class ReadToolError(ValueError):
@@ -47,20 +49,21 @@ class ReadResult:
     data: Mapping[str, Any]
 
     def __post_init__(self) -> None:
-        if not isinstance(self.source_id, str) or not self.source_id.strip():
-            raise ReadToolError("Resultado sin fuente")
+        if not isinstance(self.source_id, str) or _SOURCE_ID.fullmatch(self.source_id) is None:
+            raise ReadToolError("Fuente inválida: ID ASCII de 1 a 256 caracteres")
         if not isinstance(self.as_of, datetime) or self.as_of.utcoffset() is None:
             raise ReadToolError("Resultado sin fecha con zona horaria")
         if not isinstance(self.data, Mapping):
             raise ReadToolError("Resultado no estructurado")
         try:
-            encoded = json.dumps(dict(self.data), allow_nan=False, ensure_ascii=False).encode("utf-8")
+            envelope = {"source_id": self.source_id, "as_of": self.as_of.isoformat(), "data": dict(self.data)}
+            encoded = json.dumps(envelope, allow_nan=False, ensure_ascii=False).encode("utf-8")
         except (ValueError, TypeError, RecursionError):
             raise ReadToolError("Resultado no serializable") from None
         if len(encoded) > _MAX_RESULT_BYTES:
             raise ReadToolError("Resultado excede el presupuesto")
         # Copia separada del objeto mutable que retiene el handler.
-        object.__setattr__(self, "data", json.loads(encoded))
+        object.__setattr__(self, "data", json.loads(encoded)["data"])
 
 
 ReadHandler = Callable[[ReadContext, ReadArguments], Awaitable[ReadResult]]
