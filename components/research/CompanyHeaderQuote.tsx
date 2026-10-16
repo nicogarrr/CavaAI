@@ -12,16 +12,18 @@ export function CompanyHeaderQuote({ snapshot }: { snapshot: CompanyMarketSnapsh
     const [quote, setQuote] = useState<ExtendedQuote | null>(null);
     // Resolve the actual listing, never a naked non-US ticker's US namesake.
     const symbol = quoteSymbolFor({ exchange: snapshot.exchange ?? undefined, currency: snapshot.currency ?? undefined }, snapshot.ticker);
+    const recoverListing = !symbol;
+    const requestTicker = symbol ?? snapshot.ticker;
     useEffect(() => {
         let disposed = false;
         let inFlight = false;
         const controller = new AbortController();
         setQuote(null);
         const refresh = async () => {
-            if (!symbol || document.visibilityState !== 'visible' || inFlight) return;
+            if (!requestTicker || document.visibilityState !== 'visible' || inFlight) return;
             inFlight = true;
             try {
-                const response = await fetch(`/api/companies/${encodeURIComponent(symbol)}/extended-quote`, {
+                const response = await fetch(`/api/companies/${encodeURIComponent(requestTicker)}/extended-quote${recoverListing ? '?resolveListing=1' : ''}`, {
                     cache: 'no-store', signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20000)]),
                 });
                 const value = response.ok ? await response.json() as ExtendedQuote : null;
@@ -40,7 +42,7 @@ export function CompanyHeaderQuote({ snapshot }: { snapshot: CompanyMarketSnapsh
             window.clearInterval(interval);
             document.removeEventListener('visibilitychange', onVisibility);
         };
-    }, [symbol]);
+    }, [requestTicker, recoverListing]);
     const currency = quote?.currency ?? null;
     const label = extendedQuoteLabel(quote);
     const showPrice = label !== NA && quote?.price != null && isValidCurrencyCode(currency);
