@@ -25,8 +25,9 @@ import RefreshPortfolioButton from '@/components/portfolio/RefreshPortfolioButto
 import ImportIBKRButton from '@/components/portfolio/ImportIBKRButton';
 import { PortfolioChat } from '@/components/portfolio/PortfolioChat';
 import PortfolioForecast from '@/components/portfolio/PortfolioForecast';
-import { Wallet, LayoutDashboard, Briefcase, TrendingUp, TrendingDown, History, Brain, Gauge, Activity } from 'lucide-react';
-import type { PortfolioForecast as PortfolioForecastType, PortfolioPerformanceHistory, PortfolioSummary as PortfolioSummaryType, PortfolioTearsheet as PortfolioTearsheetType } from '@/lib/actions/portfolio.actions';
+import PortfolioDividends from '@/components/portfolio/PortfolioDividends';
+import { Wallet, LayoutDashboard, Briefcase, TrendingUp, TrendingDown, History, Brain, Gauge, Activity, Coins } from 'lucide-react';
+import type { PortfolioForecast as PortfolioForecastType, PortfolioPerformanceHistory, PortfolioSummary as PortfolioSummaryType, PortfolioTearsheet as PortfolioTearsheetType, PortfolioDividendProjection } from '@/lib/actions/portfolio.actions';
 
 type Transaction = {
     _id: string;
@@ -44,6 +45,7 @@ type Props = {
     scores: { quality: number | null; growth: number | null; value: number | null; dividend: number | null; cagr3y: number | null; history?: PortfolioPerformanceHistory };
     tearsheet: PortfolioTearsheetType | null;
     forecast: PortfolioForecastType | null;
+    dividends: PortfolioDividendProjection | null;
     userId: string;
     partialMessage?: string | null;
 };
@@ -52,14 +54,14 @@ type Props = {
 // 'resumen' y el parámetro se ignoraba tras la hidratación: un enlace a
 // /portfolio?tab=movimientos aterrizaba siempre en resumen. Un valor
 // desconocido cae a resumen sin romper la página.
-const VALID_TABS = ['resumen', 'prevision', 'posiciones', 'movimientos', 'estrategia'] as const;
+const VALID_TABS = ['resumen', 'prevision', 'dividendos', 'posiciones', 'movimientos', 'estrategia'] as const;
 type PortfolioTab = (typeof VALID_TABS)[number];
 
 function normalizeTab(value: string | null): PortfolioTab {
     return (VALID_TABS as readonly string[]).includes(value ?? '') ? (value as PortfolioTab) : 'resumen';
 }
 
-export default function PortfolioTabs({ summary, transactions, scores, tearsheet, forecast, userId, partialMessage }: Props) {
+export default function PortfolioTabs({ summary, transactions, scores, tearsheet, forecast, dividends, userId, partialMessage }: Props) {
     const searchParams = useSearchParams();
     const router = useRouter();
     const pathname = usePathname();
@@ -159,6 +161,13 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
                     >
                         <TrendingUp aria-hidden="true" className="h-4 w-4" />
                         Previsión
+                    </TabsTrigger>
+                    <TabsTrigger
+                        value="dividendos"
+                        className="data-[state=active]:bg-gray-800 data-[state=active]:text-white rounded-lg px-4 py-2.5 text-sm text-gray-400 flex items-center gap-2 min-h-[44px] sm:min-h-0 sm:py-2 whitespace-nowrap"
+                    >
+                        <Coins aria-hidden="true" className="h-4 w-4" />
+                        Dividendos
                     </TabsTrigger>
                     <TabsTrigger
                         value="posiciones"
@@ -287,6 +296,16 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
                     ) : (
                         <p className="rounded-lg border border-amber-900/70 bg-amber-950/20 p-3 text-sm text-amber-200" role="status">
                             No se pudo cargar la previsión. Reintenta en unos segundos.
+                        </p>
+                    )}
+                </TabsContent>
+
+                <TabsContent value="dividendos" className="mt-0">
+                    {dividends ? (
+                        <PortfolioDividends projection={dividends} />
+                    ) : (
+                        <p className="rounded-lg border border-amber-900/70 bg-amber-950/20 p-3 text-sm text-amber-200" role="status">
+                            No se pudo cargar la proyección de dividendos. Reintenta en unos segundos.
                         </p>
                     )}
                 </TabsContent>
