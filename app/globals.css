@@ -44,7 +44,7 @@
 }
 
 /*
- * CavaAI es dark-ONLY: `app/layout.tsx` fija `className="dark"` en <html>.
+ * GerarAI es dark-ONLY: `app/layout.tsx` fija `className="dark"` en <html>.
  * Antes se mantenian aquí los tokens light de shadcn (--background: white...)
  * que nadie consumia y que solo servian para sugerir un tema que no existe.
  * `.dark` es la unica fuente de verdad del tema.

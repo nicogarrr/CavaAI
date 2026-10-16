@@ -275,7 +275,7 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
                 className="search-dialog z-[70]"
                 overlayClassName="z-[70]"
                 title="Buscar acciones"
-                description="Busca por símbolo o empresa, o salta a una sección de CavaAI"
+                description="Busca por símbolo o empresa, o salta a una sección de GerarAI"
             >
                 <div className="search-field">
                     <CommandInput

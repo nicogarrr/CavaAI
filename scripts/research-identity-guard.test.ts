@@ -196,3 +196,46 @@ describe('normalizeResearchBody: bytes identicos a los enviados', () => {
     assert.deepEqual(new Uint8Array(normalized.body as ArrayBuffer), bytes);
   });
 });
+
+describe("contrato frontend-backend: headers contra el cliente OpenAPI generado", () => {
+  // El oraculo es lib/research/openapi.generated.ts, generado DESDE el backend
+  // (data-engine) y vigilado por el job CI "OpenAPI generated client drift":
+  // si el backend cambiara los headers, el generado cambiaria y este test romperia.
+  // No es un grep del propio frontend: el codigo bajo test produce los headers y
+  // el artefacto generado por el backend decide si son los esperados.
+  const EXPECTED = [
+    "x-cavaai-user",
+    "x-cavaai-tenant",
+    "x-cavaai-timestamp",
+    "x-cavaai-nonce",
+    "x-cavaai-method",
+    "x-cavaai-path",
+    "x-cavaai-body-hash",
+    "x-cavaai-signature",
+  ];
+
+  it("los 8 headers firmados existen como parametros documentados en el spec generado", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const spec = await readFile(
+      new URL("../lib/research/openapi.generated.ts", import.meta.url),
+      "utf8",
+    );
+    for (const h of EXPECTED) {
+      assert.ok(
+        spec.includes(`"${h}"?: string | null;`),
+        `el cliente OpenAPI generado ya no documenta ${h}: deriva frontend-backend`,
+      );
+    }
+  });
+
+  it("researchIdentityHeaders emite exactamente esos 8 y ninguno mas", () =>
+    withFixedEnv(async () => {
+      const headers = await researchIdentityHeaders({
+        method: "get",
+        path: "/api/thesis/MSFT",
+        body: null,
+      });
+      const emitted = Object.keys(headers).map((k) => k.toLowerCase()).sort();
+      assert.deepEqual(emitted, [...EXPECTED].sort());
+    }));
+});

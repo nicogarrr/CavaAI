@@ -1,6 +1,6 @@
 # Despliegue permanente en Oracle Cloud Always Free (backend personal)
 
-Objetivo: que el backend de CavaAI (FastAPI + Postgres + Redis + Qdrant +
+Objetivo: que el backend de GerarAI (FastAPI + Postgres + Redis + Qdrant +
 MinIO + workers) este siempre disponible desde PC y movil, a **0 EUR/mes**,
 sin depender del portatil. El frontend sigue en Vercel Hobby; la auth sigue
 en MongoDB Atlas M0 (gratis). Lo unico de pago potencial son las APIs
@@ -75,7 +75,7 @@ externas de datos/LLM, como hoy.
    `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL=https://<tu-app>.vercel.app`,
    `MONGODB_URI` (Atlas M0), `TELEGRAM_BOT_TOKEN` y `TELEGRAM_CHAT_ID`.
 8. **Backups**: `crontab -e` y anade
-   `17 4 * * * cd /home/ubuntu/CavaAI && RCLONE_REMOTE=r2:cavaai-backups ./scripts/backup.sh >> /var/log/cavaai-backup.log 2>&1`
+   `17 4 * * * cd /home/ubuntu/GerarAI && RCLONE_REMOTE=r2:cavaai-backups ./scripts/backup.sh >> /var/log/cavaai-backup.log 2>&1`
    (configura rclone una vez con las claves R2; ver abajo).
 
 ## Cloudflare R2 para backups (gratis, 10 GB)

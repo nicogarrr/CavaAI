@@ -1,5 +1,5 @@
 /**
- * Ayudas puras (sin React ni servidor) para el rebalanceo mensual de CavaAI Propicks.
+ * Ayudas puras (sin React ni servidor) para el rebalanceo mensual de GerarAI Propicks.
  *
  * - Catálogo canónico de las 4 estrategias públicas. Si el servidor aún no provee
  *   alguna (las añaden otros agentes en lib/utils/proPicksStrategies.ts), se marca
@@ -295,7 +295,7 @@ export function composeDigestMessage(
     reasonOf?: (symbol: string) => string | undefined,
 ): string {
     const lines: string[] = [
-        `📊 CavaAI Propicks — rebalanceo de ${monthLabelEs(month)}`,
+        `📊 GerarAI Propicks — rebalanceo de ${monthLabelEs(month)}`,
         `Estrategia: ${strategyName}`,
         '',
     ];

@@ -184,7 +184,7 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
                   </Link>
                 </Button>
                 <p className="mt-4 text-xs text-gray-500">
-                  El servidor de CavaAI no ha podido completar la consulta. Reintenta en unos segundos.
+                  El servidor de GerarAI no ha podido completar la consulta. Reintenta en unos segundos.
                 </p>
               </div>
               ) : (
@@ -283,7 +283,7 @@ export default async function ScreenerPage({ searchParams }: { searchParams?: Pr
                   Motor de análisis desconectado
                 </span>
                 <p className="mt-4 text-xs text-gray-500">
-                  El servidor de CavaAI no ha podido completar la consulta. Reintenta en unos segundos.
+                  El servidor de GerarAI no ha podido completar la consulta. Reintenta en unos segundos.
                 </p>
                 <Button asChild variant="outline" size="sm" className="mt-4 min-h-[44px]">
                   <Link href={`/screener?sector=${encodeURIComponent(sector)}`}>

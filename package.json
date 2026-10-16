@@ -1,5 +1,5 @@
 {
-  "name": "cavaai",
+  "name": "gerarai",
   "version": "1.0.0",
   "private": true,
   "scripts": {
@@ -75,5 +75,5 @@
     },
     "postcss": "8.5.26"
   },
-  "description": "CavaAI — Research OS de inversión personal (Next.js + FastAPI)"
+  "description": "GerarAI — Research OS de inversión personal (Next.js + FastAPI)"
 }

@@ -23,7 +23,7 @@ export async function GET() {
   return new NextResponse(await upstream.arrayBuffer(), {
     headers: {
       'content-type': 'application/zip',
-      'content-disposition': 'attachment; filename="cavaai-obsidian-vault.zip"',
+      'content-disposition': 'attachment; filename="gerarai-obsidian-vault.zip"',
       'cache-control': 'private, no-store',
       'x-content-type-options': 'nosniff',
     },

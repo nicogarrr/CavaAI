@@ -1,6 +1,6 @@
 # Impuestos: integración del motor fiscal
 
-La pestaña `/taxes` usa el motor existente de CavaAI inspirado en DeclaRenta.
+La pestaña `/taxes` usa el motor existente de GerarAI inspirado en DeclaRenta.
 No incorpora una dependencia nueva ni cambia reglas fiscales verificadas.
 
 - Modelo 100: el mapeo sigue limitado al ejercicio 2025; para otros años se

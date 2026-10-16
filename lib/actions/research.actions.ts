@@ -696,7 +696,7 @@ async function postForm<T>(path: string, fallback: T, body: FormData): Promise<T
 /**
  * `/api/companies` devuelve como mucho COMPANIES_PAGE_SIZE fichas por llamada
  * (tope del backend) y por defecto solo 100. El índice de /research se titula
- * «Todas las empresas con research en CavaAI», así que hay que pedir TODAS las
+ * «Todas las empresas con research en GerarAI», así que hay que pedir TODAS las
  * páginas: con la llamada por defecto el índice se cortaba en silencio en la
  * centésima (A→AMBA) y cualquier ticker posterior no aparecía pese a tener
  * ficha. Paginamos hasta recibir una página corta.
@@ -1159,7 +1159,7 @@ export type ResearchNewsEvent = {
   date_source?: string | null;
   /** 'macro' = evento macro GDELT sin ticker (#564); null/ausente = evento de empresa. */
   news_lane?: string | null;
-  /** false = título de display generado por CavaAI (la UI omite el prefijo de ticker). */
+  /** false = título de display generado por GerarAI (la UI omite el prefijo de ticker). */
   headline_from_source?: boolean;
   macro_theme?: string | null;
   source_tier?: string;

@@ -1,6 +1,6 @@
 /**
  * Guard del titular de display de noticias (QW4): el prefijo de ticker
- * solo se omite en titulares generados por CavaAI (flag persistido);
+ * solo se omite en titulares generados por GerarAI (flag persistido);
  * los titulares verbatim de la fuente se respetan siempre.
  */
 import assert from 'node:assert/strict';
@@ -12,7 +12,7 @@ import { newsDisplayTitle, untokenizeHeadline } from '../lib/news-display.ts';
 
 const page = (readFileSync('app/(root)/research/news/page.tsx', 'utf8') + readFileSync('components/research/NewsEventsFlow.tsx', 'utf8') + readFileSync('components/research/NewsHeadline.tsx', 'utf8'));
 
-test('omite el prefijo solo en display generado por CavaAI', () => {
+test('omite el prefijo solo en display generado por GerarAI', () => {
     assert.equal(newsDisplayTitle('AAPL 8-K presentado ante la SEC', 'AAPL', false), '8-K presentado ante la SEC');
     assert.equal(newsDisplayTitle('AAPL 8-K presentado ante la SEC', 'AAPL', true), 'AAPL 8-K presentado ante la SEC', 'verbatim intacto');
     assert.equal(newsDisplayTitle('AAPL 8-K presentado ante la SEC', 'AAPL', undefined), 'AAPL 8-K presentado ante la SEC', 'legacy sin flag intacto');

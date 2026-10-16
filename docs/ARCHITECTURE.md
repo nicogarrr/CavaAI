@@ -1,4 +1,4 @@
-# Arquitectura de CavaAI
+# Arquitectura de GerarAI
 
 > Estado: consolidación de backend completada (agosto 2026; revisado septiembre 2026). La API legacy
 > (`data-engine/routers/`) fue retirada del servicio; el único API del data

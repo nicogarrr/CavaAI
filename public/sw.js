@@ -1,5 +1,5 @@
 /*
- * CavaAI — service worker mínimo y honesto.
+ * GerarAI — service worker mínimo y honesto.
  *
  * SIN LECTURA OFFLINE: no existe ninguna página pública offline en la app
  * (todo exige sesión y datos vivos de mercado), así que NADA autenticado se
@@ -17,11 +17,11 @@ const CACHE = 'cavaai-static-v3';
 const OFFLINE_HTML =
   '<!doctype html><html lang="es"><meta charset="utf-8">' +
   '<meta name="viewport" content="width=device-width, initial-scale=1">' +
-  '<title>CavaAI — sin conexión</title>' +
+  '<title>GerarAI — sin conexión</title>' +
   '<body style="background:#101010;color:#d1d5db;font-family:system-ui,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0">' +
   '<div style="text-align:center;padding:24px">' +
   '<h1 style="font-size:20px;color:#f3f4f6">Sin conexión</h1>' +
-  '<p style="font-size:14px;color:#9ca3af">CavaAI necesita red para leer tus tesis y datos de mercado.<br>Sin lectura offline: reconecta y vuelve a intentarlo.</p>' +
+  '<p style="font-size:14px;color:#9ca3af">GerarAI necesita red para leer tus tesis y datos de mercado.<br>Sin lectura offline: reconecta y vuelve a intentarlo.</p>' +
   '</div></body></html>';
 
 self.addEventListener('install', (event) => {

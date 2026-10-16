@@ -28,7 +28,7 @@ export const NA = 'N/D';
  * que el dato NO EXISTE o no se pudo traer y siempre arrastra un CTA de
  * reintento; `NO_CORRIDO` dice que el dato AÚN NO SE HA CALCULADO y no
  * lleva acción posible. Un token común impediría al usuario —y a soporte—
- * distinguir "CavaAI está roto" de "todavía no lo has pedido".
+ * distinguir "GerarAI está roto" de "todavía no lo has pedido".
  */
 export const NO_CORRIDO = 'No corrido';
 

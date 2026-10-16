@@ -60,7 +60,7 @@ describe('destino y credencial', () => {
       host: 'smtp.gmail.com', port: 465, user: 'u@gmail.com', pass: 'abcdefghijklmnop', from: 'u@gmail.com',
     });
     assert.equal(smtpConfig({ SMTP_USER: 'u', SMTP_PASS: 'p', SMTP_PORT: 'abc' })?.port, 465);
-    assert.equal(smtpConfig({ SMTP_USER: 'u', SMTP_PASS: 'p', MAIL_FROM: 'CavaAI <a@b.co>' })?.from, 'CavaAI <a@b.co>');
+    assert.equal(smtpConfig({ SMTP_USER: 'u', SMTP_PASS: 'p', MAIL_FROM: 'GerarAI <a@b.co>' })?.from, 'GerarAI <a@b.co>');
   });
 });
 

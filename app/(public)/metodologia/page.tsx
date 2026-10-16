@@ -32,7 +32,7 @@ export const revalidate = 3600;
 export const metadata: Metadata = {
   title: 'Metodología',
   description:
-    'Fuentes de datos, motores de valoración, límites y costes de CavaAI: de dónde sale cada dato y qué no debes esperar de la plataforma.',
+    'Fuentes de datos, motores de valoración, límites y costes de GerarAI: de dónde sale cada dato y qué no debes esperar de la plataforma.',
   robots: { index: true, follow: true },
 };
 
@@ -136,7 +136,7 @@ const limits = [
   {
     icon: Target,
     title: 'No es asesoramiento',
-    text: 'CavaAI es una herramienta educativa y de análisis. Las decisiones de inversión son siempre tuyas.',
+    text: 'GerarAI es una herramienta educativa y de análisis. Las decisiones de inversión son siempre tuyas.',
   },
 ];
 
@@ -166,7 +166,7 @@ export default function MetodologiaPage() {
           <p className="text-sm font-semibold uppercase text-teal-300">Transparencia</p>
           <h1 className="mt-1 break-words text-2xl font-bold text-gray-100 sm:text-3xl">Metodología</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">
-            Fuentes, motores de valoración, límites y costes de CavaAI: de dónde sale cada dato, cómo se
+            Fuentes, motores de valoración, límites y costes de GerarAI: de dónde sale cada dato, cómo se
             calcula cada número y qué no debes esperar de la plataforma.
           </p>
         </div>
@@ -323,7 +323,7 @@ export default function MetodologiaPage() {
           ))}
         </ol>
         <p className="mt-4 rounded-xl border border-teal-900/60 bg-teal-950/20 p-4 text-sm leading-6 text-teal-100">
-          <strong>CavaAI ProPicks:</strong> la selección v1 puntúa calidad, rentabilidad, flujo de
+          <strong>GerarAI ProPicks:</strong> la selección v1 puntúa calidad, rentabilidad, flujo de
           caja y crecimiento por percentiles sobre todo el universo persistido. La valoración
           (FCF yield / earnings yield) y el momentum aún no entran en el embudo v1: las series de
           precios solo se persisten para el top-N tras cada run, no para todo el universo. De las cuatro estrategias (adaptativa, value, momentum y

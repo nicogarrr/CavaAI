@@ -203,7 +203,7 @@ const PEERS_METHODOLOGY_ES: Record<string, string> = {
 
 /**
  * El título de la ficha. Antes todas las empresas comparten el mismo `<title>`
- * (solo lo añadía el template "%s | CavaAI"), que es la mayor pérdida de SEO y
+ * (solo lo añadía el template "%s | GerarAI"), que es la mayor pérdida de SEO y
  * de identificación de la app: en la pestaña, en el historial y al compartir
  * no se distinguía una ficha de otra. El nombre sale del mismo snapshot que
  * pinta la página; si el backend no responde, se queda el ticker, que ya
@@ -708,7 +708,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
       identity.kind === 'unverified'
         ? {
             title: 'Identidad del ticker no verificada',
-            description: `${ticker} no tiene identidad de listado verificada en CavaAI: el proveedor de mercado conoce este símbolo como «${identity.providerName}», que puede no ser el emisor que buscas. Sin identidad verificada no se pueden mostrar datos ni generar research de este símbolo.`,
+            description: `${ticker} no tiene identidad de listado verificada en GerarAI: el proveedor de mercado conoce este símbolo como «${identity.providerName}», que puede no ser el emisor que buscas. Sin identidad verificada no se pueden mostrar datos ni generar research de este símbolo.`,
           }
         : identity.kind === 'not-in-sources'
           ? {
@@ -717,7 +717,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
             }
           : {
               title: 'No pudimos comprobar este ticker',
-              description: `${ticker} no está en la cobertura verificada de CavaAI y el proveedor de mercado no está disponible para comprobarlo. Sin identidad verificada no se pueden mostrar datos ni generar research de este símbolo; inténtalo de nuevo más tarde.`,
+              description: `${ticker} no está en la cobertura verificada de GerarAI y el proveedor de mercado no está disponible para comprobarlo. Sin identidad verificada no se pueden mostrar datos ni generar research de este símbolo; inténtalo de nuevo más tarde.`,
             };
     return (
       <main id="content" tabIndex={-1} className="min-h-screen bg-surface-0 px-4 py-6 text-gray-100 sm:px-6 lg:px-8">

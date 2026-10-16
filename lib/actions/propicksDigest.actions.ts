@@ -1,7 +1,7 @@
 'use server';
 
 /**
- * Digest mensual de rebalanceo de CavaAI Propicks → Telegram.
+ * Digest mensual de rebalanceo de GerarAI Propicks → Telegram.
  *
  * CÓMO PROGRAMARLA EL DÍA 1 (sin infraestructura nueva en este cambio):
  * - Esta función es una server action: hay que invocarla el día 1 de cada mes

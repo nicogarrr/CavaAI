@@ -138,7 +138,7 @@ export function FilingSection({ filing, year, onPreview, onReset }: {
                 <p className="text-sm text-gray-400">
                     {typeof filing.reason === 'string' && filing.reason
                         ? filing.reason
-                        : 'CavaAI no ha calculado las casillas del Modelo 100 para esta cartera y el motor no ha devuelto el motivo del bloqueo. Las casillas son importes en euros: hace falta que la cartera use EUR como divisa base y que el ejercicio tenga su mapeo verificado contra la orden ministerial vigente.'}
+                        : 'GerarAI no ha calculado las casillas del Modelo 100 para esta cartera y el motor no ha devuelto el motivo del bloqueo. Las casillas son importes en euros: hace falta que la cartera use EUR como divisa base y que el ejercicio tenga su mapeo verificado contra la orden ministerial vigente.'}
                 </p>
             </Section>
         );

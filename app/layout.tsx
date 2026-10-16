@@ -3,15 +3,15 @@ import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  applicationName: 'CavaAI',
+  applicationName: 'GerarAI',
   title: {
-    default: "CavaAI - Research OS de inversión fundamental",
-    template: "%s | CavaAI"
+    default: "GerarAI - Research OS de inversión fundamental",
+    template: "%s | GerarAI"
   },
-  description: "CavaAI convierte evidencia, modelos específicos de cada empresa y memoria histórica en tesis fundamentales trazables.",
+  description: "GerarAI convierte evidencia, modelos específicos de cada empresa y memoria histórica en tesis fundamentales trazables.",
   keywords: ["fundamental analysis", "investment thesis", "financial modeling", "research OS", "análisis fundamental"],
-  authors: [{ name: "CavaAI Team" }],
-  creator: "CavaAI",
+  authors: [{ name: "GerarAI Team" }],
+  creator: "GerarAI",
   icons: {
     icon: [
       { url: '/assets/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
@@ -23,7 +23,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'CavaAI',
+    title: 'GerarAI',
   },
   robots: {
     // La app es una herramienta privada: el shell autenticado no debe

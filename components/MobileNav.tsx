@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Menu, X } from 'lucide-react';
-import { CavaAIWordmark } from '@/components/CavaAIWordmark';
+import { GerarAIWordmark } from '@/components/GerarAIWordmark';
 import NavItems from '@/components/NavItems';
 import SearchCommand from '@/components/SearchCommand';
 
@@ -110,7 +110,7 @@ export default function MobileNav({ initialStocks }: { initialStocks?: StockWith
                             className="absolute left-0 top-0 flex h-full max-h-dvh w-[85vw] max-w-xs flex-col border-r border-gray-700/50 bg-gray-900 shadow-2xl"
                         >
                             <div className="flex min-h-16 items-center justify-between gap-2 border-b border-gray-700/50 px-4 py-3">
-                                <CavaAIWordmark />
+                                <GerarAIWordmark />
                                 <button
                                     type="button"
                                     ref={closeButtonRef}

@@ -51,7 +51,7 @@ test("tarjetas de /research sin sector en inglés", async ({ page }) => {
   await page.screenshot({ path: "test-results/news-es-research-cards.png" });
 });
 
-// Procedencia: un titular SEC generado por CavaAI (headline_from_source=false)
+// Procedencia: un titular SEC generado por GerarAI (headline_from_source=false)
 // no repite el ticker como prefijo — la UI muestra el título recortado y la
 // API expone el flag que lo gobierna.
 test("titular sintético SEC sin prefijo de ticker duplicado", async ({ page, request }) => {

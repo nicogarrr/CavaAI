@@ -379,12 +379,12 @@ test.describe("knowledge-graph interactivo (D2b)", () => {
     const svgDownload = page.waitForEvent("download");
     await page.getByTestId("kg-export-svg").click();
     const svg = await svgDownload;
-    expect(svg.suggestedFilename()).toMatch(/^cavaai-grafo-\d+-nodos\.svg$/);
+    expect(svg.suggestedFilename()).toMatch(/^gerarai-grafo-\d+-nodos\.svg$/);
 
     const jsonDownload = page.waitForEvent("download");
     await page.getByTestId("kg-export-json").click();
     const json = await jsonDownload;
-    expect(json.suggestedFilename()).toMatch(/^cavaai-grafo-\d+-nodos\.json$/);
+    expect(json.suggestedFilename()).toMatch(/^gerarai-grafo-\d+-nodos\.json$/);
   });
 
   test("la página no deja errores de consola", async ({ page }) => {

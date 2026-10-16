@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Restore de CavaAI (produccion personal). DESTRUCTIVO: sobrescribe Postgres
+# Restore de GerarAI (produccion personal). DESTRUCTIVO: sobrescribe Postgres
 # y los volumenes de MinIO/DuckDB. Solo en ventana de mantenimiento.
 #
 # Uso: ./scripts/restore.sh backups/YYYYMMDD-HHMMSS --confirm-restore

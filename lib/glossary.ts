@@ -1,5 +1,5 @@
 /**
- * Glosario educativo de CavaAI.
+ * Glosario educativo de GerarAI.
  *
  * Cada entrada explica un concepto de inversión/valoración en 2-3 líneas
  * didácticas en español. Se consume desde tooltips (components/GlossaryTerm)
@@ -72,7 +72,7 @@ export const glossary: Record<GlossaryKey, GlossaryEntry> = {
   look_ahead: {
     term: 'Look-ahead bias (sesgo de mirar al futuro)',
     short:
-      'Error de usar información que aún no existía en la fecha analizada, como resultados publicados después o datos retroactivamente revisados. Infla artificialmente cualquier backtest y cualquier tesis. CavaAI solo usa datos disponibles en cada fecha simulada para evitarlo.',
+      'Error de usar información que aún no existía en la fecha analizada, como resultados publicados después o datos retroactivamente revisados. Infla artificialmente cualquier backtest y cualquier tesis. GerarAI solo usa datos disponibles en cada fecha simulada para evitarlo.',
   },
   owner_earnings: {
     term: 'Owner earnings',

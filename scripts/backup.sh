@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Backup de CavaAI (produccion personal, Linux/Oracle VM).
+# Backup de GerarAI (produccion personal, Linux/Oracle VM).
 #
 # Genera backups/YYYYMMDD-HHMMSS/ con:
 #   - postgres.dump      (pg_dump -Fc, canonico: research/evidence/thesis)
