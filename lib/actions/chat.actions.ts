@@ -20,7 +20,7 @@ type ResearchChatResponse = {
     }>;
 };
 
-import { toChatCitations } from '@/lib/chat/citations';
+import { toChatCitations, toPortfolioChatCitations } from '@/lib/chat/citations';
 
 export async function chatWithPortfolio(query: string, userId: string) {
     const user = await requireAuthenticatedUser();
@@ -56,7 +56,7 @@ export async function chatWithPortfolio(query: string, userId: string) {
         success: !response.blocked,
         message: response.answer,
         proposedActions: response.proposed_actions,
-        citations: toChatCitations(response.sources),
+        citations: toPortfolioChatCitations(response.sources),
     };
 }
 

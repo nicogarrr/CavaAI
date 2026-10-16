@@ -60,3 +60,30 @@ export function toChatCitations(
     }
     return citations;
 }
+
+
+export interface PortfolioChatCitation extends ChatCitation {
+    url: string | null;
+}
+
+/** Keep backend sources visible without inventing links for internal records. */
+export function toPortfolioChatCitations(sources: ChatSource[] | undefined | null): PortfolioChatCitation[] {
+    return (sources ?? []).map((source) => {
+        const existing = toChatCitations([source])[0];
+        let url: string | null = null;
+        if (typeof source.url === 'string') {
+            try {
+                const parsed = new URL(source.url);
+                if ((parsed.protocol === 'https:' || parsed.protocol === 'http:') && !parsed.username && !parsed.password) url = parsed.href;
+            } catch { /* Missing or malformed URL: show provenance without a link. */ }
+        }
+        return {
+            chunk_id: existing?.chunk_id ?? source.id,
+            document: existing?.document ?? source.title,
+            page: existing?.page ?? null,
+            locator: existing?.locator ?? `${source.type}:${String(source.id)}`,
+            source_type: existing?.source_type ?? source.type,
+            url,
+        };
+    });
+}

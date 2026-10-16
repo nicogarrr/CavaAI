@@ -114,3 +114,23 @@ def test_helpers_compact_and_convert():
     assert len(_short("x" * 1000, limit=10)) <= 13  # truncated with ellipsis marker
     assert _decimal_to_float(Decimal("1.5")) == 1.5
     assert _decimal_to_float(None) is None
+
+
+def test_document_sources_preserve_stored_urls_without_inventing_missing_links(db, monkeypatch):
+    from app.models.entities import Document, DocumentChunk
+
+    company = _company(db)
+    document = Document(company_id=company.id, title="Synthetic fixture", source_type="upload", source_url="https://example.org/fixture.pdf")
+    db.add(document)
+    db.flush()
+    db.add(DocumentChunk(document_id=document.id, chunk_index=0, text="Fixture document revenue"))
+    db.commit()
+    monkeypatch.setattr(ChatService, "_rag_chunks", lambda *args, **kwargs: [{"point_id": "fixture-point", "title": "RAG fixture", "url": "https://example.org/rag.pdf", "text": "Fixture text"}])
+    response = ChatService()._deterministic_answer(db, "revenue", "company", "AAPL")
+    by_type = {source["type"]: source for source in response.sources}
+    assert by_type["document_chunk"]["url"] == document.source_url
+    assert by_type["rag_chunk"]["url"] == "https://example.org/rag.pdf"
+    document.source_url = None
+    db.commit()
+    response = ChatService()._deterministic_answer(db, "revenue", "company", "AAPL")
+    assert "url" not in next(source for source in response.sources if source["type"] == "document_chunk")
