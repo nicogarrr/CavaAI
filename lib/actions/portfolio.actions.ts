@@ -72,6 +72,9 @@ export type PortfolioSummary = {
     /** Caja total en divisa base. totalValue = equityValue + cash.
      *  Derivada del diccionario `cash` por moneda del backend. */
     cash: number;
+    /** Saldos positivos y deudores separados, ya convertidos a divisa base. */
+    cashAssets?: number;
+    marginDebt?: number;
     baseCurrency: string;
     status: 'ok' | 'incomplete_fx';
     missingFx: Array<Record<string, unknown>>;
@@ -119,6 +122,8 @@ type ResearchPortfolioPosition = {
 type ResearchPortfolioSummaryResponse = {
     total_value: number;
     equity_value: number;
+    cash_assets_base?: number;
+    margin_debt_base?: number;
     /** Diccionario por moneda ya en divisa base: { EUR: 1234.56 }. */
     cash: Record<string, number>;
     status: 'ok' | 'incomplete_fx';
@@ -225,6 +230,8 @@ export async function getPortfolioSummary(userId: string): Promise<PortfolioSumm
         totalGainPercent: totalCost > 0 ? (totalGain / totalCost) * 100 : 0,
         holdings: holdings.sort((a, b) => b.value - a.value),
         equityValue: backendSummary.equity_value,
+        cashAssets: backendSummary.cash_assets_base,
+        marginDebt: backendSummary.margin_debt_base,
         cash: sumCashByCurrency(backendSummary.cash),
         baseCurrency: backendSummary.base_currency,
         status: backendSummary.status,
