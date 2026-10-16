@@ -95,7 +95,7 @@ export default async function LetterReaderPage({ params, searchParams }: PagePro
             <Pagination basePath={`/inversores/cartas/${letterId}`} page={page} total={totalPages} />
 
             <p className="text-xs text-gray-500">
-                Fuente: biblioteca de CavaAI, texto extraído del PDF y troceado en fragmentos (puede tener errores de extracción;
+                Fuente: biblioteca de GerarAI, texto extraído del PDF y troceado en fragmentos (puede tener errores de extracción;
                 el PDF original manda). Es doctrina de inversión, no datos de las empresas.
             </p>
         </main>

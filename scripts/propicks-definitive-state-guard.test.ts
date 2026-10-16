@@ -8,7 +8,7 @@
  *    estén disponibles aparecerán aquí sus métricas» (promesa de futuro).
  *  - «El backtest por estrategia se publicará cuando existan fundamentales
  *    point-in-time» (el embudo solo guarda un run: no hay tal publicación).
- *  - «Aún no hay snapshot del mes anterior» (CavaAI no guarda histórico de
+ *  - «Aún no hay snapshot del mes anterior» (GerarAI no guarda histórico de
  *    meses: no es un estado que se resuelva solo).
  *  - WalkForwardResults sin meses: los agregados arrival 0 y se leían como un
  *    «0,00 %» medido.
@@ -81,7 +81,7 @@ describe('ProPicks sin estados intermedios (ficha, backtest, rebalanceo)', () =>
     assert.match(rebalance, /Selección vigente · \{monthLabelEs\(month\)\}/);
     assert.match(rebalance, /no se puede decir qué entra ni qué sale/);
     // Y el motivo es de arquitectura, no de un trabajo futuro.
-    assert.match(rebalance, /CavaAI no guarda el histórico de meses/);
+    assert.match(rebalance, /GerarAI no guarda el histórico de meses/);
   });
 
   it('el rebalanceo conserva los guardas de export y carga de snapshot', () => {

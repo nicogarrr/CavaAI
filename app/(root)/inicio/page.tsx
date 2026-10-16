@@ -11,10 +11,10 @@ import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-// La home es la raíz ("/"): el template de app/layout.tsx ("%s | CavaAI")
+// La home es la raíz ("/"): el template de app/layout.tsx ("%s | GerarAI")
 // repetiría la marca, así que el título va absoluto.
 export const metadata: Metadata = {
-    title: { absolute: 'CavaAI · Research OS de inversión' },
+    title: { absolute: 'GerarAI · Research OS de inversión' },
     description:
         'Qué ha cambiado en tus posiciones, valor de cartera, alertas disparadas, watchlist y oportunidades por valor intrínseco.',
 };

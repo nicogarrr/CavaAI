@@ -58,4 +58,4 @@ Coste 0 EUR, solo lectura sobre Atlas:
   del bucket.
 - Probar el primer backup a mano antes de programar el cron.
 - Programacion (cron semanal) pendiente: se activa solo tras verificar tier y
-  destino. Ejemplo: `0 4 * * 0 cd ~/CavaAI && ./scripts/mongo-backup.sh`.
+  destino. Ejemplo: `0 4 * * 0 cd ~/GerarAI && ./scripts/mongo-backup.sh`.

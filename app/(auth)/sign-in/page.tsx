@@ -125,7 +125,7 @@ const SignIn = () => {
         <>
             <h1 className="form-title">Bienvenido de nuevo</h1>
 
-            {/* Contexto de producto: qué es CavaAI y qué se obtiene al entrar.
+            {/* Contexto de producto: qué es GerarAI y qué se obtiene al entrar.
                 Va entre el H1 y el formulario, sin quitar el formulario.
                 El margen de `.form-title` (mb-12) era para separar el título
                 del formulario; con un bloque en medio sobra, así que el bloque

@@ -5,10 +5,10 @@ const runUiE2E = process.env.E2E_UI_RUN === "1";
 test.describe("public authentication shell", () => {
   test.skip(!runUiE2E, "Set E2E_UI_RUN=1 to run browser tests.");
 
-  test("renders CavaAI sign-in, validates required fields and links to sign-up", async ({ page }) => {
+  test("renders GerarAI sign-in, validates required fields and links to sign-up", async ({ page }) => {
     await page.goto("/sign-in");
 
-    await expect(page).toHaveTitle(/CavaAI/);
+    await expect(page).toHaveTitle(/GerarAI/);
     await expect(page.getByRole("heading", { name: "Bienvenido de nuevo" })).toBeVisible();
     await expect(page.getByLabel("Email")).toBeVisible();
     await expect(page.getByLabel("Contraseña")).toBeVisible();

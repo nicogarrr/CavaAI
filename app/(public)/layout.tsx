@@ -3,7 +3,7 @@ import Link from 'next/link';
 import React from 'react';
 import { headers } from 'next/headers';
 import { getAuth } from '@/lib/better-auth/auth';
-import { CavaAIWordmark } from '@/components/CavaAIWordmark';
+import { GerarAIWordmark } from '@/components/GerarAIWordmark';
 import { Button } from '@/components/ui/button';
 import { SUPPORT_EMAIL } from '@/lib/config/brand';
 import { isPublicSignUpOpen } from '@/lib/config/product';
@@ -63,10 +63,10 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
             <header className="sticky top-3 z-50 sm:top-4">
                 <div className="container">
                     <div className="public-header-inner rounded-full border border-gray-700/60 bg-surface-1/80 px-4 shadow-lg shadow-black/30 backdrop-blur">
-                    <Link href="/" className="flex min-h-11 items-center" aria-label="CavaAI, inicio">
-                        <CavaAIWordmark />
+                    <Link href="/" className="flex min-h-11 items-center" aria-label="GerarAI, inicio">
+                        <GerarAIWordmark />
                     </Link>
-                    <nav aria-label="Páginas de CavaAI" className="public-nav">
+                    <nav aria-label="Páginas de GerarAI" className="public-nav">
                         {legalLinks.map((link) => (
                             <Link key={link.href} href={link.href} className="public-nav-link">
                                 {link.label}
@@ -102,9 +102,9 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
             <footer className="public-footer">
                 <div className="container public-footer-inner">
                     <div className="max-w-sm">
-                        <p className="font-medium text-gray-300">CavaAI</p>
+                        <p className="font-medium text-gray-300">GerarAI</p>
                         <p className="mt-1">
-                            Herramienta educativa de análisis: CavaAI no da asesoramiento de inversión y
+                            Herramienta educativa de análisis: GerarAI no da asesoramiento de inversión y
                             las decisiones son tuyas.
                         </p>
                         <p className="mt-1 text-xs">

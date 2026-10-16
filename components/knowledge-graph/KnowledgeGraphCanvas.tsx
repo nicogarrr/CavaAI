@@ -401,10 +401,10 @@ export default function KnowledgeGraphCanvas({ graph }: Props) {
             // dibujados no lo era. El nombre del fichero declara lo que lleva.
             const count = graph.nodes.length;
             if (kind === 'svg') {
-                download(`cavaai-grafo-${count}-nodos.svg`, exportFullGraph(graph, 'svg', { selectedId }), 'image/svg+xml');
+                download(`gerarai-grafo-${count}-nodos.svg`, exportFullGraph(graph, 'svg', { selectedId }), 'image/svg+xml');
                 return;
             }
-            download(`cavaai-grafo-${count}-nodos.json`, exportFullGraph(graph, 'json'), 'application/json');
+            download(`gerarai-grafo-${count}-nodos.json`, exportFullGraph(graph, 'json'), 'application/json');
         },
         [graph, selectedId],
     );

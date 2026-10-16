@@ -1,6 +1,6 @@
 /**
  * F179: el indice de /research se titula «Todas las empresas con research en
- * CavaAI», pero el listado salia de UNA llamada a /api/companies, cuyo
+ * GerarAI», pero el listado salia de UNA llamada a /api/companies, cuyo
  * default es 100 fichas (tope 500). Con mas de 100 empresas el indice se
  * cortaba en silencio (A→AMBA) y «todas» mentia. Contratos fijados aqui:
  *  - el dashboard pide TODAS las paginas via paginateAll;

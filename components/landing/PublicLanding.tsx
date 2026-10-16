@@ -12,18 +12,18 @@ import { isPublicSignUpOpen } from '@/lib/config/product';
  * Viven aquí y la página los reexporta: `app/(public)/page.tsx` es
  * `export { default, metadata } from '@/components/landing/PublicLanding'`.
  * El título no incluye la marca porque la plantilla de `app/layout.tsx` ya
- * añade «| CavaAI».
+ * añade «| GerarAI».
  */
 export const metadata: Metadata = {
     title: 'Research OS de inversión fundamental con fuentes trazables',
     description:
-        'CavaAI convierte el research de una empresa en tesis trazables y versionadas: cada afirmación conserva su fuente y cada resultado revisa tu previsión.',
+        'GerarAI convierte el research de una empresa en tesis trazables y versionadas: cada afirmación conserva su fuente y cada resultado revisa tu previsión.',
     alternates: { canonical: '/' },
     openGraph: {
         type: 'website',
         locale: 'es_ES',
-        siteName: 'CavaAI',
-        title: 'CavaAI: research de empresas con fuentes trazables y tesis versionadas',
+        siteName: 'GerarAI',
+        title: 'GerarAI: research de empresas con fuentes trazables y tesis versionadas',
         description:
             'Cada afirmación conserva su fuente, cada tesis tiene versión y cada resultado contrasta tu previsión. Metodología y términos públicos.',
     },
@@ -44,7 +44,7 @@ export default function PublicLanding() {
                 </h1>
                 <p className="mx-auto mt-6 max-w-2xl text-balance text-lg leading-8 text-gray-400">
                     Cada afirmación conserva su documento y su fecha, y cada tesis tiene versión. Si un
-                    dato no está, CavaAI lo dice en lugar de inventarlo.
+                    dato no está, GerarAI lo dice en lugar de inventarlo.
                 </p>
                 <div className="mt-9 flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-center">
                     {signUpOpen ? (
@@ -86,7 +86,7 @@ export default function PublicLanding() {
                         <div className="relative aspect-[16/9]">
                             <div className="absolute inset-x-0 -top-16 h-[calc(100%+4rem)]"><Image fill className="object-cover object-top"
                                 src="/landing/ficha-pc.png"
-                                alt="Ficha de empresa de CavaAI: precio con su fuente, variación y gráfico de evolución"
+                                alt="Ficha de empresa de GerarAI: precio con su fuente, variación y gráfico de evolución"
                                
                                 priority
                                 sizes="(min-width: 1024px) 1024px, 100vw"
@@ -105,7 +105,7 @@ export default function PublicLanding() {
                                 <div className="relative aspect-[4/3] overflow-hidden rounded-[0.7rem] bg-surface-1">
                                     <Image fill className="object-cover"
                                         src="/landing/ficha-tablet.png"
-                                        alt="CavaAI en tablet: la misma ficha adaptada a pantalla mediana"
+                                        alt="GerarAI en tablet: la misma ficha adaptada a pantalla mediana"
                                         sizes="352px"
                                     />
                                     <div
@@ -146,7 +146,7 @@ export default function PublicLanding() {
                                     <div className="absolute inset-x-0 bottom-0 aspect-[390/844]">
                                         <Image fill className="object-cover"
                                             src="/landing/ficha-movil.png"
-                                            alt="CavaAI en móvil: precio y gráfico de la ficha de empresa"
+                                            alt="GerarAI en móvil: precio y gráfico de la ficha de empresa"
                                             sizes="(min-width: 640px) 160px, 112px"
                                         />
                                     </div>

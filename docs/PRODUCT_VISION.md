@@ -1,18 +1,18 @@
-# CavaAI Product Vision
+# GerarAI Product Vision
 
 ## Non-negotiable Principle
 
-CavaAI must treat the thesis and memory as the core of the product. Quantitative valuation is an additional tool, not the center of the system. No framework, metric, score, or model should be forced onto a company when it is not appropriate.
+GerarAI must treat the thesis and memory as the core of the product. Quantitative valuation is an additional tool, not the center of the system. No framework, metric, score, or model should be forced onto a company when it is not appropriate.
 
 ## Product Direction
 
-CavaAI is a private Personal Investment Research OS. It should help the investor preserve memory, contrast evidence, monitor thesis changes, and think better over time.
+GerarAI is a private Personal Investment Research OS. It should help the investor preserve memory, contrast evidence, monitor thesis changes, and think better over time.
 
 It should not become a generic stock screener, a DCF factory, an auto-trading bot, or a thin LLM wrapper without durable memory.
 
 ### Global-first sourcing
 
-CavaAI is not centered on any single market. Source weighting follows the issuer's market: the owning regulator and exchange (SEC/EDGAR for US issuers, CNMV for Spanish issuers, FCA, BaFin, AMF, CONSOB, ASIC, JFSA, SEDAR and equivalents elsewhere), issuer IR materials, and reputable global media/data providers. Most filings, news and source documents will be in English; content is preserved in its original language with its source link, and optional Spanish summaries never replace source truth. Spanish coverage (CNMV filings, OIR) is additive for Spanish issuers, not the product axis. The UI remains comfortable in Spanish while research data keeps its original language.
+GerarAI is not centered on any single market. Source weighting follows the issuer's market: the owning regulator and exchange (SEC/EDGAR for US issuers, CNMV for Spanish issuers, FCA, BaFin, AMF, CONSOB, ASIC, JFSA, SEDAR and equivalents elsewhere), issuer IR materials, and reputable global media/data providers. Most filings, news and source documents will be in English; content is preserved in its original language with its source link, and optional Spanish summaries never replace source truth. Spanish coverage (CNMV filings, OIR) is additive for Spanish issuers, not the product axis. The UI remains comfortable in Spanish while research data keeps its original language.
 
 ## Core Objects
 
@@ -84,7 +84,7 @@ Different companies require different frameworks:
 - Brookfield: SOTP, fee-related earnings, carry, holdco debt, insurance, holding discount.
 - Rocket Lab: launch, space systems, Neutron, backlog, defense, segment margins.
 
-CavaAI must support configurable frameworks, qualitative reasoning, manual assumptions, and source-tagged metrics.
+GerarAI must support configurable frameworks, qualitative reasoning, manual assumptions, and source-tagged metrics.
 
 ## Long-Term Fundamental Modeling Engine
 
@@ -115,7 +115,7 @@ The long-term engine is therefore the quantitative spine of the thesis, not a se
 
 ## LLM Routing
 
-CavaAI uses a single LLM provider: OpenCode Go (see docs/AI_PROVIDER_STRATEGY.md). The default model is deepseek-v4-flash; task-level model overrides go through OPENCODE_GO_MODEL or the task override map and never select another provider. There is no OpenRouter/OpenAI/Anthropic/Gemini adapter in the application configuration.
+GerarAI uses a single LLM provider: OpenCode Go (see docs/AI_PROVIDER_STRATEGY.md). The default model is deepseek-v4-flash; task-level model overrides go through OPENCODE_GO_MODEL or the task override map and never select another provider. There is no OpenRouter/OpenAI/Anthropic/Gemini adapter in the application configuration.
 
 Company chat keeps the deterministic context contract, then performs source-aware JSON synthesis, verifies citation IDs, calculates confidence / insufficient-data state and falls back safely when validation fails.
 
@@ -129,7 +129,7 @@ Vector-backed chat retrieval is opt-in through `CAVAAI_ENABLE_VECTOR_CHAT=1`. Th
 - Graphiti: use as the reference pattern for future temporal knowledge graph work, especially facts that change over time and require provenance.
 - EdgarTools: preferred P0 candidate for SEC filings, XBRL statements and filing metadata because it provides a focused Python API around EDGAR data.
 - Docling: preferred P0 candidate for PDF/DOCX/XLSX/HTML document parsing, table extraction and layout-aware chunks.
-- OpenEDGAR: use patterns for bulk EDGAR archive construction; do not adopt the whole stack unless CavaAI needs a self-hosted SEC archive.
+- OpenEDGAR: use patterns for bulk EDGAR archive construction; do not adopt the whole stack unless GerarAI needs a self-hosted SEC archive.
 - SEC EDGAR AgentKit/MCP: useful adapter/tool patterns over EDGAR; avoid coupling the app to MCP-only runtime paths.
 - FinNLP/FinGPT: mine for financial news/data connector ideas and sentiment datasets; do not make fine-tuning frameworks part of the P0 product.
 
@@ -181,7 +181,7 @@ These are additive capabilities, not alternate persistence paths or prerequisite
 
 ## Production Release Gate
 
-CavaAI is functionally ready for a private staging / beta round, but it must not be described as 100% production-ready until all of these conditions hold on the exact release commit:
+GerarAI is functionally ready for a private staging / beta round, but it must not be described as 100% production-ready until all of these conditions hold on the exact release commit:
 
 - GitHub CI is green for frontend, backend, PostgreSQL migrations, dependency audits, API E2E, browser E2E and OpenAPI drift; `main` is protected and those checks are required.
 - PostgreSQL, Redis, Qdrant, MinIO, workers and Langfuse run together in staging with production-shaped secrets, tenant isolation and real provider credentials.
@@ -193,7 +193,7 @@ Passing local tests proves implementation integrity; it does not replace operati
 
 ## Success Criterion
 
-CavaAI is working when the user can add a company, upload filings/results/letters, create a thesis, ask source-aware questions, inspect traceable metrics, compare competitors, analyze moat, save hypotheses, receive material news, see whether the thesis changed, inspect sources, and improve the accumulated knowledge over months.
+GerarAI is working when the user can add a company, upload filings/results/letters, create a thesis, ask source-aware questions, inspect traceable metrics, compare competitors, analyze moat, save hypotheses, receive material news, see whether the thesis changed, inspect sources, and improve the accumulated knowledge over months.
 
 
 ## Estado de implementacion (2026-08-23)

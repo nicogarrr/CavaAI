@@ -1,7 +1,7 @@
 /**
  * Solicitud de acceso: validacion y reglas puras (sin red ni base de datos).
  *
- * El registro de CavaAI esta cerrado en produccion; quien quiere entrar pide
+ * El registro de GerarAI esta cerrado en produccion; quien quiere entrar pide
  * acceso con un formulario. La solicitud se guarda SIEMPRE (ver
  * `lib/actions/access-request.actions.ts`) y el aviso por correo es un paso
  * aparte, configurable por entorno.
@@ -85,9 +85,9 @@ export function smtpConfig(env: Record<string, string | undefined>): SmtpConfig 
 export function buildNotification(req: AccessRequestInput, total: number): { subject: string; text: string } {
     const clean = (s: string) => s.replace(/[\r\n]+/g, ' ').slice(0, 200);
     return {
-        subject: `CavaAI: nueva solicitud de acceso (${clean(req.name)})`,
+        subject: `GerarAI: nueva solicitud de acceso (${clean(req.name)})`,
         text: [
-            'Nueva solicitud de acceso a CavaAI.',
+            'Nueva solicitud de acceso a GerarAI.',
             '',
             `Nombre: ${clean(req.name)}`,
             `Email: ${req.email}`,

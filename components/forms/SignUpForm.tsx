@@ -60,7 +60,7 @@ const SignUpForm = ({ signUpOpen }: { signUpOpen: boolean }) => {
         <>
             <h1 className="form-title">Crea tu cuenta</h1>
 
-            {/* Contexto de producto: qué es CavaAI y qué se obtiene al entrar.
+            {/* Contexto de producto: qué es GerarAI y qué se obtiene al entrar.
                 El mismo bloque que en el acceso, para que las dos pantallas
                 cuenten lo mismo. */}
             <AuthPitch className="-mt-8 border-b border-gray-700/50 pb-8" />

@@ -3,8 +3,8 @@ import type { MetadataRoute } from 'next';
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: '/',
-    name: 'CavaAI — Research OS de inversión',
-    short_name: 'CavaAI',
+    name: 'GerarAI — Research OS de inversión',
+    short_name: 'GerarAI',
     description: 'Tu memoria de inversor a largo plazo: tesis, alertas y cartera.',
     start_url: '/',
     scope: '/',

@@ -110,7 +110,7 @@ export default async function LettersPage({ searchParams }: PageProps) {
             )}
 
             <p className="text-xs text-gray-500">
-                Fuente: biblioteca de CavaAI. Las cartas son doctrina de inversión, no datos de las empresas. Si no hay fecha de
+                Fuente: biblioteca de GerarAI. Las cartas son doctrina de inversión, no datos de las empresas. Si no hay fecha de
                 publicación registrada se dice; el año del título es solo una pista.
             </p>
         </main>

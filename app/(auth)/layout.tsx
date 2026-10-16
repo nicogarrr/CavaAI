@@ -3,7 +3,7 @@ import React from "react";
 import {headers} from "next/headers";
 import {redirect} from "next/navigation";
 import {getAuth} from "@/lib/better-auth/auth";
-import {CavaAIWordmark} from "@/components/CavaAIWordmark";
+import {GerarAIWordmark} from "@/components/GerarAIWordmark";
 import {LineChart, Star} from "lucide-react";
 import {productChain, productModules} from "@/lib/config/product";
 
@@ -26,7 +26,7 @@ const Layout = async ({ children }: { children : React.ReactNode }) => {
                     ilegibles. */}
                 <div className="mx-auto flex w-full max-w-md flex-col">
                     <Link href="/" className="auth-logo flex items-center gap-2">
-                        <CavaAIWordmark />
+                        <GerarAIWordmark />
                     </Link>
 
                     <div className="flex-1 pb-6 lg:pb-8">
@@ -37,7 +37,7 @@ const Layout = async ({ children }: { children : React.ReactNode }) => {
             <section className="auth-right-section">
                 <div className="lg:mt-4 lg:mb-16">
                     <blockquote className="auth-blockquote">
-                        &ldquo;CavaAI convierte evidencia, memoria y modelos específicos de cada empresa en una tesis que puedes contrastar con la realidad.&rdquo;
+                        &ldquo;GerarAI convierte evidencia, memoria y modelos específicos de cada empresa en una tesis que puedes contrastar con la realidad.&rdquo;
                     </blockquote>
                     <div className="flex items-center justify-end">
                         <div className="flex items-center gap-0.5">

@@ -113,7 +113,7 @@ export default function MonthlyRebalanceView({
         try {
             const parsed: unknown = JSON.parse(await file.text());
             if (!isMonthlySnapshot(parsed)) {
-                setFileError('Ese archivo no es un snapshot mensual de CavaAI Propicks.');
+                setFileError('Ese archivo no es un snapshot mensual de GerarAI Propicks.');
                 return;
             }
             const rejection = previousSnapshotError(parsed, strategyId, month);
@@ -201,7 +201,7 @@ export default function MonthlyRebalanceView({
             {!diff.hasPrevious && (
                 <Card className="rounded-lg border border-amber-700/60 bg-amber-950/20 p-4">
                     <p className="text-sm leading-6 text-amber-200">
-                        CavaAI no guarda el histórico de meses: solo conserva el último run del embudo, así que
+                        GerarAI no guarda el histórico de meses: solo conserva el último run del embudo, así que
                         el mes anterior únicamente existe si cargas aquí el snapshot JSON que descargaste
                         entonces. Sin ese archivo lo de abajo es la selección vigente completa de{' '}
                         {monthLabelEs(month)}, sin entradas ni salidas que atribuir: no hay contra qué mes

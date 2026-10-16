@@ -6,7 +6,7 @@ import { productModules } from '@/lib/config/product';
 /**
  * Contexto de producto para las pantallas de acceso.
  *
- * `/sign-in` mostraba un formulario y un H1, sin decir qué es CavaAI ni qué
+ * `/sign-in` mostraba un formulario y un H1, sin decir qué es GerarAI ni qué
  * se obtiene. Este bloque se pinta encima del formulario (sin quitarlo) con los
  * tres módulos del producto y dos salidas: la demo pública y la metodología.
  *

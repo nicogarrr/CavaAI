@@ -507,7 +507,7 @@ export function serializeJson(scene: Scene, options: ExportOptions = {}): string
   const { nodes, edges } = subgraphFor(scene, options.keep ?? null);
   return `${JSON.stringify(
     {
-      generado_por: 'CavaAI · /knowledge-graph',
+      generado_por: 'GerarAI · /knowledge-graph',
       alcance: options.keep ? 'subgrafo de foco' : 'grafo completo',
       nodos: nodes.map((node) => ({
         id: node.id,

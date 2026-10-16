@@ -24,7 +24,7 @@ export default async function PlanPage() {
     } catch (error) {
         // Sin este catch, un backend apagado llegaba al ErrorBoundary global y
         // un fallo parcial se traducía en un `null`/`[]` indistinguible de
-        // "todavía no tienes plan": el usuario no podía saber si CavaAI estaba
+        // "todavía no tienes plan": el usuario no podía saber si GerarAI estaba
         // roto. Ahora los tres estados son distinguibles.
         if (isBackendUnavailableError(error)) {
             return <BackendOffline feature="Tu plan" retryHref="/plan" />;
