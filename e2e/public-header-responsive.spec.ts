@@ -7,8 +7,19 @@ test.describe('landing: tipografía y header compacto', () => {
       await page.setViewportSize({ width, height: 900 });
       await page.goto('/');
       await page.evaluate(() => document.fonts.ready);
-      await expect(page.locator('h1')).toHaveCSS('font-family', /editorial/);
-      expect(await page.evaluate(() => document.fonts.check('16px editorial'))).toBe(true);
+      await expect(page.locator('h1')).toHaveCSS('font-family', /editorial/i);
+      const loadedFamilies = await page.evaluate(() => {
+        const normalize = (family: string) => family.replace(/["']/g, '').trim();
+        return [document.querySelector('.public-shell')!, document.querySelector('h1')!].map((element) => {
+          const family = normalize(getComputedStyle(element).fontFamily.split(',')[0]);
+          const faces = [...document.fonts].filter((face) => normalize(face.family) === family);
+          return { family, statuses: faces.map((face) => face.status) };
+        });
+      });
+      for (const { family, statuses } of loadedFamilies) {
+        expect(statuses.length, `FontFace registrada para ${family}`).toBeGreaterThan(0);
+        expect(statuses, `FontFace cargada para ${family}`).toContain('loaded');
+      }
       const header = page.locator('.public-header-inner');
       await expect(header).toBeVisible();
       const geometry = await header.evaluate((element) => {
@@ -21,14 +32,14 @@ test.describe('landing: tipografía y header compacto', () => {
           fits: boxes.every((box) => box.left >= bounds.left && box.right <= bounds.right),
           overlap: boxes.some((box, index) => index > 0 && box.left < boxes[index - 1].right - 1),
           overflow: document.documentElement.scrollWidth > innerWidth,
-          font: getComputedStyle(document.body).fontFamily,
+          font: getComputedStyle(element).fontFamily,
         };
       });
       expect(geometry.height).toBe(56);
       expect(geometry.fits).toBe(true);
       expect(geometry.overlap).toBe(false);
       expect(geometry.overflow).toBe(false);
-      expect(geometry.font.toLowerCase()).toContain('manrope');
+      expect(geometry.font.toLowerCase()).toContain('publicsans');
       const trigger = page.getByRole('button', { name: 'Abrir menú de páginas' });
       if (width < 768) {
         await expect(trigger).toBeVisible();

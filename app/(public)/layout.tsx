@@ -1,3 +1,4 @@
+import { publicSans, publicEditorial } from "@/lib/public-fonts";
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import React from 'react';
@@ -58,7 +59,7 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
     const signUpOpen = isPublicSignUpOpen() && !signedIn;
 
     return (
-        <div className="public-shell">
+        <div className={`public-shell ${publicSans.className} ${publicEditorial.variable}`}>
             <a href="#content" className="skip-link">Saltar al contenido</a>
 
             <header className="sticky top-3 z-50 sm:top-4">

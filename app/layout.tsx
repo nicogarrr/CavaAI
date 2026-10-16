@@ -1,23 +1,6 @@
 import type { Metadata, Viewport } from "next";
-import localFont from "next/font/local";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
-
-const manrope = localFont({
-  src: "./fonts/Manrope-Variable.ttf",
-  variable: "--font-manrope",
-  weight: "200 800",
-  display: "swap",
-  preload: true,
-});
-
-const editorial = localFont({
-  src: "./fonts/InstrumentSerif.ttf",
-  variable: "--font-editorial",
-  weight: "400",
-  display: "swap",
-  preload: true,
-});
 
 export const metadata: Metadata = {
   applicationName: 'GerarAI',
@@ -72,7 +55,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es" className={`dark ${manrope.variable} ${editorial.variable}`} suppressHydrationWarning>
+    <html lang="es" className="dark" suppressHydrationWarning>
       <body className="antialiased" suppressHydrationWarning>
         {children}
         <Toaster />
