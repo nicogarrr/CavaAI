@@ -636,10 +636,10 @@ class ChatSynthesisService:
             # Sin fuentes: la prosa general no se presenta como respaldada.
             sources=[],
             proposed_actions=[],
-            model=getattr(self.provider, "name", "unknown"),
+            model=guarded.response.model,
             prompt_version="chat-general-v2",
             confidence=0.35 if baseline.sources else 0.2,
-            llm_trace={"path": "general", "cost": spent["cost"]},
+            llm_trace={"path": "general", "provider": guarded.response.provider, "cost": spent["cost"]},
         )
 
     @staticmethod
