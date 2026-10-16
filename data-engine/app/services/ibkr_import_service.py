@@ -18,6 +18,17 @@ class IBKRImportError(ValueError):
     """Fichero IBKR inválido: mensaje accionable en español."""
 
 
+class IBKRPnlNotReadyError(IBKRImportError):
+    """IBKR genero el informe antes de tener disponible su PyG."""
+
+
+_PNL_NOT_READY_MESSAGE = (
+    "IBKR todavia no ha preparado la PyG de este informe. "
+    "No se ha importado: se conserva la cartera anterior. "
+    "Vuelve a descargarlo cuando IBKR lo regenere."
+)
+
+
 def _is_number(value: str | None) -> bool:
     if value in (None, ""):
         return False
@@ -64,6 +75,13 @@ def validate_flex_xml(xml_text: str) -> list[str]:
                 "OpenPosition, Trade, CashTransaction ni CashReport. Revisa que el fichero "
                 "sea el XML del Flex Query (no el CSV ni un extracto parcial)."
             ]
+    # IBKR can return a successful XML with real quantities but placeholder
+    # zero costs. Reject the whole snapshot before any write or reconciliation.
+    for element in root.iter():
+        if _tag_name(element) == "Message":
+            message = " ".join(" ".join(element.itertext()).lower().split())
+            if "realized p/l is not ready" in message and "disabled" in message:
+                return [_PNL_NOT_READY_MESSAGE]
     for index, element in enumerate(root.iter(), start=1):
         tag = _tag_name(element)
         if tag == "OpenPosition":
@@ -456,6 +474,8 @@ class IBKRImportService:
         # se importan las filas válidas y se devuelven en row_errors. Solo los
         # errores fatales (XML ilegible, raíz incorrecta) interrumpen.
         parse_errors = validate_flex_xml(xml_text)
+        if _PNL_NOT_READY_MESSAGE in parse_errors:
+            raise IBKRPnlNotReadyError(_PNL_NOT_READY_MESSAGE)
         fatal_errors = [
             error
             for error in parse_errors

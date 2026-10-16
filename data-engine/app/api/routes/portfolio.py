@@ -22,7 +22,7 @@ from app.services.company_resolver import resolve_company
 from app.services.connectors.ibkr import IBKRFlexClient
 from app.services.dividend_ingestion_service import DividendIngestionService
 from app.services.dividend_projection_service import DividendProjectionService
-from app.services.ibkr_import_service import IBKRImportError, IBKRImportService
+from app.services.ibkr_import_service import IBKRImportError, IBKRImportService, IBKRPnlNotReadyError
 from app.services.market_refresh_service import MarketRefreshService
 from app.services.portfolio_fx_service import PortfolioFXService
 from app.services.portfolio_intelligence_service import PortfolioIntelligenceService
@@ -398,6 +398,7 @@ def positions(
     payloads = []
     for position, company in rows:
         fiscal_info = fiscal.get(company.id) or _fiscal_info(db, company.id, position.as_of)
+        has_cost = position.average_cost > 0 and (position.cost_basis_base or 0) > 0
         payloads.append(
             {
                 "ticker": company.ticker,
@@ -407,7 +408,7 @@ def positions(
             "average_cost": float(position.average_cost),
             "market_price": float(position.market_price),
             "market_value": float(position.market_value),
-            "unrealized_pnl": float(position.unrealized_pnl),
+            "unrealized_pnl": float(position.unrealized_pnl) if position.average_cost > 0 else None,
             "realized_pnl": float(position.realized_pnl),
             "cost_basis": float(
                 position.cost_basis_native
@@ -438,10 +439,10 @@ def positions(
                 if position.cost_basis_base is not None
                 else None
             ),
-            "unrealized_pnl_native": float(position.unrealized_pnl),
+            "unrealized_pnl_native": float(position.unrealized_pnl) if position.average_cost > 0 else None,
             "unrealized_pnl_base": (
                 float(position.unrealized_pnl_base)
-                if position.unrealized_pnl_base is not None
+                if has_cost and position.unrealized_pnl_base is not None
                 else None
             ),
             "realized_pnl_base": (
@@ -661,7 +662,10 @@ async def import_ibkr(db: Session = Depends(get_db)) -> dict:
             "message": "Set IBKR_FLEX_TOKEN and IBKR_FLEX_QUERY_ID, then run the IBKR Flex connector.",
         }
     xml_text = await client.fetch_latest_xml()
-    return IBKRImportService().import_flex_xml(db, xml_text)
+    try:
+        return IBKRImportService().import_flex_xml(db, xml_text)
+    except IBKRPnlNotReadyError as exc:
+        raise HTTPException(status_code=503, detail=str(exc), headers={"Retry-After": "3600"}) from exc
 
 
 @router.post("/import/ibkr/xml")
