@@ -7,9 +7,10 @@ mkdirSync(directory);
 writeFileSync(`${directory}/page.tsx`, `
 import { CompanyHeaderQuote } from '@/components/research/CompanyHeaderQuote';
 import { e2eMarketFixture } from '@/lib/e2e-market-fixture';
-export default function Preview() {
+export default async function Preview({ searchParams }: { searchParams: Promise<{ missingIdentity?: string }> }) {
  const snapshot = e2eMarketFixture('MSFT');
  snapshot.history = [];
+ if ((await searchParams).missingIdentity === '1') { snapshot.exchange = null; snapshot.currency = null; }
  return <main className="mx-auto max-w-[1300px] p-4 sm:p-6"><h1 className="mb-4 text-2xl text-gray-100">Microsoft · MSFT</h1><CompanyHeaderQuote snapshot={snapshot}/></main>;
 }`);
 try {

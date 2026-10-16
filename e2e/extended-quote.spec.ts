@@ -66,3 +66,20 @@ test('real authenticated proxy serves the gated E2E fixture without Yahoo', asyn
     await expect(header.getByText('Fixture local · Sesión regular del 2026-09-09 · 17:00 (Madrid)', { exact: true })).toBeVisible();
     await page.screenshot({ path: '/downloads/extended-quote-test-fixture.png', fullPage: true });
 });
+
+for (const width of [1440, 390]) {
+    test(`missing SSR master identity still requests trusted listing recovery ${width}px`, async ({ page }) => {
+        await page.setViewportSize({ width, height: 900 });
+        let calls = 0;
+        await page.route('**/api/companies/MSFT/extended-quote?resolveListing=1', route => {
+            calls++;
+            return route.fulfill({ json: quote });
+        });
+        await page.goto('/extended-quote-preview?missingIdentity=1');
+        const header = page.getByTestId('company-header-quote');
+        await expect(header.locator('.text-4xl')).toHaveText('523,00 US$');
+        expect(calls).toBe(1);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        await page.screenshot({ path: `/downloads/quote-recovered-${width}.png`, fullPage: true });
+    });
+}
