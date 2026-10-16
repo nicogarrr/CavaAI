@@ -4,11 +4,31 @@ from pathlib import Path
 
 import yaml
 
+
+class _ComposeLoader(yaml.SafeLoader):
+    """SafeLoader que tolera los tags de merge de Compose (!override/!reset).
+
+    Los tags son sintaxis de docker compose, no errores de YAML; los tests
+    solo afirman sobre la estructura de servicios resultante.
+    """
+
+
+def _compose_unknown_tag(loader, tag_suffix, node):
+    if isinstance(node, yaml.SequenceNode):
+        return loader.construct_sequence(node)
+    if isinstance(node, yaml.MappingNode):
+        return loader.construct_mapping(node)
+    return loader.construct_scalar(node)
+
+
+_ComposeLoader.add_multi_constructor("!", _compose_unknown_tag)
+
+
 COMPOSE_PATH = Path(__file__).resolve().parents[2] / "docker-compose.prod.yml"
 
 
 def _load_compose() -> dict:
-    return yaml.safe_load(COMPOSE_PATH.read_text())
+    return yaml.load(COMPOSE_PATH.read_text(), Loader=_ComposeLoader)
 
 
 def _service_env(compose: dict, service: str) -> dict[str, str]:

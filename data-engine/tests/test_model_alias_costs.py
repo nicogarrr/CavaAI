@@ -37,7 +37,7 @@ def _alias(**overrides) -> ModelAlias:
 
 
 def test_registered_alias_costs_are_explicitly_unknown_not_free():
-    alias = MODEL_ALIASES.get("deepseek-v4-flash")
+    alias = MODEL_ALIASES.get("deepseek-v4.1-flash-free")
     assert alias is not None
     assert alias.cost_basis == "unknown"
     assert not alias.has_known_costs

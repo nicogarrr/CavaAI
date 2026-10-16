@@ -76,7 +76,7 @@ class ModelAlias:
 DEFAULT_MODEL_ENV_VAR = "OPENCODE_GO_MODEL"
 #: Fallback when the env var is unset/blank. Kept in sync with
 #: Settings.opencode_go_model in app/core/config.py.
-DEFAULT_MODEL_FALLBACK = "space-bunny-free"
+DEFAULT_MODEL_FALLBACK = "deepseek-v4.1-flash-free"
 
 #: Modelos gratuitos verificados; los guards de tareas fijadas aceptan solo estos.
 VERIFIED_FREE_MODELS = frozenset({"deepseek-v4.1-flash-free", "space-bunny-free"})
@@ -104,9 +104,9 @@ class _ModelRoute(Protocol):
 
 OPENCODE_GO_MODEL_ALIASES = (
     ModelAlias(
-        internal_alias="deepseek-v4-flash",
+        internal_alias="deepseek-v4.1-flash-free",
         provider="opencode-go",
-        provider_model_id="deepseek-v4-flash",
+        provider_model_id="deepseek-v4.1-flash-free",
         enabled=True,
         context_window=1_048_576,
         # OpenCode Go bills via subscription, no public per-token tariffs:
