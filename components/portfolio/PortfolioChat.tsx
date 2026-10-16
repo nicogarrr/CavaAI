@@ -135,7 +135,7 @@ export function PortfolioChat({ userId }: PortfolioChatProps) {
                 setMessages(prev => [...prev, { role: 'assistant', content: result.message || "Lo siento, hubo un error desconocido." }]);
             }
         } catch {
-            setMessages(prev => [...prev, { role: 'assistant', content: "Error de conexión." }]);
+            setMessages(prev => [...prev, { role: 'assistant', content: "No se pudo completar la respuesta. Si tarda más de lo normal, reinténtalo en unos segundos." }]);
         } finally {
             setLoading(false);
         }

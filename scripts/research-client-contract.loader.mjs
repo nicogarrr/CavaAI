@@ -11,6 +11,7 @@ export async function resolve(specifier, context, nextResolve) {
     ['@/lib/auth/research-identity', 'guard-stub:research-identity'],
     ['@/lib/types/errors', new URL('../lib/types/errors.ts', import.meta.url).href],
     ['@/lib/research/client', new URL('../lib/research/client.ts', import.meta.url).href],
+    ['@/lib/chat/citations', new URL('../lib/chat/citations.ts', import.meta.url).href],
     ['@/lib/paginate-all', new URL('../lib/paginate-all.ts', import.meta.url).href],
     ['@/lib/research/sources-inventory', new URL('../lib/research/sources-inventory.ts', import.meta.url).href],
     ['next/cache', 'guard-stub:next-cache'],
