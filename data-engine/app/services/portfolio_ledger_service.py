@@ -297,8 +297,12 @@ class PortfolioLedgerService:
             raise ValueError("Holding not found")
         position.market_price = price
         position.market_value = position.quantity * price
-        position.unrealized_pnl = position.market_value - (
-            position.quantity * position.average_cost
+        # Zero/missing cost is unknown, not a free acquisition. Never turn
+        # the entire market value into a reported profit after a price refresh.
+        has_cost = position.average_cost > 0 and (position.cost_basis_base or 0) > 0
+        position.unrealized_pnl = (
+            position.market_value - position.quantity * position.average_cost
+            if position.average_cost > 0 else Decimal("0")
         )
         position.as_of = as_of or date.today()
         position.market_value_native = position.market_value
@@ -320,7 +324,7 @@ class PortfolioLedgerService:
         position.unrealized_pnl_base = (
             position.market_value_base - position.cost_basis_base
             if position.market_value_base is not None
-            and position.cost_basis_base is not None
+            and has_cost
             else None
         )
         db.flush()
