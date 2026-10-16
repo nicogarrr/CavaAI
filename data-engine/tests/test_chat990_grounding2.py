@@ -94,7 +94,7 @@ def test_company_knowledge_question_can_reach_llm():
     )
     # Owner now permits natural knowledge without citations or labels.
     assert provider.requests
-    assert result.model == "stub"
+    assert result.model == "stub-model"
 
 
 def test_round8_financial_concepts_reach_llm_via_service():
@@ -109,7 +109,7 @@ def test_round8_financial_concepts_reach_llm_via_service():
         provider = StubProvider(ans)
         result = asyncio.run(ChatService(provider).answer(db, q, "portfolio", None))
         assert len(provider.requests) == 1, q
-        assert result.model == "stub" and ans in result.answer, q
+        assert result.model == "stub-model" and ans in result.answer, q
 
 
 def test_round8_specific_still_abstains_without_llm():
@@ -192,7 +192,7 @@ def test_round7_auditor_round6_outputs_rejected():
 
 def test_round7_conversation_and_concepts_stay_natural():
     _, r = _general("Cuéntame un chiste", "Ahí va: ¿qué le dice un gato a otro? Miau.")
-    assert r.model == "stub" and not r.llm_trace.get("fallback")
+    assert r.model == "stub-model" and not r.llm_trace.get("fallback")
     _, r = _general(
         "¿Qué es el PER?",
         "El PER relaciona lo que pagas por una empresa con lo que gana cada año.",

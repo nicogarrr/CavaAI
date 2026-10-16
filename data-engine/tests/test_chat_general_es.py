@@ -129,3 +129,19 @@ def test_market_price_es_citable_en_secciones_grounded():
 
     assert "market_price" in SECTION_SOURCE_TYPES["facts"]
     assert "market_price" in SECTION_SOURCE_TYPES["calculations"]
+
+
+def test_general_provenance_uses_response_not_wrapper_name():
+    class Wrapper(StubProvider):
+        name = "chat-independent-fallback"
+
+        async def complete(self, request):
+            response = await super().complete(request)
+            from dataclasses import replace
+            return replace(response, model="openai/gpt-oss-120b", provider="groq")
+
+    result = asyncio.run(ChatSynthesisService(Wrapper("El PER compara precio y beneficios.")).synthesize_general(
+        question="que es el PER", baseline=ChatResponse(answer="", sources=[]),
+    ))
+    assert result.model == "openai/gpt-oss-120b"
+    assert result.llm_trace["provider"] == "groq"

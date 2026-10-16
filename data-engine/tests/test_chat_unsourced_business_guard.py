@@ -76,7 +76,7 @@ def test_generic_concepts_are_available_in_both_languages(question):
     result = asyncio.run(ChatSynthesisService(p).synthesize_general(
         question=question, baseline=ChatResponse(answer='', sources=[]),
     ))
-    assert p.requests and result.model == 'stub'
+    assert p.requests and result.model == 'stub-model'
 
 
 @pytest.mark.parametrize('question', ['Dame una plantilla para un correo', 'necesito una plantilla de email'])
