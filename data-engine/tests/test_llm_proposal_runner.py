@@ -75,7 +75,7 @@ def db():
         session.add(Company(id=1, ticker="AAPL", name="Apple", exchange="NASDAQ",
                             company_type="large_cap", valuation_model="dcf"))
         session.add(NewsEvent(id=1, company_id=1, date=NOW - timedelta(days=1),
-                              title="Apple firma un contrato de suministro", source="Reuters"))
+                              title="Apple firma un contrato de suministro", source="Reuters", metadata_={"source_headline": "Apple firma un contrato de suministro"}))
         session.commit()
         yield session
     engine.dispose()
@@ -439,3 +439,55 @@ def test_passes_dated_momentum_context_even_when_unavailable(db, monkeypatch):
     run(db, Provider(good()))
     assert seen['momentum']['aviso'] == 'sin_serie_ajustada_reciente'
     assert seen['momentum']['calculado_en'] == NOW.isoformat()
+
+
+@pytest.mark.parametrize("title,expected", [
+    ("Rocket Lab Has Imploded For 3 Months", False),
+    ("ASTS AST SpaceMobile Is Down 67%", True),
+    ("ASTS Why Is AST SpaceMobile Stock Falling Friday?", True),
+    ("ASTS: Competencia para ASTS y otros operadores", True),
+    ("Broad markets move after inflation", False),
+    ("ASTSpaceMobileFake stock rises", False),
+])
+def test_ticker_feed_prefix_is_not_evidence_of_article_relevance(title, expected):
+    assert runner.headline_matches_company(title, 'ASTS', 'AST SpaceMobile Inc.') is expected
+
+
+def test_irrelevant_title_never_reaches_proposal_context(db):
+    db.get(Company, 1).name = 'AST SpaceMobile Inc.'
+    db.get(Company, 1).ticker = 'ASTS'
+    db.get(NewsEvent, 1).title = 'ASTS Rocket Lab Has Imploded For 3 Months'
+    db.get(NewsEvent, 1).metadata_ = {'source_headline': 'Rocket Lab Has Imploded For 3 Months'}
+    db.commit()
+    p = Provider(good())
+    with pytest.raises(ProposalRejected, match='sin_titulares'):
+        run(db, p, ticker='ASTS')
+    assert p.calls == 0
+
+
+@pytest.mark.parametrize("title,ticker,name,expected", [
+    ('ASTS announces satellite launch', 'ASTS', 'AST SpaceMobile Inc.', True),
+    ('Meta reports record revenue', 'META', 'Meta Platforms Inc.', True),
+    ('Uber raises profit forecast', 'UBER', 'Uber Technologies Inc.', True),
+    ('Appleton announces acquisition', 'AAPL', 'Apple Inc.', False),
+    ('AST SpaceMobileFake stock rises', 'ASTS', 'AST SpaceMobile Inc.', False),
+])
+def test_original_headlines_and_word_boundaries(title,ticker,name,expected):
+    assert runner.headline_matches_company(title,ticker,name) is expected
+
+
+def test_legacy_composite_without_original_is_omitted(db):
+    db.get(NewsEvent,1).metadata_ = {}
+    db.commit()
+    assert runner.load_headlines(db,'AAPL',NOW) == []
+
+
+@pytest.mark.parametrize("title,ticker,name,expected", [
+    ('Visa reports record revenue','V','Visa Inc.',True),
+    ('Ford reports record revenue','F','Ford Inc.',True),
+    ('Ford reports record revenue','F','Ford Motor Company',False),
+    ('A new market outlook','A','Agilent Technologies Inc.',False),
+    ('$V reports record revenue','V','Visa Inc.',True),
+])
+def test_short_names_and_single_letter_tickers(title,ticker,name,expected):
+    assert runner.headline_matches_company(title,ticker,name) is expected

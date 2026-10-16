@@ -113,6 +113,16 @@ def save_within_quota(db: Session, proposal: PaperProposal, now: datetime) -> Pa
             raise
 
 
+def headline_matches_company(title: str, ticker: str, name: str) -> bool:
+    """Match publisher headline only. No inference from legacy composite titles."""
+    ticker_pattern = (rf"(?:\$|(?:NYSE|NASDAQ):){re.escape(ticker)}(?!\w)" if len(ticker) == 1
+                      else rf"(?<!\w){re.escape(ticker)}(?!\w)")
+    if re.search(ticker_pattern, title, re.I):
+        return True
+    clean_name = re.sub(r"(?:[,\s]+(?:inc\.?|corp\.?|corporation|plc|ltd\.?))+$", "", name.strip(), flags=re.I)
+    return bool(clean_name) and re.search(rf"(?<!\w){re.escape(clean_name)}(?!\w)", title, re.I) is not None
+
+
 def load_headlines(db: Session, ticker: str, now: datetime) -> list[dict]:
     company = db.scalar(select(Company).where(Company.ticker == ticker))
     if company is None:
@@ -124,13 +134,15 @@ def load_headlines(db: Session, ticker: str, now: datetime) -> list[dict]:
             NewsEvent.date <= _utc(now),  # sin evidencia con fecha futura
         )
         .order_by(NewsEvent.date.desc(), NewsEvent.id.desc())
-        .limit(MAX_HEADLINES)
+        .limit(MAX_HEADLINES * 4)
     ).all()
     # Copia escalares: la sesion se libera antes de cualquier E/S de red.
     return [
-        {"id": f"news:{n.id}", "title": n.title, "published_at": _utc(n.date).isoformat(), "source": n.source}
-        for n in rows
-    ]
+        {"id": f"news:{n.id}", "title": n.metadata_["source_headline"].strip(), "published_at": _utc(n.date).isoformat(), "source": n.source}
+        for n in rows if isinstance((n.metadata_ or {}).get("source_headline"), str)
+        and n.metadata_["source_headline"].strip()
+        and headline_matches_company(n.metadata_["source_headline"].strip(), ticker, company.name)
+    ][:MAX_HEADLINES]
 
 
 async def generate_proposal(
