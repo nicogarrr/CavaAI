@@ -103,6 +103,7 @@ def test_cache_60_seconds_reclassifies_and_failure_drops_old_price(monkeypatch):
     monkeypatch.setattr('app.services.extended_quote_service.time.time', lambda: clock['wall'])
     monkeypatch.setattr('app.services.extended_quote_service.time.monotonic', lambda: clock['mono'])
     service = ExtendedQuoteService()
+    service.client.recent_daily_chart = AsyncMock(return_value={})
     service.client.extended_chart = AsyncMock(return_value=deepcopy(chart()))
     first = asyncio.run(service.get('msft'))
     clock['wall'] += 1201
@@ -214,3 +215,104 @@ def test_timestamped_regular_closing_print_not_classified_as_post():
     q = parse_extended_chart('MSFT', node, START + 40000)
     assert q.price == 102 and q.price_session == 'regular'
     assert q.regular_close_timestamp == q.timestamp == START + 23401
+
+
+def nodes():
+    minute = chart()
+    minute['meta'].update(symbol='MSFT', regularMarketTime=START+120, regularMarketPrice=102,
+                          regularMarketDayHigh=104, regularMarketDayLow=99)
+    daily = {
+        'meta': {'symbol':'MSFT','currency':'USD','exchangeTimezoneName':'America/New_York',
+                 'dataGranularity':'1d','regularMarketTime':START+120,'regularMarketPrice':102},
+        'timestamp':[START-86400, START],
+        'indicators':{'quote':[{'close':[100,102]}]},
+    }
+    return minute, daily
+
+
+def test_sparse_minute_extrema_use_dated_regular_metadata_not_sampled_range():
+    minute, daily = nodes()
+    q=parse_extended_chart('MSFT',minute,START+200,daily)
+    assert (q.open,q.high,q.low)==(100,104,99)
+    assert (q.metrics_timestamp,q.metrics_session)==(START+120,'2026-10-08')
+    assert q.previous_close_date=='2026-10-07'
+    assert q.previous_close_timestamp is None  # Daily bar timestamp is an OPEN, not a close.
+    assert (q.regular_close,q.regular_close_date,q.regular_close_timestamp)==(100,'2026-10-07',None)
+
+
+@pytest.mark.parametrize('mutation', ['future','old','inverted','outside','null'])
+def test_invalid_or_undated_metadata_never_establish_extrema(mutation):
+    minute,daily=nodes()
+    if mutation=='future': minute['meta']['regularMarketTime']=START+500
+    if mutation=='old': minute['meta']['regularMarketTime']=START-86400
+    if mutation=='inverted': minute['meta']['regularMarketDayHigh']=98
+    if mutation=='outside': minute['meta']['regularMarketDayLow']=103
+    if mutation=='null': minute['meta']['regularMarketDayHigh']=None
+    q=parse_extended_chart('MSFT',minute,START+200,daily)
+    assert q.high is None and q.low is None
+
+
+@pytest.mark.parametrize('mutation', ['symbol','currency','timezone','granularity','mismatch','null-latest'])
+def test_previous_close_date_requires_same_listing_and_latest_raw_close(mutation):
+    minute,daily=nodes()
+    if mutation=='symbol': daily['meta']['symbol']='ALM'
+    if mutation=='currency': daily['meta']['currency']='EUR'
+    if mutation=='timezone': daily['meta']['exchangeTimezoneName']='Europe/Madrid'
+    if mutation=='granularity': daily['meta']['dataGranularity']='1m'
+    if mutation=='mismatch': daily['indicators']['quote'][0]['close'][0]=98
+    if mutation=='null-latest':
+        daily['timestamp'].insert(0,START-2*86400)
+        daily['indicators']['quote'][0]['close']=[100,None,102]
+    q=parse_extended_chart('MSFT',minute,START+200,daily)
+    assert q.previous_close_date is None and q.previous_close_timestamp is None
+
+
+def test_holiday_weekend_uses_latest_actual_session_no_calendar_subtraction():
+    minute,daily=nodes()
+    daily['timestamp']=[START-4*86400,START]
+    q=parse_extended_chart('MSFT',minute,START+200,daily)
+    assert q.previous_close_date=='2026-10-04'  # Synthetic session, no holiday guessing.
+
+
+def test_daily_closing_auction_overrides_last_minute_only_with_post_end_print():
+    minute,daily=nodes()
+    minute['meta'].update(regularMarketTime=START+24000,regularMarketPrice=103)
+    daily['meta'].update(regularMarketTime=START+24000,regularMarketPrice=103)
+    daily['indicators']['quote'][0]['close'][1]=103
+    q=parse_extended_chart('MSFT',minute,START+25000,daily)
+    assert (q.regular_close,q.regular_close_date,q.regular_close_timestamp)==(103,'2026-10-08',None)
+    # Intraday metadata must not be promoted to a final close after the bell.
+    daily['meta']['regularMarketTime']=START+18000
+    q=parse_extended_chart('MSFT',minute,START+25000,daily)
+    assert q.regular_close==102 and q.regular_close_timestamp==START+23340
+
+
+def test_missing_daily_never_changes_existing_minute_quote():
+    minute,_=nodes()
+    q=parse_extended_chart('MSFT',minute,START+200)
+    assert q.price==101 and q.previous_close_date is None
+    assert q.regular_close is None
+
+
+def test_service_daily_enrichment_failure_preserves_minute_quote():
+    service=ExtendedQuoteService()
+    service.client.extended_chart=AsyncMock(return_value=chart())
+    service.client.recent_daily_chart=AsyncMock(side_effect=RuntimeError('daily down'))
+    from unittest.mock import patch
+    with patch('app.services.extended_quote_service.time.time', return_value=START+60):
+        q=asyncio.run(service.get('MSFT'))
+    assert q.price==101 and q.status=='available'
+    assert q.previous_close_date is None
+
+
+def test_closed_no_extended_market_uses_dated_auction_price_not_prior_minute():
+    minute,daily=nodes()
+    minute['timestamp']=[START,START+23340]
+    minute['indicators']['quote'][0]={k:v[:2] for k,v in minute['indicators']['quote'][0].items()}
+    minute['meta']['currentTradingPeriod'].pop('post')
+    minute['meta'].update(regularMarketTime=START+24000,regularMarketPrice=103)
+    daily['meta'].update(regularMarketTime=START+24000,regularMarketPrice=103)
+    daily['indicators']['quote'][0]['close'][1]=103
+    q=parse_extended_chart('MSFT',minute,START+40000,daily)
+    assert q.price==103 and q.timestamp==START+24000 and q.price_session=='regular'
+    assert q.regular_close==103 and q.regular_close_timestamp is None

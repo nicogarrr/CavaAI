@@ -29,6 +29,7 @@ describe('procedencia OHLC', () => {
         const ui = readFileSync('components/research/CompanyHeaderQuote.tsx', 'utf8');
         assert.match(ui, /hasDatedMetrics \? quote!.open : null/);
         assert.match(ui, /quote!\.source[\s\S]*Sesión regular del/);
-        assert.match(ui, /\['Cierre anterior', quote\?\.previous_close_timestamp \? quote.previous_close : null\]/);
+        assert.doesNotMatch(ui, /\['Cierre anterior', quote\?\.previous_close\]/);
+        assert.match(ui, /\['Cierre anterior', quote\?\.previous_close_timestamp \|\| quote\?\.previous_close_date \? quote.previous_close : null\]/);
     });
 });
