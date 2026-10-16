@@ -7,10 +7,13 @@ import { Input } from '@/components/ui/input';
 import { Brain, X, Send, User, Bot, Loader2, Maximize2, Minimize2 } from 'lucide-react';
 import { chatWithPortfolio } from '@/lib/actions/chat.actions';
 import ReactMarkdown from 'react-markdown';
+import type { PortfolioChatCitation } from '@/lib/chat/citations';
+import { PortfolioChatSources } from './PortfolioChatSources';
 
 interface Message {
     role: 'user' | 'assistant';
     content: string;
+    citations?: PortfolioChatCitation[];
 }
 
 interface PortfolioChatProps {
@@ -130,7 +133,7 @@ export function PortfolioChat({ userId }: PortfolioChatProps) {
         try {
             const result = await chatWithPortfolio(userMsg, userId);
             if (result.success) {
-                setMessages(prev => [...prev, { role: 'assistant', content: result.message }]);
+                setMessages(prev => [...prev, { role: 'assistant', content: result.message, citations: result.citations }]);
             } else {
                 setMessages(prev => [...prev, { role: 'assistant', content: result.message || "Lo siento, hubo un error desconocido." }]);
             }
@@ -229,6 +232,7 @@ export function PortfolioChat({ userId }: PortfolioChatProps) {
                                             >
                                                 {m.content}
                                             </ReactMarkdown>
+                                            <PortfolioChatSources citations={m.citations} />
                                         </div>
                                     ) : (
                                         m.content
