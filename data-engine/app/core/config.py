@@ -184,6 +184,12 @@ class Settings(BaseSettings):
     # 40 -> 21/38; 100 -> 26/38. Por encima de 100 no entran mas aciertos
     # cross-lingual con este reranker (limite conocido: ver docs/knowledge-rag.md).
     knowledge_rag_candidates: int = Field(default=100, ge=10, le=500)
+    # Traduccion de consulta ES->EN (F372): si la pregunta parece espanol se
+    # busca TAMBIEN con su traduccion al ingles (la biblioteca mezcla doctrina
+    # EN y ES y BM25 no cruza idiomas). Solo el modelo gratuito verificado;
+    # sin clave o con el proveedor caido degrada a buscar solo con la original.
+    knowledge_rag_query_translation: bool = True
+    knowledge_rag_query_translation_timeout_s: float = Field(default=12.0, ge=1.0, le=120.0)
     # Modelo denso PROPIO del conocimiento (ganador v2c del piloto: e5-large
     # multilingue + reranker). NO se reusa rag_dense_model: ese queda en
     # MiniLM 384 para el vector chat legacy (portfolio_research_documents esta
