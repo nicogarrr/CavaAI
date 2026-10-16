@@ -1,6 +1,12 @@
 import type { PortfolioDividendProjection } from '@/lib/actions/portfolio.actions';
-import { formatMoney, formatDate } from '@/lib/format';
+import { formatMoney, formatDate, formatPrice } from '@/lib/format';
 import { Panel } from '@/components/ui/panel';
+import {
+    declaredFutureNoteView,
+    fiscalCardRows,
+    fiscalYearNote,
+    formatPositionQuantity,
+} from '@/lib/portfolio-dividends-display';
 
 const monthLabel = (key: string): string => {
     // "2027-01" -> "ene 2027". Se parsea el dia 2 para no caer en el mes
@@ -12,15 +18,8 @@ const monthLabel = (key: string): string => {
 
 function FiscalYearCard({ year, data, baseCurrency }: { year: string; data: PortfolioDividendProjection['fiscal_by_year'][string]; baseCurrency: string }) {
     const money = (value: number | null) => formatMoney(value, baseCurrency);
-    const rows: Array<{ label: string; value: string }> = [
-        { label: 'Bruto', value: money(data.gross_base) },
-        { label: 'Retenido en origen', value: money(data.source_withheld_foreign) },
-        { label: 'Deducción doble imposición', value: money(data.double_tax_deduction) },
-        { label: 'A cuenta (ES)', value: money(data.retencion_a_cuenta_es) },
-        { label: 'IRPF (escenario)', value: money(data.irpf_scenario) },
-        { label: 'Cuota pendiente estimada', value: money(data.cuota_pendiente_estimada) },
-        { label: 'Neto (escenario)', value: money(data.net_scenario) },
-    ];
+    const rows = fiscalCardRows(data);
+    const note = fiscalYearNote(data);
     return (
         <div className="rounded-lg border border-gray-800 p-4">
             <p className="text-xs uppercase tracking-wide text-gray-500">Escenario {year}</p>
@@ -28,7 +27,7 @@ function FiscalYearCard({ year, data, baseCurrency }: { year: string; data: Port
                 {rows.map((row) => (
                     <div className="flex items-baseline justify-between gap-3" key={row.label}>
                         <dt className="text-xs text-gray-500">{row.label}</dt>
-                        <dd className="text-sm font-medium text-gray-100">{row.value}</dd>
+                        <dd className="text-sm font-medium text-gray-100">{money(row.value)}</dd>
                     </div>
                 ))}
                 {typeof data.effective_avg_rate === 'number' ? (
@@ -45,7 +44,43 @@ function FiscalYearCard({ year, data, baseCurrency }: { year: string; data: Port
                     Subconjunto cubierto: excluye {data.excluded_tickers.join(', ')} (sin datos, no cero).
                 </p>
             ) : null}
+            {note !== null ? (
+                <p className="mt-2 text-xs leading-5 text-gray-500">{note}</p>
+            ) : null}
         </div>
+    );
+}
+
+function DeclaredFuturePanel({ items }: { items: PortfolioDividendProjection['declared_future'] }) {
+    // La nota del backend ("según el proveedor de datos, no verificado contra
+    // fuente primaria; no alimenta la réplica") es una salvedad de veracidad:
+    // INGESTADO desde el proveedor no equivale a confirmación corporativa, y
+    // la nota siempre llega a la pantalla (declaredFutureNoteView).
+    const view = declaredFutureNoteView(items);
+    const description = [
+        view.sharedNote,
+        view.sharedAsOf !== null ? `Datos al ${formatDate(view.sharedAsOf)}.` : null,
+    ]
+        .filter((part): part is string => part !== null)
+        .join(' ') || undefined;
+    return (
+        <Panel title="Declarados con fecha futura" description={description}>
+            <ul className="space-y-1.5 text-sm text-gray-300">
+                {items.map((item, index) => (
+                    <li key={`${item.ticker}-${item.ex_date}`}>
+                        <span className="font-medium text-gray-100">{item.ticker}</span>
+                        {` · ex ${formatDate(item.ex_date)} · pago ${item.pay_date ? formatDate(item.pay_date) : 'N/D'} · `}
+                        {formatPrice(item.amount_per_share, item.currency)} por acción
+                        <span className="ml-2 rounded border border-gray-700 px-1.5 py-0.5 text-xs text-gray-400">
+                            {item.label} · {item.source}
+                        </span>
+                        {view.perItemNotes[index] !== null ? (
+                            <span className="block text-xs text-gray-500">{view.perItemNotes[index]}</span>
+                        ) : null}
+                    </li>
+                ))}
+            </ul>
+        </Panel>
     );
 }
 
@@ -53,8 +88,8 @@ function FiscalYearCard({ year, data, baseCurrency }: { year: string; data: Port
  * Proyección mecánica de dividendos (idea 5 del listado 0-31). Toda cifra
  * llega calculada del endpoint determinista /api/portfolio/dividends/projection:
  * la UI no suma, infiere ni estima nada por su cuenta. Lo que el backend
- * marca como null se pinta N/D (nunca 0,00); la etiqueta INFERIDO y las
- * condiciones del escenario fiscal viajan con los datos.
+ * marca como null se pinta N/D (nunca 0,00); la etiqueta INFERIDO, las notas
+ * de veracidad y las condiciones del escenario fiscal viajan con los datos.
  */
 export default function PortfolioDividends({ projection }: { projection: PortfolioDividendProjection }) {
     const baseCurrency = projection.base_currency;
@@ -162,7 +197,7 @@ export default function PortfolioDividends({ projection }: { projection: Portfol
                                         <tr className="border-b border-gray-900 text-gray-300" key={position.ticker}>
                                             <td className="py-2 pr-4 font-medium text-gray-100">{position.ticker}</td>
                                             <td className="py-2 pr-4">
-                                                {position.quantity.toLocaleString('es-ES', { maximumFractionDigits: 4 })}
+                                                {formatPositionQuantity(position.quantity)}
                                             </td>
                                             <td className="py-2 pr-4">{position.frequency_last_year}</td>
                                             <td className="py-2 pr-4">{formatMoney(position.gross_base, baseCurrency)}</td>
@@ -183,20 +218,7 @@ export default function PortfolioDividends({ projection }: { projection: Portfol
                     </Panel>
 
                     {projection.declared_future.length > 0 ? (
-                        <Panel title="Declarados con fecha futura">
-                            <ul className="space-y-1.5 text-sm text-gray-300">
-                                {projection.declared_future.map((item) => (
-                                    <li key={`${item.ticker}-${item.ex_date}`}>
-                                        <span className="font-medium text-gray-100">{item.ticker}</span>
-                                        {` · ex ${formatDate(item.ex_date)} · pago ${item.pay_date ? formatDate(item.pay_date) : 'N/D'} · `}
-                                        {formatMoney(item.amount_per_share, item.currency)} por acción
-                                        <span className="ml-2 rounded border border-gray-700 px-1.5 py-0.5 text-xs text-gray-400">
-                                            {item.label} · {item.source}
-                                        </span>
-                                    </li>
-                                ))}
-                            </ul>
-                        </Panel>
+                        <DeclaredFuturePanel items={projection.declared_future} />
                     ) : null}
                 </>
             )}
