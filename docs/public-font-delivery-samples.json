@@ -1,0 +1,380 @@
+[
+  {
+    "at": "2026-10-16T07:40:02.334Z",
+    "variant": "base",
+    "port": 3106,
+    "route": "/",
+    "run": 1,
+    "status": 200,
+    "ttfb": 65.5,
+    "lcp": {
+      "time": 1290.5,
+      "size": 82191,
+      "tag": "IMG",
+      "url": "http://127.0.0.1:3106/_next/image?url=%2Flanding%2Fficha-pc.png&w=640&q=75"
+    },
+    "h1Font": "publicEditorial, \"publicEditorial Fallback\", Georgia, serif",
+    "overflow": false,
+    "fonts": [
+      {
+        "url": "http://127.0.0.1:3106/_next/static/media/InstrumentSerif-s.p.3uox2wk93mn7l.ttf",
+        "transfer": 37199,
+        "encoded": 36899,
+        "decoded": 70012
+      },
+      {
+        "url": "http://127.0.0.1:3106/_next/static/media/Manrope_Variable-s.p.3rjk17h6oms_8.ttf",
+        "transfer": 69160,
+        "encoded": 68860,
+        "decoded": 164700
+      }
+    ],
+    "js": 160486,
+    "total": 310783
+  },
+  {
+    "at": "2026-10-16T07:40:08.064Z",
+    "variant": "base",
+    "port": 3106,
+    "route": "/sign-in",
+    "run": 1,
+    "status": 200,
+    "ttfb": 129.10000002384186,
+    "lcp": {
+      "time": 1313.7999999523163,
+      "size": 17934,
+      "tag": "BLOCKQUOTE",
+      "url": ""
+    },
+    "h1Font": "publicSans, \"publicSans Fallback\"",
+    "overflow": false,
+    "fonts": [
+      {
+        "url": "http://127.0.0.1:3106/_next/static/media/InstrumentSerif-s.p.3uox2wk93mn7l.ttf",
+        "transfer": 37199,
+        "encoded": 36899,
+        "decoded": 70012
+      },
+      {
+        "url": "http://127.0.0.1:3106/_next/static/media/Manrope_Variable-s.p.3rjk17h6oms_8.ttf",
+        "transfer": 69160,
+        "encoded": 68860,
+        "decoded": 164700
+      }
+    ],
+    "js": 180851,
+    "total": 320626
+  },
+  {
+    "at": "2026-10-16T07:40:13.736Z",
+    "variant": "candidate",
+    "port": 3109,
+    "route": "/",
+    "run": 1,
+    "status": 200,
+    "ttfb": 101.90000009536743,
+    "lcp": {
+      "time": 1337.8000000715256,
+      "size": 82191,
+      "tag": "IMG",
+      "url": "http://127.0.0.1:3109/_next/image?url=%2Flanding%2Fficha-pc.png&w=640&q=75"
+    },
+    "h1Font": "publicEditorial, \"publicEditorial Fallback\", Georgia, serif",
+    "overflow": false,
+    "fonts": [
+      {
+        "url": "http://127.0.0.1:3109/_next/static/media/Manrope_Variable-s.p.0me2rmzkik1w2.woff2",
+        "transfer": 54084,
+        "encoded": 53784,
+        "decoded": 53784
+      },
+      {
+        "url": "http://127.0.0.1:3109/_next/static/media/InstrumentSerif-s.3ij-eec1d4hvt.woff2",
+        "transfer": 27680,
+        "encoded": 27380,
+        "decoded": 27380
+      }
+    ],
+    "js": 160486,
+    "total": 286180
+  },
+  {
+    "at": "2026-10-16T07:40:19.838Z",
+    "variant": "candidate",
+    "port": 3109,
+    "route": "/sign-in",
+    "run": 1,
+    "status": 200,
+    "ttfb": 73.10000002384186,
+    "lcp": {
+      "time": 1217.4000000953674,
+      "size": 17934,
+      "tag": "BLOCKQUOTE",
+      "url": ""
+    },
+    "h1Font": "publicSans, \"publicSans Fallback\"",
+    "overflow": false,
+    "fonts": [
+      {
+        "url": "http://127.0.0.1:3109/_next/static/media/Manrope_Variable-s.p.0me2rmzkik1w2.woff2",
+        "transfer": 54084,
+        "encoded": 53784,
+        "decoded": 53784
+      }
+    ],
+    "js": 180854,
+    "total": 268345
+  },
+  {
+    "at": "2026-10-16T07:40:25.202Z",
+    "variant": "candidate",
+    "port": 3109,
+    "route": "/",
+    "run": 2,
+    "status": 200,
+    "ttfb": 28.700000047683716,
+    "lcp": {
+      "time": 1199.1000000238419,
+      "size": 82191,
+      "tag": "IMG",
+      "url": "http://127.0.0.1:3109/_next/image?url=%2Flanding%2Fficha-pc.png&w=640&q=75"
+    },
+    "h1Font": "publicEditorial, \"publicEditorial Fallback\", Georgia, serif",
+    "overflow": false,
+    "fonts": [
+      {
+        "url": "http://127.0.0.1:3109/_next/static/media/Manrope_Variable-s.p.0me2rmzkik1w2.woff2",
+        "transfer": 54084,
+        "encoded": 53784,
+        "decoded": 53784
+      },
+      {
+        "url": "http://127.0.0.1:3109/_next/static/media/InstrumentSerif-s.3ij-eec1d4hvt.woff2",
+        "transfer": 27680,
+        "encoded": 27380,
+        "decoded": 27380
+      }
+    ],
+    "js": 160486,
+    "total": 286178
+  },
+  {
+    "at": "2026-10-16T07:40:30.376Z",
+    "variant": "candidate",
+    "port": 3109,
+    "route": "/sign-in",
+    "run": 2,
+    "status": 200,
+    "ttfb": 18.200000047683716,
+    "lcp": {
+      "time": 1136.8000000715256,
+      "size": 17934,
+      "tag": "BLOCKQUOTE",
+      "url": ""
+    },
+    "h1Font": "publicSans, \"publicSans Fallback\"",
+    "overflow": false,
+    "fonts": [
+      {
+        "url": "http://127.0.0.1:3109/_next/static/media/Manrope_Variable-s.p.0me2rmzkik1w2.woff2",
+        "transfer": 54084,
+        "encoded": 53784,
+        "decoded": 53784
+      }
+    ],
+    "js": 180854,
+    "total": 268346
+  },
+  {
+    "at": "2026-10-16T07:40:35.900Z",
+    "variant": "base",
+    "port": 3106,
+    "route": "/",
+    "run": 2,
+    "status": 200,
+    "ttfb": 73.30000007152557,
+    "lcp": {
+      "time": 1472.7000000476837,
+      "size": 82325,
+      "tag": "IMG",
+      "url": "http://127.0.0.1:3106/_next/image?url=%2Flanding%2Fficha-pc.png&w=640&q=75"
+    },
+    "h1Font": "publicEditorial, \"publicEditorial Fallback\", Georgia, serif",
+    "overflow": false,
+    "fonts": [
+      {
+        "url": "http://127.0.0.1:3106/_next/static/media/InstrumentSerif-s.p.3uox2wk93mn7l.ttf",
+        "transfer": 37199,
+        "encoded": 36899,
+        "decoded": 70012
+      },
+      {
+        "url": "http://127.0.0.1:3106/_next/static/media/Manrope_Variable-s.p.3rjk17h6oms_8.ttf",
+        "transfer": 69160,
+        "encoded": 68860,
+        "decoded": 164700
+      }
+    ],
+    "js": 160486,
+    "total": 310783
+  },
+  {
+    "at": "2026-10-16T07:40:41.444Z",
+    "variant": "base",
+    "port": 3106,
+    "route": "/sign-in",
+    "run": 2,
+    "status": 200,
+    "ttfb": 40.5,
+    "lcp": {
+      "time": 1347.3000000715256,
+      "size": 17934,
+      "tag": "BLOCKQUOTE",
+      "url": ""
+    },
+    "h1Font": "publicSans, \"publicSans Fallback\"",
+    "overflow": false,
+    "fonts": [
+      {
+        "url": "http://127.0.0.1:3106/_next/static/media/InstrumentSerif-s.p.3uox2wk93mn7l.ttf",
+        "transfer": 37199,
+        "encoded": 36899,
+        "decoded": 70012
+      },
+      {
+        "url": "http://127.0.0.1:3106/_next/static/media/Manrope_Variable-s.p.3rjk17h6oms_8.ttf",
+        "transfer": 69160,
+        "encoded": 68860,
+        "decoded": 164700
+      }
+    ],
+    "js": 180851,
+    "total": 320623
+  },
+  {
+    "at": "2026-10-16T07:40:46.760Z",
+    "variant": "base",
+    "port": 3106,
+    "route": "/",
+    "run": 3,
+    "status": 200,
+    "ttfb": 41.10000002384186,
+    "lcp": {
+      "time": 1200.5,
+      "size": 82191,
+      "tag": "IMG",
+      "url": "http://127.0.0.1:3106/_next/image?url=%2Flanding%2Fficha-pc.png&w=640&q=75"
+    },
+    "h1Font": "publicEditorial, \"publicEditorial Fallback\", Georgia, serif",
+    "overflow": false,
+    "fonts": [
+      {
+        "url": "http://127.0.0.1:3106/_next/static/media/InstrumentSerif-s.p.3uox2wk93mn7l.ttf",
+        "transfer": 37199,
+        "encoded": 36899,
+        "decoded": 70012
+      },
+      {
+        "url": "http://127.0.0.1:3106/_next/static/media/Manrope_Variable-s.p.3rjk17h6oms_8.ttf",
+        "transfer": 69160,
+        "encoded": 68860,
+        "decoded": 164700
+      }
+    ],
+    "js": 160486,
+    "total": 310782
+  },
+  {
+    "at": "2026-10-16T07:40:52.188Z",
+    "variant": "base",
+    "port": 3106,
+    "route": "/sign-in",
+    "run": 3,
+    "status": 200,
+    "ttfb": 43.60000002384186,
+    "lcp": {
+      "time": 1197.6000000238419,
+      "size": 17934,
+      "tag": "BLOCKQUOTE",
+      "url": ""
+    },
+    "h1Font": "publicSans, \"publicSans Fallback\"",
+    "overflow": false,
+    "fonts": [
+      {
+        "url": "http://127.0.0.1:3106/_next/static/media/InstrumentSerif-s.p.3uox2wk93mn7l.ttf",
+        "transfer": 37199,
+        "encoded": 36899,
+        "decoded": 70012
+      },
+      {
+        "url": "http://127.0.0.1:3106/_next/static/media/Manrope_Variable-s.p.3rjk17h6oms_8.ttf",
+        "transfer": 69160,
+        "encoded": 68860,
+        "decoded": 164700
+      }
+    ],
+    "js": 180851,
+    "total": 320622
+  },
+  {
+    "at": "2026-10-16T07:40:57.393Z",
+    "variant": "candidate",
+    "port": 3109,
+    "route": "/",
+    "run": 3,
+    "status": 200,
+    "ttfb": 44.199999928474426,
+    "lcp": {
+      "time": 1252,
+      "size": 82191,
+      "tag": "IMG",
+      "url": "http://127.0.0.1:3109/_next/image?url=%2Flanding%2Fficha-pc.png&w=640&q=75"
+    },
+    "h1Font": "publicEditorial, \"publicEditorial Fallback\", Georgia, serif",
+    "overflow": false,
+    "fonts": [
+      {
+        "url": "http://127.0.0.1:3109/_next/static/media/Manrope_Variable-s.p.0me2rmzkik1w2.woff2",
+        "transfer": 54084,
+        "encoded": 53784,
+        "decoded": 53784
+      },
+      {
+        "url": "http://127.0.0.1:3109/_next/static/media/InstrumentSerif-s.3ij-eec1d4hvt.woff2",
+        "transfer": 27680,
+        "encoded": 27380,
+        "decoded": 27380
+      }
+    ],
+    "js": 160486,
+    "total": 286181
+  },
+  {
+    "at": "2026-10-16T07:41:02.544Z",
+    "variant": "candidate",
+    "port": 3109,
+    "route": "/sign-in",
+    "run": 3,
+    "status": 200,
+    "ttfb": 19.5,
+    "lcp": {
+      "time": 1123.2000000476837,
+      "size": 17934,
+      "tag": "BLOCKQUOTE",
+      "url": ""
+    },
+    "h1Font": "publicSans, \"publicSans Fallback\"",
+    "overflow": false,
+    "fonts": [
+      {
+        "url": "http://127.0.0.1:3109/_next/static/media/Manrope_Variable-s.p.0me2rmzkik1w2.woff2",
+        "transfer": 54084,
+        "encoded": 53784,
+        "decoded": 53784
+      }
+    ],
+    "js": 180854,
+    "total": 268345
+  }
+]
