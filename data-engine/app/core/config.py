@@ -363,7 +363,7 @@ class Settings(BaseSettings):
     # razonamiento, pero su catalogo llega solo hasta xhigh (sin max):
     # la lista por defecto lo excluye para que el respaldo nunca reciba
     # un nivel que rechazaria. Env: OPENCODE_GO_REASONING_EFFORT_MODELS.
-    opencode_go_reasoning_effort_models: str = "space-bunny-free"
+    opencode_go_reasoning_effort_models: str = "space-bunny-free,deepseek-v4.1-flash-free"
 
     # Cascada gratuita (LLM_PROVIDER=cascade): Gemini AI Studio -> OpenRouter :free
     # -> OpenCode, solo los que tengan clave. Env: GEMINI_API_KEY / OPENROUTER_API_KEY.

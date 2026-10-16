@@ -444,15 +444,18 @@ def test_model_fallback_response_is_not_cached():
         api_key="test-secret",
         base_url="https://opencode.test/zen/v1",
         default_model="space-bunny-free",
-        fallback_model="deepseek-v4-flash",
+        fallback_model="deepseek-v4.1-flash-free",
         provider_name="opencode-go",
         response_cache=LLMResponseCache(namespace="test", redis_factory=lambda: redis),
         client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
         max_retries=0,
     )
+    # El request fija el modelo primario: desde el pin a deepseek el router
+    # resuelve la tarea, no el default_model del provider; el pin del request
+    # sigue ganando (contrato del router).
     with tenant_cache_scope(7):
-        first = run(provider.complete(_request()))
-        second = run(provider.complete(_request()))
+        first = run(provider.complete(_request(model="space-bunny-free")))
+        second = run(provider.complete(_request(model="space-bunny-free")))
     assert first.text == "ok" and second.text == "ok"
     assert first.from_cache is False and second.from_cache is False
     assert redis.writes == 0

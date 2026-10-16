@@ -502,12 +502,12 @@ def test_resolves_document_and_knowledge_lanes_with_real_urls(db):
 def test_request_pins_the_free_model(db):
     provider = Provider(out(cand()))
     run(db, provider)
-    assert provider.requests[0].model == "space-bunny-free" and provider.requests[0].task == "bottleneck_discovery"
+    assert provider.requests[0].model == "deepseek-v4.1-flash-free" and provider.requests[0].task == "bottleneck_discovery"
 
 
 @pytest.mark.parametrize("overrides", [
-    {"space-bunny-free": "paid-model"},
-    {"bottleneck_discovery": "paid-model", "space-bunny-free": "paid-model"},
+    {"deepseek-v4.1-flash-free": "paid-model"},
+    {"bottleneck_discovery": "paid-model", "deepseek-v4.1-flash-free": "paid-model"},
 ])
 def test_env_override_to_paid_model_skips_before_any_call(db, overrides):
     provider = Provider(out(cand()))
@@ -523,7 +523,7 @@ def test_real_task_model_router_override_is_caught(db):
 
     provider = Provider(out(cand()))
     provider.model_router = TaskModelRouter(default_model="space-bunny-free",
-                                            overrides={"space-bunny-free": "paid-model"})
+                                            overrides={"deepseek-v4.1-flash-free": "paid-model"})
     assert run(db, provider)["stop_reason"] == "modelo_no_gratuito" and provider.calls == 0
     ok = Provider(out(cand()))
     ok.model_router = TaskModelRouter(default_model="space-bunny-free", overrides={"bottleneck_discovery": "paid"})
@@ -536,7 +536,7 @@ def test_paid_fallback_model_blocks_and_free_fallback_allows(db):
     provider._fallback_model = "paid-fallback"
     assert run(db, provider)["stop_reason"] == "fallback_no_gratuito" and provider.calls == 0
     ok = Provider(out(cand()))
-    ok._fallback_model = "longcat-2.5-preview-free"
+    ok._fallback_model = "space-bunny-free"
     assert run(db, ok)["status"] == "ok"
 
 

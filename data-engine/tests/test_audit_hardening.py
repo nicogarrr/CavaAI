@@ -467,10 +467,10 @@ def test_no_premium_route_in_contract():
 
     # Tras #213 la ruta premium existe como alias eval-gated, pero apunta al
     # modelo real gratuito: ningun modelo premium ficticio ni de pago.
-    assert ROUTES["premium_financial_analysis"].model == "space-bunny-free"
-    assert route_model("premium_financial_analysis").model == "space-bunny-free"
+    assert ROUTES["premium_financial_analysis"].model == "deepseek-v4.1-flash-free"
+    assert route_model("premium_financial_analysis").model == "deepseek-v4.1-flash-free"
     premium_rows = [row for row in route_table() if row["task"].startswith("premium_")]
-    assert premium_rows and all(row["model"] == "space-bunny-free" for row in premium_rows)
+    assert premium_rows and all(row["model"] == "deepseek-v4.1-flash-free" for row in premium_rows)
 
 
 # ---------------------------------------------------------------------------
