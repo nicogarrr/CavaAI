@@ -343,7 +343,7 @@ type ResearchThesisSection = {
   updated_at: string;
 };
 
-type ResearchThesisChange = {
+export type ResearchThesisChange = {
   id: number;
   company_id: number | null;
   from_version_id: number | null;
