@@ -5,7 +5,7 @@ import {sectionForRoute} from '@/lib/constants';
 const groups: Record<string, readonly [string,string][]> = {
  '/portfolio': [['/portfolio','Posiciones e historial'],['/portfolio/intelligence','Rendimiento'],['/risk','Riesgo'],['/plan','Plan'],['/taxes','Fiscal'],['/corporate-actions','Eventos'],['/calendar','Calendario'],['/export','Exportar']],
  '/research': [['/research','Empresas'],['/research/assistant','Asistente'],['/research/news','Noticias'],['/research/sources','Fuentes'],['/research/workflows','Workflows']],
- '/discover': [['/screener','Mercado'],['/screeners','Filtros'],['/movers','Movimientos'],['/temas','Temas'],['/insider','Insider'],['/inversores','Inversores'],['/ownership','Datos 13F'],['/propicks','Selecciones'],['/macro-calendar','Calendario']],
+ '/discover': [['/screener','Mercado'],['/screeners','Filtros'],['/movers','Movimientos'],['/temas','Temas'],['/cuellos','Cuellos'],['/insider','Insider'],['/inversores','Inversores'],['/ownership','Datos 13F'],['/propicks','Selecciones'],['/macro-calendar','Calendario']],
  '/knowledge': [['/knowledge','Documentos y principios'],['/inversores/canales','Canales'],['/knowledge-graph','Grafo avanzado'],['/export','Exportar']],
  '/watchlist': [['/alerts','Reglas y avisos']],
 };
