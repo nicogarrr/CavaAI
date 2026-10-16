@@ -26,6 +26,7 @@ from app.schemas.paper_trading import PaperProposal
 from app.services.budget import BudgetController, BudgetExceededError
 from app.services.llm_proposal_service import ProposalRejected, build_request, propose
 from app.services.paper_trading_service import create_proposal
+from app.services.proposal_momentum import load_momentum
 
 DAILY_QUOTA = 5  # propuestas LLM guardadas por tenant y dia UTC
 NEWS_WINDOW = timedelta(days=14)
@@ -170,6 +171,7 @@ async def generate_proposal(
     headlines = load_headlines(db, ticker, now)
     if not headlines:
         raise ProposalRejected("sin_titulares")
+    momentum = load_momentum(db, ticker, now)
     db.commit()  # sin conexion ni transaccion abiertas durante cotizacion y LLM
     if fetch_quote is None:
         from app.api.routes.market import market_quote as fetch_quote
@@ -194,7 +196,7 @@ async def generate_proposal(
 
     try:
         proposal = await propose(
-            provider, ticker, quote=quote, headlines=headlines, now=now,
+            provider, ticker, quote=quote, headlines=headlines, momentum=momentum, now=now,
             on_response=_record, before_retry=_can_retry,
         )
     except BudgetExceededError as exc:
