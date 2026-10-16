@@ -1162,7 +1162,7 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     content = (
       <div className="space-y-5">
         <MutationForm action={refreshCompanyResearchModel.bind(null, ticker)} successMessage="Modelo a largo plazo generado"><Button type="submit"><RefreshCcw className="mr-2 h-4 w-4" />Generar modelo</Button></MutationForm>
-        <LongTermModelPanel model={model?.status === 'not_generated' ? null : model} />
+        <LongTermModelPanel model={model?.status === 'not_generated' ? null : model} ticker={ticker} />
       </div>
     );
   } else if (activeView === 'market-opportunity') {
