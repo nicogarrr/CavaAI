@@ -124,6 +124,7 @@ export default async function CuellosPage({ searchParams }: PageProps) {
   }
 
   const detectedCount = bottlenecks.signals.filter((signal) => signal.status === 'detectado').length;
+  const totalPages = Math.max(1, Math.ceil(discoveries.total / PAGE_SIZE));
   const pageHref = (target: number) => (target <= 1 ? '/cuellos' : `/cuellos?pagina=${target}`);
 
   return (
@@ -145,12 +146,36 @@ export default async function CuellosPage({ searchParams }: PageProps) {
 
       <section aria-label="Candidatos inferidos">
         <h2 className="mb-3 text-xl font-semibold text-gray-100">Candidatos inferidos</h2>
-        {discoveries.items.length === 0 ? (
+        {discoveries.items.length === 0 && discoveries.total === 0 ? (
           <div className="rounded-xl border border-gray-800 bg-surface-1 p-5">
             <p className="font-semibold text-gray-100">Sin candidatos todavía</p>
             <p className="mt-1 text-sm text-gray-400">
               El barrido inferido todavía no ha guardado ningún candidato.
             </p>
+          </div>
+        ) : discoveries.items.length === 0 ? (
+          <div className="rounded-xl border border-gray-800 bg-surface-1 p-5">
+            <p className="font-semibold text-gray-100">Página fuera de rango</p>
+            <p className="mt-1 text-sm text-gray-400">
+              Hay {discoveries.total} candidatos en {totalPages}{' '}
+              {totalPages === 1 ? 'página' : 'páginas'}; esta página no existe.
+            </p>
+            <nav aria-label="Volver al listado" className="mt-3 flex flex-wrap gap-2 text-sm">
+              <Link
+                className="inline-flex min-h-11 items-center rounded-lg px-4 font-medium text-teal-300 hover:bg-gray-800"
+                href="/cuellos"
+              >
+                Primera página
+              </Link>
+              {totalPages > 1 ? (
+                <Link
+                  className="inline-flex min-h-11 items-center rounded-lg px-4 font-medium text-teal-300 hover:bg-gray-800"
+                  href={pageHref(totalPages)}
+                >
+                  Última página
+                </Link>
+              ) : null}
+            </nav>
           </div>
         ) : (
           <>
