@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
@@ -10,12 +11,15 @@ class MessageRole(str, Enum):
     SYSTEM = "system"
     USER = "user"
     ASSISTANT = "assistant"
+    TOOL = "tool"
 
 
 @dataclass(frozen=True, slots=True)
 class Message:
     role: MessageRole | str
     content: str
+    tool_calls: Sequence[ToolCall] = ()
+    tool_call_id: str | None = None
 
     def __post_init__(self) -> None:
         try:
@@ -33,6 +37,26 @@ class Message:
         if role is not MessageRole.ASSISTANT and not self.content.strip():
             raise ValueError("Message content must be a non-empty string")
         object.__setattr__(self, "role", role)
+        calls = tuple(self.tool_calls)
+        if any(not isinstance(call, ToolCall) for call in calls):
+            raise TypeError("Message.tool_calls must contain ToolCall instances")
+        if calls and role is not MessageRole.ASSISTANT:
+            raise ValueError("Only assistant messages may declare tool calls")
+        if role is MessageRole.TOOL:
+            if not isinstance(self.tool_call_id, str) or not self.tool_call_id.strip():
+                raise ValueError("Tool results require tool_call_id")
+        elif self.tool_call_id is not None:
+            raise ValueError("Only tool messages may carry tool_call_id")
+        object.__setattr__(self, "tool_calls", calls)
+
+    def to_openai(self) -> dict[str, Any]:
+        result: dict[str, Any] = {"role": MessageRole(self.role).value, "content": self.content}
+        if self.tool_calls:
+            result["content"] = self.content or None
+            result["tool_calls"] = [call.to_openai() for call in self.tool_calls]
+        if self.tool_call_id is not None:
+            result["tool_call_id"] = self.tool_call_id
+        return result
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,6 +117,16 @@ class ToolCall:
             raise TypeError("ToolCall.arguments must be a JSON object, not raw text")
         object.__setattr__(self, "name", self.name.strip())
         object.__setattr__(self, "id", str(self.id or f"call_{self.name.strip()}"))
+
+    def to_openai(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "arguments": json.dumps(dict(self.arguments), ensure_ascii=False, allow_nan=False),
+            },
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,12 +201,28 @@ class LLMRequest:
         if len(names) != len(tools):
             raise ValueError("Tool names must be unique within a request")
         self._validate_tool_choice(tools, names)
+        pending: set[str] = set()
+        seen: set[str] = set()
+        for message in messages:
+            if message.role is MessageRole.TOOL:
+                call_id = message.tool_call_id
+                if call_id is None or call_id not in pending:
+                    raise ValueError("Orphan or repeated tool result")
+                pending.remove(call_id)
+            else:
+                if pending:
+                    raise ValueError("Missing tool results before next message")
+                for call in message.tool_calls:
+                    if call.id in seen:
+                        raise ValueError("Repeated tool call ID")
+                    seen.add(call.id)
+                    pending.add(call.id)
+        if pending:
+            raise ValueError("Missing tool results")
         object.__setattr__(self, "messages", messages)
         object.__setattr__(self, "tools", tools)
 
-    def _validate_tool_choice(
-        self, tools: tuple[ToolDefinition, ...], names: set[str]
-    ) -> None:
+    def _validate_tool_choice(self, tools: tuple[ToolDefinition, ...], names: set[str]) -> None:
         choice = self.tool_choice
         if choice is None:
             return
@@ -180,9 +230,7 @@ class LLMRequest:
             raise ValueError("tool_choice requires at least one tool")
         if isinstance(choice, str):
             if choice not in TOOL_CHOICE_VALUES:
-                raise ValueError(
-                    "tool_choice must be 'auto', 'none', 'required' or a named function"
-                )
+                raise ValueError("tool_choice must be 'auto', 'none', 'required' or a named function")
             return
         if not isinstance(choice, Mapping):
             raise TypeError("tool_choice must be a string or a mapping")
@@ -201,13 +249,16 @@ class Usage:
     cache_write_tokens: int = 0
 
     def __post_init__(self) -> None:
-        if min(
-            self.input_tokens,
-            self.output_tokens,
-            self.total_tokens,
-            self.cache_read_tokens,
-            self.cache_write_tokens,
-        ) < 0:
+        if (
+            min(
+                self.input_tokens,
+                self.output_tokens,
+                self.total_tokens,
+                self.cache_read_tokens,
+                self.cache_write_tokens,
+            )
+            < 0
+        ):
             raise ValueError("Token usage cannot be negative")
 
 

@@ -304,10 +304,7 @@ class OpenAICompatibleProvider(LLMProvider):
         """Sobre OpenAI-compatible. Unico lugar que decide que se envia."""
         payload: dict[str, Any] = {
             "model": model,
-            "messages": [
-                {"role": message.role.value, "content": message.content}
-                for message in request.messages
-            ],
+            "messages": [message.to_openai() for message in request.messages],
         }
         if self._reasoning_effort and (
             self._reasoning_effort_models is None
