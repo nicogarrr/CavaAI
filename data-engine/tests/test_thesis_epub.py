@@ -2,7 +2,7 @@
 
 Sin red y sin binarios externos: el EPUB se construye 100 % en Python con
 EbookLib y aquí se valida la estructura (mimetype primero y sin comprimir,
-container, OPF, capítulos), los metadatos (título, CavaAI, es, identificador
+container, OPF, capítulos), los metadatos (título, GerarAI, es, identificador
 estable, fecha), el TOC desde las secciones reales, las tildes/ñ/€, las
 tablas como tablas y el escape de HTML inyectado; además del endpoint
 GET /api/thesis/{ticker}/epub (200 descarga / 404 limpio sin tesis).
@@ -107,7 +107,7 @@ def test_build_epub_parseable_por_ebooklib_con_metadatos_byte_compatibles():
     book = _read_book(payload)
 
     assert book.get_metadata("DC", "title") == [("Tesis de inversión: SAN — Banco Santander", {})]
-    assert book.get_metadata("DC", "creator") == [("CavaAI", {"id": "creator"})]
+    assert book.get_metadata("DC", "creator") == [("GerarAI", {"id": "creator"})]
     assert book.get_metadata("DC", "language") == [("es", {})]
     assert book.get_metadata("DC", "identifier") == [("cavaai-thesis-SAN-v2", {"id": "id"})]
     assert book.get_metadata("DC", "date") == [("2026-09-21", {})]
@@ -311,7 +311,7 @@ def test_epub_endpoint_devuelve_descarga_valida(client):
     assert response.status_code == 200, response.text[:300]
     assert response.headers["content-type"] == "application/epub+zip"
     assert "attachment" in response.headers["content-disposition"]
-    assert "cavaai-thesis-SAN-v3.epub" in response.headers["content-disposition"]
+    assert "gerarai-thesis-SAN-v3.epub" in response.headers["content-disposition"]
 
     with _open_epub(response.content) as zf:
         names = zf.namelist()
@@ -331,3 +331,11 @@ def test_epub_endpoint_404_limpio_sin_tesis(client):
     response = client.get("/api/thesis/NADAAAA/epub")
     assert response.status_code == 404
     assert response.json() == {"detail": "No thesis for ticker"}
+
+
+def test_uid_epub_estable_tras_rebrand():
+    # Compatibilidad pre/post rebrand: el identificador DC no sigue la marca.
+    # Mismo ticker y version => mismo uid que antes del renombre CavaAI -> GerarAI.
+    from app.services.thesis_epub_service import EPUB_UID_TEMPLATE
+
+    assert EPUB_UID_TEMPLATE.format(ticker="SAN", version=2) == "cavaai-thesis-SAN-v2"

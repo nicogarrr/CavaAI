@@ -1100,7 +1100,7 @@ class ThesisService:
                 "**NO VALUATION — insufficient data**\n\n"
                 f"Engine: `{(valuation.get('trace') or {}).get('engine', 'unknown')}`\n\n"
                 f"Missing:\n{missing or '- required inputs'}\n\n"
-                "CavaAI will not publish a fair value from bootstrap assumptions."
+                "GerarAI will not publish a fair value from bootstrap assumptions."
             )
 
         if valuation.get("status") == "partial":

@@ -27,18 +27,18 @@ def test_zip_frontmatter_links_and_source_dates():
     )
     with ZipFile(io.BytesIO(payload)) as archive:
         assert set(archive.namelist()) == {
-            "CavaAI/SAN/SAN - Índice.md",
-            "CavaAI/SAN/Tesis SAN v3.md",
-            "CavaAI/SAN/Tesis SAN v9.md",
+            "GerarAI/SAN/SAN - Índice.md",
+            "GerarAI/SAN/Tesis SAN v3.md",
+            "GerarAI/SAN/Tesis SAN v9.md",
         }
-        index = archive.read("CavaAI/SAN/SAN - Índice.md").decode()
+        index = archive.read("GerarAI/SAN/SAN - Índice.md").decode()
         assert "[[Tesis SAN v9]]" in index and "[[Tesis SAN v3]]" in index
-        v3 = archive.read("CavaAI/SAN/Tesis SAN v3.md").decode()
+        v3 = archive.read("GerarAI/SAN/Tesis SAN v3.md").decode()
         assert 'fecha: "2026-09-23"' in v3
         assert 'fuentes:\n  - "https://example.org/report(1)"' in v3
         assert "[Fuente](<https://example.org/report(1)>) (2026-09-20)" in v3
         assert "Afirmación sin fuente: Sin datos de URL" in v3
-        v9 = archive.read("CavaAI/SAN/Tesis SAN v9.md").decode()
+        v9 = archive.read("GerarAI/SAN/Tesis SAN v9.md").decode()
         assert 'fecha: ""' in v9 and "Sin datos" in v9
         assert "fuentes: []" in v9
 
@@ -113,16 +113,16 @@ def test_vault_estructura_indice_global_y_por_ticker():
     with ZipFile(io.BytesIO(payload)) as archive:
         names = set(archive.namelist())
         assert names == {
-            "CavaAI/Índice.md",
-            "CavaAI/ASTS/ASTS - Índice.md",
-            "CavaAI/ASTS/ASTS.md",
-            "CavaAI/ASTS/Tesis ASTS v1.md",
-            "CavaAI/RKLB/RKLB - Índice.md",
-            "CavaAI/RKLB/RKLB.md",
-            "CavaAI/SAN/SAN - Índice.md",
-            "CavaAI/SAN/SAN.md",
+            "GerarAI/Índice.md",
+            "GerarAI/ASTS/ASTS - Índice.md",
+            "GerarAI/ASTS/ASTS.md",
+            "GerarAI/ASTS/Tesis ASTS v1.md",
+            "GerarAI/RKLB/RKLB - Índice.md",
+            "GerarAI/RKLB/RKLB.md",
+            "GerarAI/SAN/SAN - Índice.md",
+            "GerarAI/SAN/SAN.md",
         }
-        index = archive.read("CavaAI/Índice.md").decode()
+        index = archive.read("GerarAI/Índice.md").decode()
         assert 'tipo: "indice"' in index and 'fecha: "2026-09-20"' in index
         assert "- [[ASTS - Índice|ASTS]] - AST SpaceMobile" in index
         assert "- [[RKLB - Índice|RKLB]] - Rocket Lab USA" in index
@@ -135,32 +135,32 @@ def test_vault_estructura_indice_global_y_por_ticker():
 def test_vault_wikilinks_entre_empresas_en_ambas_direcciones():
     payload = build_obsidian_vault(_vault_entries(), _vault_notes(), {"ASTS": {"RKLB"}})
     with ZipFile(io.BytesIO(payload)) as archive:
-        asts_index = archive.read("CavaAI/ASTS/ASTS - Índice.md").decode()
+        asts_index = archive.read("GerarAI/ASTS/ASTS - Índice.md").decode()
         assert "## Empresas relacionadas\n\n- [[RKLB]]" in asts_index
-        rklb_company = archive.read("CavaAI/RKLB/RKLB.md").decode()
+        rklb_company = archive.read("GerarAI/RKLB/RKLB.md").decode()
         assert "## Mencionada en\n\n- [[ASTS]]" in rklb_company
         # RKLB sin tesis: no puede tener "relacionadas" inventadas.
-        rklb_index = archive.read("CavaAI/RKLB/RKLB - Índice.md").decode()
+        rklb_index = archive.read("GerarAI/RKLB/RKLB - Índice.md").decode()
         assert "Sin datos: ninguna tesis de RKLB menciona a otras empresas del vault." in rklb_index
 
 
 def test_vault_nulos_honestos_sin_datos():
     payload = build_obsidian_vault(_vault_entries(), _vault_notes(), {"ASTS": {"RKLB"}})
     with ZipFile(io.BytesIO(payload)) as archive:
-        rklb = archive.read("CavaAI/RKLB/RKLB.md").decode()
+        rklb = archive.read("GerarAI/RKLB/RKLB.md").decode()
         assert "- Sector: Sin datos" in rklb and "- Industria: Sin datos" in rklb
         assert "- Rol: En cartera · En watchlist" in rklb
         assert "Sin datos: no hay tesis persistida para RKLB." in rklb
-        san_index = archive.read("CavaAI/SAN/SAN - Índice.md").decode()
+        san_index = archive.read("GerarAI/SAN/SAN - Índice.md").decode()
         assert 'fecha: ""' in san_index and 'fuentes: []' in san_index
-        asts = archive.read("CavaAI/ASTS/ASTS.md").decode()
+        asts = archive.read("GerarAI/ASTS/ASTS.md").decode()
         assert 'tipo: "empresa"' in asts and '- "cartera"' in asts
 
 
 def test_vault_simbolos_sin_empresa_se_listan_sin_inventar():
     payload = build_obsidian_vault(_vault_entries(), _vault_notes(), {}, unresolved_symbols=["xyz123", "XYZ123"])
     with ZipFile(io.BytesIO(payload)) as archive:
-        index = archive.read("CavaAI/Índice.md").decode()
+        index = archive.read("GerarAI/Índice.md").decode()
         assert "## Símbolos sin empresa en el universo" in index
         assert index.count("- XYZ123 (sin datos de empresa)") == 1
         assert "[[XYZ123" not in index  # nunca wikilink a una nota que no existe
@@ -169,8 +169,8 @@ def test_vault_simbolos_sin_empresa_se_listan_sin_inventar():
 def test_vault_vacio_solo_indice_honesto():
     payload = build_obsidian_vault([], {})
     with ZipFile(io.BytesIO(payload)) as archive:
-        assert archive.namelist() == ["CavaAI/Índice.md"]
-        index = archive.read("CavaAI/Índice.md").decode()
+        assert archive.namelist() == ["GerarAI/Índice.md"]
+        index = archive.read("GerarAI/Índice.md").decode()
         assert "Sin datos: no hay posiciones en cartera." in index
         assert "Sin datos: no hay empresas en watchlist." in index
         assert 'fecha: ""' in index
@@ -317,17 +317,17 @@ def test_vault_endpoint_no_mezcla_tenants(vault_clients):
     response_a = vault_clients("obs-tenant-a").get("/api/obsidian/vault.zip")
     assert response_a.status_code == 200, response_a.text[:300]
     assert response_a.headers["content-type"] == "application/zip"
-    assert "cavaai-obsidian-vault.zip" in response_a.headers["content-disposition"]
+    assert "gerarai-obsidian-vault.zip" in response_a.headers["content-disposition"]
     assert response_a.headers["cache-control"] == "private, no-store"
     with ZipFile(io.BytesIO(response_a.content)) as archive:
         names = set(archive.namelist())
-        assert "CavaAI/ACME/ACME.md" in names
-        assert "CavaAI/ACME/Tesis ACME v1.md" in names
+        assert "GerarAI/ACME/ACME.md" in names
+        assert "GerarAI/ACME/Tesis ACME v1.md" in names
         # Nada del tenant B: ni carpetas, ni menciones en el índice.
         assert not any("ZULU" in name for name in names)
-        index = archive.read("CavaAI/Índice.md").decode()
+        index = archive.read("GerarAI/Índice.md").decode()
         assert "ACME" in index and "ZULU" not in index and "Zulu Inc" not in index
-        tesis = archive.read("CavaAI/ACME/Tesis ACME v1.md").decode()
+        tesis = archive.read("GerarAI/ACME/Tesis ACME v1.md").decode()
         assert "tenant-a" in tesis and "tenant-b" not in tesis
         # Cita real con fuente y fecha del documento del tenant A.
         assert "https://example.org/tenant-a" in tesis
@@ -337,9 +337,9 @@ def test_vault_endpoint_no_mezcla_tenants(vault_clients):
     assert response_b.status_code == 200
     with ZipFile(io.BytesIO(response_b.content)) as archive:
         names = set(archive.namelist())
-        assert "CavaAI/ZULU/ZULU.md" in names
+        assert "GerarAI/ZULU/ZULU.md" in names
         assert not any("ACME" in name for name in names)
-        index = archive.read("CavaAI/Índice.md").decode()
+        index = archive.read("GerarAI/Índice.md").decode()
         assert "ZULU" in index and "ACME" not in index
 
 
@@ -400,15 +400,15 @@ def test_vault_posicion_cerrada_no_es_cartera(vault_client_positions):
     assert response.status_code == 200, response.text[:300]
     with ZipFile(io.BytesIO(response.content)) as archive:
         names = set(archive.namelist())
-        assert "CavaAI/VIVA/VIVA.md" in names
-        assert "CavaAI/CERRADA/CERRADA.md" in names  # sigue por watchlist
+        assert "GerarAI/VIVA/VIVA.md" in names
+        assert "GerarAI/CERRADA/CERRADA.md" in names  # sigue por watchlist
         assert not any("HIST" in name for name in names)  # cerrada sin watchlist: fuera
-        index = archive.read("CavaAI/Índice.md").decode()
+        index = archive.read("GerarAI/Índice.md").decode()
         cartera = index.split("## Cartera", 1)[1].split("## Watchlist", 1)[0]
         assert "VIVA" in cartera and "CERRADA" not in cartera
         watchlist = index.split("## Watchlist", 1)[1]
         assert "CERRADA" in watchlist
-        cerrada = archive.read("CavaAI/CERRADA/CERRADA.md").decode()
+        cerrada = archive.read("GerarAI/CERRADA/CERRADA.md").decode()
         assert '"cartera"' not in cerrada
         assert '- "watchlist"' in cerrada
         assert "- Rol: En watchlist" in cerrada

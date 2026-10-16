@@ -110,7 +110,7 @@ def build_obsidian_zip(ticker: str, notes: list[Note]) -> bytes:
     if len({note.version for note in notes}) != len(notes):
         raise ValueError("Versiones duplicadas")
     output = io.BytesIO()
-    folder = f"CavaAI/{ticker}"
+    folder = f"GerarAI/{ticker}"
     with ZipFile(output, "w", ZIP_DEFLATED) as archive:
         filenames = [f"Tesis {ticker} v{note.version}" for note in notes]
         index_note = Note(title=f"{ticker} - Índice", date=notes[-1].date, status=notes[-1].status)
@@ -229,7 +229,11 @@ def build_obsidian_vault(
             f"fecha: {_yaml(latest)}",
             "---",
             "",
-            "# CavaAI - Índice del vault",
+            "# GerarAI - Índice del vault",
+            "",
+            "> **Nota de migración:** antes del renombre de marca las notas se",
+            "> generaban en la carpeta `CavaAI/`. Si ya tenías un vault,",
+            "> mueve esa carpeta a `GerarAI/` a mano; este zip no la migra solo.",
             "",
             "## Cartera",
             "",
@@ -255,11 +259,11 @@ def build_obsidian_vault(
             index_lines.extend(["", "## Símbolos sin empresa en el universo", ""])
             index_lines.extend(f"- {symbol} (sin datos de empresa)" for symbol in unresolved)
         index_lines.extend(["", _DISCLAIMER, ""])
-        archive.writestr("CavaAI/Índice.md", "\n".join(index_lines))
+        archive.writestr("GerarAI/Índice.md", "\n".join(index_lines))
 
         for entry in ordered:
             ticker = entry.ticker
-            folder = f"CavaAI/{ticker}"
+            folder = f"GerarAI/{ticker}"
             notes = notes_by_ticker.get(ticker, [])
             filenames = [f"Tesis {ticker} v{note.version}" for note in notes]
 
