@@ -173,6 +173,8 @@ def portfolio_summary(db: Session = Depends(get_db)) -> dict:
     return {
         "total_value": risk["total_value"],
         "equity_value": risk["equity_value"],
+        "cash_assets_base": risk["cash_assets_base"],
+        "margin_debt_base": risk["margin_debt_base"],
         "cash": risk["cash"],
         "top_1_weight": risk["top_1_weight"],
         "top_5_weight": risk["top_5_weight"],

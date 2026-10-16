@@ -106,3 +106,33 @@ def test_cash_without_fx_rate_excluded_and_reported(db):
     # USD cash kept out of the base total; EUR cash counted at par.
     assert result["cash_native"] == {"USD": 800.0, "EUR": 200.0}
     assert result["total_value"] == pytest.approx(200.0)
+
+
+def test_margin_breakdown_separates_positive_cash_and_debt(db):
+    from app.models.entities import FXRate
+    company = _company(db, "TEST")
+    day = date(2026, 9, 20)
+    db.add(Position(company_id=company.id, quantity=Decimal("10"),
+                    market_value_base=Decimal("18000"), currency="EUR", as_of=day))
+    db.add(CashBalance(currency="EUR", balance=Decimal("8000"), as_of=day))
+    db.add(CashBalance(currency="USD", balance=Decimal("-20000"), as_of=day))
+    db.add(FXRate(base_currency="EUR", quote_currency="USD", rate=Decimal("0.9"),
+                  rate_date=day, source="synthetic"))
+    db.commit()
+    result = RiskService().dashboard(db)
+    assert result["cash_assets_base"] == 8000
+    assert result["margin_debt_base"] == 18000
+    assert result["cash"] == {"EUR": -10000}
+    assert result["equity_value"] == 18000
+    assert result["total_value"] == 8000
+    assert result["total_value"] == (result["equity_value"]
+        + result["cash_assets_base"] - result["margin_debt_base"])
+
+
+def test_margin_breakdown_does_not_guess_unconvertible_debt(db):
+    db.add(CashBalance(currency="USD", balance=Decimal("-20000"), as_of=date(2026, 9, 20)))
+    db.commit()
+    result = RiskService().dashboard(db)
+    assert result["cash_assets_base"] == result["margin_debt_base"] == 0
+    assert result["status"] == "incomplete_fx"
+    assert result["missing_fx"][0]["kind"] == "cash"

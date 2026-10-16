@@ -15,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Activity, ArrowRight, BellRing, Eye, Gem, Minus, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
+import { PortfolioValueBreakdown } from '@/components/portfolio/PortfolioValueBreakdown';
 import { getPortfolioSummary, type PortfolioHolding, type PortfolioSummary } from '@/lib/actions/portfolio.actions';
 import { getWatchlistState, getWatchlistEntryData } from '@/lib/actions/watchlist.actions';
 import { sectionError } from '@/lib/section-error';
@@ -419,18 +420,14 @@ export default function PersonalizedOverview({ userId }: PersonalizedOverviewPro
                                     </Link>
                                 </div>
                             </div>
-                            <div className="flex flex-col min-[420px]:flex-row min-[420px]:flex-wrap min-[420px]:justify-between min-[420px]:items-center gap-3 p-4 bg-gray-900/60 rounded-xl border border-gray-700/50">
-                                <div className="min-w-0">
-                                    <p className="text-sm text-gray-400">Valor Total Estimado</p>
-                                    <p className="mt-1 break-words text-xl font-bold text-white sm:text-2xl xl:text-3xl">{formatMoney(portfolioSummary.totalValue, portfolioSummary.baseCurrency)}</p>
-                                </div>
-                                <div className="text-right">
-                                    <p className="text-sm text-gray-400">Ganancia/Pérdida Total</p>
-                                    <p className={`text-xl font-bold mt-1 ${insight.kind !== 'movement' ? 'text-gray-500' : portfolioSummary.totalGainPercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                        {insight.kind !== 'movement' ? 'N/D' : formatPercent(portfolioSummary.totalGainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
-                                    </p>
-                                </div>
+                            <PortfolioValueBreakdown summary={portfolioSummary} />
+                            <div className="flex items-center justify-between gap-3 text-sm">
+                                <span className="text-gray-400">Ganancia/Pérdida desde la compra</span>
+                                <span className={`font-semibold ${insight.kind !== 'movement' ? 'text-gray-500' : portfolioSummary.totalGainPercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                    {insight.kind !== 'movement' ? 'N/D' : formatPercent(portfolioSummary.totalGainPercent, { fromRatio: false, digits: 2, signDisplay: 'always' })}
+                                </span>
                             </div>
+                            <p className="text-xs text-gray-400">Pesos sobre el valor bruto de las posiciones</p>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 {sortedHoldings
                                     .map((h) => (
