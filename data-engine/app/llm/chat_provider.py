@@ -28,6 +28,12 @@ def educational_output(text: str) -> bool:
     return bool(text.strip()) and re.search(pattern, value) is None
 
 
+class _LanguageRejected(ProviderResponseError):
+    def __init__(self, response):
+        super().__init__("Candidate language rejected")
+        self.response = response
+
+
 class ChatFallbackProvider(LLMProvider):
     name = "chat-independent-fallback"
 
@@ -51,6 +57,10 @@ class ChatFallbackProvider(LLMProvider):
         response = await provider.complete(request)
         if self.on_response is not None:
             self.on_response(response)
+        if self.validator is not None and not backup:
+            from app.services.llm_output_guard import inspect_response_text
+            if inspect_response_text(response.text):
+                raise _LanguageRejected(response)
         try:
             if response.degraded or response.finish_reason == "length":
                 raise ValueError("truncated or degraded")
@@ -76,6 +86,7 @@ class ChatFallbackProvider(LLMProvider):
     async def _race(self, request: LLMRequest) -> LLMResponse:
         primary = asyncio.create_task(self._candidate(self.primary, request))
         tasks = [primary]
+        rejected_primary = None
         try:
             done, _ = await asyncio.wait({primary}, timeout=self.delay)
             if done:
@@ -84,8 +95,9 @@ class ChatFallbackProvider(LLMProvider):
                     if response.degraded or response.finish_reason == "length":
                         raise ProviderResponseError("chat response was degraded")
                     return response
-                except _FALL_THROUGH:
-                    pass
+                except _FALL_THROUGH as exc:
+                    if isinstance(exc, _LanguageRejected):
+                        rejected_primary = exc.response
             # Pin backup explicitly. Never send DeepSeek aliases or effort=max.
             backup = asyncio.create_task(self._candidate(self.backup, replace(
                 request, model=GROQ_MODEL,
@@ -108,6 +120,13 @@ class ChatFallbackProvider(LLMProvider):
                         return response
                     except _FALL_THROUGH as exc:
                         last = exc
+                        if task is primary and isinstance(exc, _LanguageRejected):
+                            rejected_primary = exc.response
+            # Only after all candidates fail, hand the primary's language
+            # rejection to complete_guarded so its RETRY_HINT can recover.
+            # It never wins a race or cancels an eligible valid candidate.
+            if rejected_primary is not None:
+                return rejected_primary
             if last is not None:
                 raise last
             raise ProviderResponseError("chat providers returned no usable response")

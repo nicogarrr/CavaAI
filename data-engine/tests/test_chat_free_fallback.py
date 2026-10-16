@@ -242,3 +242,40 @@ def test_candidate_validation_context_is_per_call_not_shared():
     a = provider.with_candidate_validator(lambda r: None)
     b = provider.with_candidate_validator(lambda r: None)
     assert a is not b and a.validator is not b.validator and provider.validator is None
+
+
+@run_async
+async def test_primary_language_retry_hint_survives_backup_failure_without_double_record(monkeypatch):
+    from app.schemas import ChatResponse
+    from app.services.chat_synthesis_service import ChatSynthesisService
+    class Recovering(Fake):
+        async def complete(self, request):
+            self.calls.append(request)
+            if len(self.calls) == 1:
+                return response("The company is profitable and the earnings are growing.")
+            return response("Respuesta válida en español.", model="recovered-primary")
+    records = []
+    monkeypatch.setattr("app.services.chat_synthesis_service.BudgetController.record", lambda self, *args: records.append(args))
+    monkeypatch.setattr("app.services.chat_synthesis_service.BudgetController.can_spend", lambda *args: True)
+    p, b = Recovering(), Fake(ProviderHTTPError("groq", 429))
+    result = await ChatSynthesisService(ChatFallbackProvider(p, b, total=.3, delay=.001)).synthesize_general(
+        question="Cuéntame algo", baseline=ChatResponse(answer="", sources=[]), db=object(),
+    )
+    assert result.model == "recovered-primary"
+    assert len(p.calls) == 2 and len(b.calls) == 1
+    from app.services.llm_output_guard import RETRY_HINT
+    assert RETRY_HINT in p.calls[1].messages[0].content
+    assert RETRY_HINT not in p.calls[0].messages[0].content
+    assert len(records) == 2  # rejected first response and valid second, once each
+
+
+@run_async
+async def test_primary_bad_language_cannot_cancel_valid_backup():
+    from app.schemas import ChatResponse
+    from app.services.chat_synthesis_service import ChatSynthesisService
+    p = Fake(response("The company is profitable and the earnings are growing."))
+    b = Fake(response("Respuesta válida en español.", model=GROQ_MODEL, provider="groq"), delay=.03)
+    result = await ChatSynthesisService(ChatFallbackProvider(p, b, total=.3, delay=.001)).synthesize_general(
+        question="Cuéntame algo", baseline=ChatResponse(answer="", sources=[]),
+    )
+    assert result.model == GROQ_MODEL and len(p.calls) == 1 and not b.cancelled
