@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import ValidationError
@@ -194,7 +195,7 @@ _FIN_WORDS_RE = re.compile(
     r"inversi[oó]n(?:es)?|invertir|ganancias?|p[eé]rdidas?|beneficios?|"
     r"capitalizaci[oó]n|valoraci[oó]n|stock|shares?|earnings|etf|ebitda|"
     r"ingresos?|facturaci[oó]n|ventas?|revenue|sales|empleados?|employees?|headcount|"
-    r"plantilla|deuda|debt|flujo\s+de\s+caja|cash\s+flow|cuota\s+de\s+mercado|"
+    r"workforce|personnel|staffing|deuda|debt|flujo\s+de\s+caja|cash\s+flow|cuota\s+de\s+mercado|"
     r"market\s+share|sube|suben|baja|bajan|cae|caen|duplic\w*|tripl\w*|vale|valen)\b"
     r"|[$€£%]"
 )
@@ -214,15 +215,49 @@ class _FinScope:
     def search(text: str) -> bool:
         return (
             bool(_FIN_WORDS_RE.search(text))
+            or (
+                bool(re.search(r"(?i)\bplantilla\b", text))
+                and not re.search(r"(?i)\b(correo|email|e-mail|carta|curr[ií]culum|documento)\b", text)
+            )
             or _has_ticker(text)
             or any(t in _FIN_ACRONYMS for t in _TICKER_RE.findall(text))
         )
 
 
 _FIN_SCOPE_RE = _FinScope
+# Solo una peticion COMPLETA de concepto conocido entra al generador de
+# definiciones. Un prefijo "explica" no basta: "de apple", fechas, posiciones
+# personales o cualquier resto no consumido queda en consulta especifica.
+_CONCEPT_TERM = (
+    r"(?:PER|ETF|ROE|ROA|ROIC|EPS|FCF|EBITDA|PEG|IPO|CAGR|"
+    r"ingresos?|revenue|ventas?|sales|facturaci[oó]n|deuda|debt|"
+    r"dividendo|dividendos|rentabilidad|rendimiento|inversi[oó]n|"
+    r"precio(?: de mercado)?|cotizaci[oó]n(?: burs[aá]til)?|"
+    r"flujo de caja|cash flow|market cap|capitalizaci[oó]n|"
+    r"margen|beneficios?|earnings|employees?|empleados?|"
+    r"cuota de mercado|market share)"
+)
 _CONCEPT_Q_RE = re.compile(
-    r"(?i)^\W*(?:¿\s*)?(?:qu[eé]\s+(?:es|son|significa)|c[oó]mo\s+(?:funciona|funcionan|se\s+calcula)|"
-    r"expl[ií]ca(?:me)?|para\s+qu[eé]\s+sirve|cu[aá]l\s+es\s+la\s+diferencia)\b"
+    r"(?i)\s*[¿¡]?\s*(?:"
+    r"(?:qu[eé] (?:es|son|significa)|c[oó]mo (?:funciona|funcionan|se calcula)|"
+    r"expl[ií]ca(?:me)?|define|para qu[eé] sirve|what (?:is|are)|explain)\s+"
+    r"(?:(?:el|la|los|las|un|una|the|an|a)\s+)?" + _CONCEPT_TERM +
+    r"|how does (?:(?:the|an|a)\s+)?" + _CONCEPT_TERM + r" work)"
+    r"(?:\s+(?:en general|de una empresa|de un negocio|in general|of a company))?\s*[?!.]*\s*"
+)
+# Afirmaciones sobre un sujeto concreto con verbos de estado/operacion. No
+# depende de capitalizar un nombre. Se conserva el sujeto generico (empresa,
+# negocio...) de una definicion, pero no "apple obtiene ingresos".
+_BUSINESS_SUBJECT_CLAIM_RE = re.compile(
+    r"(?i)\b(?!(?:empresa|empresas|negocio|negocios|compa[nñ][ií]a|compa[nñ][ií]as|"
+    r"entidad|entidades|company|companies|business|ingresos|revenue|deuda|debt|"
+    r"PER|ETF|ROE|ROA|ROIC|EPS|FCF|EBITDA|PEG|IPO|CAGR|"
+    r"indicador|ratio|concepto|margen|beneficio|beneficios|precio|dividendo|"
+    r"dividendos|rentabilidad|rendimiento|inversi[oó]n|caja|ventas|empleados)\b)"
+    r"[a-záéíóúñ][a-záéíóúñ0-9_.-]*\s+"
+    r"(?:obtiene|obtienen|mantiene|mantienen|cuenta\s+con|cuentan\s+con|"
+    r"genera|generan|emplea|emplean|reporta|reportan|tiene|tienen|"
+    r"has|have|employs|reports|generates)\b"
 )
 _PERSONAL_RE = re.compile(r"(?i)\b(mi|mis|tu|tus|su|sus|nuestr[oa]s?|m[ií]o|m[ií]a)\b")
 _NUMBER_WORD_RE = re.compile(
@@ -240,14 +275,39 @@ def _general_scope(question: str) -> str:
     q = (question or "").strip()
     if not _FIN_SCOPE_RE.search(q):
         return "ordinary"
-    if (
-        _CONCEPT_Q_RE.match(q)
-        and not _PERSONAL_RE.search(q)
-        and not re.search(r"\d", q)
-        and not _has_ticker(q)
-    ):
+    if _CONCEPT_Q_RE.fullmatch(q):
         return "concept"
-    return "abstain"
+    # Datos privados y ordenes no se deducen del conocimiento del modelo.
+    if _PERSONAL_RE.search(q) or re.search(
+        r"(?i)\b(my|your|our|buy|sell|compra|vende|ejecuta)\b", q
+    ):
+        return "abstain"
+    return "inferred"
+
+
+def _inferred_general_text_valid(text: str) -> bool:
+    """Sin fuentes no hay OFICIAL. Cada parrafo declara su naturaleza."""
+    paragraphs = [part.strip() for part in re.split(r"\n\s*\n", text.strip()) if part.strip()]
+    if not paragraphs or any(
+        not re.match(r"^\[(?:INFERIDO|SIN_DATOS)\]", part) for part in paragraphs
+    ):
+        return False
+    if re.search(r"\[OFICIAL\]|\[[a-z_]+:[^\]]+\]|https?://", text, re.I):
+        return False
+    # La propia etiqueta no basta para convertir una certeza en inferencia.
+    if "[INFERIDO]" in text and not re.search(
+        r"(?i)\b(podr[ií]a|puede|estimaci[oó]n|hip[oó]tesis|no verificado|"
+        r"sin verificar|sin fuentes|no dispongo|no tengo|no puedo confirmar)\b", text
+    ):
+        return False
+    # Cifras requieren aproximacion explicita; no se permite disfrazar una
+    # cifra exacta de oficial simplemente anteponiendo INFERIDO.
+    without_dates = re.sub(r"\b\d{4}-\d{2}-\d{2}\b", "", text)
+    if re.search(r"\d", without_dates) and not re.search(
+        r"(?i)\b(aproximad\w*|estimad\w*|estimaci[oó]n|rango|alrededor)\b", text
+    ):
+        return False
+    return True
 
 
 class ChatSynthesisService:
@@ -475,7 +535,7 @@ class ChatSynthesisService:
             return self._general_fallback(baseline, reason="budget_exhausted")
         request = LLMRequest(
             messages=[
-                Message("system", get_prompt("chat_general").text),
+                Message("system", get_prompt("chat_general", allow_remote=False).text),
                 Message(
                     "user",
                     json.dumps(
@@ -483,6 +543,9 @@ class ChatSynthesisService:
                             # Sin contexto privado (cartera/memorias/fuentes):
                             # el generador libre solo ve la pregunta.
                             "question": question,
+                            "scope": scope,
+                            "reviewed_at_utc": datetime.now(UTC).date().isoformat(),
+                            "sources_available": False,
                         },
                         default=str,
                         ensure_ascii=False,
@@ -531,8 +594,12 @@ class ChatSynthesisService:
         text = (guarded.response.text or "").strip()
         if (
             not text
-            or not self._general_text_grounded(text, ChatResponse(answer="", sources=[]))
-            or not self._general_output_in_scope(text, scope)
+            or not (
+                _inferred_general_text_valid(text)
+                if scope == "inferred"
+                else self._general_text_grounded(text, ChatResponse(answer="", sources=[]))
+                and self._general_output_in_scope(text, scope)
+            )
         ):
             return self._general_fallback(baseline, reason="ungrounded")
         return ChatResponse(
@@ -570,6 +637,11 @@ class ChatSynthesisService:
         concept: solo definicion generica; sin cifras, numerales, posesivos
         de cartera ni nombres propios de empresas.
         """
+        if _BUSINESS_SUBJECT_CLAIM_RE.search(text) and (
+            _FIN_SCOPE_RE.search(text)
+            or re.search(r"(?i)\b(personal|staff|workers?)\b", text)
+        ):
+            return False
         if scope == "ordinary":
             return not _FIN_SCOPE_RE.search(text)
         if scope == "concept":

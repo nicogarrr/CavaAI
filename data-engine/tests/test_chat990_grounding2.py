@@ -92,9 +92,10 @@ def test_financial_intent_without_company_abstains_without_llm():
             db, "¿a cuánto cotiza FooCorp?", "portfolio", None
         )
     )
-    assert provider.requests == []
-    assert result.model == "abstain"
-    assert "ticker" in result.answer
+    # Updated owner rule: an unlabelled model answer is rejected, but a
+    # company question may use explicitly labelled knowledge/inference.
+    assert provider.requests
+    assert result.model == "fallback"
 
 
 def test_round8_financial_concepts_reach_llm_via_service():
@@ -114,9 +115,7 @@ def test_round8_financial_concepts_reach_llm_via_service():
 
 def test_round8_specific_still_abstains_without_llm():
     for q in [
-        "¿A cuánto cotiza FooCorp?",
         "¿Cuál es la rentabilidad de mi cartera?",
-        "¿Cuánto vale Microsoft ahora?",
     ]:
         db = _db()
         provider = StubProvider()
@@ -157,12 +156,12 @@ def test_round7_scope_classification():
     assert _general_scope("¿Qué es el PER?") == "concept"
     assert _general_scope("¿Cómo funciona un ETF?") == "concept"
     assert _general_scope("¿Cómo va mi cartera?") == "abstain"
-    assert _general_scope("¿Qué es el PER de ASTS?") == "abstain"
-    assert _general_scope("cuánto vale Microsoft") == "abstain"
+    assert _general_scope("¿Qué es el PER de ASTS?") == "inferred"
+    assert _general_scope("cuánto vale Microsoft") == "inferred"
 
 
 def test_round7_financial_specific_never_reaches_llm():
-    for q in ["¿Cómo va mi cartera?", "¿Cuánto han subido mis acciones?", "precio de ASTS"]:
+    for q in ["¿Cómo va mi cartera?", "¿Cuánto han subido mis acciones?"]:
         provider, result = _general(q, "cualquier cosa")
         assert provider.requests == []
         assert result.model == "abstain"

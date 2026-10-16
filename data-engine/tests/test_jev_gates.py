@@ -413,14 +413,14 @@ def test_4_sin_ticker_va_a_sintesis_general_en_espanol():
     assert resp.prompt_version == "chat-general-v2"
 
 
-def test_4b_financiero_sin_compania_ni_ticker_se_abstiene_sin_llm():
-    # Ronda 7: consulta financiera sin ticker/compania resuelta NO llega al LLM libre.
+def test_4b_financiero_sin_fuentes_rechaza_respuesta_no_etiquetada():
+    # Updated owner rule: inference is permitted; unlabelled output is not.
     engine = _memdb()
     provider = CountingJsonProvider(_chat_payload())
     with Session(engine) as db:
         resp = asyncio.run(ChatService(provider).answer(db, _CHAT_QUESTION, "portfolio", None))
-    assert provider.calls == 0
-    assert resp.model == "abstain"
+    assert provider.calls == 1
+    assert resp.model == "fallback"
 
 
 # ------------------------------------------------------------ (5) juez Jev
