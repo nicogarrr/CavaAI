@@ -30,12 +30,12 @@ def test_async_empty_response_and_latest_poll_only():
     assert any(path.endswith("prompt_async") for _, path, _, _ in calls)
     assert calls[-2][1].endswith("abort") and calls[-1][0] == "DELETE"
 
-def test_rate_limit_stops_immediately_without_retries():
-    calls, request = run_with_responses({"status": {"synthetic": {"type": "retry", "message": "Rate limit exceeded"}}, "messages": []})
-    with patch.object(bridge, "serve_req", request):
-        with pytest.raises(bridge.ProviderRateLimitError): bridge.complete("fixture-free", [{"role": "user", "content": "test"}])
-    assert len([x for x in calls if x[1].endswith("prompt_async")]) == 1
-    assert calls[-2][1].endswith("abort") and calls[-1][0] == "DELETE"
+def test_valid_primary_at_44_seconds_is_not_aborted():
+    done = [{"info": {"role": "assistant", "finish": "stop"}, "parts": [{"type": "text", "text": "valid primary"}]}]
+    calls, request = run_with_responses({"messages": [done]})
+    with patch.object(bridge, "serve_req", request), patch.object(bridge.time, "monotonic", side_effect=[0, 44]):
+        assert bridge.complete("fixture-free", [{"role": "user", "content": "test"}]) == "valid primary"
+    assert calls[-1][0] == "DELETE"
 
 def test_provider_error_aborts_and_cleans_up():
     calls, request = run_with_responses({"messages": [[{"info": {"role": "assistant", "error": {"name": "APIError"}}, "parts": []}]]})
@@ -46,7 +46,7 @@ def test_provider_error_aborts_and_cleans_up():
 
 def test_deadline_cancels_without_synchronous_message_call():
     calls, request = run_with_responses({"messages": []})
-    with patch.object(bridge, "serve_req", request), patch.object(bridge.time, "monotonic", side_effect=[0, 31]):
+    with patch.object(bridge, "serve_req", request), patch.object(bridge.time, "monotonic", side_effect=[0, 151]):
         with pytest.raises(TimeoutError): bridge.complete("fixture-free", [{"role": "user", "content": "test"}])
     assert calls[-2][1].endswith("abort") and calls[-1][0] == "DELETE"
     assert not any(path.endswith("/message") and method == "POST" for method, path, _, _ in calls)

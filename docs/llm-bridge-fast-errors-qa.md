@@ -9,16 +9,16 @@ Todo en una red Docker propia, bridge y serve propios, sin usar chat, sesión ni
 - Cada sesión sin título disparaba además una llamada DeepSeek para titular, que también reintentaba3veces y fallaba con ratelimit. Se frenó la batería al confirmarlo, sin ejecutar MiMo en esa batería; se abortó la sesión Nemotron pendiente.
 - Health y listado del serve respondían~0.1s con0tokens mientras la respuesta de modelo seguía pendiente. No hay evidencia de caída HTTP del serve; no se recomienda reiniciar a ciegas.
 - Canario Nemotron3.5LightningFree con bridge async y título fijo:41.067s, timeout40s, cancelación observada en logs, sin respuesta utilizable. No se declara sustituto fiable.
-- Canario MiMo y resultado final: cuerpo del PR.
+- MiMo30.408s timeout con el prototipo de30s; logRateLimit en~0.7s, pero /session/status NO lo expuso temprano. No se demostró429rápido.
 
-## Cambio propuesto
+## Alcance revisado tras auditoría
 
-Usar prompt_async (204sinJSON), consultar estado de sesión, propagar429 al primer retry por cuota/ratelimit, título fijo que evita la llamada extra, abort+delete con2s cada uno. No acumular el mismo texto entre polls. Deadline monotónico30s con peticiones individuales10s, inferior al timeout de chat45s en el caso normal; una petición final y limpieza pueden sumar tiempo y se declaran como límite. Sin cambiar modelo de producción todavía.
+Solo transporte prompt_async (204sinJSON), título fijo que evita otra llamada y no acumular texto entre polls; abort+delete de2s porpetición. Se elimina la captura temprana de429 porque no se demostró con el serve actual. Se preservan TIMEOUT_S150 y requesttimeout60 originales: no se trunca una primaria válida de35-44s. El contador usa monotonic; NO constituye un deadlineabsoluto porque creación, peticiones de red y cleanup pueden sumar. No se presenta como arreglo de latencia o disponibilidad.
 
 ## Pruebas
 
-4canarios offline: respuesta async sin duplicados, cuota inmediata sin reintentar, error de proveedor y timeout con abort/cleanup. Ruff dirigido con configuración del repo verde. No prueban calidad de modelo ni recuperación de cuota. API/HTTP real aislado se registra arriba.
+4canariosoffline: async204sin duplicados, primaria válida a44s, error de proveedor y agotamiento del contador150s conabort/cleanup. Ruff dirigido con configuraciónrealrepo. No prueban deadlineabsoluto ni calidad ni recuperación de cuota.
 
 ## Límites
 
-No se ha afirmado que el chat de producción esté reparado ni que cambiar modelo sea suficiente. No se usa una clave de pago ni se crea cuenta. No hay datos oficiales inventados. La cuota del servicio gratuito puede seguir limitando todas las opciones.
+Sin despliegue de producción. No se ha demostrado unmodelo gratis fiable ni que reiniciar serve corrija la cuota. El prototipo30s se retiró porque degradaba primariasválidas. El código429temprano se retiró porque el estado delSDK no lo expuso enelcanarioreal. Este PR reduce trabajoextra y cambia transporte, no promete reparación delchat. No cuentas ni claves de pago nuevas.

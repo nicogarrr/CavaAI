@@ -25,8 +25,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 SERVE_URL = os.environ.get("SERVE_URL", "http://oc-serve2:4096").rstrip("/")
 PROVIDER_ID = os.environ.get("PROVIDER_ID", "opencode")
 POLL_S = float(os.environ.get("POLL_S", "2"))
-TIMEOUT_S = float(os.environ.get("TIMEOUT_S", "30"))
-REQUEST_TIMEOUT_S = float(os.environ.get("REQUEST_TIMEOUT_S", "10"))
+TIMEOUT_S = float(os.environ.get("TIMEOUT_S", "150"))
+REQUEST_TIMEOUT_S = float(os.environ.get("REQUEST_TIMEOUT_S", "60"))
 LISTEN_PORT = int(os.environ.get("LISTEN_PORT", "4098"))
 
 
@@ -52,10 +52,6 @@ def flatten_messages(messages) -> str:
     return "\n\n".join(out)
 
 
-class ProviderRateLimitError(RuntimeError):
-    pass
-
-
 def complete(model: str, messages, response_format=None, reasoning_effort=None) -> str:
     prompt = flatten_messages(messages)
     if response_format and isinstance(response_format, dict):
@@ -77,12 +73,6 @@ def complete(model: str, messages, response_format=None, reasoning_effort=None) 
             print(f"bridge: {model} variant={reasoning_effort}", flush=True)
         serve_req("POST", f"/session/{sid}/prompt_async", msg)
         while time.monotonic() - t0 < TIMEOUT_S:
-            statuses = serve_req("GET", "/session/status") or {}
-            status = statuses.get(sid, {})
-            if status.get("type") == "retry":
-                message = str(status.get("message", ""))
-                if any(marker in message.lower() for marker in ("rate limit", "quota", "429", "free tier")):
-                    raise ProviderRateLimitError("El proveedor gratuito ha limitado las solicitudes; inténtalo más tarde.")
             textos = []
             for m in serve_req("GET", f"/session/{sid}/message"):
                 info = m.get("info", {})
@@ -145,7 +135,7 @@ class Handler(BaseHTTPRequestHandler):
             text = complete(model, messages, body.get("response_format"),
                             body.get("reasoning_effort"))
         except Exception as e:
-            self._send_json(429 if isinstance(e, ProviderRateLimitError) else 502, {"type": "error", "error": {
+            self._send_json(502, {"type": "error", "error": {
                 "type": type(e).__name__, "message": str(e)[:400]}})
             return
         self._send_json(200, {
