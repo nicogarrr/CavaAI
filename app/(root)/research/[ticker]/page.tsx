@@ -27,6 +27,7 @@ import { MutationForm } from '@/components/forms/MutationForm';
 import { FileUploadInput } from '@/components/forms/FileUploadInput';
 import { CompanyHeaderQuote } from '@/components/research/CompanyHeaderQuote';
 import { ChangesSinceVisit } from '@/components/research/ChangesSinceVisit';
+import { ChatIntentLinks } from '@/components/research/ChatIntentLinks';
 import { NextStepLink } from '@/components/research/NextStepLink';
 import { missingLayerAction, missingLayerLabel } from '@/lib/research/missing-layer-guidance';
 import { metricLabel } from '@/lib/research/metric-labels';
@@ -1261,6 +1262,11 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
     content = (
       <div className="space-y-6">
         <Panel title="Chat de la empresa con fuentes">
+          {/* Asistente por intención (WorldStocks punto 4): atajos que lanzan
+              una pregunta guiada por el MISMO contrato de evidencia
+              determinista de abajo. No añaden respuestas nuevas ni texto
+              generado: solo formulan la pregunta. */}
+          <ChatIntentLinks ticker={ticker} />
           <form className="flex flex-col gap-3 sm:flex-row" method="get"><input type="hidden" name="view" value="chat" /><Input name="chat" defaultValue={query.chat} placeholder={`Pregunta sobre ${ticker} citando fuentes`} minLength={3} required className="h-11 text-base sm:h-9 sm:text-sm" /><Button type="submit" className="min-h-[44px] sm:min-h-0"><Search className="mr-2 h-4 w-4" />Preguntar</Button></form>
         </Panel>
         {response ? (
