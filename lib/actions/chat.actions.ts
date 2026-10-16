@@ -2,7 +2,7 @@
 
 import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 import { jsonBody, researchRequest } from '@/lib/research/client';
-import { AuthorizationError, ValidationError } from '@/lib/types/errors';
+import { AuthorizationError, ExternalAPIError, ValidationError } from '@/lib/types/errors';
 
 type ResearchChatResponse = {
     answer: string;
@@ -31,10 +31,27 @@ export async function chatWithPortfolio(query: string, userId: string) {
     if (question.length < 3) {
         throw new ValidationError('Escribe una pregunta de al menos 3 caracteres', 'query');
     }
-    const response = await researchRequest<ResearchChatResponse>('/api/chat', {
-        method: 'POST',
-        body: jsonBody({ question, scope: 'portfolio', ticker: null }),
-    });
+    let response: ResearchChatResponse;
+    try {
+        response = await researchRequest<ResearchChatResponse>('/api/chat', {
+            method: 'POST',
+            body: jsonBody({ question, scope: 'portfolio', ticker: null }),
+        });
+    } catch (error) {
+        // Return known transport errors as data: Next hides server exception
+        // details in production, so the browser cannot classify a timeout.
+        if (!(error instanceof ExternalAPIError)) throw error;
+        const timedOut = error.originalError instanceof DOMException
+            && error.originalError.name === 'TimeoutError';
+        return {
+            success: false,
+            message: timedOut
+                ? 'La respuesta tarda más de lo normal. Reinténtalo en unos segundos.'
+                : 'El asistente no está disponible ahora. Reinténtalo en unos segundos.',
+            proposedActions: [],
+            citations: [],
+        };
+    }
     return {
         success: !response.blocked,
         message: response.answer,
