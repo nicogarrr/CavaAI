@@ -27,6 +27,7 @@ import { MutationForm } from '@/components/forms/MutationForm';
 import { FileUploadInput } from '@/components/forms/FileUploadInput';
 import { CompanyHeaderQuote } from '@/components/research/CompanyHeaderQuote';
 import { ChangesSinceVisit } from '@/components/research/ChangesSinceVisit';
+import { ChangeImpactCard } from '@/components/research/ChangeImpactCard';
 import { ChatIntentLinks } from '@/components/research/ChatIntentLinks';
 import { NextStepLink } from '@/components/research/NextStepLink';
 import { missingLayerAction, missingLayerLabel } from '@/lib/research/missing-layer-guidance';
@@ -1112,10 +1113,13 @@ export default async function ResearchCompanyPage({ params, searchParams }: Page
         <Panel title="Qué ha cambiado">
           <div className="space-y-3">
             {data.changes.length ? data.changes.map((change) => (
-              <div className="rounded-lg border border-gray-800 p-4" key={change.id}>
-                <div className="flex flex-wrap gap-2"><Badge>{label(change.impact_direction)}</Badge><Badge variant="outline">{label(change.change_type)}</Badge><Badge variant="outline">materialidad {change.materiality_score}</Badge></div>
-                <p className="mt-3 text-sm text-gray-300">{change.summary}</p>
-              </div>
+              <ChangeImpactCard
+                change={change}
+                directionLabel={label(change.impact_direction)}
+                key={change.id}
+                ticker={ticker}
+                typeLabel={label(change.change_type)}
+              />
             )) : (
               <EmptyState
                 action={<EmptyLink href="/research/news">Analiza la última noticia</EmptyLink>}
