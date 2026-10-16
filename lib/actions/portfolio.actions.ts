@@ -791,3 +791,91 @@ export async function getPortfolioForecast(): Promise<PortfolioForecast> {
   // las versiones vigentes de tesis/modelos, que cambian con cada sync.
   return researchRequest<PortfolioForecast>('/api/portfolio/forecast', { fast: true });
 }
+
+// Proyección mecánica de dividendos (idea 5 del listado 0-31: mes a mes, con
+// retención de origen e IRPF). Toda cifra viene del endpoint determinista
+// /api/portfolio/dividends/projection; los null del backend se propagan como
+// null (N/D en pantalla), nunca como 0.
+
+export type DividendProjectionMonth = {
+  month: string;
+  gross_base: number;
+  source_withheld_base: number;
+  covered_tickers: string[];
+  excluded_tickers: string[];
+  note: string | null;
+};
+
+export type DividendProjectionFiscalYear = {
+  gross_base: number | null;
+  irpf_scenario: number | null;
+  source_withheld_foreign: number | null;
+  retencion_a_cuenta_es: number | null;
+  double_tax_deduction: number | null;
+  cuota_pendiente_estimada: number | null;
+  net_scenario: number | null;
+  effective_avg_rate?: number;
+  per_position?: Record<
+    string,
+    {
+      gross_base: number;
+      source_withheld_foreign_base: number;
+      retencion_a_cuenta_base: number;
+      double_tax_deduction_base: number;
+    }
+  >;
+  covered_tickers: string[];
+  excluded_tickers: string[];
+  note: string;
+};
+
+export type DividendProjectionPosition = {
+  ticker: string;
+  currency: string;
+  quantity: number;
+  frequency_last_year: number;
+  gross_native: number;
+  gross_base: number | null;
+  domicile_country: string | null;
+  source_withholding_rate: number | null;
+  source_withheld_base: number | null;
+  months: Record<string, number>;
+};
+
+export type DividendProjectionDeclaredFuture = {
+  ticker: string;
+  ex_date: string;
+  pay_date: string | null;
+  amount_per_share: number;
+  currency: string;
+  label: string;
+  source: string;
+  projection_as_of: string;
+  note: string;
+};
+
+export type PortfolioDividendProjection = {
+  as_of: string;
+  base_currency: string;
+  horizon_months: number;
+  label: string;
+  method: string;
+  fiscal_conditions: string[];
+  sources: Record<string, string>;
+  months: DividendProjectionMonth[];
+  fiscal_by_year: Record<string, DividendProjectionFiscalYear>;
+  positions: DividendProjectionPosition[];
+  declared_future: DividendProjectionDeclaredFuture[];
+  coverage: {
+    with_data: number;
+    sin_datos: string[];
+    fx_missing: string[];
+    unknown_source_withholding: string[];
+  };
+};
+
+export async function getPortfolioDividendProjection(): Promise<PortfolioDividendProjection> {
+  // Sin cache: la proyección depende de la última sincronización IBKR y de
+  // los dividendos ingeridos, que cambian con cada sync.
+  return researchRequest<PortfolioDividendProjection>('/api/portfolio/dividends/projection', { fast: true });
+}
