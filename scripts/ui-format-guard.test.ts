@@ -66,7 +66,7 @@ describe('guardas de UI', () => {
       assert.ok(block.includes('min-w-fit'), 'cada trigger debe conservar su ancho natural');
       assert.ok(block.includes('whitespace-nowrap'), 'cada trigger no debe partir su etiqueta');
     }
-    for (const token of ['w-max', 'justify-start', 'overflow-x-auto']) assert.ok(tabs.includes(token), `ProPicksTabs debe contener ${token}`);
+    assert.ok(!triggers.includes('w-max') && !triggers.includes('min-w-full'), 'la lista no debe crecer hasta el ancho del contenido');
   });
 
   it('ninguna pestaña queda huérfana: cada trigger tiene su TabsContent', () => {
