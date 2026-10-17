@@ -5,7 +5,7 @@ hasta ahora vivian en pantallas distintas:
 
 * resultados (earnings) del calendario publico de NASDAQ,
 * fecha ex-dividendo del mismo calendario,
-* acciones corporativas registradas en CavaAI (splits, etc.) aun no aplicadas.
+* acciones corporativas registradas en GerarAI (splits, etc.) aun no aplicadas.
 
 Cobertura declarada: el calendario de dividendos de NASDAQ se consulta por dia
 y solo devuelve las filas cuya fecha ex-dividendo cae en ese dia, por eso el
@@ -37,7 +37,7 @@ from app.models.entities import Company, CorporateAction, Position
 from app.services.market_refresh_service import _us_listed
 
 SOURCE_NASDAQ = "Calendario publico de NASDAQ"
-SOURCE_CAVAAI = "Accion corporativa registrada en CavaAI"
+SOURCE_CAVAAI = "Accion corporativa registrada en GerarAI"
 
 SOURCE_SEC_RULE = "Regla SEC (Form 10-Q/10-K) aplicada al ultimo informe en EDGAR"
 
