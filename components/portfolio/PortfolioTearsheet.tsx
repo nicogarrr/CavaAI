@@ -26,12 +26,11 @@ export default function PortfolioTearsheet({ tearsheet }: Props) {
         return (
             <Card className="bg-gray-800/50 border-gray-700">
                 <CardHeader className="pb-2">
-                    <CardTitle className="text-lg text-gray-100">Tearsheet</CardTitle>
+                    <CardTitle className="text-lg text-gray-100">Estadísticas de rentabilidad</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <p className="text-sm text-gray-400">
-                        Sin historial suficiente para calcular Sharpe, drawdown o win rate. Importa tu cartera desde
-                        IBKR o registra movimientos para generar snapshots.
+                        No hay al menos dos retornos válidos para calcular Sharpe, caída máxima o porcentaje de días positivos. Las fotos guardadas pueden tener precios o caja de fechas distintas; sincronizar no garantiza una serie completa. No se fabrican valoraciones históricas.
                     </p>
                 </CardContent>
             </Card>
@@ -48,7 +47,7 @@ export default function PortfolioTearsheet({ tearsheet }: Props) {
     return (
         <Card className="bg-gray-800/50 border-gray-700">
             <CardHeader className="pb-2">
-                <CardTitle className="text-lg text-gray-100">Tearsheet</CardTitle>
+                <CardTitle className="text-lg text-gray-100">Estadísticas de rentabilidad</CardTitle>
             </CardHeader>
             <CardContent>
                 <div className="grid grid-cols-3 gap-4">

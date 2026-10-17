@@ -196,6 +196,12 @@ def portfolio_intelligence(
     return PortfolioIntelligenceService().build(db, years=years)
 
 
+@router.get("/data-quality")
+def portfolio_data_quality(db: Session = Depends(get_db)) -> dict:
+    from app.services.portfolio_quality_service import portfolio_quality
+    return portfolio_quality(db)
+
+
 @router.get("/snapshots")
 def portfolio_snapshots(
     start: date | None = None,
