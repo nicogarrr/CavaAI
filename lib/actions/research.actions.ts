@@ -1038,11 +1038,11 @@ export async function askResearchCompanyChat(
   return postJson<ResearchChatResponse>(
     '/api/chat',
     {
-      answer: 'No response available from the research engine.',
+      answer: 'El motor de research no está disponible ahora. Reinténtalo en unos segundos.',
       sections: [],
       sources: [],
       blocked: true,
-      proposed_actions: ['Check backend status'],
+      proposed_actions: ['Comprueba el estado del backend'],
       evidence_suggestions: [],
     },
     {
@@ -1050,6 +1050,7 @@ export async function askResearchCompanyChat(
       scope: 'company',
       question: trimmedQuestion,
       enable_debate: enableDebate,
+      page: { path: `/research/${normalizedTicker}`, label: normalizedTicker, ticker: normalizedTicker },
     },
   );
 }

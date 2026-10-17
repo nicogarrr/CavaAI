@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 
 import { askKnowledge, type LibraryAnswer } from '@/lib/actions/knowledge-chat.actions';
@@ -61,6 +62,8 @@ function Answer({ result }: { result: LibraryAnswer }) {
 }
 
 export function LibraryChat({ scope = 'letters', authors = [] }: { scope?: 'letters' | 'library'; authors?: string[] }) {
+  const pathname = usePathname();
+  const page = pathname ? { path: pathname, label: scope === 'letters' ? 'Cartas de inversores' : 'Biblioteca', ticker: null } : null;
   const [question, setQuestion] = useState('');
   const [author, setAuthor] = useState('');
   const [analysis, setAnalysis] = useState(false);
@@ -74,7 +77,7 @@ export function LibraryChat({ scope = 'letters', authors = [] }: { scope?: 'lett
     const id = Date.now();
     setBusy(true); setQuestion('');
     try {
-      const result = await askKnowledge(trimmed, scope, author, analysis ? 'analisis' : 'respuesta');
+      const result = await askKnowledge(trimmed, scope, author, analysis ? 'analisis' : 'respuesta', page);
       setTurns(prev => [{ id, question: trimmed, analysis, result, error: null }, ...prev]);
     } catch {
       setTurns(prev => [{ id, question: trimmed, analysis, result: null, error: 'No se pudo consultar la biblioteca. Inténtalo de nuevo.' }, ...prev]);

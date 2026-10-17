@@ -17,7 +17,7 @@ interface CitationsListProps {
 /**
  * Renderiza citations[{chunk_id,document,page,locator}] del chat.
  * Acepta citas ya derivadas o los sources crudos del backend (los deriva
- * con la misma regla que lib/actions/chat.actions.ts:toChatCitations).
+ * con la misma regla que lib/chat/citations.ts:toChatCitations).
  */
 export default function CitationsList({ citations, sources }: CitationsListProps) {
     const derived: ChatCitation[] =
