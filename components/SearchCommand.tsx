@@ -309,31 +309,31 @@ export default function SearchCommand({ renderAs = 'button', label = 'Añadir ac
                         <>
                             {/* Secciones navegables: el buscador deja de ser solo
                                 un buscador de tickers y cubre los destinos que no
-                                caben en el menu. */}
-                            {!isSearchMode && (
-                                <>
-                                    {ROUTE_CATALOG.filter((section) => section.items.length > 1).map((section) => (
-                                        <CommandGroup
-                                            key={section.title}
-                                            heading={section.title}
-                                            className="[&_[cmdk-group-heading]]:px-4 [&_[cmdk-group-heading]]:py-1 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-gray-500"
+                                caben en el menu. Se renderizan TAMBIEN al escribir:
+                                antes desaparecian con el primer caracter y cmdk no
+                                podia filtrarlas, asi que "ir a Temas" por teclado
+                                era imposible. */}
+                            {ROUTE_CATALOG.filter((section) => section.items.length > 1).map((section) => (
+                                <CommandGroup
+                                    key={section.title}
+                                    heading={section.title}
+                                    className="[&_[cmdk-group-heading]]:px-4 [&_[cmdk-group-heading]]:py-1 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-gray-500"
+                                >
+                                    {flattenNavItems([section]).map((item) => (
+                                        <CommandItem
+                                            key={item.href}
+                                            value={`ir ${item.label}`}
+                                            keywords={[section.title]}
+                                            onSelect={() => go(item.href)}
+                                            className="flex min-h-11 items-center gap-2 px-4"
                                         >
-                                            {flattenNavItems([section]).map((item) => (
-                                                <CommandItem
-                                                    key={item.href}
-                                                    value={`ir ${item.label}`}
-                                                    onSelect={() => go(item.href)}
-                                                    className="flex min-h-11 items-center gap-2 px-4"
-                                                >
-                                                    {item.icon && <item.icon aria-hidden="true" className="h-4 w-4 text-gray-500" />}
-                                                    <span className="flex-1 truncate">{item.label}</span>
-                                                    <CornerDownLeft aria-hidden="true" className="h-3.5 w-3.5 text-gray-600" />
-                                                </CommandItem>
-                                            ))}
-                                        </CommandGroup>
+                                            {item.icon && <item.icon aria-hidden="true" className="h-4 w-4 text-gray-500" />}
+                                            <span className="flex-1 truncate">{item.label}</span>
+                                            <CornerDownLeft aria-hidden="true" className="h-3.5 w-3.5 text-gray-600" />
+                                        </CommandItem>
                                     ))}
-                                </>
-                            )}
+                                </CommandGroup>
+                            ))}
 
                             {displayStocks?.length === 0 ? (
                                 <div className="search-list-indicator">

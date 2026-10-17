@@ -72,6 +72,13 @@ function buildCrumbs(pathname: string): Crumb[] {
   if (sectionTitle && sectionTitle !== 'Principal') {
     crumbs.push({ label: sectionTitle });
   }
+  // Si el ancla es un hijo declarado (/research/news), su padre (/research)
+  // es un nivel real de la jerarquia: sin el la miga saltaba de la seccion
+  // al hijo ("Analisis > Noticias") y el padre dejaba de ser alcanzable.
+  const anchorParent = parentOf.get(anchor.href);
+  if (anchorParent && anchorParent.href !== anchor.href) {
+    crumbs.push({ href: anchorParent.href, label: anchorParent.label });
+  }
   crumbs.push({ href: anchor.href, label: anchor.label });
 
   // Segmentos restantes: hijo declarado del nav, sub-ruta con nombre o el
