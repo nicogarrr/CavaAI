@@ -184,3 +184,31 @@ def test_general_sin_doctrina_no_inventa_atribuciones():
     )
     # Sin doctrina recuperada, "segun el informe anual" no es verificable: fallback honesto.
     assert result.model == "fallback"
+
+
+def test_memoria_visible_en_prosa_con_marcador():
+    # Regresion CI research-evidence-flow: la pregunta pide recordar un
+    # marcador y hay notas guardadas; la prosa visible debe incluirlas con
+    # naturalidad (sin IDs ni etiquetas), no solo "no tengo hechos".
+    from app.models.entities import MemoryItem
+
+    marker = "e2e-evidence-test-123"
+    db = _db()
+    company = _company(db, ticker="MSFT")
+    db.add(MemoryItem(
+        tenant_id="tenant-test", company_id=company.id, scope="company",
+        memory_type="watch_item", importance=9, status="active",
+        content=f"Track Azure AI demand and the primary evidence marker {marker}.",
+        source_type="user",
+    ))
+    db.commit()
+    response = ChatService(StubProvider())._deterministic_answer(
+        db,
+        f"Remember {marker}; what evidence supports the Azure AI demand claim?",
+        "company", "MSFT",
+    )
+    assert marker in response.answer
+    assert "Anotado en tu memoria:" in response.answer
+    assert "notas guardadas" in response.answer
+    for label in ("HECHO", "HIPOTESIS", "memory_item:", "memory_writeback:"):
+        assert label not in response.answer

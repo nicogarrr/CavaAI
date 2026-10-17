@@ -127,6 +127,8 @@ def _natural_company_answer(
     claims: list[Claim],
     contradiction_claims: list[Claim],
     price_line: str | None,
+    memory_notes: list[str] | None = None,
+    written_memory_content: str | None = None,
 ) -> str:
     """Respuesta visible: prosa natural en castellano.
 
@@ -159,6 +161,18 @@ def _natural_company_answer(
             f"Tengo guardada la tesis v{thesis.version} "
             f"(estado {thesis.status}{rating})."
         )
+    seen_notes: set[str] = set()
+    if written_memory_content:
+        note = _short(written_memory_content, 180)
+        parts.append(f"Anotado en tu memoria: '{note}'.")
+        seen_notes.add(" ".join(note.lower().split()))
+    for content in (memory_notes or [])[:3]:
+        note = _short(content, 180)
+        key = " ".join(note.lower().split())
+        if key in seen_notes:
+            continue
+        seen_notes.add(key)
+        parts.append(f"De tus notas guardadas: '{note}'.")
     if news:
         dated = sorted(
             (event for event in news if event.date),
@@ -840,6 +854,10 @@ class ChatService:
                 claims=claims,
                 contradiction_claims=contradiction_claims,
                 price_line=price_line,
+                memory_notes=[item.item.content for item in retrieved_memory[:3]],
+                written_memory_content=(
+                    written_memory.content if written_memory else None
+                ),
             )
 
             sections = [
