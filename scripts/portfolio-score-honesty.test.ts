@@ -122,3 +122,23 @@ describe('factores de cartera: la decision de pintado, ejecutada', () => {
     assert.equal(formatPercent(percent.value, { fromRatio: false, digits: 2 }), '0,13\u00a0%');
   });
 });
+
+describe('los nombres dicen lo que se calcula', () => {
+  it('no vende retorno acumulado como CAGR 3Y ni bandas como calidad/value fundamentales', () => {
+    const ui = source('components/portfolio/PortfolioScores.tsx');
+    assert.ok(!ui.includes("label: 'CAGR 3Y'"));
+    assert.ok(ui.includes("label: 'Retorno acumulado'"));
+    assert.ok(ui.includes("label: 'Consistencia'"));
+    assert.ok(ui.includes("label: 'Resiliencia'"));
+    assert.ok(ui.includes('no factores fundamentales'));
+    assert.ok(ui.includes('no un CAGR ni una previsión a tres años'));
+    assert.ok(ui.includes('sm:grid-cols-5'));
+  });
+  it('el contrato de analytics no inventa CAGR y exige historial completo para métricas', () => {
+    const actions = source('lib/actions/portfolio.actions.ts');
+    assert.ok(actions.includes('cagr: null, // No annualised return'));
+    assert.ok(!actions.includes('cagr: cumulative'));
+    assert.ok(actions.includes('qualifiedHistoricalMetrics(snapshots, history, sheet?.metrics ?? null)'));
+    assert.ok(actions.includes('cagr3y: cumulative != null'));
+  });
+});

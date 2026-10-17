@@ -4,7 +4,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Shield, TrendingUp, CircleDollarSign, Coins, Percent } from 'lucide-react';
 import { formatNumber, formatPercent } from '@/lib/format';
 import { portfolioScoreDisplay } from '@/lib/portfolio-score-display';
-import { t } from '@/lib/i18n/t';
 
 interface PortfolioScoresProps {
     scores: {
@@ -18,21 +17,21 @@ interface PortfolioScoresProps {
 
 export default function PortfolioScores({ scores }: PortfolioScoresProps) {
     const scoreItems = [
-        { label: t('portfolio.scores.quality'), value: scores.quality, icon: Shield, color: 'text-purple-400' },
-        { label: t('portfolio.scores.growth'), value: scores.growth, icon: TrendingUp, color: 'text-blue-400' },
-        { label: t('portfolio.scores.value'), value: scores.value, icon: CircleDollarSign, color: 'text-green-400' },
-        { label: t('portfolio.scores.dividend'), value: scores.dividend, icon: Coins, color: 'text-yellow-400' },
-        { label: 'CAGR 3Y', value: scores.cagr3y, icon: Percent, color: 'text-teal-400', isPercent: true },
+        { label: 'Consistencia', value: scores.quality, icon: Shield, color: 'text-purple-400' },
+        { label: 'Retorno (banda)', value: scores.growth, icon: TrendingUp, color: 'text-blue-400' },
+        { label: 'Resiliencia', value: scores.value, icon: CircleDollarSign, color: 'text-green-400' },
+        { label: 'Dividendos (banda)', value: scores.dividend, icon: Coins, color: 'text-yellow-400' },
+        { label: 'Retorno acumulado', value: scores.cagr3y, icon: Percent, color: 'text-teal-400', isPercent: true },
     ];
     const missing = scoreItems.filter((item) => item.value == null).map((item) => item.label);
 
     return (
         <Card className="bg-gray-800/50 border-gray-700">
             <CardHeader className="pb-2">
-                <CardTitle className="text-lg text-gray-100">Puntuaciones</CardTitle>
+                <CardTitle className="text-lg text-gray-100">Indicadores históricos</CardTitle>
             </CardHeader>
             <CardContent>
-                <div className="grid grid-cols-5 gap-4">
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
                     {scoreItems.map((item) => {
                         const display = portfolioScoreDisplay(item.value, item.isPercent);
                         return (
@@ -67,6 +66,12 @@ export default function PortfolioScores({ scores }: PortfolioScoresProps) {
                         );
                     })}
                 </div>
+                <p className="mt-3 text-xs text-gray-400">
+                    Bandas de 0 a 100, no factores fundamentales: consistencia combina Sharpe y días positivos;
+                    retorno usa la rentabilidad acumulada; resiliencia usa la caída máxima.
+                    Dividendos usa la rentabilidad declarada de los últimos 12 meses (6% equivale a 100).
+                    El retorno acumulado es del historial disponible, no un CAGR ni una previsión a tres años.
+                </p>
                 {missing.length > 0 && (
                     <p className="mt-3 text-xs text-gray-500">
                         Sin datos para: {missing.join(', ')}. Una puntuación sin datos no es un 0.

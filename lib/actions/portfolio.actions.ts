@@ -1,6 +1,6 @@
 'use server';
 
-import { verifiedPortfolioHistory, type PortfolioSnapshotPoint } from '@/lib/portfolio-history';
+import { qualifiedHistoricalMetrics, verifiedPortfolioHistory, type PortfolioSnapshotPoint } from '@/lib/portfolio-history';
 
 import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 import { jsonBody, researchRequest } from '@/lib/research/client';
@@ -368,7 +368,6 @@ const NO_PORTFOLIO_SCORES = {
 // Obtener métricas reales del portfolio via quantstats-pro
 export async function getPortfolioScores(userId: string): Promise<PortfolioScores> {
     const canonicalUserId = await resolveUserId(userId);
-    const empty = { quality: 0, growth: 0, value: 0, dividend: 0, cagr3y: 0 };
 
     try {
         const summary = await getPortfolioSummary(canonicalUserId);
@@ -415,7 +414,9 @@ export async function getPortfolioScores(userId: string): Promise<PortfolioScore
             // Endpoint unavailable: the yield is unknown, not zero.
             dividendScore = null;
         }
-        const m = sheet?.metrics ?? null;
+        // The tearsheet filters null returns. Never let that bridge incomplete
+        // snapshots or display metrics computed over another unqualified period.
+        const m = qualifiedHistoricalMetrics(snapshots, history, sheet?.metrics ?? null);
         const sharpe = m?.sharpe ?? null;
         const winRate = m?.win_rate ?? null;
         const maxDD = m?.max_drawdown ?? null;
@@ -430,7 +431,7 @@ export async function getPortfolioScores(userId: string): Promise<PortfolioScore
                   ? quality
                   : clamp100(quality * 0.7 + winRate * 100 * 0.3);
         const data: PortfolioAnalyticsResult = {
-            cagr: cumulative,
+            cagr: null, // No annualised return is provided by this endpoint.
             volatility_ann: null,
             max_drawdown: maxDD,
             sharpe,
@@ -453,7 +454,8 @@ export async function getPortfolioScores(userId: string): Promise<PortfolioScore
             growth: data.score_growth ?? null,
             value: data.score_value ?? null,
             dividend: dividendScore,
-            cagr3y: data.cagr != null ? Math.round(data.cagr * 10000) / 100 : null,
+            // Legacy transport key, not a 3Y CAGR. UI explicitly says cumulative.
+            cagr3y: cumulative != null ? Math.round(cumulative * 10000) / 100 : null,
             analytics: data,
             history,
         };
