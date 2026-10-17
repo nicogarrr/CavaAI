@@ -449,7 +449,8 @@ class ChatService:
         page: ChatPageContext | None = None,
     ) -> ChatResponse:
         # Contexto de página explícito ("Viendo X"): el ticker de la página se
-        # resuelve en servidor dentro del tenant; el eco vuelve al cliente
+        # resuelve en servidor en el catálogo global; el contenido privado
+        # posterior sigue aislado por tenant. El eco vuelve al cliente
         # para la pastilla. Prioridad: ticker explícito > mención en el texto
         # > ticker de la página.
         page_context = resolve_page_context(db, page)

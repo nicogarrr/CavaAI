@@ -104,3 +104,19 @@ def test_la_mencion_explicita_gana_al_ticker_de_la_pagina(db):
         ChatService(_LLMCaido()).answer(db, "tesis de MSFT?", "portfolio", None, use_jev=False, page=page)
     )
     assert "MSFT" in response.answer
+
+
+def test_library_page_context_keeps_model_until_resolved(db, monkeypatch):
+    from app.api.routes import knowledge
+    from app.services import knowledge_chat
+    async def fake_ask(*args, **kwargs):
+        assert 'page' not in kwargs
+        return {'answer': 'Respuesta sintética', 'sources': []}
+    monkeypatch.setattr(knowledge_chat, 'ask_library', fake_ask)
+    payload=knowledge.LibraryQuestion(question='Pregunta sintética', page=ChatPageContext(path='/research/ASTS',ticker='ASTS'))
+    # No worker thread touches this SQLite session: fake bridge executes locally.
+    async def immediate(thunk): return thunk()
+    monkeypatch.setattr(knowledge, 'run_in_threadpool', immediate)
+    result=asyncio.run(knowledge.chat_library(payload,db))
+    assert result['context']['ticker']=='ASTS'
+    assert result['context']['company_resolved'] is True

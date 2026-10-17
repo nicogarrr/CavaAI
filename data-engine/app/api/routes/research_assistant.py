@@ -88,7 +88,7 @@ class GuideContextResponse(BaseModel):
 @router.post("/assistant", response_model=AssistantResponse)
 async def research_assistant(payload: AssistantRequest, db: Session = Depends(get_db)) -> AssistantResponse:
     # Contexto de página explícito: en modo explore el ticker de la página
-    # (resuelto en servidor, acotado al tenant) completa la pregunta sin
+    # (resuelto en catálogo; contenido privado acotado al tenant) completa la pregunta sin
     # ticker. El modo guía sigue exigiendo ticker explícito.
     page_context = resolve_page_context(db, payload.page)
     if payload.mode == "explore" and not payload.ticker and page_context and page_context.company:

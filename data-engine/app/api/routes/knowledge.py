@@ -81,7 +81,8 @@ async def chat_library(payload: LibraryQuestion, db: Session = Depends(get_db)) 
     from app.services.knowledge_chat import ask_library
 
     fields = payload.model_dump()
-    page_context = resolve_page_context(db, fields.pop("page", None))
+    page_context = resolve_page_context(db, payload.page)
+    fields.pop("page", None)
     result = await run_in_threadpool(
         lambda: run_from_any_context(ask_library(db, **fields))
     )

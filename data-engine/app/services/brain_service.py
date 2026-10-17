@@ -4,9 +4,9 @@ Comparten este servicio ``/api/chat``, ``/api/knowledge/chat`` y
 ``/api/research/assistant``:
 
 - Contexto de página explícito (la pastilla "Viendo X" del cliente): el
-  ticker viaja como texto y la Company se resuelve EN SERVIDOR dentro del
-  tenant de la sesión (las consultas SQLAlchemy ya van acotadas por
-  ``tenant_id``); el cliente nunca manda IDs de base de datos.
+  ticker viaja como texto y la Company se resuelve EN SERVIDOR contra el catálogo global; las consultas
+  de contenido privado posteriores van acotadas por ``tenant_id``. El
+  cliente nunca manda IDs de base de datos.
 - Marca y voz: saludos y rutas degradadas en castellano natural, siempre
   con la marca GerarAI.
 - Solo lectura: el cerebro no escribe memoria ni estado desde el chat
@@ -59,7 +59,7 @@ class ResolvedPageContext:
     """Contexto de página ya resuelto en servidor.
 
     ``company`` es None cuando el ticker de la página no existe en el master
-    del tenant: el eco al cliente lo dice (la pastilla muestra la etiqueta,
+    global: el eco al cliente lo dice (la pastilla muestra la etiqueta,
     no una empresa inventada).
     """
 
@@ -82,9 +82,10 @@ def resolve_page_context(db: Session, page) -> ResolvedPageContext | None:
     """Resuelve el contexto de página de la petición contra el master.
 
     ``page`` es el esquema ``ChatPageContext`` (o None). La resolución del
-    ticker usa ``resolve_company``, que hereda el aislamiento de tenant de la
-    sesión: una página con ticker de otro tenant o inexistente no autoriza
-    ningún dato.
+    ticker usa ``resolve_company`` contra el catálogo global Company. Esto
+    no concede acceso a contenido privado: tesis, posiciones y memorias
+    se consultan después con la sesión tenant-scoped. Un ticker inexistente
+    no crea una empresa ni autoriza datos.
     """
     if page is None:
         return None
