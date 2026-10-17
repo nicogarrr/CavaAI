@@ -12,14 +12,14 @@ import PublicMobileNav from '@/components/PublicMobileNav';
 import { isPublicSignUpOpen } from '@/lib/config/product';
 
 /**
- * Shell de las paginas publicas: landing, metodologia, terminos y ayuda.
+ * Shell de las paginas publicas: landing, metodologia y ayuda.
  *
  * Es un grupo de rutas aparte de `(root)` porque la exigibilidad cambia:
  * `(root)` exige sesion (`requireAuthenticatedUser`) y por eso un visitante sin
- * cuenta no podia ni leer los terminos.
+ * cuenta no podia ni leer la metodologia.
  *
  * Aqui la sesion NO expulsa a nadie: un usuario que ya ha entrado debe poder
- * leer la ayuda y los terminos desde el menu de la app sin que le boten a `/`.
+ * leer la ayuda y la metodologia desde el menu de la app sin que le boten a `/`.
  * Solo cambia el CTA de la cabecera ("Iniciar sesion" <-> "Ir a mi panel").
  */
 
@@ -30,7 +30,7 @@ export const revalidate = 0;
 /**
  * La raiz declara `robots: { index: false }` porque la app autenticada es una
  * herramienta privada. Los metadatos anidados reemplazan campos, asi que
- * declarar aqui `robots` devuelve el indice SOLO a este arbol: `/`, `/terms`,
+ * declarar aqui `robots` devuelve el indice SOLO a este arbol: `/`,
  * `/metodologia` y `/help`. El resto de la app sigue heredando el noindex de
  * `app/layout.tsx`.
  */
@@ -40,7 +40,6 @@ export const metadata: Metadata = {
 
 const legalLinks = [
     { href: '/metodologia', label: 'Metodología' },
-    { href: '/terms', label: 'Términos' },
     { href: '/help', label: 'Ayuda' },
 ];
 
@@ -48,7 +47,7 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
     // Mismo criterio que `app/(auth)/layout.tsx`: en los e2e con
     // E2E_AUTH_BYPASS se acepta que no haya sesion real. El `.catch` importa:
     // si Mongo no responde, estas paginas deben seguir leyendose. Una caida de
-    // base de datos no puede convertir los terminos legales en un 500.
+    // base de datos no puede convertir estas paginas en un 500.
     const browserTestBypass = process.env.E2E_AUTH_BYPASS === '1' && process.env.NODE_ENV !== 'production';
     let signedIn = false;
     if (!browserTestBypass) {

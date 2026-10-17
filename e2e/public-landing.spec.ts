@@ -7,7 +7,7 @@ const runUiE2E = process.env.E2E_UI_RUN === "1";
 // flujo real de visitante anónimo (con bypass la cabecera muestra "Ir a mi
 // panel" en vez de "Iniciar sesión" y no hay rebote a /sign-in). Lo que sí
 // verifica: la landing renderiza sin error de aplicación, los CTAs presentes
-// navegan a un destino válido y /metodologia, /terms y /help cargan.
+// navegan a un destino válido y /metodologia y /help cargan.
 test.describe("landing pública (harness E2E con bypass de auth)", () => {
   test.skip(!runUiE2E, "Set E2E_UI_RUN=1 to run browser tests.");
 
@@ -36,8 +36,8 @@ test.describe("landing pública (harness E2E con bypass de auth)", () => {
     await expect(page).toHaveURL(/\/(inicio|sign-in)/);
   });
 
-  test("metodología, términos y ayuda cargan en el harness", async ({ page }) => {
-    for (const path of ["/metodologia", "/terms", "/help"]) {
+  test("metodología y ayuda cargan en el harness", async ({ page }) => {
+    for (const path of ["/metodologia", "/help"]) {
       await page.goto(path);
       await expect(page.getByRole("heading").first()).toBeVisible();
       await expect(
@@ -49,7 +49,7 @@ test.describe("landing pública (harness E2E con bypass de auth)", () => {
 
   test("los enlaces del footer público apuntan a rutas existentes", async ({ page }) => {
     await page.goto("/");
-    for (const name of ["Términos", "Metodología"]) {
+    for (const name of ["Metodología"]) {
       const link = page.getByRole("link", { name }).first();
       await expect(link).toBeVisible();
     }

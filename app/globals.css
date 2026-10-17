@@ -312,7 +312,7 @@
     }
 
     /*
-     * Shell publico (landing, metodologia, terminos, ayuda). Vive en el
+     * Shell publico (landing, metodologia, ayuda). Vive en el
      * layout `app/(public)/layout.tsx`, sin el sidebar de la app: cabecera
      * pegajosa de la misma altura que la autenticada (--header-h, para que
      * scroll-padding-top siga viendo la cabecera correcta), contenido y pie con
