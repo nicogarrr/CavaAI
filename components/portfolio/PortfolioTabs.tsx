@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import dynamic from 'next/dynamic';
+import PortfolioDataNotice from '@/components/portfolio/PortfolioDataNotice';
 import PortfolioSummary from '@/components/portfolio/PortfolioSummary';
 import { hasCostBasis } from '@/lib/portfolio-insight';
 import PortfolioHoldings from '@/components/portfolio/PortfolioHoldings';
@@ -215,6 +216,7 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
                     {/* Métricas en fila */}
                     <div className="mb-6">
                         <PortfolioSummary summary={summary} />
+                        <PortfolioDataNotice quality={summary.quality} />
                     </div>
 
                     {/* Grid: gráfico de rendimiento + distribución */}
@@ -222,7 +224,7 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
                         {/* Panel Izquierdo: Gráfico de Rendimiento */}
                         <div className="bg-[#111111] border border-gray-800 rounded-2xl p-4 sm:p-6">
                             <div className="flex flex-col gap-3 mb-4 sm:flex-row sm:items-center sm:justify-between">
-                                <h3 className="text-gray-400 text-sm font-medium">Rendimiento Total</h3>
+                                <h3 className="text-gray-400 text-sm font-medium">Valor de la cartera</h3>
                                 <div className="flex flex-wrap gap-1">
                                     {['1S', '1M', '3M', '6M', 'YTD', '1A', 'Todo'].map((period) => (
                                         <button
@@ -249,7 +251,7 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
                                     </p>
                                 ) : !hasCostBasis(summary) ? (
                                     <p className="text-sm text-gray-500">
-                                        Rendimiento N/D: falta la base de coste de tus posiciones.
+                                        Rentabilidad no disponible: falta una base de coste válida. La cifra superior es el valor neto de la cartera, no el beneficio del periodo seleccionado.
                                     </p>
                                 ) : (
                                 <p className={`text-sm flex items-center gap-1 ${summary.totalGain >= 0 ? 'text-green-400' : 'text-red-400'}`}>
@@ -266,7 +268,7 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
                             <div className="h-[200px]">
                                 {chartData.length === 0 ? (
                                     <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-gray-800 text-sm text-gray-500">
-                                        El historial aparecerá cuando existan snapshots reales de la cartera.
+                                        No hay una serie continua de valoraciones completas con retornos verificables. Las fotos incompletas no se dibujan como pérdidas ni se rellenan con datos inventados.
                                     </div>
                                 ) : (
                                 <PortfolioNavChart data={chartData} positive={summary.totalGain >= 0} currency={summary.baseCurrency} />
