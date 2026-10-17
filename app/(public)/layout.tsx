@@ -124,7 +124,7 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
                             .
                         </p>
                     </div>
-                    <nav aria-label="Enlaces legales" className="flex flex-col items-start gap-2 sm:items-end">
+                    <nav aria-label="Enlaces del pie" className="flex flex-col items-start gap-2 sm:items-end">
                         {legalLinks.map((link) => (
                             <Link key={link.href} href={link.href} className="public-footer-link">
                                 {link.label}

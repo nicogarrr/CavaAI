@@ -110,7 +110,7 @@ export default function HelpTabs() {
           <span className="text-gray-100">exportación</span>{' '}
           describen módulos del espacio de trabajo y{' '}
           <strong className="text-gray-100">requieren iniciar sesión</strong>. Esta página de ayuda, la
-          metodología y los términos se leen sin cuenta.
+          metodología se leen sin cuenta.
         </p>
       </div>
 

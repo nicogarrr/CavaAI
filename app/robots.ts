@@ -4,7 +4,7 @@ import { siteUrl } from '@/lib/config/site';
 
 /**
  * Público y privado comparten origen, así que `Disallow: /` dejaría fuera
- * también la landing y los textos legales. Al revés: se permite el árbol
+ * también la landing y las páginas públicas. Al revés: se permite el árbol
  * público de `app/(public)` y se bloquean explícitamente las rutas
  * autenticadas, que ya devuelven un muro de sesión en lugar de contenido.
  *
