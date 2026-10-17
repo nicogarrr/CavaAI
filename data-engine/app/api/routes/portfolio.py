@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.database import get_db
 from app.models import (
     CashBalance,
@@ -661,8 +662,20 @@ def cash(db: Session = Depends(get_db)) -> list[dict]:
     ]
 
 
+def _require_ibkr_owner(db: Session):
+    """Global Flex credentials must never be usable from another tenant."""
+    settings = get_settings()
+    owner = settings.ibkr_flex_tenant_id
+    if type(owner) is not int or owner <= 0 or type(db.info.get("tenant_id")) is not int or db.info["tenant_id"] != owner:
+        raise HTTPException(status_code=403, detail="La importación Flex no está habilitada para esta cuenta.")
+    if not (settings.ibkr_flex_account_id or "").strip():
+        raise HTTPException(status_code=503, detail="Falta configurar la cuenta IBKR esperada.")
+    return settings
+
+
 @router.post("/import/ibkr")
 async def import_ibkr(db: Session = Depends(get_db)) -> dict:
+    settings = _require_ibkr_owner(db)
     client = IBKRFlexClient()
     if not client.configured():
         return {
@@ -671,15 +684,22 @@ async def import_ibkr(db: Session = Depends(get_db)) -> dict:
         }
     xml_text = await client.fetch_latest_xml()
     try:
-        return IBKRImportService().import_flex_xml(db, xml_text)
+        return IBKRImportService().import_flex_xml(
+            db, xml_text, expected_account_id=settings.ibkr_flex_account_id, max_statement_age_days=5,
+        )
     except IBKRPnlNotReadyError as exc:
         raise HTTPException(status_code=503, detail=str(exc), headers={"Retry-After": "3600"}) from exc
+    except IBKRImportError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/import/ibkr/xml")
 def import_ibkr_xml(payload: IBKRXmlImportRequest, db: Session = Depends(get_db)) -> dict:
+    settings = _require_ibkr_owner(db)
     try:
-        return IBKRImportService().import_flex_xml(db, payload.xml)
+        return IBKRImportService().import_flex_xml(
+            db, payload.xml, expected_account_id=settings.ibkr_flex_account_id, max_statement_age_days=5,
+        )
     except IBKRImportError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

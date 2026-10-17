@@ -17,8 +17,10 @@ type ImportCounts = {
     status: string;
     rows_skipped?: number;
     row_errors?: string[];
+    identity_warning?: string | null;
     positions_imported?: unknown;
     trades_imported?: unknown;
+    duplicate_trades?: unknown;
     dividends_imported?: unknown;
     fees_imported?: unknown;
     cash_imported?: unknown;
@@ -49,6 +51,10 @@ function describeResult(result: ImportCounts): string {
         const trades = num(result.trades_imported) ?? 0;
         parts.push(`IBKR CSV: ${count(trades)} operaciones importadas`);
     }
+    const duplicates = num(result.duplicate_trades) ?? 0;
+    if (duplicates > 0) {
+        parts.push(`${count(duplicates)} operaciones ya importadas`);
+    }
     if (result.rows_skipped) {
         parts.push(`${count(result.rows_skipped)} filas omitidas`);
     }
@@ -72,6 +78,7 @@ export default function ImportIBKRButton({ userId }: ImportIBKRButtonProps) {
             }
 
             toast.success(describeResult(result));
+            if (result.identity_warning) toast.warning(result.identity_warning);
             if (result.row_errors?.length) {
                 toast.warning(`Filas con avisos:\n${result.row_errors.slice(0, 3).join('\n')}`);
             }
@@ -100,6 +107,7 @@ export default function ImportIBKRButton({ userId }: ImportIBKRButtonProps) {
                 return;
             }
             toast.success(describeResult(result));
+            if (result.identity_warning) toast.warning(result.identity_warning);
             if (result.row_errors?.length) {
                 toast.warning(
                     `${formatNumber(result.row_errors.length, { maximumFractionDigits: 0 })} filas con avisos. Primera: ${result.row_errors[0]}`,

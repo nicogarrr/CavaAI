@@ -640,6 +640,8 @@ export type IBKRImportResult = {
     cash_transactions_imported: number;
     rows_skipped?: number;
     row_errors?: string[];
+    duplicate_trades?: number;
+    identity_warning?: string | null;
     portfolio_snapshot_id: number | null;
 };
 
