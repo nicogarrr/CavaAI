@@ -88,7 +88,7 @@ test("F339: el FAB queda oculto en reposo mientras la leyenda cruza su zona", as
   await page.goto("/portfolio");
   const legend = page.locator("#portfolio-allocation-legend");
   await expect(legend).toBeVisible({ timeout: 60_000 });
-  const fab = page.locator('button[aria-label="Abrir asistente de cartera"]');
+  const fab = page.locator('button[aria-label="Abrir el cerebro"]');
   await expect(fab).toBeVisible();
 
   // A chart loaded dynamically can shift the legend after the first scroll.
