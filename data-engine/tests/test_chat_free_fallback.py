@@ -351,28 +351,36 @@ def _chain(groq_value, gemini_value):
 
 
 @run_async
-async def test_chain_valid_gemini_never_calls_groq_and_uses_pinned_model_and_prompt():
-    from app.llm.chat_provider import GEMINI_MODEL
-    p, g, m = _chain(response("ok groq", model=GROQ_MODEL, provider="groq"), response("ok gemini", model=GEMINI_MODEL, provider="gemini"))
+async def test_chain_valid_groq_never_calls_gemini_and_uses_pinned_model_and_prompt():
+    p, g, m = _chain(response("ok groq", model=GROQ_MODEL, provider="groq"), response("ok gemini", model="x", provider="gemini"))
     out = await ChatFallbackProvider(p, g, backup2=m).complete(LLMRequest([Message("user", "hola")], task="chat", model="deepseek-v4.1-flash-free"))
-    assert out.provider == "gemini" and not g.calls
-    assert m.calls[0].model == GEMINI_MODEL and "prosa plana" in m.calls[0].messages[-1].content
+    assert out.provider == "groq" and not m.calls
+    assert g.calls[0].model == GROQ_MODEL and "prosa plana" in g.calls[0].messages[-1].content
 
 
 @run_async
-async def test_chain_gemini_failure_tries_38_then_groq_with_pinned_models():
+async def test_chain_groq_failure_tries_35_then_38_with_pinned_models_and_prompt():
     from app.llm.chat_provider import GEMINI_MODELS
-    p, g, m = _chain(response("ok groq", model=GROQ_MODEL, provider="groq"), ProviderHTTPError("gemini", 503))
-    out = await ChatFallbackProvider(p, g, backup2=m).complete(LLMRequest([Message("user", "hola")], task="chat"))
-    assert out.provider == "groq" and g.calls[0].model == GROQ_MODEL
+    p, g, m = _chain(ProviderHTTPError("groq", 429), ProviderHTTPError("gemini", 429))
+    with pytest.raises(ProviderHTTPError):
+        await ChatFallbackProvider(p, g, backup2=m).complete(LLMRequest([Message("user", "hola")], task="chat"))
+    assert len(g.calls) == 1 and g.calls[0].model == GROQ_MODEL
     assert [c.model for c in m.calls] == list(GEMINI_MODELS) and GEMINI_MODELS == ("gemini-3.5-flash-lite", "gemini-3.8-flash")
+    assert all("prosa plana" in c.messages[-1].content for c in m.calls)
 
 
 @run_async
-async def test_chain_35_rejected_then_38_accepted_never_reaches_groq():
+async def test_chain_groq_429_then_35_valid_never_reaches_38():
+    from app.llm.chat_provider import GEMINI_MODEL
+    p, g, m = _chain(ProviderHTTPError("groq", 429), response("ok gemini", model=GEMINI_MODEL, provider="gemini"))
+    out = await ChatFallbackProvider(p, g, backup2=m).complete(LLMRequest([Message("user", "hola")], task="chat"))
+    assert out.provider == "gemini" and [c.model for c in m.calls] == [GEMINI_MODEL]
+
+
+@run_async
+async def test_chain_groq_and_35_rejected_then_38_accepted():
     from app.llm.chat_provider import GEMINI_MODEL, GEMINI_MODEL_2
-    p, g, m = _chain(response("groq", model=GROQ_MODEL, provider="groq"), None)
-    seen = []
+    p, g, m = _chain(response("MALA", model=GROQ_MODEL, provider="groq"), None)
     class Seq(Fake):
         async def complete(self, request):
             self.calls.append(request)
@@ -382,18 +390,18 @@ async def test_chain_35_rejected_then_38_accepted_never_reaches_groq():
         if resp.text != "BUENA":
             raise ValueError("rejected")
     out = await ChatFallbackProvider(p, g, backup2=m, validator=only_good).complete(LLMRequest([Message("user", "hola")], task="chat"))
-    assert out.text == "BUENA" and out.model == GEMINI_MODEL_2 and not g.calls
+    assert out.text == "BUENA" and out.model == GEMINI_MODEL_2 and len(g.calls) == 1 and len(m.calls) == 2
 
 
 @run_async
-async def test_chain_gemini_rejected_by_validator_falls_to_groq():
+async def test_chain_groq_rejected_by_validator_falls_to_gemini():
     from app.llm.chat_provider import GEMINI_MODEL
-    p, g, m = _chain(response("BUENA", model=GROQ_MODEL, provider="groq"), response("MALA", model=GEMINI_MODEL, provider="gemini"))
+    p, g, m = _chain(response("MALA", model=GROQ_MODEL, provider="groq"), response("BUENA", model=GEMINI_MODEL, provider="gemini"))
     def only_good(resp):
         if resp.text != "BUENA":
             raise ValueError("rejected")
     out = await ChatFallbackProvider(p, g, backup2=m, validator=only_good).complete(LLMRequest([Message("user", "hola")], task="chat"))
-    assert out.text == "BUENA" and len(m.calls) == 2 and len(g.calls) == 1
+    assert out.text == "BUENA" and len(g.calls) == 1 and len(m.calls) == 1
 
 
 @run_async

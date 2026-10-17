@@ -382,7 +382,7 @@ class Settings(BaseSettings):
     groq_chat_fallback_enabled: bool = False
     groq_free_plan_confirmed: bool = False
     groq_zdr_confirmed: bool = False
-    # Respaldo del chat ANTES de Groq (gemini-3.5-flash-lite, luego gemini-3.8-flash;
+    # Respaldo del chat DESPUES de Groq (gemini-3.5-flash-lite, luego gemini-3.8-flash;
     # usa gemini_api_key de mas abajo). Fail-closed: requiere confirmar que la clave
     # es de un proyecto SIN facturacion (tier gratuito).
     gemini_chat_fallback_enabled: bool = False
