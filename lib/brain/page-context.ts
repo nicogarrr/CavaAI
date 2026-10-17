@@ -2,7 +2,8 @@
  * Contexto de página explícito para el cerebro global (pastilla "Viendo X").
  *
  * El ticker viaja como TEXTO: la Company se resuelve en el backend dentro
- * del tenant de la sesión. El cliente nunca manda IDs de base de datos.
+ * del catálogo global; el contenido privado posterior se aísla por tenant.
+ * El cliente nunca manda IDs de base de datos.
  */
 export type BrainPageContext = {
     path: string;

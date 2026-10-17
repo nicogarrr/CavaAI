@@ -183,10 +183,10 @@ export function GlobalBrain({ userId }: GlobalBrainProps) {
                 aria-label="Abrir el cerebro"
                 // `viewportFit: "cover"` + barra de inicio de iOS: sin el inset la
                 // burbuja queda bajo la barra en modo standalone.
-                className={`fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] md:bottom-[calc(1.5rem+env(safe-area-inset-bottom))] right-[calc(1.5rem+env(safe-area-inset-right))] h-14 w-14 rounded-full shadow-xl bg-indigo-600 hover:bg-indigo-500 text-white z-50 animate-in zoom-in duration-300 transition-all ${fabHidden ? 'translate-y-24 opacity-0 pointer-events-none md:translate-y-0 md:opacity-100 md:pointer-events-auto' : ''}`}
+                className={`fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] md:bottom-[calc(1.5rem+env(safe-area-inset-bottom))] right-[calc(1.5rem+env(safe-area-inset-right))] h-14 w-14 p-0 rounded-full shadow-xl bg-teal-600 hover:bg-teal-500 text-white z-50 animate-in zoom-in duration-300 transition-all ${fabHidden ? 'translate-y-24 opacity-0 pointer-events-none md:translate-y-0 md:opacity-100 md:pointer-events-auto' : ''}`}
             >
-                <span className="grid h-[42px] w-[42px] place-items-center rounded-full bg-white">
-                    <BrainGlassesIcon className="h-[30px] w-[30px]" />
+                <span className="grid h-[50px] w-[50px] shrink-0 place-items-center rounded-full bg-white">
+                    <BrainGlassesIcon className="h-[44px] w-[44px]" />
                 </span>
             </Button>
         );
