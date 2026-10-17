@@ -531,31 +531,64 @@ def test_manual_import_creates_document_chunks_and_transcript():
         db.close()
 
 
-def test_ibkr_xml_import_endpoint_ingests_positions_cash_and_trades():
+def test_ibkr_xml_import_endpoint_ingests_positions_cash_and_trades(monkeypatch):
+    from datetime import date
+    from types import SimpleNamespace
+
+    from app.api.routes import portfolio as route
+    from app.core.database import get_db
+    from app.models import Tenant
+
     init_db()
-    client = TestClient(main.app)
-    xml = """
-    <FlexQueryResponse>
+    with SessionLocal() as setup:
+        tenant = Tenant(external_id=f"ibkr-http-{uuid4().hex}", name="Isolated IBKR HTTP")
+        setup.add(tenant)
+        setup.commit()
+        owner_id = tenant.id
+    configured = SimpleNamespace(ibkr_flex_tenant_id=owner_id, ibkr_flex_account_id="U-HTTP-TEST")
+    monkeypatch.setattr(route, "get_settings", lambda: configured)
+
+    def owner_db():
+        with SessionLocal() as db:
+            db.info["tenant_id"] = owner_id
+            yield db
+
+    previous = main.app.dependency_overrides.get(get_db)
+    main.app.dependency_overrides[get_db] = owner_db
+    day = date.today().isoformat()
+    xml = f"""
+    <FlexQueryResponse><FlexStatements><FlexStatement accountId="U-HTTP-TEST" toDate="{day}">
       <OpenPositions>
-        <OpenPosition symbol="AAPL" position="2" markPrice="200" positionValue="400" costBasisPrice="150" currency="USD" reportDate="2026-01-02" fifoPnlUnrealized="100" />
+        <OpenPosition accountId="U-HTTP-TEST" symbol="AAPL" position="2" markPrice="200" positionValue="400" costBasisPrice="150" currency="USD" reportDate="{day}" fifoPnlUnrealized="100" />
       </OpenPositions>
       <CashReports>
-        <CashReport currency="USD" endingCash="1234.56" settledCash="1200" />
+        <CashReport accountId="U-HTTP-TEST" currency="USD" endingCash="1234.56" settledCash="1200" />
       </CashReports>
       <Trades>
-        <Trade tradeID="test-trade-1" symbol="AAPL" buySell="BUY" quantity="2" tradePrice="150" ibCommission="-1" currency="USD" tradeDate="2026-01-02" />
+        <Trade accountId="U-HTTP-TEST" tradeID="test-trade-1" symbol="AAPL" buySell="BUY" quantity="2" tradePrice="150" ibCommission="-1" currency="USD" tradeDate="{day}" />
       </Trades>
-    </FlexQueryResponse>
+    </FlexStatement></FlexStatements></FlexQueryResponse>
     """
-
-    response = client.post("/api/portfolio/import/ibkr/xml", json={"xml": xml})
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["status"] == "imported"
-    assert payload["positions_imported"] == 1
-    assert payload["cash_imported"] == 1
-    assert payload["trades_imported"] in {0, 1}
+    try:
+        client = TestClient(main.app)
+        response = client.post("/api/portfolio/import/ibkr/xml", json={"xml": xml})
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["status"] == "imported"
+        assert payload["positions_imported"] == 1
+        assert payload["cash_imported"] == 1
+        assert payload["trades_imported"] == 1
+        replay = client.post("/api/portfolio/import/ibkr/xml", json={"xml": xml})
+        assert replay.status_code == 200
+        assert replay.json()["trades_imported"] == 0
+        configured.ibkr_flex_tenant_id = owner_id + 1
+        for endpoint, body in [("/api/portfolio/import/ibkr/xml", {"xml": xml}), ("/api/portfolio/import/ibkr", None)]:
+            assert client.post(endpoint, json=body).status_code == 403
+    finally:
+        if previous is None:
+            main.app.dependency_overrides.pop(get_db, None)
+        else:
+            main.app.dependency_overrides[get_db] = previous
 
 
 def test_fmp_refresh_normalizes_facts_and_valuation_uses_them(monkeypatch):
