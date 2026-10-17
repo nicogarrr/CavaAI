@@ -16,8 +16,8 @@ MinIO esta archivado (abril 2026). Decision: [[cavaai-minio-garage]] (compilar M
 2. **Copia verificada** (desde el contenedor backend, que ya llega a ambos por la red de compose):
    ```
    docker compose -p cavaai -f docker-compose.prod.yml exec \
-     -e SRC_ACCESS_KEY=$MINIO_ROOT_USER -e SRC_SECRET_KEY=$MINIO_ROOT_PASSWORD \
-     -e DST_ACCESS_KEY=$GARAGE_ACCESS_KEY -e DST_SECRET_KEY=$GARAGE_SECRET_KEY backend \
+     -e "SRC_ACCESS_KEY=$MINIO_ROOT_USER" -e "SRC_SECRET_KEY=$MINIO_ROOT_PASSWORD" \
+     -e "DST_ACCESS_KEY=$GARAGE_ACCESS_KEY" -e "DST_SECRET_KEY=$GARAGE_SECRET_KEY" backend \
      python -m scripts.storage.migrate_minio_to_garage \
        --src-endpoint minio:9000 --dst-endpoint garage:3900 --dst-region garage \
        --bucket research --report /tmp/migracion.json
@@ -33,7 +33,7 @@ MinIO esta archivado (abril 2026). Decision: [[cavaai-minio-garage]] (compilar M
 4. **Rollback.** Tras el corte los productores escriben en Garage, asi que el orden es:
    1. Parada total de productores (la misma lista de la fase 3), antes de tocar nada mas, y mantenerlos parados hasta el final.
    2. Copia inversa verificada: lo escrito en Garage desde el corte se devuelve a MinIO con el mismo script y origen/destino invertidos (`--src-endpoint garage:3900 --src-region garage`, `--dst-endpoint minio:9000 --dst-region ""`, porque la region por defecto del script es `garage`), exigiendo `--verify-only` con 0 errores.
-   3. Comentar de nuevo las 4 variables `OBJECT_STORAGE_*` (recargando las variables exportadas) y recrear los servicios: vuelven a MinIO, que desde el corte no recibia escrituras y ya tiene lo posterior via la copia inversa.
+   3. Comentar de nuevo las 4 variables `OBJECT_STORAGE_*` en `.env.production`, hacer `unset OBJECT_STORAGE_ENDPOINT OBJECT_STORAGE_ACCESS_KEY OBJECT_STORAGE_SECRET_KEY OBJECT_STORAGE_REGION` **antes** de recargar la shell (`set -a; . ./.env.production; set +a` no borra variables ya exportadas: sin el `unset`, compose seguiria interpolando los valores de Garage) y confirmar con el preflight del runbook que el endpoint efectivo de todos los servicios es `minio:9000`. Solo entonces recrear los servicios: vuelven a MinIO, que desde el corte no recibia escrituras y ya tiene lo posterior via la copia inversa.
    No se borra nada en Garage: queda para diagnosticar. El paso a paso esta en el runbook del piloto.
 5. **Cierre (otro PR, tras >= 7 dias estables + backup verificado desde Garage):** retirar `minio` y `docker/minio`, ajustar `backup_*`/`verify_restore` y los tests de contrato. No se borra el volumen `cavaai-prod-minio` en el mismo paso.
 

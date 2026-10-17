@@ -88,16 +88,16 @@ siguen comentadas. Garage aun no recibe trafico de la aplicacion.
 ```bash
 # Primero en seco: no escribe nada, solo informa (bytes_copied saldra 0).
 docker compose -p cavaai -f docker-compose.prod.yml exec \
-  -e SRC_ACCESS_KEY=$MINIO_ROOT_USER -e SRC_SECRET_KEY=$MINIO_ROOT_PASSWORD \
-  -e DST_ACCESS_KEY=$GARAGE_ACCESS_KEY -e DST_SECRET_KEY=$GARAGE_SECRET_KEY backend \
+  -e "SRC_ACCESS_KEY=$MINIO_ROOT_USER" -e "SRC_SECRET_KEY=$MINIO_ROOT_PASSWORD" \
+  -e "DST_ACCESS_KEY=$GARAGE_ACCESS_KEY" -e "DST_SECRET_KEY=$GARAGE_SECRET_KEY" backend \
   python -m scripts.storage.migrate_minio_to_garage \
     --src-endpoint minio:9000 --dst-endpoint garage:3900 --dst-region garage \
     --bucket research --dry-run --report /tmp/migracion-dryrun.json
 
 # Copia real. Idempotente: se puede repetir hasta que el informe salga limpio.
 docker compose -p cavaai -f docker-compose.prod.yml exec \
-  -e SRC_ACCESS_KEY=$MINIO_ROOT_USER -e SRC_SECRET_KEY=$MINIO_ROOT_PASSWORD \
-  -e DST_ACCESS_KEY=$GARAGE_ACCESS_KEY -e DST_SECRET_KEY=$GARAGE_SECRET_KEY backend \
+  -e "SRC_ACCESS_KEY=$MINIO_ROOT_USER" -e "SRC_SECRET_KEY=$MINIO_ROOT_PASSWORD" \
+  -e "DST_ACCESS_KEY=$GARAGE_ACCESS_KEY" -e "DST_SECRET_KEY=$GARAGE_SECRET_KEY" backend \
   python -m scripts.storage.migrate_minio_to_garage \
     --src-endpoint minio:9000 --dst-endpoint garage:3900 --dst-region garage \
     --bucket research --report /tmp/migracion-inicial.json
@@ -146,8 +146,8 @@ evidencia desaparece al acabar el contenedor.
 # Delta: lo escrito en MinIO desde la copia inicial.
 docker compose -p cavaai -f docker-compose.prod.yml run --rm --no-deps \
   --volume "$HOME/reports-migracion:/reports" \
-  -e SRC_ACCESS_KEY=$MINIO_ROOT_USER -e SRC_SECRET_KEY=$MINIO_ROOT_PASSWORD \
-  -e DST_ACCESS_KEY=$GARAGE_ACCESS_KEY -e DST_SECRET_KEY=$GARAGE_SECRET_KEY backend \
+  -e "SRC_ACCESS_KEY=$MINIO_ROOT_USER" -e "SRC_SECRET_KEY=$MINIO_ROOT_PASSWORD" \
+  -e "DST_ACCESS_KEY=$GARAGE_ACCESS_KEY" -e "DST_SECRET_KEY=$GARAGE_SECRET_KEY" backend \
   python -m scripts.storage.migrate_minio_to_garage \
     --src-endpoint minio:9000 --dst-endpoint garage:3900 --dst-region garage \
     --bucket research --report /reports/migracion-delta.json
@@ -155,8 +155,8 @@ docker compose -p cavaai -f docker-compose.prod.yml run --rm --no-deps \
 # Verificacion final: tiene que dar ok=true, 0 faltantes, 0 diferencias, salida 0.
 docker compose -p cavaai -f docker-compose.prod.yml run --rm --no-deps \
   --volume "$HOME/reports-migracion:/reports" \
-  -e SRC_ACCESS_KEY=$MINIO_ROOT_USER -e SRC_SECRET_KEY=$MINIO_ROOT_PASSWORD \
-  -e DST_ACCESS_KEY=$GARAGE_ACCESS_KEY -e DST_SECRET_KEY=$GARAGE_SECRET_KEY backend \
+  -e "SRC_ACCESS_KEY=$MINIO_ROOT_USER" -e "SRC_SECRET_KEY=$MINIO_ROOT_PASSWORD" \
+  -e "DST_ACCESS_KEY=$GARAGE_ACCESS_KEY" -e "DST_SECRET_KEY=$GARAGE_SECRET_KEY" backend \
   python -m scripts.storage.migrate_minio_to_garage \
     --src-endpoint minio:9000 --dst-endpoint garage:3900 --dst-region garage \
     --bucket research --verify-only --report /reports/migracion-verify.json
@@ -169,9 +169,23 @@ Los informes quedan en `$HOME/reports-migracion/` del host.
   revisar el informe.
 - Si sale limpio: descomentar `OBJECT_STORAGE_ENDPOINT` / `OBJECT_STORAGE_ACCESS_KEY` /
   `OBJECT_STORAGE_SECRET_KEY` / `OBJECT_STORAGE_REGION` en `.env.production`
-  apuntando a Garage, **recargar las variables exportadas** (`set -a; .
-  ./.env.production; set +a`: editar el fichero no actualiza la shell) y
-  recrear:
+  apuntando a Garage y **recargar las variables exportadas** (`set -a; .
+  ./.env.production; set +a`: editar el fichero no actualiza la shell; aqui
+  el source si vale porque solo estamos poniendo valores nuevos, no quitando
+  los de una exportacion anterior). Antes de recrear, confirmar el endpoint
+  efectivo con el mismo preflight del paso 5, que ahora tiene que resolver el
+  endpoint de Garage recien descomentado en TODOS los servicios de app:
+
+```bash
+docker compose -p cavaai -f docker-compose.prod.yml config \
+  | grep -oE 'MINIO_ENDPOINT[=:][ ]?[^[:space:]]*' | sort | uniq -c
+# Esperado: una sola variante con el endpoint de Garage (p. ej.
+# "MINIO_ENDPOINT: garage:3900"; segun la version de compose el separador
+# puede ser ":" o "="). Si sale minio:9000, el reload no se hizo o las
+# OBJECT_STORAGE_* siguen comentadas: no recrear hasta que salga limpio.
+```
+
+  Con el preflight limpio, recrear:
 
 ```bash
 docker compose -p cavaai -f docker-compose.prod.yml up -d --no-deps \
@@ -219,8 +233,8 @@ docker compose -p cavaai -f docker-compose.prod.yml stop \
 ```bash
 docker compose -p cavaai -f docker-compose.prod.yml run --rm --no-deps \
   --volume "$HOME/reports-migracion:/reports" \
-  -e SRC_ACCESS_KEY=$GARAGE_ACCESS_KEY -e SRC_SECRET_KEY=$GARAGE_SECRET_KEY \
-  -e DST_ACCESS_KEY=$MINIO_ROOT_USER -e DST_SECRET_KEY=$MINIO_ROOT_PASSWORD backend \
+  -e "SRC_ACCESS_KEY=$GARAGE_ACCESS_KEY" -e "SRC_SECRET_KEY=$GARAGE_SECRET_KEY" \
+  -e "DST_ACCESS_KEY=$MINIO_ROOT_USER" -e "DST_SECRET_KEY=$MINIO_ROOT_PASSWORD" backend \
   python -m scripts.storage.migrate_minio_to_garage \
     --src-endpoint garage:3900 --src-region garage \
     --dst-endpoint minio:9000 --dst-region "" \
@@ -229,8 +243,8 @@ docker compose -p cavaai -f docker-compose.prod.yml run --rm --no-deps \
 # Misma exigencia que en la ida: verify-only con 0 errores antes de seguir.
 docker compose -p cavaai -f docker-compose.prod.yml run --rm --no-deps \
   --volume "$HOME/reports-migracion:/reports" \
-  -e SRC_ACCESS_KEY=$GARAGE_ACCESS_KEY -e SRC_SECRET_KEY=$GARAGE_SECRET_KEY \
-  -e DST_ACCESS_KEY=$MINIO_ROOT_USER -e DST_SECRET_KEY=$MINIO_ROOT_PASSWORD backend \
+  -e "SRC_ACCESS_KEY=$GARAGE_ACCESS_KEY" -e "SRC_SECRET_KEY=$GARAGE_SECRET_KEY" \
+  -e "DST_ACCESS_KEY=$MINIO_ROOT_USER" -e "DST_SECRET_KEY=$MINIO_ROOT_PASSWORD" backend \
   python -m scripts.storage.migrate_minio_to_garage \
     --src-endpoint garage:3900 --src-region garage \
     --dst-endpoint minio:9000 --dst-region "" \
@@ -242,12 +256,37 @@ docker compose -p cavaai -f docker-compose.prod.yml run --rm --no-deps \
    inversa sobrescribe la version previa de MinIO (sin versionado en ninguno
    de los dos). Con la app real no deberia pasar, porque no reescribe claves.
 
-3. Comentar de nuevo las `OBJECT_STORAGE_*` en `.env.production`, **recargar
-   las variables exportadas** (`set -a; . ./.env.production; set +a`) y
-   recrear los servicios con el `up -d --no-deps` del paso 3: la app vuelve a
-   MinIO. MinIO quedo intacto como copia previa al corte: desde la parada del
-   paso 2 no ha recibido escrituras, y lo escrito despues en Garage acaba de
-   devolverse con la copia inversa del punto 2.
+3. Comentar de nuevo las `OBJECT_STORAGE_*` en `.env.production`. Ojo: el
+   `set -a; . ./.env.production; set +a` habitual **no basta aqui**: el
+   source solo pone o pisa variables, no borra las que el fichero ya no
+   define. Como las 4 `OBJECT_STORAGE_*` quedaron exportadas con los valores
+   de Garage al hacer el corte, compose las seguiria interpolando y la app
+   **no** volveria a MinIO aunque el fichero este bien. Hay que quitarlas de
+   la shell **antes** de recargar:
+
+```bash
+unset OBJECT_STORAGE_ENDPOINT OBJECT_STORAGE_ACCESS_KEY \
+      OBJECT_STORAGE_SECRET_KEY OBJECT_STORAGE_REGION
+set -a
+. ./.env.production
+set +a
+
+# Preflight sin imprimir secretos (solo endpoints): compose aplica
+# ${OBJECT_STORAGE_ENDPOINT:-minio:9000} solo si la variable no esta
+# exportada, asi que TODOS los servicios de app tienen que resolver minio:9000.
+docker compose -p cavaai -f docker-compose.prod.yml config \
+  | grep -oE 'MINIO_ENDPOINT[=:][ ]?[^[:space:]]*' | sort | uniq -c
+# Salida esperada: una sola variante terminada en minio:9000 (segun la
+# version de compose, "MINIO_ENDPOINT: minio:9000" o "MINIO_ENDPOINT=minio:9000").
+# Si aparece otra (p. ej. garage:3900), alguna OBJECT_STORAGE_* sigue
+# exportada: repetir el unset + source y no recrear hasta que salga limpio.
+```
+
+   Con el preflight limpio, recrear los servicios con el `up -d --no-deps`
+   del paso 3: la app vuelve a MinIO. MinIO quedo intacto como copia previa
+   al corte: desde la parada del paso 2 no ha recibido escrituras, y lo
+   escrito despues en Garage acaba de devolverse con la copia inversa del
+   punto 2.
 4. No se borra nada en Garage: queda como estaba para diagnosticar.
 
 ## Criterio de salida del piloto
