@@ -23,7 +23,7 @@ const addr = server.address();
 assert.ok(addr && typeof addr !== 'string');
 process.env.FMP_BACKEND_URL = `http://127.0.0.1:${addr.port}`;
 // @ts-expect-error Node strip-types requires explicit extension.
-const { chatWithPortfolio } = await import('../lib/actions/chat.actions.ts');
+const { chatWithPortfolio } = await import('../lib/actions/brain.actions.ts');
 // @ts-expect-error Node strip-types requires explicit extension.
 const { researchTimeoutFor } = await import('../lib/research/client.ts');
 const realFetch = globalThis.fetch;

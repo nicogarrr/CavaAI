@@ -24,7 +24,6 @@ import PortfolioTearsheet from '@/components/portfolio/PortfolioTearsheet';
 import AddTransactionButton from '@/components/portfolio/AddTransactionButton';
 import RefreshPortfolioButton from '@/components/portfolio/RefreshPortfolioButton';
 import ImportIBKRButton from '@/components/portfolio/ImportIBKRButton';
-import { PortfolioChat } from '@/components/portfolio/PortfolioChat';
 import PortfolioForecast from '@/components/portfolio/PortfolioForecast';
 import PortfolioDividends from '@/components/portfolio/PortfolioDividends';
 import { Wallet, LayoutDashboard, Briefcase, TrendingUp, TrendingDown, History, Brain, Gauge, Activity, Coins } from 'lucide-react';
@@ -330,7 +329,6 @@ export default function PortfolioTabs({ summary, transactions, scores, tearsheet
 
             </Tabs>
 
-            <PortfolioChat userId={userId} />
         </main>
     );
 }

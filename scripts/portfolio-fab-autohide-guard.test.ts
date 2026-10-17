@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const chat = readFileSync('components/portfolio/PortfolioChat.tsx', 'utf8');
+const chat = readFileSync('components/brain/GlobalBrain.tsx', 'utf8');
 const allocation = readFileSync('components/portfolio/PortfolioAllocation.tsx', 'utf8');
 
 test('F339: la burbuja se auto-oculta durante el scroll y reaparece ~600 ms después', () => {
