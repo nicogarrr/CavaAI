@@ -25,7 +25,7 @@ import { landingTargetForSession } from '@/lib/public/landing-target';
  * (mismo criterio que el layout publico: una caida no puede convertir una
  * pagina publica en un 500).
  *
- * El resto de paginas publicas (`/terms`, `/metodologia`, `/help`) NO
+ * El resto de paginas publicas (`/metodologia`, `/help`) NO
  * redirigen: un usuario con sesion debe poder leerlas desde el menu.
  */
 export const metadata: Metadata = landingMetadata;

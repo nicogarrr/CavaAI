@@ -187,7 +187,7 @@ GerarAI is functionally ready for a private staging / beta round, but it must no
 - PostgreSQL, Redis, Qdrant, MinIO, workers and Langfuse run together in staging with production-shaped secrets, tenant isolation and real provider credentials.
 - A Docker-volume migration dry run, encrypted backup and full restore drill have been completed and reconciled against tenant, document and portfolio counts.
 - Representative companies have been calibrated against real filings and subsequent actuals; WACC, funding, dilution, future ROIC and valuation outputs have received human financial review.
-- Data retention, deletion/export, privacy notice, terms and incident ownership have been completed for the intended deployment jurisdiction and audience.
+- Data retention, deletion/export, privacy notice and incident ownership have been completed for the intended deployment jurisdiction and audience.
 
 Passing local tests proves implementation integrity; it does not replace operational, financial, security or legal validation in staging.
 
@@ -214,7 +214,7 @@ GerarAI is working when the user can add a company, upload filings/results/lette
 2. Rotar password de la cuenta de usuario (expuesto en logs de dev) y revocar token Vercel temporal.
 3. Hosting cloud del FastAPI: elegida la opcion Oracle Cloud Always Free (guia en docs/oracle-setup.md); despliegue en curso. render.yaml sigue como alternativa (free tier hiberna).
 4. E2E playwright en CI (specs existentes; ampliar cobertura de finanzas).
-5. Legal/privacidad (terminos, privacidad) y backup drills (Postgres + Mongo).
+5. Legal/privacidad (privacidad) y backup drills (Postgres + Mongo).
 
 ## Cierre del programa de mejora (2026-09-23)
 
