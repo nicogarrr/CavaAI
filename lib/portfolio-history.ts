@@ -43,3 +43,14 @@ export function verifiedPortfolioHistory(rows: readonly PortfolioSnapshotPoint[]
         start_date: valid[0].snapshot_date, end_date: valid.at(-1)?.snapshot_date as string,
     };
 }
+
+/** A cached tearsheet cannot qualify a different or incomplete return series. */
+export function qualifiedHistoricalMetrics<T extends { n_observations: number; cumulative_return: number | null }>(
+    rows: readonly PortfolioSnapshotPoint[], history: ReturnType<typeof verifiedPortfolioHistory>, metrics: T | null,
+): T | null {
+    if (!history || !metrics || rows.filter((r) => r.daily_return != null).length !== history.daily_returns.length ||
+        metrics.n_observations !== history.daily_returns.length || metrics.cumulative_return == null ||
+        !Number.isFinite(metrics.cumulative_return)) return null;
+    const cumulative = history.daily_returns.reduce((wealth, r) => wealth * (1 + r), 1) - 1;
+    return Math.abs(cumulative - metrics.cumulative_return) <= 1e-7 ? metrics : null;
+}
