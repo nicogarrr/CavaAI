@@ -44,18 +44,18 @@ export default function AccessRequestForm() {
     }
 
     return (
-        <form onSubmit={onSubmit} className="space-y-4" aria-label="Pedir acceso a GerarAI" noValidate>
+        <form onSubmit={onSubmit} className="space-y-5" aria-label="Pedir acceso a GerarAI" noValidate>
             <div>
-                <label htmlFor="ar-name" className="form-label">Nombre</label>
-                <input id="ar-name" name="name" required maxLength={ACCESS_REQUEST_LIMITS.nameMax} autoComplete="name" className="form-input" aria-invalid={error?.field === 'name'} />
+                <label htmlFor="ar-name" className="form-label mb-2 block">Nombre</label>
+                <input id="ar-name" name="name" required maxLength={ACCESS_REQUEST_LIMITS.nameMax} autoComplete="name" className="form-input block w-full" aria-invalid={error?.field === 'name'} />
             </div>
             <div>
-                <label htmlFor="ar-email" className="form-label">Email</label>
-                <input id="ar-email" name="email" type="email" required maxLength={ACCESS_REQUEST_LIMITS.emailMax} autoComplete="email" className="form-input" aria-invalid={error?.field === 'email'} />
+                <label htmlFor="ar-email" className="form-label mb-2 block">Email</label>
+                <input id="ar-email" name="email" type="email" required maxLength={ACCESS_REQUEST_LIMITS.emailMax} autoComplete="email" className="form-input block w-full" aria-invalid={error?.field === 'email'} />
             </div>
             <div>
-                <label htmlFor="ar-note" className="form-label">Nota (opcional)</label>
-                <textarea id="ar-note" name="note" rows={3} maxLength={ACCESS_REQUEST_LIMITS.noteMax} placeholder="Qué quieres analizar con GerarAI" className="form-input" aria-invalid={error?.field === 'note'} />
+                <label htmlFor="ar-note" className="form-label mb-2 block">Nota (opcional)</label>
+                <textarea id="ar-note" name="note" rows={5} maxLength={ACCESS_REQUEST_LIMITS.noteMax} placeholder="Qué quieres analizar con GerarAI" className="form-input block min-h-36 overflow-y-auto w-full resize-y" aria-invalid={error?.field === 'note'} />
             </div>
             {/* Campo trampa: fuera de pantalla y fuera del orden de tabulacion. */}
             <div aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
