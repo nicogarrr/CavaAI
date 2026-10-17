@@ -37,7 +37,7 @@ class _LanguageRejected(ProviderResponseError):
 class ChatFallbackProvider(LLMProvider):
     name = "chat-independent-fallback"
 
-    def __init__(self, primary: LLMProvider, backup: LLMProvider, *, total: float = 45, delay: float = 25, validator: Callable[[LLMResponse], None] | None = None, on_response: Callable[[LLMResponse], None] | None = None):
+    def __init__(self, primary: LLMProvider, backup: LLMProvider, *, total: float = 45, delay: float = 2, validator: Callable[[LLMResponse], None] | None = None, on_response: Callable[[LLMResponse], None] | None = None):
         self.validator = validator
         self.on_response = on_response
         self.primary = primary
@@ -101,7 +101,7 @@ class ChatFallbackProvider(LLMProvider):
             # Pin backup explicitly. Never send DeepSeek aliases or effort=max.
             backup = asyncio.create_task(self._candidate(self.backup, replace(
                 request, model=GROQ_MODEL,
-                messages=(*request.messages, Message("system", "Limita la respuesta a explicación y análisis factual educativo. No des asesoramiento financiero personalizado ni recomendaciones de compra, venta o asignación. Si te lo piden, explica ese límite y ofrece datos y riesgos verificables sin aconsejar una decisión.")),
+                messages=(*request.messages, Message("system", "Limita la respuesta a explicación y análisis factual educativo. No des asesoramiento financiero personalizado ni recomendaciones de compra, venta o asignación. Si te lo piden, explica ese límite y ofrece datos y riesgos verificables sin aconsejar una decisión. Usa lenguaje descriptivo, no verbos de acción como comprar, vender, recomendar o asignar, incluso al explicar un concepto. No atribuyas opiniones a un autor si no hay fragmentos de ese autor en el contexto; en ese caso explica el concepto en general y di que no tienes una fuente concreta para atribuírselo. No añadas porcentajes, umbrales o reglas numéricas sin fuente. No deduzcas una deuda neta alta del tamaño de la deuda bruta: si falta el dato neto, indica que no está disponible. Conserva exactamente el contrato JSON y las citas del contexto cuando se exijan.")),
             ), backup=True))
             tasks.append(backup)
             pending = {backup} | ({primary} if not done else set())
