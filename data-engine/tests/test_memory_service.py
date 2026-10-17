@@ -1,6 +1,6 @@
 """MemoryService contract tests.
 
-El cerebro es SOLO LECTURA: la escritura desde el chat
+El chat solo escribe memoria ante "recuerda ..." explicito; la escritura amplia
 (``maybe_write_from_chat``) quedó retirada. La recuperación sigue
 ordenando por solape, importancia, recencia y afinidad de empresa.
 """
@@ -60,3 +60,47 @@ def test_retrieval_ranks_overlap_importance_and_company(db):
     # High-importance portfolio memory still surfaces (importance >= 8 rule).
     assert important_unrelated.content in contents
     assert all(r.reason.startswith("overlap=") for r in results)
+
+
+# --- Escritura explicita: SOLO con "recuerda ..." -------------------------------
+
+from app.services.memory_service import remember_note  # noqa: E402
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("Recuerda que prefiero inversión a largo plazo", "prefiero inversión a largo plazo"),
+    ("recuerda: mi objetivo es no vender ASTS antes de 2028", "mi objetivo es no vender ASTS antes de 2028"),
+    ("Por favor, recuerda que cobro dividendos en marzo", "cobro dividendos en marzo"),
+    ("Remember that I hold ASTS for the long run", "I hold ASTS for the long run"),
+    ("Recuerda   que\nme gusta   el value", "me gusta el value"),
+])
+def test_explicit_remember_instruction_is_parsed(text, expected):
+    assert remember_note(text) == expected
+
+
+@pytest.mark.parametrize("text", [
+    "guarda esto para luego",
+    "vigila ASTS y avísame",
+    "mi tesis sobre MSFT es sólida",
+    "watch the earnings of ASTS closely",
+    "hipotesis: el margen mejora",
+    "¿Recuerdas lo que te dije de ASTS?",
+    "Recuerda vigilar Azure. ¿Qué evidencia tienes sobre MSFT?",
+    "recuerda que",
+    "recuerda ya",
+    "Dime qué dijo Buffett y recuerda que es general",
+    "",
+])
+def test_everything_else_is_not_a_memory_write(text):
+    assert remember_note(text) is None
+
+
+def test_write_explicit_note_creates_only_a_tenant_memory_item(db):
+    company = _company(db)
+    item = MemoryService().write_explicit_note(db, "prefiero largo plazo", company, "company")
+    assert item.source_type == "chat" and item.memory_type == "chat_memory"
+    assert item.company_id == company.id and item.scope == "company"
+    assert item.metadata_ == {"write_policy": "explicit_remember_instruction"}
+    assert [m.content for m in db.query(MemoryItem).all()] == ["prefiero largo plazo"]
+    general = MemoryService().write_explicit_note(db, "nota general", None, "portfolio")
+    assert general.company_id is None and general.scope == "portfolio"

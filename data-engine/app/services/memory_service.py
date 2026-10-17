@@ -8,6 +8,25 @@ from sqlalchemy.orm import Session
 from app.models import Company, MemoryItem
 
 TOKEN_RE = re.compile(r"[a-zA-Z0-9_]{3,}")
+# Memory is written from chat ONLY when the message itself starts with an explicit
+# "recuerda ..." / "remember ..." instruction. No other word is a trigger.
+_REMEMBER_RE = re.compile(
+    r"^\s*(?:por favor[,\s]+)?(?:recuerda|remember)(?:\s+(?:que|that))?\s*[:,\-]?\s+(?P<note>\S.*)$",
+    re.IGNORECASE | re.DOTALL,
+)
+MIN_NOTE_CHARS = 5
+MAX_NOTE_CHARS = 600
+
+
+def remember_note(question: str) -> str | None:
+    """Texto a guardar si el mensaje es una orden explicita de recordar; si no, None."""
+    match = _REMEMBER_RE.match(question or "")
+    if not match:
+        return None
+    note = " ".join(match.group("note").split())
+    if len(note) < MIN_NOTE_CHARS or note.endswith("?"):
+        return None
+    return note[:MAX_NOTE_CHARS]
 
 
 @dataclass(frozen=True)
@@ -64,3 +83,26 @@ class MemoryService:
                 )
 
         return sorted(ranked, key=lambda memory: memory.score, reverse=True)[:limit]
+
+    def write_explicit_note(
+        self,
+        db: Session,
+        note: str,
+        company: Company | None = None,
+        scope: str = "portfolio",
+    ) -> MemoryItem:
+        """Guarda una nota pedida con "recuerda ...". Solo MemoryItem (con tenant de la sesion):
+        nunca toca cartera, posiciones ni importaciones."""
+        item = MemoryItem(
+            company_id=company.id if company else None,
+            scope="company" if company else scope,
+            memory_type="chat_memory",
+            importance=7,
+            content=note,
+            source_type="chat",
+            metadata_={"write_policy": "explicit_remember_instruction"},
+        )
+        db.add(item)
+        db.commit()
+        db.refresh(item)
+        return item
