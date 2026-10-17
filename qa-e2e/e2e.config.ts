@@ -17,7 +17,7 @@ const zen = createOpenAICompatible({
 
 export default {
   agents: { default: { model: zen.chatModel(process.env.ZEN_MODEL ?? 'space-bunny-free') } },
-  targets: [{ engine: web(), app: { url: process.env.E2E_BASE_URL ?? 'https://cavaai.vercel.app' } }],
+  targets: [{ engine: web(), app: { url: process.env.E2E_BASE_URL ?? 'https://gerarai.vercel.app' } }],
   workers: 1,
   // Sin trazas ni video: la pasada autenticada usa una sesion real y no debe dejar
   // en artefactos ni la contrasena tecleada ni datos de la cuenta.

@@ -63,7 +63,7 @@ externas de datos/LLM, como hoy.
    (cierra sesion y vuelve a entrar).
 6. **Clonar y configurar**:
    ```
-   git clone https://github.com/nicogarrr/CavaAI.git && cd CavaAI
+   git clone https://github.com/nicogarrr/gerarai.git && cd gerarai
    cp .env.production.example .env.production   # rellena los secretos
    docker compose -f docker-compose.prod.yml up -d --build
    ```

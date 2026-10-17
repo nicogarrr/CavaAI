@@ -199,7 +199,7 @@ GerarAI is working when the user can add a company, upload filings/results/lette
 ## Estado de implementacion (2026-08-23)
 
 ### Completado (verificable en main)
-- Produccion viva: cavaai.vercel.app (Vercel build READY, env vars configuradas) — auth (better-auth/Mongo), home, portfolio, research, watchlist. Backend FastAPI local en :8000 con scheduler de workers (autoarranque en login).
+- produccion viva: gerarai.vercel.app (Vercel build READY, env vars configuradas) — auth (better-auth/Mongo), home, portfolio, research, watchlist. Backend FastAPI local en :8000 con scheduler de workers (autoarranque en login).
 - Watchlist unificada al backend (tabla watch_items, ruta /api/watchlist) — fuera el acceso directo a Mongo.
 - Indices reales en la home: ^GSPC, ^IXIC, BTC-USD, GC=F, SI=F (Yahoo Finance, cache 60s).
 - Screener real: /api/screeners/real (Finnhub free, 35 large caps, precios y market caps del dia).
