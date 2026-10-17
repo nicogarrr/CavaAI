@@ -45,7 +45,9 @@ def retrieve_library_context(db: Session, question: str, limit: int = 3) -> list
         contexts.append({
             "type": "knowledge_chunk", "id": chunk.id, "chunk_id": chunk.id,
             "knowledge_document_id": document.id, "title": document.title,
-            "author": document.author, "url": document.source_url,
+            "author": document.author,
+            "year": document.publication_date.year if document.publication_date else None,
+            "url": document.source_url,
             "source_type": document.document_type, "page_number": chunk.page_number,
             "chunk_index": chunk.chunk_index, "text": chunk.content[:1600],
             "evidence_role": "investment_doctrine_not_company_fact",

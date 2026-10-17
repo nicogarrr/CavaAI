@@ -134,16 +134,10 @@ def test_flujo_completo_meta_tesis_ya_no_pide_ticker_con_llm_caido(db):
     assert "META" in response.answer or "Meta" in response.answer
 
 
-def test_empresa_deducida_del_texto_no_ata_la_memoria_a_la_empresa(db):
+def test_el_chat_es_solo_lectura_y_no_escribe_memoria(db):
+    from app.models.entities import MemoryItem
+
     svc = ChatService()
-    capturado = {}
-
-    def espia(_db, _question, company, scope):
-        capturado["company"] = company
-        return None
-
-    svc.memory.maybe_write_from_chat = espia
-    svc._deterministic_answer(db, "meta tesis?", "portfolio", None)
-    assert capturado["company"] is None
-    svc._deterministic_answer(db, "tesis", "company", "META")
-    assert capturado["company"] is not None and capturado["company"].ticker == "META"
+    svc._deterministic_answer(db, "Recuerda que vigilo el free cash flow de META", "portfolio", None)
+    svc._deterministic_answer(db, "Recuerda que vigilo el free cash flow", "company", "META")
+    assert db.query(MemoryItem).count() == 0

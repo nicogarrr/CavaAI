@@ -21,7 +21,8 @@ from app.models import (
     ThesisSection,
     ThesisVersion,
 )
-from app.schemas import ChatResponse
+from app.schemas import ChatPageContext, ChatResponse
+from app.services.brain_service import SMALL_TALK_RE, resolve_page_context, small_talk_answer
 from app.services.chat_synthesis_service import ChatSynthesisService
 from app.services.claim_scope import live_claims
 from app.services.company_resolver import resolve_company
@@ -128,7 +129,6 @@ def _natural_company_answer(
     contradiction_claims: list[Claim],
     price_line: str | None,
     memory_notes: list[str] | None = None,
-    written_memory_content: str | None = None,
 ) -> str:
     """Respuesta visible: prosa natural en castellano.
 
@@ -162,10 +162,6 @@ def _natural_company_answer(
             f"(estado {thesis.status}{rating})."
         )
     seen_notes: set[str] = set()
-    if written_memory_content:
-        note = _short(written_memory_content, 180)
-        parts.append(f"Anotado en tu memoria: '{note}'.")
-        seen_notes.add(" ".join(note.lower().split()))
     for content in (memory_notes or [])[:3]:
         note = _short(content, 180)
         key = " ".join(note.lower().split())
@@ -209,14 +205,12 @@ def _short(text: str, limit: int = 420) -> str:
 
 
 
-_SMALL_TALK_RE = re.compile(
-    r"^\s*(?:[¿¡]\s*)?(hola|buenas|buenos d[ií]as|buenas tardes|buenas noches|hey|hi|hello|"
-    r"qu[eé] tal|c[oó]mo est[aá]s|gracias|muchas gracias|ok|vale|adi[oó]s|hasta luego)"
-    r"[\s!.,¡¿?]*$",
-    re.IGNORECASE,
-)
-# Tickers que tambien son palabras corrientes: en minusculas solo cuentan si
-# la pregunta trae una pista de consulta sobre empresas.
+# Saludos y marca viven en el cerebro común (brain_service). Alias
+# compatibles para los tests que los importaban de aquí.
+_SMALL_TALK_RE = SMALL_TALK_RE
+_small_talk_answer = small_talk_answer
+
+
 _COMMON_WORD_TICKERS = frozenset(
     {"META", "NOW", "IT", "ON", "CAT", "ALL", "ARE", "KEY", "LOW", "FAST", "WELL", "A", "BIG", "GOOD"}
 )
@@ -230,29 +224,6 @@ _COMPANY_CUE_RE = re.compile(
     r"acci[oó]n(?:es)?|cotiza\w*|precio|valoraci[oó]n|resultados|balance|"
     r"riesgos?|catalizadores?|noticias?|dividendos?|fundamentales|stock)\b"
 )
-_SMALL_TALK_ANSWER = (
-    "¡Hola! Soy el asistente de CavaAI. Puedo responder a cualquier tema "
-    "y, ademas, tengo acceso a tu cartera, tus tesis, tu research y tus "
-    "documentos. Preguntame lo que quieras."
-)
-
-
-def _small_talk_answer(question: str) -> str:
-    import unicodedata
-
-    normalized = "".join(
-        char for char in unicodedata.normalize("NFD", question.lower())
-        if unicodedata.category(char) != "Mn"
-    ).strip(" \t\n!.,¡¿?")
-    if normalized in {"gracias", "muchas gracias"}:
-        return "De nada."
-    if normalized in {"adios", "hasta luego"}:
-        return "Hasta luego."
-    if normalized in {"ok", "vale"}:
-        return "De acuerdo."
-    return _SMALL_TALK_ANSWER
-
-
 class ChatService:
     def __init__(self, provider: LLMProvider | None = None) -> None:
         self.memory = MemoryService()
@@ -475,7 +446,15 @@ class ChatService:
         *,
         enable_debate: bool | None = None,
         use_jev: bool = True,
+        page: ChatPageContext | None = None,
     ) -> ChatResponse:
+        # Contexto de página explícito ("Viendo X"): el ticker de la página se
+        # resuelve en servidor en el catálogo global; el contenido privado
+        # posterior sigue aislado por tenant. El eco vuelve al cliente
+        # para la pastilla. Prioridad: ticker explícito > mención en el texto
+        # > ticker de la página.
+        page_context = resolve_page_context(db, page)
+        context_echo = page_context.echo() if page_context else None
         if _SMALL_TALK_RE.match(question or ""):
             return ChatResponse(
                 answer=_small_talk_answer(question),
@@ -484,11 +463,14 @@ class ChatService:
                 prompt_version="small-talk-v1",
                 confidence=0.9,
                 llm_trace={"path": "small_talk"},
+                context=context_echo,
             )
         # Routing por compania RESUELTA del texto, no solo por el parametro
         # ticker: "precio de ASTS" sin campo ticker va igualmente por la
         # ruta estructurada con validacion financiera.
         company = self._resolve_company(db, question, scope, ticker)
+        if company is None and page_context is not None:
+            company = page_context.company
         if company is not None and not ticker:
             ticker = company.ticker
         # La abstencion financiera vive en el clasificador unificado de
@@ -528,32 +510,34 @@ class ChatService:
                             "confidence": gate.confidence,
                         },
                     }
+                    baseline.context = context_echo
                     return baseline
             except Exception:  # noqa: BLE001 — Jev nunca rompe el chat
                 pass
         synthesis = ChatSynthesisService(self.provider)
         if ticker:
-            return await synthesis.synthesize(
+            response = await synthesis.synthesize(
                 question=question,
                 ticker=ticker,
                 baseline=baseline,
                 db=db,
                 enable_debate=enable_debate,
             )
-        return await synthesis.synthesize_general(
-            question=question,
-            baseline=baseline,
-            db=db,
-        )
+        else:
+            response = await synthesis.synthesize_general(
+                question=question,
+                baseline=baseline,
+                db=db,
+            )
+        response.context = context_echo
+        return response
 
     def _deterministic_answer(
         self, db: Session, question: str, scope: str, ticker: str | None
     ) -> ChatResponse:
         company = self._resolve_company(db, question, scope, ticker)
-        # La empresa deducida del texto en el scope global NO ata la memoria
-        # persistente a esa empresa: solo cuenta si la ficha la fijó el cliente.
-        memory_company = company if (ticker or scope != "portfolio") else None
-        written_memory = self.memory.maybe_write_from_chat(db, question, memory_company, scope)
+        # El cerebro es SOLO LECTURA: la memoria se recupera, nunca se escribe
+        # desde el chat (maybe_write_from_chat quedó retirado).
         retrieved_memory = self.memory.retrieve(db, question, company, scope=scope, limit=6)
         recent_sessions = self._recent_sessions(db, company)
 
@@ -667,7 +651,7 @@ class ChatService:
                     self._source_entry(
                         "rag_chunk",
                         chunk.get("point_id"),
-                        chunk.get("title") or "Indexed document chunk",
+                        chunk.get("title") or "Fragmento de documento indexado",
                         document_id=chunk.get("document_id"),
                         knowledge_document_id=chunk.get("knowledge_document_id"),
                         collection_id=chunk.get("collection_id"),
@@ -739,16 +723,6 @@ class ChatService:
                         reason=retrieved.reason,
                     )
                 )
-            if written_memory:
-                sources.append(
-                    self._source_entry(
-                        "memory_writeback",
-                        written_memory.id,
-                        "New chat memory stored",
-                        memory_type=written_memory.memory_type,
-                    )
-                )
-
             if not thesis:
                 proposed_actions.append(f"Crear la primera tesis para {company.ticker}")
             if any(claim.status in {"unverified", "contradicted"} for claim in claims):
@@ -855,9 +829,6 @@ class ChatService:
                 contradiction_claims=contradiction_claims,
                 price_line=price_line,
                 memory_notes=[item.item.content for item in retrieved_memory[:3]],
-                written_memory_content=(
-                    written_memory.content if written_memory else None
-                ),
             )
 
             sections = [
@@ -981,14 +952,12 @@ class ChatService:
                     summary=_short(session.summary, 180),
                 )
             )
-        if written_memory:
-            sources.append(self._source_entry("memory_writeback", written_memory.id, "New chat memory stored"))
 
         answer = (
             "CONTEXTO\n- Pregunta general sin ticker: el asistente dispone de memorias de cartera, sesiones de research y contexto documental.\n\n"
             "SIN CALCULOS\n- Sin ticker no hay calculos de cartera en esta respuesta.\n\n"
             "MEMORIAS\n"
-            f"{chr(10).join(f'- {_short(item.content, 180)}' for item in portfolio_memories[:5]) or '- No relevant portfolio memory retrieved.'}\n\n"
+            f"{chr(10).join(f'- {_short(item.content, 180)}' for item in portfolio_memories[:5]) or '- No se recuperó memoria de cartera relevante.'}\n\n"
             "SIN AFIRMACIONES DE EMPRESA\n- Pregunta por un ticker concreto para revisar afirmaciones y evidencia.\n\n"
             "CONTEXTO DOCUMENTAL\n"
             + ("\n".join(library_lines) or "- Para respuestas con fuentes de empresa, indica un ticker o ingiere evidencia primero.")
@@ -998,7 +967,7 @@ class ChatService:
             sections=[
                 {
                     "key": "facts",
-                    "body": "Portfolio memory and research-session context only.",
+                    "body": "Solo contexto de memorias de cartera y sesiones de research.",
                     "citations": [
                         f"memory_item:{item.id}"
                         for item in portfolio_memories[:5]
@@ -1006,12 +975,12 @@ class ChatService:
                 },
                 {
                     "key": "calculations",
-                    "body": "No portfolio calculation was performed.",
+                    "body": "No se hizo ningún cálculo de cartera.",
                     "citations": [],
                 },
                 {
                     "key": "user_hypotheses",
-                    "body": "Retrieved portfolio memories.",
+                    "body": "Memorias de cartera recuperadas.",
                     "citations": [
                         f"memory_item:{item.id}"
                         for item in portfolio_memories[:5]
@@ -1019,33 +988,33 @@ class ChatService:
                 },
                 {
                     "key": "unverified_claims",
-                    "body": "Ask about a specific ticker to check company claims and evidence.",
+                    "body": "Pregunta por un ticker concreto para revisar afirmaciones y evidencia.",
                     "citations": [],
                 },
                 {
                     "key": "inferences",
-                    "body": "\n".join(library_lines) or "A ticker is required for company-level inference.",
+                    "body": "\n".join(library_lines) or "Hace falta un ticker para inferencias de empresa.",
                     "citations": [f"knowledge_chunk:{item['id']}" for item in library_context],
                 },
                 {
                     "key": "contradictions",
-                    "body": "No company claim set was selected.",
+                    "body": "No se seleccionaron afirmaciones de empresa.",
                     "citations": [],
                 },
                 {
                     "key": "insufficient_data",
-                    "body": "Provide a ticker or ingest portfolio-level evidence.",
+                    "body": "Indica un ticker o ingiere evidencia de cartera.",
                     "citations": [],
                 },
                 {
                     "key": "conclusion",
-                    "body": "No company-level conclusion is available.",
+                    "body": "No hay conclusión de empresa disponible.",
                     "citations": [],
                 },
             ],
             sources=sources,
             blocked=False,
-            proposed_actions=["Ask about a ticker", "Ingest portfolio-level documents"],
+            proposed_actions=["Pregunta por un ticker", "Ingiere documentos de cartera"],
             prompt_version="source-aware-synthesis-v1",
             model="deterministic",
         )

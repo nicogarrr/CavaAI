@@ -26,7 +26,7 @@ def test_greetings_are_recognized_with_accents(question):
     provider = StubProvider()
     response = asyncio.run(ChatService(provider).answer(_db(), question, 'portfolio', None))
     assert response.model == 'small-talk'
-    assert 'CavaAI' in response.answer
+    assert 'GerarAI' in response.answer and 'CavaAI' not in response.answer
     assert provider.requests == []
 
 
