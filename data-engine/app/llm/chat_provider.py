@@ -18,6 +18,8 @@ from app.llm.model_aliases import VERIFIED_FREE_MODELS
 
 GROQ_MODEL = "openai/gpt-oss-120b"
 GEMINI_MODEL = "gemini-3.5-flash-lite"
+GEMINI_MODEL_2 = "gemini-3.8-flash"
+GEMINI_MODELS = (GEMINI_MODEL, GEMINI_MODEL_2)
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
 
 _BACKUP_PROMPT = "Puedes opinar y razonar sobre posiciones y decisiones de inversión del usuario, siempre apoyándote en los datos y fuentes del contexto. Si falta un dato, dilo en vez de inventarlo. No atribuyas opiniones a un autor si no hay fragmentos de ese autor en el contexto; en ese caso explica el concepto en general y di que no tienes una fuente concreta para atribuírselo. No añadas porcentajes, umbrales o reglas numéricas sin fuente. No deduzcas una deuda neta alta del tamaño de la deuda bruta: si falta el dato neto, indica que no está disponible. Conserva exactamente el contrato JSON y las citas del contexto cuando se exijan. Escribe en prosa plana en español, en párrafos cortos y de unas 120 palabras como máximo: sin LaTeX, sin tablas, sin listas con viñetas y sin negritas ni otro formato markdown. No escribas cifras, rangos, porcentajes ni años que no aparezcan en el contexto; explica con palabras como bajo, alto o mayor que. No uses corchetes, enlaces ni nombres de páginas web. Responde directamente, sin razonar en voz alta."
@@ -78,8 +80,8 @@ class ChatFallbackProvider(LLMProvider):
             raise ProviderTransportError(self.name, "timeout", 1) from None
 
     async def _backup_chain(self, request: LLMRequest) -> LLMResponse:
-        """Gemini first (when configured), then Groq; sequential, never in parallel."""
-        members = ([(self.backup2, GEMINI_MODEL)] if self.backup2 is not None else []) + [(self.backup, GROQ_MODEL)]
+        """Gemini 3.5 Flash-Lite, Gemini 3.8 Flash (when configured), then Groq; sequential, never in parallel."""
+        members = ([(self.backup2, model) for model in GEMINI_MODELS] if self.backup2 is not None else []) + [(self.backup, GROQ_MODEL)]
         last: Exception | None = None
         for provider, model in members:
             try:

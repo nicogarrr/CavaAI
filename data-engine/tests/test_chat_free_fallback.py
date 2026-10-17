@@ -360,10 +360,29 @@ async def test_chain_valid_gemini_never_calls_groq_and_uses_pinned_model_and_pro
 
 
 @run_async
-async def test_chain_gemini_failure_falls_to_groq_with_pinned_model():
+async def test_chain_gemini_failure_tries_38_then_groq_with_pinned_models():
+    from app.llm.chat_provider import GEMINI_MODELS
     p, g, m = _chain(response("ok groq", model=GROQ_MODEL, provider="groq"), ProviderHTTPError("gemini", 503))
     out = await ChatFallbackProvider(p, g, backup2=m).complete(LLMRequest([Message("user", "hola")], task="chat"))
-    assert out.provider == "groq" and g.calls[0].model == GROQ_MODEL and len(m.calls) == 1
+    assert out.provider == "groq" and g.calls[0].model == GROQ_MODEL
+    assert [c.model for c in m.calls] == list(GEMINI_MODELS) and GEMINI_MODELS == ("gemini-3.5-flash-lite", "gemini-3.8-flash")
+
+
+@run_async
+async def test_chain_35_rejected_then_38_accepted_never_reaches_groq():
+    from app.llm.chat_provider import GEMINI_MODEL, GEMINI_MODEL_2
+    p, g, m = _chain(response("groq", model=GROQ_MODEL, provider="groq"), None)
+    seen = []
+    class Seq(Fake):
+        async def complete(self, request):
+            self.calls.append(request)
+            return response("MALA" if request.model == GEMINI_MODEL else "BUENA", model=request.model, provider="gemini")
+    m = Seq()
+    def only_good(resp):
+        if resp.text != "BUENA":
+            raise ValueError("rejected")
+    out = await ChatFallbackProvider(p, g, backup2=m, validator=only_good).complete(LLMRequest([Message("user", "hola")], task="chat"))
+    assert out.text == "BUENA" and out.model == GEMINI_MODEL_2 and not g.calls
 
 
 @run_async
@@ -374,7 +393,7 @@ async def test_chain_gemini_rejected_by_validator_falls_to_groq():
         if resp.text != "BUENA":
             raise ValueError("rejected")
     out = await ChatFallbackProvider(p, g, backup2=m, validator=only_good).complete(LLMRequest([Message("user", "hola")], task="chat"))
-    assert out.text == "BUENA" and len(m.calls) == 1 and len(g.calls) == 1
+    assert out.text == "BUENA" and len(m.calls) == 2 and len(g.calls) == 1
 
 
 @run_async
@@ -386,7 +405,7 @@ async def test_chain_every_candidate_still_goes_through_the_truth_validator():
         raise ValueError("ungrounded")
     with pytest.raises(ProviderResponseError, match="ungrounded"):
         await ChatFallbackProvider(p, g, backup2=m, validator=reject).complete(LLMRequest([Message("user", "hola")], task="chat"))
-    assert len(m.calls) == 1 and len(g.calls) == 1
+    assert len(m.calls) == 2 and len(g.calls) == 1
 
 
 @run_async
