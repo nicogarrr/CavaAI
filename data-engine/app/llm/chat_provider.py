@@ -17,6 +17,10 @@ from app.llm.factory import create_llm_provider
 from app.llm.model_aliases import VERIFIED_FREE_MODELS
 
 GROQ_MODEL = "openai/gpt-oss-120b"
+GEMINI_MODEL = "gemini-3.5-flash-lite"
+GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
+
+_BACKUP_PROMPT = "Puedes opinar y razonar sobre posiciones y decisiones de inversión del usuario, siempre apoyándote en los datos y fuentes del contexto. Si falta un dato, dilo en vez de inventarlo. No atribuyas opiniones a un autor si no hay fragmentos de ese autor en el contexto; en ese caso explica el concepto en general y di que no tienes una fuente concreta para atribuírselo. No añadas porcentajes, umbrales o reglas numéricas sin fuente. No deduzcas una deuda neta alta del tamaño de la deuda bruta: si falta el dato neto, indica que no está disponible. Conserva exactamente el contrato JSON y las citas del contexto cuando se exijan. Escribe en prosa plana en español, en párrafos cortos y de unas 120 palabras como máximo: sin LaTeX, sin tablas, sin listas con viñetas y sin negritas ni otro formato markdown. No escribas cifras, rangos, porcentajes ni años que no aparezcan en el contexto; explica con palabras como bajo, alto o mayor que. No uses corchetes, enlaces ni nombres de páginas web. Responde directamente, sin razonar en voz alta."
 
 
 class _LanguageRejected(ProviderResponseError):
@@ -28,7 +32,8 @@ class _LanguageRejected(ProviderResponseError):
 class ChatFallbackProvider(LLMProvider):
     name = "chat-independent-fallback"
 
-    def __init__(self, primary: LLMProvider, backup: LLMProvider, *, total: float = 45, delay: float = 2, validator: Callable[[LLMResponse], None] | None = None, on_response: Callable[[LLMResponse], None] | None = None):
+    def __init__(self, primary: LLMProvider, backup: LLMProvider, *, total: float = 45, delay: float = 2, validator: Callable[[LLMResponse], None] | None = None, on_response: Callable[[LLMResponse], None] | None = None, backup2: LLMProvider | None = None):
+        self.backup2 = backup2
         self.validator = validator
         self.on_response = on_response
         self.primary = primary
@@ -42,7 +47,7 @@ class ChatFallbackProvider(LLMProvider):
     def with_candidate_validator(self, validator, on_response=None):
         # Per-call clone: concurrent requests never share validation context.
         return ChatFallbackProvider(self.primary, self.backup, total=self.total,
-                                    delay=self.delay, validator=validator, on_response=on_response)
+                                    delay=self.delay, validator=validator, on_response=on_response, backup2=self.backup2)
 
     async def _candidate(self, provider, request, *, backup=False):
         response = await provider.complete(request)
@@ -72,6 +77,21 @@ class ChatFallbackProvider(LLMProvider):
         except TimeoutError:
             raise ProviderTransportError(self.name, "timeout", 1) from None
 
+    async def _backup_chain(self, request: LLMRequest) -> LLMResponse:
+        """Groq first; Gemini only if Groq fails or its output is rejected (never in parallel)."""
+        try:
+            return await self._candidate(self.backup, replace(
+                request, model=GROQ_MODEL,
+                messages=(*request.messages, Message("system", _BACKUP_PROMPT)),
+            ), backup=True)
+        except _FALL_THROUGH:
+            if self.backup2 is None:
+                raise
+        return await self._candidate(self.backup2, replace(
+            request, model=GEMINI_MODEL,
+            messages=(*request.messages, Message("system", _BACKUP_PROMPT)),
+        ), backup=True)
+
     async def _race(self, request: LLMRequest) -> LLMResponse:
         primary = asyncio.create_task(self._candidate(self.primary, request))
         tasks = [primary]
@@ -88,10 +108,7 @@ class ChatFallbackProvider(LLMProvider):
                     if isinstance(exc, _LanguageRejected):
                         rejected_primary = exc.response
             # Pin backup explicitly. Never send DeepSeek aliases or effort=max.
-            backup = asyncio.create_task(self._candidate(self.backup, replace(
-                request, model=GROQ_MODEL,
-                messages=(*request.messages, Message("system", "Puedes opinar y razonar sobre posiciones y decisiones de inversión del usuario, siempre apoyándote en los datos y fuentes del contexto. Si falta un dato, dilo en vez de inventarlo. No atribuyas opiniones a un autor si no hay fragmentos de ese autor en el contexto; en ese caso explica el concepto en general y di que no tienes una fuente concreta para atribuírselo. No añadas porcentajes, umbrales o reglas numéricas sin fuente. No deduzcas una deuda neta alta del tamaño de la deuda bruta: si falta el dato neto, indica que no está disponible. Conserva exactamente el contrato JSON y las citas del contexto cuando se exijan. Escribe en prosa plana en español, en párrafos cortos y de unas 120 palabras como máximo: sin LaTeX, sin tablas, sin listas con viñetas y sin negritas ni otro formato markdown. No escribas cifras, rangos, porcentajes ni años que no aparezcan en el contexto; explica con palabras como bajo, alto o mayor que. No uses corchetes, enlaces ni nombres de páginas web. Responde directamente, sin razonar en voz alta.")),
-            ), backup=True))
+            backup = asyncio.create_task(self._backup_chain(request))
             tasks.append(backup)
             pending = {backup} | ({primary} if not done else set())
             last = None
@@ -146,4 +163,20 @@ def create_chat_llm_provider(settings: Settings | None = None, *, client: httpx.
         max_output_tokens=2400,
         client=client,
     )
-    return ChatFallbackProvider(primary, backup, total=settings.llm_total_timeout_seconds)
+    backup2 = None
+    if settings.gemini_chat_fallback_enabled:
+        if not (settings.gemini_api_key and settings.gemini_free_plan_confirmed):
+            raise ValueError("Gemini chat requires a verified free plan (no billing) and API key")
+        backup2 = OpenAICompatibleProvider(
+            api_key=settings.gemini_api_key,
+            base_url=GEMINI_BASE_URL,
+            default_model=GEMINI_MODEL,
+            provider_name="gemini",
+            reasoning_effort="low",
+            timeout_seconds=15,
+            total_timeout_seconds=18,
+            max_retries=0,
+            max_output_tokens=8000,
+            client=client,
+        )
+    return ChatFallbackProvider(primary, backup, total=settings.llm_total_timeout_seconds, backup2=backup2)
