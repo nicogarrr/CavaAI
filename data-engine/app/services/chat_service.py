@@ -27,7 +27,7 @@ from app.services.chat_synthesis_service import ChatSynthesisService
 from app.services.claim_scope import live_claims
 from app.services.company_resolver import resolve_company
 from app.services.library_context import retrieve_library_context
-from app.services.memory_service import MemoryService
+from app.services.memory_service import MemoryService, remember_note
 from app.services.source_hierarchy_service import source_tier_key
 
 # Los nombres son los que persiste la ingesta (financial_ingestion_service):
@@ -471,6 +471,19 @@ class ChatService:
         company = self._resolve_company(db, question, scope, ticker)
         if company is None and page_context is not None:
             company = page_context.company
+        # Memoria SOLO ante "recuerda ..." explicito; respuesta visible, sin LLM.
+        note = remember_note(question)
+        if note is not None:
+            item = self.memory.write_explicit_note(db, note, company, scope)
+            return ChatResponse(
+                answer=f"Apuntado: {note}",
+                sources=[self._source_entry("memory_item", item.id, "Nota guardada por tu orden")],
+                model="memory-note",
+                prompt_version="memory-note-v1",
+                confidence=1.0,
+                llm_trace={"path": "memory_note"},
+                context=context_echo,
+            )
         if company is not None and not ticker:
             ticker = company.ticker
         # La abstencion financiera vive en el clasificador unificado de
