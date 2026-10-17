@@ -30,171 +30,16 @@ from app.services.library_context import retrieve_library_context
 from app.services.memory_service import MemoryService
 from app.services.source_hierarchy_service import source_tier_key
 
-# Los nombres son los que persiste la ingesta (financial_ingestion_service):
-# el efectivo se guarda como "cash_and_equivalents"; pedir "cash" aqui dejaba
-# ese hueco siempre sin cubrir ("Faltan entradas: cash") con el dato ya en DB.
 KEY_FACT_METRICS = [
     "revenue",
     "free_cash_flow",
     "operating_cash_flow",
     "net_income",
     "net_debt",
-    "cash_and_equivalents",
+    "cash",
     "total_debt",
     "shares_diluted",
 ]
-
-_METRIC_LABELS_ES = {
-    "revenue": "ingresos",
-    "free_cash_flow": "flujo de caja libre",
-    "operating_cash_flow": "flujo de caja operativo",
-    "net_income": "beneficio neto",
-    "net_debt": "deuda neta",
-    "cash_and_equivalents": "efectivo y equivalentes",
-    "total_debt": "deuda total",
-    "shares_diluted": "acciones diluidas",
-}
-
-_MONTHS_ES = (
-    "ene", "feb", "mar", "abr", "may", "jun",
-    "jul", "ago", "sep", "oct", "nov", "dic",
-)
-
-
-def _fmt_number_es(number: float, digits: int = 2) -> str:
-    """1.234.567,89 al estilo es-ES (puntos de miles, coma decimal)."""
-    text = f"{number:,.{digits}f}".rstrip("0").rstrip(".")
-    return text.replace(",", "").replace(".", ",").replace("", ".")
-
-
-def _fmt_value_es(value: float | None, unit: str | None) -> str:
-    """Cifra legible: -71,5 millones USD / 1,14 mil millones USD / 300 acciones."""
-    if value is None:
-        return "sin dato"
-    sign = "-" if value < 0 else ""
-    magnitude = abs(value)
-    if unit == "shares":
-        suffix = " acciones"
-    elif unit and unit != "decimal":
-        suffix = f" {unit}"
-    else:
-        suffix = ""
-    if magnitude >= 1e9:
-        rendered = f"{_fmt_number_es(magnitude / 1e9)} mil millones"
-    elif magnitude >= 1e6:
-        rendered = f"{_fmt_number_es(magnitude / 1e6)} millones"
-    elif magnitude >= 1e3:
-        rendered = f"{_fmt_number_es(magnitude / 1e3)} mil"
-    else:
-        rendered = _fmt_number_es(magnitude)
-    return f"{sign}{rendered}{suffix}"
-
-
-def _fmt_period_es(period: str | None, fiscal_year: int | None = None,
-                   fiscal_quarter: str | None = None) -> str:
-    """'2025-12-31:FY' -> 'ejercicio 2025'; '2025-09-30:Q3' -> 'Q3 2025'."""
-    text = (period or "").strip()
-    match = re.match(r"^(\d{4})-\d{2}-\d{2}:(FY|Q[1-4])$", text)
-    if match:
-        year, quarter = match.groups()
-        return f"ejercicio {year}" if quarter == "FY" else f"{quarter} {year}"
-    if fiscal_year:
-        if fiscal_quarter and fiscal_quarter != "FY":
-            return f"{fiscal_quarter} {fiscal_year}"
-        return f"ejercicio {fiscal_year}"
-    return text or "periodo sin fecha"
-
-
-def _fmt_date_es(iso_date: str | None) -> str:
-    """'2026-10-16' -> '16 oct 2026'."""
-    text = (iso_date or "").strip()
-    match = re.match(r"^(\d{4})-(\d{2})-(\d{2})$", text)
-    if not match:
-        return text or "sin fecha"
-    year, month, day = match.groups()
-    month_index = int(month) - 1
-    if not 0 <= month_index < 12:
-        return text
-    return f"{int(day)} {_MONTHS_ES[month_index]} {year}"
-
-
-def _natural_company_answer(
-    *,
-    company: Company,
-    facts: list[FinancialFact],
-    thesis: ThesisVersion | None,
-    news: list[NewsEvent],
-    missing_metrics: list[str],
-    claims: list[Claim],
-    contradiction_claims: list[Claim],
-    price_line: str | None,
-    memory_notes: list[str] | None = None,
-    written_memory_content: str | None = None,
-) -> str:
-    """Respuesta visible: prosa natural en castellano.
-
-    La estructura HECHO/CALCULO/... sigue en `sections` (panel plegado con
-    sus citas); lo que lee el usuario de un vistazo es esto. Nada de IDs de
-    fuente, siglas de seccion ni titulares en ingles en el cuerpo: el detalle
-    queda plegado.
-    """
-    parts: list[str] = []
-    if price_line:
-        parts.append(price_line)
-    if facts:
-        rendered = "; ".join(
-            f"{_METRIC_LABELS_ES.get(fact.metric, fact.metric)} "
-            f"{_fmt_value_es(_decimal_to_float(fact.value), fact.unit)} "
-            f"({_fmt_period_es(fact.period, fact.fiscal_year, fact.fiscal_quarter)}, "
-            f"{fact.source_type or 'fuente almacenada'})"
-            for fact in facts[:5]
-        )
-        parts.append(f"Datos almacenados: {rendered}.")
-    else:
-        parts.append(
-            f"Todavia no tengo hechos financieros fiables almacenados para "
-            f"{company.ticker}; ingiere sus fuentes primarias (SEC/FMP) y te "
-            f"respondo con cifras."
-        )
-    if thesis:
-        rating = f", rating {thesis.rating}" if thesis.rating else ""
-        parts.append(
-            f"Tengo guardada la tesis v{thesis.version} "
-            f"(estado {thesis.status}{rating})."
-        )
-    seen_notes: set[str] = set()
-    if written_memory_content:
-        note = _short(written_memory_content, 180)
-        parts.append(f"Anotado en tu memoria: '{note}'.")
-        seen_notes.add(" ".join(note.lower().split()))
-    for content in (memory_notes or [])[:3]:
-        note = _short(content, 180)
-        key = " ".join(note.lower().split())
-        if key in seen_notes:
-            continue
-        seen_notes.add(key)
-        parts.append(f"De tus notas guardadas: '{note}'.")
-    if news:
-        dated = sorted(
-            (event for event in news if event.date),
-            key=lambda event: event.date, reverse=True,
-        )
-        headlines = [
-            f"'{_short(event.title, 110)}' ({_fmt_date_es(event.date.isoformat())})"
-            for event in (dated or news)[:2]
-        ]
-        parts.append("Ultimas noticias guardadas: " + "; ".join(headlines) + ".")
-    if contradiction_claims:
-        parts.append(
-            f"Hay {len(contradiction_claims)} afirmaciones contradichas o "
-            f"desactualizadas que conviene revisar."
-        )
-    elif any(claim.status == "unverified" for claim in claims):
-        parts.append("Hay afirmaciones pendientes de verificar.")
-    if missing_metrics:
-        labels = ", ".join(_METRIC_LABELS_ES.get(m, m) for m in missing_metrics)
-        parts.append(f"Aun faltan datos almacenados de: {labels}.")
-    return "\n\n".join(parts)
 
 def _decimal_to_float(value: Decimal | int | float | None) -> float | None:
     if value is None:
@@ -214,6 +59,22 @@ def _short(text: str, limit: int = 420) -> str:
 # compatibles para los tests que los importaban de aquí.
 _SMALL_TALK_RE = SMALL_TALK_RE
 _small_talk_answer = small_talk_answer
+
+# Tickers que tambien son palabras corrientes: en minusculas solo cuentan si
+# la pregunta trae una pista de consulta sobre empresas.
+_COMMON_WORD_TICKERS = frozenset(
+    {"META", "NOW", "IT", "ON", "CAT", "ALL", "ARE", "KEY", "LOW", "FAST", "WELL", "A", "BIG", "GOOD"}
+)
+# Palabra previa que convierte la palabra comun en un sustantivo ("mi meta").
+_DETERMINERS = frozenset(
+    {"mi", "mis", "tu", "tus", "su", "sus", "la", "las", "el", "un", "una", "esta", "esa", "otra",
+     "nuestra", "my", "your", "our", "the", "a", "this", "that", "his", "her", "their"}
+)
+_COMPANY_CUE_RE = re.compile(
+    r"(?i)\b(tesis|thesis|an[aá]lisis|analiza\w*|ficha|empresa|compa[nñ][ií]a|"
+    r"acci[oó]n(?:es)?|cotiza\w*|precio|valoraci[oó]n|resultados|balance|"
+    r"riesgos?|catalizadores?|noticias?|dividendos?|fundamentales|stock)\b"
+)
 
 
 
@@ -664,7 +525,6 @@ class ChatService:
                 .order_by(desc(MarketPrice.date))
                 .limit(1)
             ).first()
-            price_line: str | None = None
             if latest_price is not None:
                 # adj_close NULL = spot sin ajustar por splits/dividendos
                 # (p. ej. intraday): se distingue de cierre diario y se
@@ -673,12 +533,6 @@ class ChatService:
                 adjusted = latest_price.adj_close is not None
                 value = latest_price.adj_close if adjusted else latest_price.close
                 kind = "cierre" if adjusted else "spot"
-                price_line = (
-                    f"{company.ticker} cotiza a "
-                    f"{_fmt_number_es(float(value))} {company.currency} "
-                    f"({kind} del {_fmt_date_es(latest_price.date.isoformat())}, "
-                    f"fuente {latest_price.source})."
-                )
                 sources.append(
                     self._source_entry(
                         "market_price",
@@ -767,16 +621,27 @@ class ChatService:
                 for chunk in rag_chunks[:3]
                 if chunk.get("point_id") and chunk.get("text")
             ] + library_lines
-            db_evidence_lines = [
-                f"- {_short(chunk.text, 180)} ({document.source_type}) "
-                f"[document_chunk:{chunk.id}]"
-                for chunk, document in db_chunks[:3]
-            ]
-            news_lines = [
-                f"- {event.title} [{event.impact_direction}, materiality {event.materiality_score}] "
-                f"[news_event:{event.id}]"
-                for event in news[:3]
-            ]
+            evidence_text = (
+                "\n".join(
+                    [
+                        *[
+                            f"- {_short(chunk.text, 180)} ({document.source_type}) "
+                            f"[document_chunk:{chunk.id}]"
+                            for chunk, document in db_chunks[:3]
+                        ],
+                        *rag_evidence_lines,
+                    ]
+                )
+                or "- Ningun fragmento de documento local encajo con fuerza; sube o ingiere fuentes primarias."
+            )
+            news_text = (
+                "\n".join(
+                    f"- {event.title} [{event.impact_direction}, materiality {event.materiality_score}] "
+                    f"[news_event:{event.id}]"
+                    for event in news[:3]
+                )
+                or "- No hay noticias recientes almacenadas para esta empresa."
+            )
             contradiction_claims = [
                 claim
                 for claim in claims
@@ -806,30 +671,24 @@ class ChatService:
                 else "- La evidencia recuperada no exige un cambio automatico de tesis; seguir monitorizando."
             )
 
-            # La respuesta VISIBLE es prosa natural en castellano (pedido de
-            # Nico 2026-10-17: "que sea lectura natural y en castellano"). El
-            # volcado estructurado con citas no desaparece: sigue en
-            # `sections`, que el frontend muestra plegado, y es el contexto
-            # que verifica la sintesis LLM.
-            answer = _natural_company_answer(
-                company=company,
-                facts=facts,
-                thesis=thesis,
-                news=news,
-                missing_metrics=missing_metrics,
-                claims=claims,
-                contradiction_claims=contradiction_claims,
-                price_line=price_line,
-                memory_notes=[item.item.content for item in retrieved_memory[:3]],
-                written_memory_content=(
-                    written_memory.content if written_memory else None
-                ),
+            answer = (
+                f"HECHO\n{facts_text}\n\n"
+                f"CALCULO\n{calculations_text}\n\n"
+                f"HIPOTESIS / MEMORIA DEL USUARIO\n{assumptions_text}\n\n"
+                f"AFIRMACION SIN VERIFICAR\n{unverified_text}\n\n"
+                f"INFERENCIA\n{thesis_text} A partir de la evidencia recuperada, el siguiente paso mas seguro es revisar "
+                f"las afirmaciones y las fuentes primarias antes de cambiar la tesis.\n\n"
+                f"FOTO DE EVIDENCIA\n{evidence_text}\n\n"
+                f"NOTICIAS / QUE CAMBIO\n{news_text}\n\n"
+                f"CONTRADICCIONES\n{contradictions_text}\n\n"
+                f"DATOS INSUFICIENTES\n{insufficient_text}\n\n"
+                f"CONCLUSION\n{conclusion_text}"
             )
 
             sections = [
                 {
                     "key": "facts",
-                    "body": "\n".join([facts_text, *news_lines]),
+                    "body": facts_text,
                     "citations": [
                         f"financial_fact:{fact.id}" for fact in facts[:5]
                     ],
@@ -860,10 +719,8 @@ class ChatService:
                 },
                 {
                     "key": "inferences",
-                    "body": "\n".join(
-                        [thesis_text, *db_evidence_lines, *rag_evidence_lines]
-                    )
-                    if (rag_evidence_lines or db_evidence_lines)
+                    "body": "\n".join([thesis_text, *rag_evidence_lines])
+                    if rag_evidence_lines
                     else thesis_text,
                     "citations": [
                         *([f"thesis_version:{thesis.id}"] if thesis else []),

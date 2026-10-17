@@ -59,7 +59,7 @@ def test_small_talk_respuesta_natural_sin_llm():
         ChatService(provider).answer(db, "hola", "portfolio", None)
     )
     assert response.model == "small-talk"
-    assert "CavaAI" in response.answer
+    assert "GerarAI" in response.answer and "CavaAI" not in response.answer
     assert "FACT" not in response.answer
     assert response.sources == []
     assert provider.requests == [], "small talk NO debe llamar al LLM"
@@ -92,7 +92,7 @@ def test_synthesize_general_no_inventa_si_vacio():
 
 def test_prompt_chat_general_registrado():
     prompt = get_prompt("chat_general")
-    assert prompt.version == "chat-general-v3"
+    assert prompt.version == "chat-general-v2"
     assert "cifras" in prompt.text
 
 
