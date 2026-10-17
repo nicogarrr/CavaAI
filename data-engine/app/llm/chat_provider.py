@@ -2,8 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-import re
-import unicodedata
 from collections.abc import Callable
 from dataclasses import replace
 
@@ -19,13 +17,6 @@ from app.llm.factory import create_llm_provider
 from app.llm.model_aliases import VERIFIED_FREE_MODELS
 
 GROQ_MODEL = "openai/gpt-oss-120b"
-
-
-def educational_output(text: str) -> bool:
-    """Best-effort lexical rejection, NOT a semantic guarantee against advice."""
-    value = "".join(c for c in unicodedata.normalize("NFKD", text.lower()) if not unicodedata.combining(c))
-    pattern = r"\b(?:recom\w*|aconsej\w*|compr\w*|vend\w*|vender|adquir\w*|adquiera\w*|liquid\w*|invert\w*|asign\w*|buy\w*|sell\w*|allocat\w*|should|deberia\w*)\b"
-    return bool(text.strip()) and re.search(pattern, value) is None
 
 
 class _LanguageRejected(ProviderResponseError):
@@ -64,8 +55,6 @@ class ChatFallbackProvider(LLMProvider):
         try:
             if response.degraded or response.finish_reason == "length":
                 raise ValueError("truncated or degraded")
-            if backup and not educational_output(response.text):
-                raise ValueError("educational boundary")
             if self.validator is not None:
                 self.validator(response)
         except Exception as exc:
@@ -101,7 +90,7 @@ class ChatFallbackProvider(LLMProvider):
             # Pin backup explicitly. Never send DeepSeek aliases or effort=max.
             backup = asyncio.create_task(self._candidate(self.backup, replace(
                 request, model=GROQ_MODEL,
-                messages=(*request.messages, Message("system", "Limita la respuesta a explicación y análisis factual educativo. No des asesoramiento financiero personalizado ni recomendaciones de compra, venta o asignación. Si te lo piden, explica ese límite y ofrece datos y riesgos verificables sin aconsejar una decisión. Usa lenguaje descriptivo, no verbos de acción como comprar, vender, recomendar o asignar, incluso al explicar un concepto. No atribuyas opiniones a un autor si no hay fragmentos de ese autor en el contexto; en ese caso explica el concepto en general y di que no tienes una fuente concreta para atribuírselo. No añadas porcentajes, umbrales o reglas numéricas sin fuente. No deduzcas una deuda neta alta del tamaño de la deuda bruta: si falta el dato neto, indica que no está disponible. Conserva exactamente el contrato JSON y las citas del contexto cuando se exijan.")),
+                messages=(*request.messages, Message("system", "Puedes opinar y razonar sobre posiciones y decisiones de inversión del usuario, siempre apoyándote en los datos y fuentes del contexto. Si falta un dato, dilo en vez de inventarlo. No atribuyas opiniones a un autor si no hay fragmentos de ese autor en el contexto; en ese caso explica el concepto en general y di que no tienes una fuente concreta para atribuírselo. No añadas porcentajes, umbrales o reglas numéricas sin fuente. No deduzcas una deuda neta alta del tamaño de la deuda bruta: si falta el dato neto, indica que no está disponible. Conserva exactamente el contrato JSON y las citas del contexto cuando se exijan.")),
             ), backup=True))
             tasks.append(backup)
             pending = {backup} | ({primary} if not done else set())
@@ -115,8 +104,6 @@ class ChatFallbackProvider(LLMProvider):
                         response = task.result()
                         if response.degraded or response.finish_reason == "length":
                             raise ProviderResponseError("chat response was truncated")
-                        if task is backup and not educational_output(response.text):
-                            raise ProviderResponseError("Groq output rejected by educational boundary")
                         return response
                     except _FALL_THROUGH as exc:
                         last = exc
