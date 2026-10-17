@@ -205,9 +205,7 @@ export function GlobalBrain({ userId }: GlobalBrainProps) {
         >
             <CardHeader className="p-4 border-b border-indigo-500/20 flex flex-row items-center justify-between bg-indigo-900/20">
                 <div className="flex min-w-0 items-center gap-2">
-                    <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white">
-                        <BrainGlassesIcon className="h-[22px] w-[22px]" />
-                    </div>
+                    <BrainGlassesIcon className="h-9 w-9 shrink-0 object-contain" />
                     <CardTitle id="global-brain-title" className="text-sm font-medium">Cerebro GerarAI</CardTitle>
                     {viewing && (
                         <span

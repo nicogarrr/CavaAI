@@ -10,3 +10,7 @@ test('mobile brain clears BottomNav and uses full flat icon without shell',()=>{
  assert.ok(source.includes('h-14 w-14 shrink-0 object-contain'));
  assert.ok(!source.split('if (!isOpen)')[1].split('// Panel:')[0].includes('bg-white'));
 });
+test('panel header shows the flat logo with no white disk',()=>{
+ assert.ok(!source.includes('rounded-full bg-white'));
+ assert.ok(source.includes('<BrainGlassesIcon className="h-9 w-9 shrink-0 object-contain" />'));
+});
