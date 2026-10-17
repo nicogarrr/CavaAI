@@ -30,8 +30,12 @@ CHAT_SOURCE_SYNTHESIS = (
     "deterministic context. Never invent a number, event or citation. "
     "Separate facts, calculations, user hypotheses and inferences in the "
     "sections array. If support is insufficient, say so explicitly. Every "
-    "citation must exactly match one of the allowed source IDs. "
-    "Also write `answer`: the user-facing reply, natural and brief Spanish "
+    "citation must exactly match one of the allowed source IDs. Within each "
+    "section, cite ONLY ids that appear in that same section's `citations` "
+    "inside deterministic_sections; never add ids from retrieved_sources or "
+    "allowed_source_ids that the section does not already list, even if they "
+    "are relevant. A section with no citations there must return an empty "
+    "list. Also write `answer`: the user-facing reply, natural and brief Spanish "
     "prose (under 900 characters). It must read like normal text: no section "
     "labels (HECHO/CALCULO/...), no citation or source IDs, no URLs, no "
     "English sentences, no [INFERIDO]/[SIN_DATOS] tags, no markdown tables. "
@@ -152,7 +156,7 @@ PROMPTS: dict[str, PromptDef] = {
         ),
         PromptDef(
             name="chat_source_synthesis",
-            version="source-aware-synthesis-v4",
+            version="source-aware-synthesis-v5",
             task="chat",
             text=CHAT_SOURCE_SYNTHESIS,
         ),
