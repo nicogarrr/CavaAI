@@ -208,7 +208,11 @@ def test_memoria_visible_en_prosa_con_marcador():
         "company", "MSFT",
     )
     assert marker in response.answer
-    assert "Anotado en tu memoria:" in response.answer
+    # El cerebro es SOLO LECTURA: el "Remember ..." de la pregunta ya no
+    # escribe memoria ni la prosa dice "Anotado"; solo cita las notas
+    # guardadas previamente.
+    assert "Anotado en tu memoria:" not in response.answer
     assert "notas guardadas" in response.answer
+    assert db.query(MemoryItem).count() == 1
     for label in ("HECHO", "HIPOTESIS", "memory_item:", "memory_writeback:"):
         assert label not in response.answer

@@ -428,6 +428,20 @@ def test_memory_api_tracks_claims_evidence_sections_and_sessions():
     finally:
         db.close()
 
+    # El cerebro es SOLO LECTURA: "Recuerda ..." ya no escribe desde el chat;
+    # la memoria la crea el usuario por la vía de memoria (aquí, sembrada).
+    db = SessionLocal()
+    try:
+        company_id = db.scalar(select(Company.id).where(Company.ticker == "MSFT"))
+        db.add(MemoryItem(
+            company_id=company_id, scope="company", memory_type="watch_item",
+            importance=8, status="active", source_type="user",
+            content="Vigilar si Azure AI demand sigue sosteniendo premium cloud growth.",
+        ))
+        db.commit()
+    finally:
+        db.close()
+
     source_aware_chat = client.post(
         "/api/chat",
         json={

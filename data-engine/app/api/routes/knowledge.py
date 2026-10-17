@@ -10,8 +10,6 @@ from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
 from app.core.database import get_db
-from app.schemas import ChatPageContext
-from app.services.brain_service import resolve_page_context
 from app.core.errors import safe_detail
 from app.models import (
     InvestmentPrinciple,
@@ -20,6 +18,8 @@ from app.models import (
     KnowledgeDocument,
     ProcessingJob,
 )
+from app.schemas import ChatPageContext
+from app.services.brain_service import resolve_page_context
 from app.services.document_ingestion_service import MAX_DOCUMENT_BYTES
 from app.services.knowledge_library_service import (
     KNOWLEDGE_DOCUMENT_TYPES,
