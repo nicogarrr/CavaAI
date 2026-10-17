@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
+import json
+from collections import Counter
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from xml.etree import ElementTree
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import CashBalance, Company, Position, Transaction
@@ -173,6 +177,7 @@ def validate_flex_xml(xml_text: str) -> list[str]:
 # Columnas aceptadas (minúsculas) para el CSV de actividad de IBKR.
 _CSV_REQUIRED_COLUMNS = ("symbol", "action", "quantity", "price", "date")
 _CSV_COLUMN_ALIASES = {
+    "external_id": ("tradeid", "transactionid", "ibexecid", "external_id"),
     "symbol": {"symbol", "ticker", "underlyingsymbol"},
     "action": {"action", "buysell", "transactiontype", "type", "side"},
     "quantity": {"quantity", "shares", "position"},
@@ -909,6 +914,9 @@ class IBKRImportService:
         assert mapping is not None  # garantizado por validate_ibkr_csv
         ledger = PortfolioLedgerService()
         trades_imported = 0
+        duplicate_trades = 0
+        occurrences: Counter[str] = Counter()
+        has_rows_without_id = False
         rows_skipped = len(bad_lines)
         for line_number, row in enumerate(data_rows[1:], start=2):
             if line_number in bad_lines:
@@ -924,28 +932,67 @@ class IBKRImportService:
             if action is None:
                 # La validación anterior ya marca y omite estas filas.
                 continue
+            # Provider IDs share identity with Flex XML. Without one, use the
+            # canonical economic row plus occurrence count, preserving two
+            # identical fills in one file while making replay/reordering safe.
+            values = [symbol, action, str(abs(Decimal(_cell("quantity").replace(",", "")).normalize())),
+                      str(Decimal(_cell("price").replace(",", "")).normalize()),
+                      _date(_cell("date")).isoformat(),
+                      str(abs(Decimal(_cell("fees").replace(",", "")).normalize())) if _cell("fees") else "0",
+                      _cell("currency").upper() or "USD"]
+            fingerprint = hashlib.sha256(json.dumps(values).encode()).hexdigest()
+            occurrences[fingerprint] += 1
+            has_rows_without_id |= not bool(_cell("external_id"))
+            external_id = _cell("external_id") or f"ibkr-csv-{fingerprint}-{occurrences[fingerprint]}"
+            if len(external_id) > 120:
+                rows_skipped += 1
+                row_errors.append(f"Fila {line_number} del CSV: identificador de operación demasiado largo.")
+                continue
+            if db.scalar(select(Transaction.id).where(Transaction.external_id == external_id)) is not None:
+                duplicate_trades += 1
+                continue
             try:
-                ledger.create_transaction(
-                    db,
-                    ticker=symbol,
-                    action=action,
-                    quantity=abs(Decimal(_cell("quantity").replace(",", ""))),
-                    price=Decimal(_cell("price").replace(",", "")),
-                    trade_date=_date(_cell("date")),
-                    fees=abs(Decimal(_cell("fees").replace(",", ""))) if _cell("fees") else Decimal("0"),
-                    currency=_cell("currency").upper() or "USD",
-                )
-                trades_imported += 1
+                with db.begin_nested():
+                    transaction = ledger.create_transaction(
+                        db,
+                        ticker=symbol,
+                        action=action,
+                        quantity=abs(Decimal(_cell("quantity").replace(",", ""))),
+                        price=Decimal(_cell("price").replace(",", "")),
+                        trade_date=_date(_cell("date")),
+                        fees=abs(Decimal(_cell("fees").replace(",", ""))) if _cell("fees") else Decimal("0"),
+                        currency=_cell("currency").upper() or "USD",
+                    )
+                    transaction.external_id = external_id
+                    transaction.raw_payload = {**transaction.raw_payload, "source": "ibkr_csv", "identity": "provider" if _cell("external_id") else "canonical_occurrence"}
+                    db.flush()
+                    trades_imported += 1
+            except IntegrityError:
+                # A concurrent identical upload won the unique (tenant, external_id)
+                # race. The savepoint also restores its position rebuild.
+                if db.scalar(select(Transaction.id).where(Transaction.external_id == external_id)) is None:
+                    raise
+                duplicate_trades += 1
             except ValueError as exc:
                 rows_skipped += 1
                 row_errors.append(
                     f"Fila {line_number} del CSV ({symbol}): no se pudo registrar "
                     f"({exc}). Revisa los valores de la fila."
                 )
+        identity_warning = None
+        if has_rows_without_id:
+            identity_warning = (
+                "CSV sin identificador de operación: se comparan símbolo, acción, cantidad, "
+                "precio, fecha, comisión y divisa, conservando las repeticiones del archivo. "
+                "Dos archivos parciales con operaciones idénticas no se pueden distinguir; "
+                "usa tradeID para importarlos sin ambigüedad."
+            )
         db.commit()
         return {
             "status": "imported",
             "trades_imported": trades_imported,
+            "duplicate_trades": duplicate_trades,
+            "identity_warning": identity_warning,
             "rows_skipped": rows_skipped,
             "row_errors": row_errors,
         }
