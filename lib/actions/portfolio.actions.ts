@@ -1,5 +1,7 @@
 'use server';
 
+import { verifiedPortfolioHistory, type PortfolioSnapshotPoint } from '@/lib/portfolio-history';
+
 import { requireAuthenticatedUser } from '@/lib/auth/require-user';
 import { jsonBody, researchRequest } from '@/lib/research/client';
 import { cachedFetch } from '@/lib/cache/memoryTTL';
@@ -78,6 +80,7 @@ export type PortfolioSummary = {
     baseCurrency: string;
     status: 'ok' | 'incomplete_fx';
     missingFx: Array<Record<string, unknown>>;
+    quality?: PortfolioDataQuality | null;
 };
 
 type ResearchPortfolioTransaction = {
@@ -185,7 +188,7 @@ export async function getPortfolioTransactions(userId: string) {
 
 export async function getPortfolioSummary(userId: string): Promise<PortfolioSummary> {
     const canonicalUserId = await resolveUserId(userId);
-    const [positions, backendSummary] = await Promise.all([
+    const [positions, backendSummary, quality] = await Promise.all([
         cachedFetch(
             `portfolio:${canonicalUserId}:positions`,
             () => researchRequest<ResearchPortfolioPosition[]>('/api/portfolio/positions', { fast: true }),
@@ -196,6 +199,7 @@ export async function getPortfolioSummary(userId: string): Promise<PortfolioSumm
             () => researchRequest<ResearchPortfolioSummaryResponse>('/api/portfolio/summary', { fast: true }),
             15,
         ),
+        getPortfolioDataQuality(canonicalUserId),
     ]);
     const holdings = positions.map((position): PortfolioHolding => {
         const currentPrice = position.market_price;
@@ -236,6 +240,7 @@ export async function getPortfolioSummary(userId: string): Promise<PortfolioSumm
         baseCurrency: backendSummary.base_currency,
         status: backendSummary.status,
         missingFx: backendSummary.missing_fx,
+        quality,
     };
 }
 
@@ -376,6 +381,12 @@ export async function getPortfolioScores(userId: string): Promise<PortfolioScore
         // métrica que la alimenta no existe: un 0 seria una medición.
         const clamp100 = (v: number) => Math.max(0, Math.min(100, Math.round(v)));
         const sheet = await getPortfolioTearsheet(canonicalUserId);
+        const snapshots = await cachedFetch(
+            `portfolio:${canonicalUserId}:snapshots`,
+            () => researchRequest<PortfolioSnapshotPoint[]>('/api/portfolio/snapshots', { fast: true }),
+            15,
+        ).catch(() => [] as PortfolioSnapshotPoint[]);
+        const history = verifiedPortfolioHistory(snapshots, summary.baseCurrency);
         // Real dividend score: trailing-12M declared-dividend yield from
         // GET /api/portfolio/dividends (FMP-ingested records, provenance
         // attached). Linear band documented here: 0% yield -> 0, 6% -> 100.
@@ -444,7 +455,7 @@ export async function getPortfolioScores(userId: string): Promise<PortfolioScore
             dividend: dividendScore,
             cagr3y: data.cagr != null ? Math.round(data.cagr * 10000) / 100 : null,
             analytics: data,
-            history: undefined,
+            history,
         };
     } catch (error) {
         console.error('Error getting portfolio scores:', error);
@@ -878,4 +889,29 @@ export async function getPortfolioDividendProjection(): Promise<PortfolioDividen
   // Sin cache: la proyección depende de la última sincronización IBKR y de
   // los dividendos ingeridos, que cambian con cada sync.
   return researchRequest<PortfolioDividendProjection>('/api/portfolio/dividends/projection', { fast: true });
+}
+
+export type PortfolioDataQuality = {
+    status: string;
+    positions: number;
+    missing_cost_positions: number;
+    position_dates: string[];
+    cash_dates: string[];
+    position_sources: string[];
+    cash_sources: string[];
+    cash_native: Record<string, number>;
+    snapshots: number;
+    complete_snapshots: number;
+    return_observations: number;
+    latest_snapshot_date: string | null;
+    latest_pricing_coverage: number | null;
+    reasons: string[];
+};
+
+export async function getPortfolioDataQuality(userId: string): Promise<PortfolioDataQuality | null> {
+    const canonicalUserId = await resolveUserId(userId);
+    try {
+        return await cachedFetch(`portfolio:${canonicalUserId}:quality`,
+            () => researchRequest<PortfolioDataQuality>('/api/portfolio/data-quality', { fast: true }), 15);
+    } catch { return null; }
 }
