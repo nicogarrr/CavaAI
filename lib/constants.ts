@@ -99,6 +99,13 @@ export type NavItem = {
   hub?: string | null;
   /** Descripcion de una linea para tarjetas de hub (/discover). */
   description?: string;
+  /**
+   * Etiqueta corta solo para el subnav contextual (SectionNav), cuando la
+   * etiqueta del catalogo (alineada con el H1) repetiria el nombre de la
+   * seccion: /research se anuncia como «Empresas» dentro de Research.
+   * Migas, buscador y /discover siguen usando `label`.
+   */
+  subnavLabel?: string;
   children?: NavItem[];
 };
 
@@ -147,6 +154,7 @@ export const ROUTE_CATALOG: NavSection[] = [
         label: 'Research',
         icon: FileSearch,
         hub: '/research',
+        subnavLabel: 'Empresas',
         children: [
           { href: '/research/assistant', label: 'Asistente', icon: Sparkles, hub: '/research' },
           { href: '/research/news', label: 'Noticias', icon: Newspaper, hub: '/research' },

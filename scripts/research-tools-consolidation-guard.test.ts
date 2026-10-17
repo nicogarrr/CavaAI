@@ -12,4 +12,8 @@ test("research tools have one contextual navigation, not an obsolete sidebar foo
  // /research/workflows conserva el enlace que tenia (subnav de Research via
  // catalogo): mantener o eliminar la pagina es decision pendiente de Nico.
  assert.match(constants,/\{ href: '\/research\/workflows', label: 'Workflows'/);
+ // Contrato del e2e research-tools-consolidation: la raiz de Research se
+ // anuncia «Empresas» en el subnav (subnavLabel) sin renombrar la miga.
+ assert.match(constants,/subnavLabel: 'Empresas'/);
+ assert.match(nav,/item\.subnavLabel\?\?item\.label/);
 });
