@@ -80,8 +80,8 @@ class ChatFallbackProvider(LLMProvider):
             raise ProviderTransportError(self.name, "timeout", 1) from None
 
     async def _backup_chain(self, request: LLMRequest) -> LLMResponse:
-        """Gemini 3.5 Flash-Lite, Gemini 3.8 Flash (when configured), then Groq; sequential, never in parallel."""
-        members = ([(self.backup2, model) for model in GEMINI_MODELS] if self.backup2 is not None else []) + [(self.backup, GROQ_MODEL)]
+        """Groq gpt-oss-120b, then Gemini 3.5 Flash-Lite and Gemini 3.8 Flash (when configured); sequential, never in parallel."""
+        members = [(self.backup, GROQ_MODEL)] + ([(self.backup2, model) for model in GEMINI_MODELS] if self.backup2 is not None else [])
         last: Exception | None = None
         for provider, model in members:
             try:
