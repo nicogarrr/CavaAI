@@ -131,7 +131,7 @@ npm run dev            # http://localhost:3000 (FMP_BACKEND_URL=http://localhost
 | `RESEARCH_AUTH_SECRET` | sí (producción) | ≥32 chars; compartida con el frontend; sin ella el API autenticado da 503/401 |
 | `WORKERS_ENABLED` | no (default true) | `false` desactiva el scheduler (tests, workers aparte) |
 | `FINNHUB_API_KEY` | según features | quotes del frontend |
-| `OPENCODE_GO_API_KEY` / `OPENCODE_GO_MODEL` | sí (LLM) | provider LLM único (`llm_provider=opencode-go`) |
+| `OPENCODE_GO_API_KEY` / `OPENCODE_GO_MODEL` | sí (LLM) | provider LLM principal (`llm_provider=opencode-go`); cascada gratuita opt-in con `LLM_PROVIDER=cascade` y fallback Groq solo para chat (docs/AI_PROVIDER_STRATEGY.md) |
 | `MINIO_*` | sí (producción) | almacenamiento de documentos originales |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | según features | canal de alertas primario |
 | `REDIS_URL`, `QDRANT_URL` | según features | broker Dramatiq y vectores |

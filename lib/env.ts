@@ -33,16 +33,12 @@ const envSchema = z.object({
   FMP_API_KEY: z.string().optional(),
   FMP_BACKEND_URL: z.string().url().optional(),
 
-  // Fuentes alternativas - Opcionales
-  TWELVE_DATA_API_KEY: z.string().optional(),
+  // Fuentes alternativas - Opcionales (las lee lib/actions/newsSources.actions.ts)
   ALPHA_VANTAGE_API_KEY: z.string().optional(),
-  POLYGON_API_KEY: z.string().optional(),
-  MARKETSTACK_API_KEY: z.string().optional(),
   NEWSAPI_KEY: z.string().optional(),
   MARKETAUX_API_KEY: z.string().optional(),
-  TRADING_ECONOMICS_API_KEY: z.string().optional(),
 
-  // Single application LLM provider
+  // Proveedor LLM principal (OpenCode Zen); el chat admite fallback Groq en el backend
   OPENCODE_GO_API_KEY: z.string().optional(),
   OPENCODE_GO_BASE_URL: z.string().url().default('https://opencode.ai/zen/v1'),
   OPENCODE_GO_MODEL: z.string().default("deepseek-v4.1-flash-free"),
