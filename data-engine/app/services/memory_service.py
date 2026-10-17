@@ -8,18 +8,6 @@ from sqlalchemy.orm import Session
 from app.models import Company, MemoryItem
 
 TOKEN_RE = re.compile(r"[a-zA-Z0-9_]{3,}")
-MEMORY_TRIGGERS = (
-    "remember",
-    "recuerda",
-    "memoriza",
-    "guarda",
-    "watch",
-    "vigila",
-    "hipotesis",
-    "hypothesis",
-    "thesis",
-    "tesis",
-)
 
 
 @dataclass(frozen=True)
@@ -31,10 +19,6 @@ class RetrievedMemory:
 
 def _tokens(text: str) -> set[str]:
     return {match.group(0).lower() for match in TOKEN_RE.finditer(text)}
-
-
-def _normalized(text: str) -> str:
-    return " ".join(text.strip().lower().split())
 
 
 class MemoryService:
@@ -80,47 +64,3 @@ class MemoryService:
                 )
 
         return sorted(ranked, key=lambda memory: memory.score, reverse=True)[:limit]
-
-    def maybe_write_from_chat(
-        self,
-        db: Session,
-        question: str,
-        company: Company | None = None,
-        scope: str = "portfolio",
-    ) -> MemoryItem | None:
-        lowered = question.lower()
-        if not any(trigger in lowered for trigger in MEMORY_TRIGGERS):
-            return None
-
-        content = question.strip()
-        if len(content) < 12:
-            return None
-
-        normalized = _normalized(content)
-        statement = select(MemoryItem).where(
-            MemoryItem.status == "active",
-            MemoryItem.scope == ("company" if company else scope),
-        )
-        if company:
-            statement = statement.where(MemoryItem.company_id == company.id)
-
-        for item in db.scalars(statement.limit(100)).all():
-            if _normalized(item.content) == normalized:
-                item.importance = max(item.importance, 7)
-                item.updated_at = datetime.now(UTC)
-                db.commit()
-                return item
-
-        item = MemoryItem(
-            company_id=company.id if company else None,
-            scope="company" if company else scope,
-            memory_type="chat_memory",
-            importance=7,
-            content=content,
-            source_type="chat",
-            metadata_={"write_policy": "triggered_by_user_instruction"},
-        )
-        db.add(item)
-        db.commit()
-        db.refresh(item)
-        return item

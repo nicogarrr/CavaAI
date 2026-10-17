@@ -667,16 +667,35 @@ class ChatSynthesisService:
             compact = " ".join((text or "").split())
             return compact if len(compact) <= limit else f"{compact[: limit - 3]}..."
 
-        doctrine = [
+        # Esquema unificado de fuentes de doctrina (type, page_number, autor,
+        # año, fragmento): el frontend pliega citas de TODAS las rutas con el
+        # mismo contrato. El prompt recibe la vista recortada; la respuesta
+        # devuelve la fuente completa y plegable.
+        doctrine_sources = [
             {
-                "author": source.get("author"),
+                "type": "knowledge_chunk",
+                "id": source.get("id"),
                 "title": source.get("title"),
-                "page": source.get("page_number"),
+                "author": source.get("author"),
+                "year": source.get("year"),
+                "page_number": source.get("page_number"),
+                "chunk_index": source.get("chunk_index"),
+                "source_type": source.get("source_type"),
+                "url": source.get("url"),
                 "text": _clip(str(source.get("text") or ""), 600),
             }
             for source in baseline.sources
             if source.get("type") == "knowledge_chunk" and source.get("text")
         ][:3]
+        doctrine = [
+            {
+                "author": source.get("author"),
+                "title": source.get("title"),
+                "page": source.get("page_number"),
+                "text": source["text"],
+            }
+            for source in doctrine_sources
+        ]
         budget = BudgetController()
         # Mismo control de presupuesto que la ruta estructurada: sin saldo
         # NO hay primera llamada (antes solo se comprobaba el reintento).
@@ -763,9 +782,10 @@ class ChatSynthesisService:
             return self._general_fallback(baseline, reason="ungrounded")
         return ChatResponse(
             answer=text,
-            # La doctrina consultada viaja como fuente visible (titulo/autor/
-            # pagina); sin doctrina la prosa no se presenta como respaldada.
-            sources=doctrine,
+            # La doctrina consultada viaja como fuente visible y plegable
+            # (esquema unificado); sin doctrina la prosa no se presenta
+            # como respaldada.
+            sources=doctrine_sources,
             proposed_actions=[],
             model=guarded.response.model,
             prompt_version=GENERAL_PROMPT_VERSION,

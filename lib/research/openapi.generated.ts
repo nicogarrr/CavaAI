@@ -4631,6 +4631,7 @@ export interface components {
              * @enum {string}
              */
             mode: "explore" | "guide";
+            page?: components["schemas"]["ChatPageContext"] | null;
             /** Question */
             question: string;
             /** Review Id */
@@ -4644,6 +4645,10 @@ export interface components {
             answer: string;
             /** Citations */
             citations: components["schemas"]["AssistantCitation"][];
+            /** Context */
+            context?: {
+                [key: string]: unknown;
+            } | null;
             /** Missing Data */
             missing_data: string[];
             /**
@@ -4809,10 +4814,27 @@ export interface components {
             /** Ticker */
             ticker: string;
         };
+        /**
+         * ChatPageContext
+         * @description Contexto de página explícito ("Viendo X") enviado por el cliente.
+         *
+         *     El ticker es TEXTO: la Company se resuelve en servidor dentro del tenant
+         *     de la sesión (brain_service.resolve_page_context). El cliente nunca
+         *     manda IDs de base de datos.
+         */
+        ChatPageContext: {
+            /** Label */
+            label?: string | null;
+            /** Path */
+            path: string;
+            /** Ticker */
+            ticker?: string | null;
+        };
         /** ChatRequest */
         ChatRequest: {
             /** Enable Debate */
             enable_debate?: boolean | null;
+            page?: components["schemas"]["ChatPageContext"] | null;
             /** Question */
             question: string;
             /**
@@ -4837,6 +4859,10 @@ export interface components {
              * @default 0
              */
             confidence: number;
+            /** Context */
+            context?: {
+                [key: string]: unknown;
+            } | null;
             /** Evidence Suggestions */
             evidence_suggestions?: {
                 [key: string]: unknown;
@@ -5869,6 +5895,7 @@ export interface components {
              * @enum {string}
              */
             mode: "respuesta" | "analisis";
+            page?: components["schemas"]["ChatPageContext"] | null;
             /** Question */
             question: string;
             /**

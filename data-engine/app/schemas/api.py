@@ -543,11 +543,25 @@ class NewsIngestResponse(BaseModel):
     events: list[ManualNewsResponse]
 
 
+class ChatPageContext(BaseModel):
+    """Contexto de página explícito ("Viendo X") enviado por el cliente.
+
+    El ticker es TEXTO: la Company se resuelve en servidor dentro del tenant
+    de la sesión (brain_service.resolve_page_context). El cliente nunca
+    manda IDs de base de datos.
+    """
+
+    path: str = Field(min_length=1, max_length=240)
+    label: str | None = Field(default=None, max_length=120)
+    ticker: str | None = Field(default=None, max_length=20)
+
+
 class ChatRequest(BaseModel):
     question: str = Field(min_length=3)
     scope: str = "portfolio"
     ticker: str | None = None
     enable_debate: bool | None = None
+    page: ChatPageContext | None = None
 
 
 class SynthesisSection(BaseModel):
@@ -577,6 +591,8 @@ class ChatResponse(BaseModel):
     confidence: float = Field(default=0, ge=0, le=1)
     insufficient_data: bool = False
     llm_trace: dict = Field(default_factory=dict)
+    # Eco del contexto de página resuelto en servidor (pastilla "Viendo X").
+    context: dict | None = None
 
 
 class EvidenceSuggestionOut(BaseModel):

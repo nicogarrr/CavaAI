@@ -243,6 +243,16 @@
             "title": "Mode",
             "type": "string"
           },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChatPageContext"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "question": {
             "maxLength": 2000,
             "minLength": 3,
@@ -294,6 +304,18 @@
             },
             "title": "Citations",
             "type": "array"
+          },
+          "context": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context"
           },
           "missing_data": {
             "items": {
@@ -803,6 +825,46 @@
         "title": "CalculatedMetricsResponse",
         "type": "object"
       },
+      "ChatPageContext": {
+        "description": "Contexto de p\u00e1gina expl\u00edcito (\"Viendo X\") enviado por el cliente.\n\nEl ticker es TEXTO: la Company se resuelve en servidor dentro del tenant\nde la sesi\u00f3n (brain_service.resolve_page_context). El cliente nunca\nmanda IDs de base de datos.",
+        "properties": {
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "path": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          },
+          "ticker": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticker"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "ChatPageContext",
+        "type": "object"
+      },
       "ChatRequest": {
         "properties": {
           "enable_debate": {
@@ -815,6 +877,16 @@
               }
             ],
             "title": "Enable Debate"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChatPageContext"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "question": {
             "minLength": 3,
@@ -861,6 +933,18 @@
             "minimum": 0.0,
             "title": "Confidence",
             "type": "number"
+          },
+          "context": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context"
           },
           "evidence_suggestions": {
             "items": {
@@ -3861,6 +3945,16 @@
             ],
             "title": "Mode",
             "type": "string"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChatPageContext"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "question": {
             "maxLength": 1200,

@@ -161,7 +161,8 @@ test("PDF upload -> chunk -> claim/evidence -> chat/memory", async ({ request })
   expect(chat.sources).toContainEqual(
     expect.objectContaining({ type: "memory_item", id: memory.id }),
   );
-  expect(chat.sources).toContainEqual(expect.objectContaining({ type: "memory_writeback" }));
+  // The chat is read-only: it never reports a memory write-back.
+  expect(chat.sources).not.toContainEqual(expect.objectContaining({ type: "memory_writeback" }));
   expect(chat.answer).toContain(marker);
 
   const memories = await jsonResponse<MemoryItem[]>(
@@ -170,7 +171,5 @@ test("PDF upload -> chunk -> claim/evidence -> chat/memory", async ({ request })
     }),
   );
   expect(memories).toContainEqual(expect.objectContaining({ id: memory.id }));
-  expect(memories).toContainEqual(
-    expect.objectContaining({ source_type: "chat", content: expect.stringContaining(marker) }),
-  );
+  expect(memories.filter((item) => item.source_type === "chat")).toEqual([]);
 });
