@@ -91,6 +91,14 @@ export type NavItem = {
   href: string;
   label: string;
   icon: LucideIcon;
+  /**
+   * Hub primario (una de las 6 entradas de NAV_SECTIONS) al que pertenece la
+   * ruta: decide el resaltado del menu y el subnav contextual (SectionNav).
+   * `null` = sin hub (destinos de apoyo como /help): no se resalta nada.
+   */
+  hub?: string | null;
+  /** Descripcion de una linea para tarjetas de hub (/discover). */
+  description?: string;
   children?: NavItem[];
 };
 
@@ -114,17 +122,21 @@ export const NAV_SECTIONS: NavSection[] = [{
 export const ROUTE_CATALOG: NavSection[] = [
   {
     title: 'Principal',
-    items: [{ href: '/inicio', label: 'Inicio', icon: Home }],
+    items: [
+      { href: '/inicio', label: 'Inicio', icon: Home, hub: '/inicio' },
+      { href: '/discover', label: 'Descubrir', icon: Filter, hub: '/discover' },
+    ],
   },
   {
     title: 'Cartera',
     items: [
-      { href: '/portfolio', label: 'Resumen', icon: Briefcase },
-      { href: '/portfolio/intelligence', label: 'Inteligencia', icon: Sparkles },
-      { href: '/risk', label: 'Exposiciones', icon: Gauge },
-      { href: '/taxes', label: 'Impuestos', icon: Receipt },
-      { href: '/corporate-actions', label: 'Acciones corp.', icon: Building2 },
-      { href: '/calendar', label: 'Calendario', icon: CalendarDays },
+      { href: '/portfolio', label: 'Resumen', icon: Briefcase, hub: '/portfolio' },
+      { href: '/portfolio/intelligence', label: 'Inteligencia', icon: Sparkles, hub: '/portfolio' },
+      { href: '/risk', label: 'Exposiciones', icon: Gauge, hub: '/portfolio' },
+      { href: '/taxes', label: 'Impuestos', icon: Receipt, hub: '/portfolio' },
+      { href: '/corporate-actions', label: 'Acciones corp.', icon: Building2, hub: '/portfolio' },
+      { href: '/calendar', label: 'Calendario', icon: CalendarDays, hub: '/portfolio' },
+      { href: '/portfolio/stress', label: 'Estrés histórico', icon: LineChart, hub: '/portfolio' },
     ],
   },
   {
@@ -134,50 +146,72 @@ export const ROUTE_CATALOG: NavSection[] = [
         href: '/research',
         label: 'Research',
         icon: FileSearch,
+        hub: '/research',
         children: [
-          { href: '/research/news', label: 'Noticias', icon: Newspaper },
-          { href: '/research/sources', label: 'Fuentes', icon: Library },
-          { href: '/research/data-health', label: 'Salud de los datos', icon: Gauge },
+          { href: '/research/assistant', label: 'Asistente', icon: Sparkles, hub: '/research' },
+          { href: '/research/news', label: 'Noticias', icon: Newspaper, hub: '/research' },
+          { href: '/research/sources', label: 'Fuentes', icon: Library, hub: '/research' },
+          { href: '/research/data-health', label: 'Salud de los datos', icon: Gauge, hub: '/research' },
+          // /research/workflows sigue reachable tal cual estaba (subnav de
+          // Research): la decision de mantenerlo o eliminarlo es de Nico,
+          // pendiente al 17-oct. Fuera de NAV_SECTIONS en todo caso.
+          { href: '/research/workflows', label: 'Workflows', icon: Lightbulb, hub: '/research' },
         ],
       },
       {
         href: '/screeners',
         label: 'Screeners',
         icon: Filter,
-        children: [{ href: '/screener', label: 'Mercado', icon: LineChart }],
+        hub: '/discover',
+        description: 'Busca con métricas y filtros guardados.',
+        children: [{ href: '/screener', label: 'Mercado', icon: LineChart, hub: '/discover', description: 'Explora empresas por sector y tamaño.' }],
       },
       {
         href: '/knowledge',
         label: 'Conocimiento',
         icon: BookOpen,
-        children: [{ href: '/knowledge-graph', label: 'Grafo', icon: Share2 }],
+        hub: '/knowledge',
+        children: [{ href: '/knowledge-graph', label: 'Grafo', icon: Share2, hub: '/knowledge' }],
       },
     ],
   },
   {
     title: 'Señales',
     items: [
-      { href: '/watchlist', label: 'Watchlist', icon: Star },
-      { href: '/movers', label: 'Movers', icon: TrendingUp },
-      { href: '/insider', label: 'Insider', icon: Users },
-      { href: '/ownership', label: '13F', icon: Landmark },
-      { href: '/inversores', label: 'Inversores', icon: UsersRound },
-      { href: '/alerts', label: 'Alertas', icon: Bell },
-      { href: '/propicks', label: 'ProPicks', icon: Lightbulb },
+      { href: '/watchlist', label: 'Watchlist', icon: Star, hub: '/watchlist' },
+      { href: '/movers', label: 'Movers', icon: TrendingUp, hub: '/discover', description: 'Subidas, bajadas y actividad por sesión.' },
+      { href: '/insider', label: 'Insider', icon: Users, hub: '/discover', description: 'Compras declaradas por directivos en Form 4.' },
+      { href: '/ownership', label: '13F', icon: Landmark, hub: '/discover', description: 'Posiciones declaradas por los grandes fondos en el Form 13F.' },
+      {
+        href: '/inversores',
+        label: 'Inversores',
+        icon: UsersRound,
+        hub: '/discover',
+        description: 'Carteras declaradas y cambios en los filings.',
+        // Canales vive bajo /inversores (su HubNav) pero pertenece al hub de
+        // Biblioteca: el subnav contextual alli es el de Conocimiento.
+        children: [{ href: '/inversores/canales', label: 'Canales', icon: Users, hub: '/knowledge' }],
+      },
+      { href: '/alerts', label: 'Alertas', icon: Bell, hub: '/watchlist' },
+      { href: '/propicks', label: 'ProPicks', icon: Lightbulb, hub: '/discover', description: 'Ranking, reglas de selección y backtest.' },
+      { href: '/temas', label: 'Temas', icon: LineChart, hub: '/discover', description: 'Rentabilidad YTD y 1M de temas de mercado.' },
+      { href: '/cuellos', label: 'Cuellos', icon: Gauge, hub: '/discover', description: 'Escasez detectada en las fuentes y candidatos inferidos.' },
+      { href: '/macro-calendar', label: 'Calendario macro', icon: CalendarDays, hub: '/discover', description: 'FOMC, IPC y empleo, y resúmenes de tus 8-K.' },
     ],
   },
   {
     // Un solo destino: sin titulo de seccion visible (showsNavSectionTitle),
     // se acabo el duplicado «Mi plan»/«Plan» (quick win UX 3).
     title: 'Mi plan',
-    items: [{ href: '/plan', label: 'Plan', icon: Target }],
+    items: [{ href: '/plan', label: 'Plan', icon: Target, hub: '/portfolio' }],
   },
   {
     title: 'Sistema',
     // /security vive en el menu del avatar y /screener como hijo de Screeners.
+    // /help es publica y sin hub: no se resalta ninguna seccion al visitarla.
     items: [
-      { href: '/export', label: 'Exportar', icon: Download },
-      { href: '/help', label: 'Ayuda', icon: CircleHelp },
+      { href: '/export', label: 'Exportar', icon: Download, hub: '/portfolio' },
+      { href: '/help', label: 'Ayuda', icon: CircleHelp, hub: null },
     ],
   },
 ];
@@ -214,14 +248,17 @@ export function isNavItemActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+/**
+ * Hub de una ruta, derivado del ROUTE_CATALOG (una sola fuente): el hub es el
+ * del href mas largo del catalogo que prefija la ruta. Asi /research/MSFT cae
+ * en Research y /inversores/canales en Biblioteca sin listas paralelas que
+ * sincronizar a mano. Ruta fuera del catalogo (/security, landing) -> null.
+ */
 export function sectionForRoute(pathname: string): string | null {
-  if (pathname === '/inicio') return '/inicio';
-  if (pathname === '/watchlist') return '/watchlist';
-  if (['/portfolio', '/risk', '/taxes', '/corporate-actions', '/calendar', '/plan'].some((p) => pathname === p || pathname.startsWith(`${p}/`))) return '/portfolio';
-  if (['/research'].some((p) => pathname === p || pathname.startsWith(`${p}/`))) return '/research';
-  if (['/knowledge', '/knowledge-graph', '/inversores/canales'].some((p) => pathname === p || pathname.startsWith(`${p}/`))) return '/knowledge';
-  if (['/discover', '/screeners', '/screener', '/movers', '/insider', '/ownership', '/inversores', '/propicks', '/macro-calendar'].some((p) => pathname === p || pathname.startsWith(`${p}/`))) return '/discover';
-  return null;
+  const anchor = flattenNavItems()
+    .filter((item) => pathname === item.href || pathname.startsWith(`${item.href}/`))
+    .sort((a, b) => b.href.length - a.href.length)[0];
+  return anchor?.hub ?? null;
 }
 
 /** Encabezado de seccion visible solo si la seccion aporta mas de un destino. */
