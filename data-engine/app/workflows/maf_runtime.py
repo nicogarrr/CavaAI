@@ -7,10 +7,13 @@ from typing import Any, Never
 
 from agent_framework import FunctionExecutor, WorkflowBuilder, WorkflowContext
 
+# Allowlist de flujos que pueden correr por MAF (Microsoft Agent Framework).
+# Refleja el uso real: solo EarningsWorkflow y RedTeamWorkflow instancian
+# NativeMAFWorkflowRunner (app/api/routes/workflows.py). DeepResearchWorkflow
+# y ThesisReviewWorkflow estan retirados (workflows/catalog.py::RETIRED_WORKFLOWS)
+# y no pueden aparecer aqui.
 MAF_WORKFLOWS = {
-    "DeepResearchWorkflow",
     "EarningsWorkflow",
-    "ThesisReviewWorkflow",
     "RedTeamWorkflow",
 }
 

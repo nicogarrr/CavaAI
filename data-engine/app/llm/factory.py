@@ -18,7 +18,7 @@ def create_llm_provider(
     *,
     client: httpx.AsyncClient | None = None,
 ) -> LLMProvider:
-    """Create the single application LLM provider: OpenCode Go."""
+    """Create the application LLM provider: OpenCode Go (default) or the free cascade."""
     settings = settings or get_settings()
     if not settings.llm_enabled:
         return DisabledProvider("disabled_by_configuration")
@@ -28,7 +28,7 @@ def create_llm_provider(
         requested = "opencode-go"
     if requested not in {"opencode-go", "cascade", "disabled"}:
         raise ValueError(
-            "CavaAI supports the OpenCode Go provider or the free cascade; "
+            "GerarAI supports the OpenCode Go provider or the free cascade; "
             f"received {settings.llm_provider!r}"
         )
     if requested == "disabled":
