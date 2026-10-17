@@ -190,3 +190,9 @@ def test_handler_async_sin_resultado_es_awaitado_por_el_runner():
         [NativeMAFStep("paso", devuelvo_none)],
     )
     assert asyncio.run(runner.run({}))["ok"] is True
+
+
+@pytest.mark.parametrize('retired', ['DeepResearchWorkflow', 'ThesisReviewWorkflow'])
+def test_retired_workflows_cannot_be_revived_through_allowlist(retired):
+    with pytest.raises(ValueError, match='may not run through MAF'):
+        NativeMAFWorkflowRunner(retired, [NativeMAFStep('paso', lambda _: {})])

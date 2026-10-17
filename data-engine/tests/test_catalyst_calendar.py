@@ -346,3 +346,7 @@ def test_route_includes_filing_deadlines_sorted_and_status(engine, db, monkeypat
     body = res.json()
     assert res.status_code == 200 and body["status"] == "ok"
     assert [(e["date"], e["type"]) for e in body["events"]] == [("2026-11-25", "filing_deadline")]
+
+
+def test_calendar_corporate_action_source_uses_current_visible_brand():
+    assert svc.SOURCE_CAVAAI == 'Accion corporativa registrada en GerarAI'
