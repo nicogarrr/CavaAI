@@ -150,6 +150,8 @@ async def test_backup_may_reason_about_positions_but_keeps_truth_rules():
     assert "Puedes opinar y razonar" in instruction
     assert "No des asesoramiento" not in instruction and "educativo" not in instruction
     assert "No añadas porcentajes" in instruction
+    for rule in ("prosa plana", "sin LaTeX", "120 palabras", "No escribas cifras, rangos", "No uses corchetes"):
+        assert rule in instruction
 
 
 @run_async
