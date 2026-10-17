@@ -346,47 +346,47 @@ async def test_502_backup_advice_with_invented_facts_is_still_rejected(invented)
 
 
 def _chain(groq_value, gemini_value):
-    from app.llm.chat_provider import GEMINI_MODEL  # noqa: F401
     p = Fake(ProviderHTTPError("opencode-go", 502))
     return p, Fake(groq_value), Fake(gemini_value)
 
 
 @run_async
-async def test_chain_valid_groq_never_calls_gemini():
-    p, g, m = _chain(response("ok groq", model=GROQ_MODEL, provider="groq"), response("ok gemini", provider="gemini"))
-    out = await ChatFallbackProvider(p, g, backup2=m).complete(LLMRequest([Message("user", "hola")], task="chat"))
-    assert out.provider == "groq" and not m.calls
-
-
-@run_async
-async def test_chain_groq_failure_falls_to_gemini_with_pinned_model_and_prompt():
+async def test_chain_valid_gemini_never_calls_groq_and_uses_pinned_model_and_prompt():
     from app.llm.chat_provider import GEMINI_MODEL
-    p, g, m = _chain(ProviderHTTPError("groq", 429), response("ok gemini", model=GEMINI_MODEL, provider="gemini"))
+    p, g, m = _chain(response("ok groq", model=GROQ_MODEL, provider="groq"), response("ok gemini", model=GEMINI_MODEL, provider="gemini"))
     out = await ChatFallbackProvider(p, g, backup2=m).complete(LLMRequest([Message("user", "hola")], task="chat", model="deepseek-v4.1-flash-free"))
-    assert out.provider == "gemini" and m.calls[0].model == GEMINI_MODEL
-    assert "prosa plana" in m.calls[0].messages[-1].content and len(g.calls) == 1
+    assert out.provider == "gemini" and not g.calls
+    assert m.calls[0].model == GEMINI_MODEL and "prosa plana" in m.calls[0].messages[-1].content
 
 
 @run_async
-async def test_chain_gemini_output_still_goes_through_the_truth_validator():
-    from app.llm.chat_provider import GEMINI_MODEL
-    from app.llm.errors import ProviderResponseError
-    p, g, m = _chain(ProviderHTTPError("groq", 429), response("Rentabilidad del 30,55% segun el informe", model=GEMINI_MODEL, provider="gemini"))
-    def reject(resp):
-        raise ValueError("ungrounded")
-    with pytest.raises(ProviderResponseError, match="ungrounded"):
-        await ChatFallbackProvider(p, g, backup2=m, validator=reject).complete(LLMRequest([Message("user", "hola")], task="chat"))
+async def test_chain_gemini_failure_falls_to_groq_with_pinned_model():
+    p, g, m = _chain(response("ok groq", model=GROQ_MODEL, provider="groq"), ProviderHTTPError("gemini", 503))
+    out = await ChatFallbackProvider(p, g, backup2=m).complete(LLMRequest([Message("user", "hola")], task="chat"))
+    assert out.provider == "groq" and g.calls[0].model == GROQ_MODEL and len(m.calls) == 1
 
 
 @run_async
-async def test_chain_groq_rejected_by_validator_falls_to_gemini():
+async def test_chain_gemini_rejected_by_validator_falls_to_groq():
     from app.llm.chat_provider import GEMINI_MODEL
-    p, g, m = _chain(response("MALA", model=GROQ_MODEL, provider="groq"), response("BUENA", model=GEMINI_MODEL, provider="gemini"))
+    p, g, m = _chain(response("BUENA", model=GROQ_MODEL, provider="groq"), response("MALA", model=GEMINI_MODEL, provider="gemini"))
     def only_good(resp):
         if resp.text != "BUENA":
             raise ValueError("rejected")
     out = await ChatFallbackProvider(p, g, backup2=m, validator=only_good).complete(LLMRequest([Message("user", "hola")], task="chat"))
-    assert out.text == "BUENA" and len(g.calls) == 1 and len(m.calls) == 1
+    assert out.text == "BUENA" and len(m.calls) == 1 and len(g.calls) == 1
+
+
+@run_async
+async def test_chain_every_candidate_still_goes_through_the_truth_validator():
+    from app.llm.chat_provider import GEMINI_MODEL
+    from app.llm.errors import ProviderResponseError
+    p, g, m = _chain(response("Rentabilidad del 30,55% segun el informe", model=GROQ_MODEL, provider="groq"), response("Otra cifra inventada 12,45", model=GEMINI_MODEL, provider="gemini"))
+    def reject(resp):
+        raise ValueError("ungrounded")
+    with pytest.raises(ProviderResponseError, match="ungrounded"):
+        await ChatFallbackProvider(p, g, backup2=m, validator=reject).complete(LLMRequest([Message("user", "hola")], task="chat"))
+    assert len(m.calls) == 1 and len(g.calls) == 1
 
 
 @run_async
@@ -395,6 +395,7 @@ async def test_chain_without_gemini_behaves_as_before():
     p, g = Fake(ProviderHTTPError("opencode-go", 502)), Fake(ProviderHTTPError("groq", 429))
     with pytest.raises((ProviderHTTPError, ProviderResponseError)):
         await ChatFallbackProvider(p, g).complete(LLMRequest([Message("user", "hola")], task="chat"))
+    assert g.calls[0].model == GROQ_MODEL
 
 
 def _gemini_cfg(**over):

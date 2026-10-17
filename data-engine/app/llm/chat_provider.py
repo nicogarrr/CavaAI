@@ -78,19 +78,19 @@ class ChatFallbackProvider(LLMProvider):
             raise ProviderTransportError(self.name, "timeout", 1) from None
 
     async def _backup_chain(self, request: LLMRequest) -> LLMResponse:
-        """Groq first; Gemini only if Groq fails or its output is rejected (never in parallel)."""
-        try:
-            return await self._candidate(self.backup, replace(
-                request, model=GROQ_MODEL,
-                messages=(*request.messages, Message("system", _BACKUP_PROMPT)),
-            ), backup=True)
-        except _FALL_THROUGH:
-            if self.backup2 is None:
-                raise
-        return await self._candidate(self.backup2, replace(
-            request, model=GEMINI_MODEL,
-            messages=(*request.messages, Message("system", _BACKUP_PROMPT)),
-        ), backup=True)
+        """Gemini first (when configured), then Groq; sequential, never in parallel."""
+        members = ([(self.backup2, GEMINI_MODEL)] if self.backup2 is not None else []) + [(self.backup, GROQ_MODEL)]
+        last: Exception | None = None
+        for provider, model in members:
+            try:
+                return await self._candidate(provider, replace(
+                    request, model=model,
+                    messages=(*request.messages, Message("system", _BACKUP_PROMPT)),
+                ), backup=True)
+            except _FALL_THROUGH as exc:
+                last = exc
+        assert last is not None
+        raise last
 
     async def _race(self, request: LLMRequest) -> LLMResponse:
         primary = asyncio.create_task(self._candidate(self.primary, request))
