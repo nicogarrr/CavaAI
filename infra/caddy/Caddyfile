@@ -1,5 +1,5 @@
 # TLS automatico (Let's Encrypt) para el backend personal.
-# BACKEND_DOMAIN se inyecta desde .env.production (p.ej. cavaai-api.duckdns.org).
+# BACKEND_DOMAIN se inyecta desde .env.production (p.ej. 51.170.37.134.sslip.io).
 {$BACKEND_DOMAIN} {
 	encode zstd gzip
 	reverse_proxy backend:8000

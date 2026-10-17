@@ -25,7 +25,7 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     environment:
-      - BACKEND_DOMAIN=${BACKEND_DOMAIN:?Define BACKEND_DOMAIN (p.ej. cavaai-api.duckdns.org) en .env.production}
+      - BACKEND_DOMAIN=${BACKEND_DOMAIN:?Define BACKEND_DOMAIN (p.ej. 51.170.37.134.sslip.io) en .env.production}
     healthcheck:
       # Sin endpoint HTTP neutro (TLS/SNI depende del dominio): se verifica el binario.
       test: ["CMD", "caddy", "version"]
