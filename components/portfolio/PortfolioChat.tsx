@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Brain, X, Send, User, Bot, Loader2, Maximize2, Minimize2 } from 'lucide-react';
+import { BrainGlassesIcon } from '@/components/portfolio/BrainGlassesIcon';
 import { chatWithPortfolio } from '@/lib/actions/chat.actions';
 import ReactMarkdown from 'react-markdown';
 import type { PortfolioChatCitation } from '@/lib/chat/citations';
@@ -155,7 +156,9 @@ export function PortfolioChat({ userId }: PortfolioChatProps) {
                 // burbuja queda bajo la barra en modo standalone.
                 className={`fixed bottom-[calc(1.5rem+env(safe-area-inset-bottom))] right-[calc(1.5rem+env(safe-area-inset-right))] h-14 w-14 rounded-full shadow-xl bg-indigo-600 hover:bg-indigo-500 text-white z-50 animate-in zoom-in duration-300 transition-all ${fabHidden ? 'translate-y-24 opacity-0 pointer-events-none md:translate-y-0 md:opacity-100 md:pointer-events-auto' : ''}`}
             >
-                <Brain aria-hidden="true" className="h-8 w-8" />
+                <span className="grid h-[42px] w-[42px] place-items-center rounded-full bg-white">
+                    <BrainGlassesIcon className="h-[30px] w-[30px]" />
+                </span>
             </Button>
         );
     }
