@@ -27,7 +27,7 @@ export const metadata: Metadata = {
   },
   robots: {
     // La app es una herramienta privada: el shell autenticado no debe
-    // indexarse. Las unicas paginas publicas (landing, legal, metodologia)
+    // indexarse. Las unicas paginas publicas (landing, metodologia, ayuda)
     // declaran su propio `robots` para permitirlo.
     index: false,
     follow: false,

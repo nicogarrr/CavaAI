@@ -316,7 +316,7 @@
      * layout `app/(public)/layout.tsx`, sin el sidebar de la app: cabecera
      * pegajosa de la misma altura que la autenticada (--header-h, para que
      * scroll-padding-top siga viendo la cabecera correcta), contenido y pie con
-     * los enlaces legales. El ancho lo aporta `.container` en el JSX, no aqui,
+     * los enlaces del pie. El ancho lo aporta `.container` en el JSX, no aqui,
      * para que las tres piezas no se desincronicen de `.container`.
      */
     .public-shell {

@@ -25,7 +25,7 @@ export const metadata: Metadata = {
         siteName: 'GerarAI',
         title: 'GerarAI: research de empresas con fuentes trazables y tesis versionadas',
         description:
-            'Cada afirmación conserva su fuente, cada tesis tiene versión y cada resultado contrasta tu previsión. Metodología y términos públicos.',
+            'Cada afirmación conserva su fuente, cada tesis tiene versión y cada resultado contrasta tu previsión. Metodología pública.',
     },
 };
 
