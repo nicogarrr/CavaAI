@@ -346,6 +346,13 @@ def _inferred_general_text_valid(
     attribution = re.sub(r"(?i)seg[uú]n (?:la [eé]poca|normativa contable)\b", "", attribution)
     if not allow_named_attribution and re.search(r"(?i)\bseg[uú]n\b", attribution):
         return False
+    if not allow_named_attribution and re.search(
+        r"(?i)\b(?:buffett|munger|graham|howard\s+marks)\s+(?:ha\s+)?"
+        r"(?:dicho|dijo|dice|exige|exigia|exigía|insiste|insistia|insistía|"
+        r"recomienda|aconseja|considera|consideraba|prefiere|defiende|enseña|explica|afirma)\b",
+        attribution,
+    ):
+        return False
     # Aproximar no convierte una cifra contable con decimales en estimacion.
     if re.search(r"\d[\d.,]*[.,]\d{2}(?!\d)", text):
         return False
