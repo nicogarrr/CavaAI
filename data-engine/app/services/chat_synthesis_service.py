@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import unicodedata
 from datetime import UTC, datetime
 from typing import Any
 
@@ -294,6 +295,38 @@ def _general_quantity_context(text: str) -> bool:
     return bool(_FIN_SCOPE_RE.search(re.sub(r"[$€£%]", "", text)) or _MONEY_NEAR_RE.search(text))
 
 
+_INVESTOR_NAMES = r"(?:buffett|munger|graham|marks|klarman|lynch|fisher|templeton)"
+_REPORTING_VERBS = (
+    r"(?:dicho|dijo|dice|exige|exigia|insiste|insistia|recomienda|aconseja|considera|consideraba|"
+    r"prefiere|defiende|ensena|explica|afirma|reiterado|reitera|enfatiza|enfatizado|enfatizo|subraya|"
+    r"subrayado|subrayo|senala|senalado|senalo|sostiene|sostenido|sostuvo|describe|descrito|describio|"
+    r"destaca|destacado|resalta|advierte|advertido|advirtio|cree|creia|piensa|pensaba|plantea|"
+    r"argumenta|comenta|escribe|escribio|sugiere|opina|asegura|propone|recuerda|insistido|afirmado|"
+    r"afirmo|explicado|explico|defendido|defendio|recomendado|recomendo|aconsejado|aconsejo|"
+    r"predica|practica|aplica|busca|advierte|valora|entiende|concibe|define|definio)"
+)
+
+
+def _reports_named_investor_opinion(text: str) -> bool:
+    """True si la prosa pone opiniones en boca de un inversor famoso.
+
+    Sin fragmentos de ese autor en el contexto no hay fuente para decir "Buffett
+    ha reiterado/enfatiza/describe...". Se normalizan los acentos y se admiten
+    hasta 50 caracteres (sin cortar la frase) entre el nombre y el verbo
+    ("Buffett ha reiterado en varias ocasiones que"). Tambien se caza el
+    pronombre de la frase siguiente ("Él lo describe como", "Buffett enfatiza").
+    """
+    plain = "".join(c for c in unicodedata.normalize("NFKD", text.lower()) if not unicodedata.combining(c))
+    if re.search(rf"\b{_INVESTOR_NAMES}\b[^.!?\n]{{0,50}}?\b{_REPORTING_VERBS}\b", plain):
+        return True
+    if re.search(rf"\b{_INVESTOR_NAMES}\b", plain) and re.search(
+        rf"(?:^|[.!?]\s+|\n)(?:el|este inversor|este autor|el inversor)\s+(?:lo\s+|la\s+|nos\s+)?{_REPORTING_VERBS}\b",
+        plain,
+    ):
+        return True
+    return False
+
+
 def _inferred_general_text_valid(
     text: str, *, allow_placeholders: bool = False, quantitative: bool = True,
     allow_named_attribution: bool = False,
@@ -346,12 +379,7 @@ def _inferred_general_text_valid(
     attribution = re.sub(r"(?i)seg[uú]n (?:la [eé]poca|normativa contable)\b", "", attribution)
     if not allow_named_attribution and re.search(r"(?i)\bseg[uú]n\b", attribution):
         return False
-    if not allow_named_attribution and re.search(
-        r"(?i)\b(?:buffett|munger|graham|howard\s+marks)\s+(?:ha\s+)?"
-        r"(?:dicho|dijo|dice|exige|exigia|exigía|insiste|insistia|insistía|"
-        r"recomienda|aconseja|considera|consideraba|prefiere|defiende|enseña|explica|afirma)\b",
-        attribution,
-    ):
+    if not allow_named_attribution and _reports_named_investor_opinion(attribution):
         return False
     # Aproximar no convierte una cifra contable con decimales en estimacion.
     if re.search(r"\d[\d.,]*[.,]\d{2}(?!\d)", text):
