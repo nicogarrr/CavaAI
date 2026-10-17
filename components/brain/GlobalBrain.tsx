@@ -1,15 +1,17 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Brain, X, Send, User, Bot, Loader2, Maximize2, Minimize2 } from 'lucide-react';
-import { BrainGlassesIcon } from '@/components/portfolio/BrainGlassesIcon';
-import { chatWithPortfolio } from '@/lib/actions/chat.actions';
+import { X, Send, User, Bot, Loader2, Maximize2, Minimize2 } from 'lucide-react';
+import { BrainGlassesIcon } from '@/components/brain/BrainGlassesIcon';
+import { chatWithPortfolio } from '@/lib/actions/brain.actions';
+import { brainPageContext } from '@/lib/brain/page-context';
 import ReactMarkdown from 'react-markdown';
 import type { PortfolioChatCitation } from '@/lib/chat/citations';
-import { PortfolioChatSources } from './PortfolioChatSources';
+import { BrainSources } from './BrainSources';
 
 interface Message {
     role: 'user' | 'assistant';
@@ -17,26 +19,51 @@ interface Message {
     citations?: PortfolioChatCitation[];
 }
 
-interface PortfolioChatProps {
+interface GlobalBrainProps {
     userId: string;
 }
 
-export function PortfolioChat({ userId }: PortfolioChatProps) {
+type ContextEcho = {
+    label: string;
+    ticker: string | null;
+    company_name: string | null;
+    company_resolved: boolean;
+};
+
+/**
+ * Cerebro global de GerarAI, montado UNA vez en el layout autenticado:
+ * panel lateral en escritorio y botón fijo en móvil que nunca tapa la
+ * BottomNav. Cada pregunta lleva el contexto de página explícito (pastilla
+ * "Viendo X"); el eco que devuelve el servidor (IDs resueltos y permisos
+ * aplicados allí) manda sobre la etiqueta local. Solo lectura.
+ */
+export function GlobalBrain({ userId }: GlobalBrainProps) {
+    const pathname = usePathname();
+    const page = brainPageContext(pathname);
     const [isOpen, setIsOpen] = useState(false);
-    const [isMaximized, setIsMaximized] = useState(false); // State for maximize
+    const [isMaximized, setIsMaximized] = useState(false);
+    const [echo, setEcho] = useState<ContextEcho | null>(null);
     const [messages, setMessages] = useState<Message[]>([
-        { role: 'assistant', content: '¡Hola! Soy GerarAI. Pregúntame sobre tu cartera, tus tesis de inversión o conceptos de Value Investing.' }
+        { role: 'assistant', content: '¡Hola! Soy el cerebro de GerarAI. Pregúntame sobre tu cartera, tus tesis de inversión o lo que estés viendo.' }
     ]);
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
 
+    // La pastilla "Viendo X": el eco del servidor manda sobre la etiqueta local.
+    const viewing = echo?.label ?? page?.label ?? null;
+
     useEffect(() => {
         if (scrollRef.current) {
             scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
         }
     }, [messages, isOpen, isMaximized]);
+
+    // Al cambiar de página el eco viejo deja de ser válido: vuelve la etiqueta local.
+    useEffect(() => {
+        setEcho(null);
+    }, [pathname]);
 
     /**
      * Modal de verdad (WCAG 2.1.2): con `aria-modal` el fondo se marca inaccesible
@@ -132,7 +159,8 @@ export function PortfolioChat({ userId }: PortfolioChatProps) {
         setLoading(true);
 
         try {
-            const result = await chatWithPortfolio(userMsg, userId);
+            const result = await chatWithPortfolio(userMsg, userId, page);
+            if (result.context) setEcho(result.context);
             if (result.success) {
                 setMessages(prev => [...prev, { role: 'assistant', content: result.message, citations: result.citations }]);
             } else {
@@ -145,16 +173,17 @@ export function PortfolioChat({ userId }: PortfolioChatProps) {
         }
     }
 
-    // Floating Bubble
+    // Burbuja fija: en móvil queda POR ENCIMA de la BottomNav (min-h-14 +
+    // safe-area), nunca la tapa; en escritorio vuelve a la esquina habitual.
     if (!isOpen) {
         return (
             <Button
                 ref={fabRef}
                 onClick={() => setIsOpen(true)}
-                aria-label="Abrir asistente de cartera"
+                aria-label="Abrir el cerebro"
                 // `viewportFit: "cover"` + barra de inicio de iOS: sin el inset la
                 // burbuja queda bajo la barra en modo standalone.
-                className={`fixed bottom-[calc(1.5rem+env(safe-area-inset-bottom))] right-[calc(1.5rem+env(safe-area-inset-right))] h-14 w-14 rounded-full shadow-xl bg-indigo-600 hover:bg-indigo-500 text-white z-50 animate-in zoom-in duration-300 transition-all ${fabHidden ? 'translate-y-24 opacity-0 pointer-events-none md:translate-y-0 md:opacity-100 md:pointer-events-auto' : ''}`}
+                className={`fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] md:bottom-[calc(1.5rem+env(safe-area-inset-bottom))] right-[calc(1.5rem+env(safe-area-inset-right))] h-14 w-14 rounded-full shadow-xl bg-indigo-600 hover:bg-indigo-500 text-white z-50 animate-in zoom-in duration-300 transition-all ${fabHidden ? 'translate-y-24 opacity-0 pointer-events-none md:translate-y-0 md:opacity-100 md:pointer-events-auto' : ''}`}
             >
                 <span className="grid h-[42px] w-[42px] place-items-center rounded-full bg-white">
                     <BrainGlassesIcon className="h-[30px] w-[30px]" />
@@ -163,31 +192,41 @@ export function PortfolioChat({ userId }: PortfolioChatProps) {
         );
     }
 
-    // Chat Window
+    // Panel: lateral derecho a toda altura en escritorio; hoja sobre la
+    // BottomNav en móvil.
     return (
         <Card
             role="dialog"
             aria-modal="true"
-            aria-labelledby="portfolio-chat-title"
+            aria-labelledby="global-brain-title"
             aria-busy={loading}
             className={`fixed z-50 flex flex-col border-indigo-500/30 bg-slate-950/95 backdrop-blur-md shadow-2xl transition-all duration-300 ${isMaximized
             ? 'top-4 bottom-4 left-4 right-4 w-auto h-auto'
-            : 'bottom-6 right-6 w-[350px] md:w-[450px] h-[600px]'
+            : 'inset-x-2 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] top-20 md:inset-x-auto md:top-0 md:bottom-0 md:right-0 md:w-[420px] md:h-dvh md:rounded-none md:border-y-0 md:border-r-0'
             }`}
         >
-            <CardHeader className="p-4 border-b border-indigo-500/20 flex flex-row items-center justify-between bg-indigo-900/20 cursor-move">
-                <div className="flex items-center gap-2">
-                    <div className="p-2 bg-indigo-500/20 rounded-full">
-                        <Brain aria-hidden="true" className="h-4 w-4 text-indigo-400" />
+            <CardHeader className="p-4 border-b border-indigo-500/20 flex flex-row items-center justify-between bg-indigo-900/20">
+                <div className="flex min-w-0 items-center gap-2">
+                    <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white">
+                        <BrainGlassesIcon className="h-[22px] w-[22px]" />
                     </div>
-                    <CardTitle id="portfolio-chat-title" className="text-sm font-medium">GerarAI Assistant</CardTitle>
+                    <CardTitle id="global-brain-title" className="text-sm font-medium">Cerebro GerarAI</CardTitle>
+                    {viewing && (
+                        <span
+                            data-testid="brain-page-context"
+                            title={echo?.company_name ?? undefined}
+                            className="max-w-32 truncate rounded-full border border-indigo-500/40 bg-indigo-500/10 px-2 py-0.5 text-xs text-indigo-300"
+                        >
+                            Viendo {viewing}
+                        </span>
+                    )}
                 </div>
                 <div className="flex items-center gap-1">
                     <Button
                         variant="ghost"
                         size="icon"
                         onClick={() => setIsMaximized(!isMaximized)}
-                        aria-label={isMaximized ? 'Restaurar asistente de cartera' : 'Maximizar asistente de cartera'}
+                        aria-label={isMaximized ? 'Restaurar el cerebro' : 'Maximizar el cerebro'}
                         className="h-6 w-6 text-slate-400 hover:text-white"
                     >
                         {isMaximized ? <Minimize2 aria-hidden="true" className="h-4 w-4" /> : <Maximize2 aria-hidden="true" className="h-4 w-4" />}
@@ -196,7 +235,7 @@ export function PortfolioChat({ userId }: PortfolioChatProps) {
                         variant="ghost"
                         size="icon"
                         onClick={() => setIsOpen(false)}
-                        aria-label="Cerrar asistente de cartera"
+                        aria-label="Cerrar el cerebro"
                         className="h-6 w-6 text-slate-400 hover:text-white"
                     >
                         <X aria-hidden="true" className="h-4 w-4" />
@@ -210,7 +249,7 @@ export function PortfolioChat({ userId }: PortfolioChatProps) {
                     role="log"
                     aria-live="polite"
                     aria-relevant="additions text"
-                    aria-label="Mensajes del asistente de cartera"
+                    aria-label="Mensajes del cerebro"
                     className="h-full overflow-y-auto p-4 space-y-4"
                 >
                     {messages.map((m, i) => (
@@ -235,7 +274,7 @@ export function PortfolioChat({ userId }: PortfolioChatProps) {
                                             >
                                                 {m.content}
                                             </ReactMarkdown>
-                                            <PortfolioChatSources citations={m.citations} />
+                                            <BrainSources citations={m.citations} />
                                         </div>
                                     ) : (
                                         m.content
@@ -265,15 +304,15 @@ export function PortfolioChat({ userId }: PortfolioChatProps) {
                     className="flex w-full gap-2"
                     onSubmit={(e) => { e.preventDefault(); handleSend(); }}
                 >
-                    <label htmlFor="portfolio-chat-input" className="sr-only">
-                        Pregunta sobre tu cartera
+                    <label htmlFor="global-brain-input" className="sr-only">
+                        Pregunta al cerebro
                     </label>
                     <Input
                         ref={inputRef}
-                        id="portfolio-chat-input"
+                        id="global-brain-input"
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
-                        placeholder="Pregunta sobre tu cartera..."
+                        placeholder="Pregunta al cerebro..."
                         className="bg-slate-950 border-slate-700 focus-visible:ring-indigo-500"
                     />
                     <Button type="submit" size="icon" aria-label="Enviar pregunta" disabled={loading || !input.trim()} aria-busy={loading} className="bg-indigo-600 hover:bg-indigo-500">

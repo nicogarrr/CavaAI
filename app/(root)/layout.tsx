@@ -2,6 +2,7 @@ import SectionNav from "@/components/layout/SectionNav";
 import Breadcrumbs from "@/components/layout/Breadcrumbs";
 import Header from "@/components/Header";
 import BottomNav from "@/components/layout/BottomNav";
+import { GlobalBrain } from "@/components/brain/GlobalBrain";
 import Sidebar from "@/components/layout/Sidebar";
 import { SIDEBAR_COLLAPSED_COOKIE } from "@/lib/ui/sidebar-preference";
 import OnlineBanner from "@/components/OnlineBanner";
@@ -62,6 +63,9 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
                 </div>
             </div>
             <BottomNav />
+            {/* Cerebro global: una sola instancia para toda la app, con
+                contexto de página explícito. Solo lectura. */}
+            <GlobalBrain userId={user.id} />
         </div>
     );
 };

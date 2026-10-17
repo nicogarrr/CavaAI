@@ -33,7 +33,7 @@ export function toChatCitations(
     const citations: ChatCitation[] = [];
     for (const source of sources) {
         const kind = source.type;
-        if (kind === 'document_chunk' || kind === 'rag_chunk' || kind === 'claim_evidence') {
+        if (kind === 'document_chunk' || kind === 'rag_chunk' || kind === 'claim_evidence' || kind === 'knowledge_chunk') {
             const chunkId =
                 kind === 'claim_evidence'
                     ? (source.document_chunk_id as number | null | undefined) ?? null

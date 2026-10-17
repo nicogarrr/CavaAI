@@ -20,12 +20,16 @@ test('no sources stays empty; unsafe URLs never become links', () => {
     }
 });
 
-test('portfolio action and UI pass citations through; company chat keeps its mapper', async () => {
+test('brain action and UI pass citations through', async () => {
     const { readFileSync } = await import('node:fs');
-    const action = readFileSync(new URL('../lib/actions/chat.actions.ts', import.meta.url), 'utf8');
-    const ui = readFileSync(new URL('../components/portfolio/PortfolioChat.tsx', import.meta.url), 'utf8');
-    assert.match(action.slice(0, action.indexOf('export async function chatWithCompany')), /citations: toPortfolioChatCitations\(response.sources\)/);
-    assert.match(action.slice(action.indexOf('export async function chatWithCompany')), /citations: toChatCitations\(response.sources\)/);
+    const action = readFileSync(new URL('../lib/actions/brain.actions.ts', import.meta.url), 'utf8');
+    const ui = readFileSync(new URL('../components/brain/GlobalBrain.tsx', import.meta.url), 'utf8');
+    assert.match(action, /citations: toPortfolioChatCitations\(response.sources\)/);
     assert.match(ui, /citations: result.citations/);
-    assert.match(ui, /<PortfolioChatSources citations=\{m.citations\}/);
+    assert.match(ui, /<BrainSources citations=\{m.citations\}/);
+});
+
+test('chatWithCompany dead code stays removed', async () => {
+    const { existsSync } = await import('node:fs');
+    assert.equal(existsSync(new URL('../lib/actions/chat.actions.ts', import.meta.url)), false);
 });

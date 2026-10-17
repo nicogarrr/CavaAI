@@ -57,7 +57,7 @@ test.describe("hardening frontend estático", () => {
   test("los controles iconográficos y el fallo de búsqueda tienen semántica", () => {
     const mobileNav = source("components", "MobileNav.tsx");
     const searchCommand = source("components", "SearchCommand.tsx");
-    const portfolioChat = source("components", "portfolio", "PortfolioChat.tsx");
+    const portfolioChat = source("components", "brain", "GlobalBrain.tsx");
 
     expect(mobileNav).toContain("closeButtonRef");
     expect(mobileNav).toContain("aria-labelledby=\"mobile-nav-title\"");
@@ -66,8 +66,8 @@ test.describe("hardening frontend estático", () => {
     expect(searchCommand).toContain("searchError");
     expect(searchCommand).toContain("No se pudo completar la búsqueda");
     expect(searchCommand).not.toMatch(/catch \(error: any\)[\s\S]*?setStocks\(\[\]\);[\s\S]*?\n\s*}/);
-    expect(portfolioChat).toContain("Abrir asistente de cartera");
-    expect(portfolioChat).toContain("aria-labelledby=\"portfolio-chat-title\"");
+    expect(portfolioChat).toContain("Abrir el cerebro");
+    expect(portfolioChat).toContain("aria-labelledby=\"global-brain-title\"");
   });
 });
 
