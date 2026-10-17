@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 // @ts-expect-error TS5097: Node strip-types requires explicit extension.
-import { verifiedPortfolioHistory, type PortfolioSnapshotPoint } from '../lib/portfolio-history.ts';
+import { qualifiedHistoricalMetrics, verifiedPortfolioHistory, type PortfolioSnapshotPoint } from '../lib/portfolio-history.ts';
 const row=(day:string,overrides:Partial<PortfolioSnapshotPoint>={}):PortfolioSnapshotPoint=>({
  snapshot_date:`2026-10-${day}`,base_currency:'EUR',total_value_base:10000 * Math.pow(1.01, Number(day)-1),net_external_flow_base:0,pricing_coverage:1,daily_return:0.01,cumulative_twr:Math.pow(1.01,Number(day))-1,...overrides,
 });
@@ -29,4 +29,15 @@ test('rejects internally inconsistent NAV/flow/return or cumulative TWR even if 
  assert.equal(verifiedPortfolioHistory([row('01'),row('02',{total_value_base:15000000})],'EUR'),undefined);
  assert.equal(verifiedPortfolioHistory([row('01'),row('02',{cumulative_twr:.99})],'EUR'),undefined);
  assert.equal(verifiedPortfolioHistory([row('01'),row('02',{net_external_flow_base:NaN})],'EUR'),undefined);
+});
+
+test('metrics cannot bridge incomplete history or use a stale/different period',()=>{
+ const rows=[row('01'),row('02')], history=verifiedPortfolioHistory(rows,'EUR');
+ const metrics={n_observations:2,cumulative_return:1.01**2-1};
+ assert.equal(qualifiedHistoricalMetrics(rows,history,metrics),metrics);
+ assert.equal(qualifiedHistoricalMetrics(rows,undefined,metrics),null);
+ assert.equal(qualifiedHistoricalMetrics(rows,history,{...metrics,n_observations:25}),null);
+ assert.equal(qualifiedHistoricalMetrics(rows,history,{...metrics,cumulative_return:0.4}),null);
+ assert.equal(qualifiedHistoricalMetrics([row('00'),...rows],history,metrics),null);
+ assert.equal(qualifiedHistoricalMetrics(rows,history,{...metrics,cumulative_return:NaN}),null);
 });
