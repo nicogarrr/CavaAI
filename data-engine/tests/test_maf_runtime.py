@@ -118,9 +118,7 @@ def test_estado_de_pasos_previos_es_visible_en_los_siguientes():
 
 def test_solo_se_permiten_workflows_agenticos_declarados():
     assert {
-        "DeepResearchWorkflow",
         "EarningsWorkflow",
-        "ThesisReviewWorkflow",
         "RedTeamWorkflow",
     } == MAF_WORKFLOWS
     with pytest.raises(ValueError, match="may not run through MAF"):
@@ -172,7 +170,7 @@ def test_workflow_nativo_con_recorder_registra_cada_paso():
         return thunk()
 
     runner = NativeMAFWorkflowRunner(
-        "ThesisReviewWorkflow",
+        "EarningsWorkflow",
         [NativeMAFStep("a", _step_a), NativeMAFStep("b", _step_b)],
         recorder=recorder,
     )
@@ -188,7 +186,7 @@ def test_handler_async_sin_resultado_es_awaitado_por_el_runner():
         return {"ok": True}
 
     runner = NativeMAFWorkflowRunner(
-        "DeepResearchWorkflow",
+        "RedTeamWorkflow",
         [NativeMAFStep("paso", devuelvo_none)],
     )
     assert asyncio.run(runner.run({}))["ok"] is True
