@@ -104,8 +104,11 @@ describe('página /temas', () => {
 
   it('es dinámica (dato de mercado) y está en el menú de Descubrir y en robots', () => {
     assert.ok(page.includes("export const dynamic = 'force-dynamic'"));
-    assert.ok(source('components/layout/SectionNav.tsx').includes("['/temas','Temas']"));
-    assert.ok(source('app/(root)/discover/page.tsx').includes("href:'/temas'"));
+    // Menú de Descubrir y subnav se derivan del ROUTE_CATALOG (17-oct): la
+    // presencia de /temas alli cubre ambos.
+    assert.ok(source('lib/constants.ts').includes("{ href: '/temas', label: 'Temas'"));
+    assert.ok(source('components/layout/SectionNav.tsx').includes('flattenNavItems'));
+    assert.ok(source('app/(root)/discover/page.tsx').includes('flattenNavItems'));
     assert.ok(source('app/robots.ts').includes("'/temas'"));
   });
 });

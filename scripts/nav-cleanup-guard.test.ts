@@ -35,15 +35,20 @@ test('la sección del plan tiene un solo destino: sin título duplicado', () => 
     assert.match(constants, /export function showsNavSectionTitle[\s\S]*?section\.items\.length > 1/);
 });
 
-test('/research/workflows fuera del árbol principal, miga legible', () => {
-    assert.ok(!constants.includes("'/research/workflows'"), 'Workflows no debe estar en NAV_SECTIONS');
-    // La página sigue existiendo y su miga no sale cruda.
+test('/research/workflows fuera del árbol principal, miga legible y reachable', () => {
+    const navSections = constants.slice(constants.indexOf('export const NAV_SECTIONS'), constants.indexOf('export const ROUTE_CATALOG'));
+    assert.ok(!navSections.includes("'/research/workflows'"), 'Workflows no debe estar en NAV_SECTIONS');
+    // La página sigue existiendo, reachable desde el subnav de Research vía
+    // ROUTE_CATALOG (mantenerla o eliminarla es decisión pendiente de Nico,
+    // 17-oct: mientras tanto no se le quita el único enlace que tenía) y su
+    // miga no sale cruda.
+    assert.match(constants, /\{ href: '\/research\/workflows', label: 'Workflows'/);
     assert.match(breadcrumbs, /'workflows': 'Workflows'/);
 });
 
 test('«Vista de mercado» pasa a «Mercado»', () => {
     assert.ok(!constants.includes('Vista de mercado'), 'queda el nombre antiguo');
-    assert.match(constants, /\{ href: '\/screener', label: 'Mercado', icon: LineChart \}/);
+    assert.match(constants, /\{ href: '\/screener', label: 'Mercado', icon: LineChart, hub: '\/discover'/);
 });
 
 test('el árbol del sidebar encoge con min-h-0: el pie queda alcanzable', () => {
@@ -60,4 +65,108 @@ test('el alto del aside descuenta la zona pegajosa (h-dvh a secas destierra el p
     // El alto correcto es 100dvh - --shell-top anclado a top: --shell-top.
     assert.match(sidebar, /top-\[var\(--shell-top\)\]/);
     assert.match(sidebar, /h-\[calc\(100dvh-var\(--shell-top\)\)\]/);
+});
+
+/**
+ * Coherencia real de navegación (auditoría 17-oct): antes este guard pasaba
+ * mientras /temas, /cuellos, /macro-calendar, /portfolio/stress y
+ * /research/assistant no estaban en NINGUNA lista (sin miga legible, sin
+ * buscador) y /alerts y /export no resaltaban ninguna sección. Estas pruebas
+ * cruzan el filesystem con el ROUTE_CATALOG para que una ruta nueva sin
+ * catalogar (o una entrada del catálogo sin página) rompa CI.
+ */
+import { existsSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+
+const catalogBlock = constants.slice(
+    constants.indexOf('export const ROUTE_CATALOG'),
+    constants.indexOf('export const MOBILE_TAB_ITEMS'),
+);
+const catalogHrefs = [...catalogBlock.matchAll(/href: '([^']+)'/g)].map((m) => m[1]);
+
+function listRoutes(dir: string, base: string): string[] {
+    const routes: string[] = [];
+    if (existsSync(join(dir, 'page.tsx'))) routes.push(base || '/');
+    for (const entry of readdirSync(dir)) {
+        const full = join(dir, entry);
+        if (statSync(full).isDirectory()) routes.push(...listRoutes(full, `${base}/${entry}`));
+    }
+    return routes;
+}
+
+// Rutas reales fuera del catálogo A PROPÓSITO. Cada una lleva su motivo; una
+// ruta nueva que no esté en el catálogo ni aquí rompe el guard.
+const CATALOG_EXCEPTIONS: Record<string, string> = {
+    '/security': 'menú del avatar (UserDropdown), no es destino de sección',
+    '/search': 'página-herramienta del buscador global, se abre desde el header',
+    // Subpáginas del módulo Inversores: las cubre su HubNav propio
+    // (app/(root)/inversores/layout.tsx) y las migas las nombran vía
+    // SUBROUTE_LABELS/humanizeSlug.
+    '/inversores/carteras': 'subnav propio de Inversores (HubNav)',
+    '/inversores/cartas': 'subnav propio de Inversores (HubNav)',
+    '/inversores/videos': 'subnav propio de Inversores (HubNav)',
+    '/inversores/conceptos': 'subnav propio de Inversores (HubNav)',
+    '/inversores/mas-compradas': 'subnav propio de Inversores (HubNav)',
+    '/inversores/solape': 'subnav propio de Inversores (HubNav)',
+};
+
+const HUBS = new Set(['/inicio', '/portfolio', '/research', '/discover', '/watchlist', '/knowledge']);
+
+test('toda ruta estática de app/(root) está en el ROUTE_CATALOG o excepción documentada', () => {
+    const routes = listRoutes('app/(root)', '')
+        .filter((route) => !route.includes('[')) // dinámicas: las cubre el ancla por prefijo
+        .filter((route) => route !== '/');
+    const catalog = new Set(catalogHrefs);
+    const missing = routes.filter((route) => !catalog.has(route) && !(route in CATALOG_EXCEPTIONS));
+    assert.deepEqual(missing, [], `rutas sin catalogar ni excepción: ${missing.join(', ')}`);
+});
+
+test('todo href del ROUTE_CATALOG existe como página (root o pública)', () => {
+    const missing = catalogHrefs.filter(
+        (href) =>
+            !existsSync(join('app/(root)', href, 'page.tsx')) &&
+            !existsSync(join('app/(public)', href, 'page.tsx')),
+    );
+    assert.deepEqual(missing, [], `entradas del catálogo sin página: ${missing.join(', ')}`);
+});
+
+test('ningún href se repite en el ROUTE_CATALOG', () => {
+    const seen = new Set<string>();
+    const dupes = catalogHrefs.filter((href) => (seen.has(href) ? true : (seen.add(href), false)));
+    assert.deepEqual(dupes, []);
+});
+
+test('cada item del catálogo declara su hub y es uno de los 6 hubs o null', () => {
+    const itemCount = (catalogBlock.match(/href: '/g) ?? []).length;
+    const hubDecls = [...catalogBlock.matchAll(/hub: (null|'[^']+')/g)].map((m) => m[1]);
+    assert.equal(hubDecls.length, itemCount, 'cada item declara hub exactamente una vez');
+    for (const hub of hubDecls) {
+        if (hub === 'null') continue;
+        assert.ok(HUBS.has(hub.replaceAll("'", '')), `hub desconocido: ${hub}`);
+    }
+});
+
+test('sectionForRoute se deriva del catálogo: sin listas de rutas paralelas', () => {
+    const fn = constants.slice(
+        constants.indexOf('export function sectionForRoute'),
+        constants.indexOf('export function showsNavSectionTitle'),
+    );
+    assert.match(fn, /flattenNavItems\(\)/);
+    assert.ok(!fn.includes("'/"), 'sectionForRoute no debe listar rutas a mano');
+});
+
+test('SectionNav se deriva del catálogo y cede /inversores a su HubNav', () => {
+    const nav = readFileSync('components/layout/SectionNav.tsx', 'utf8');
+    assert.match(nav, /flattenNavItems/);
+    // Sin mapa de grupos hardcodeado: los únicos literales permitidos son los
+    // dos huecos documentados (/discover portada, /inversores con HubNav).
+    const literals = [...nav.matchAll(/'(\/[^']*)'/g)].map((m) => m[1]).filter((l) => l.startsWith('/'));
+    assert.deepEqual([...new Set(literals)].sort(), ['/discover', '/inversores']);
+    assert.match(nav, /startsWith\('\/inversores'\)/);
+});
+
+test('/discover se deriva del catálogo: sin lista de tarjetas paralela', () => {
+    const page = readFileSync('app/(root)/discover/page.tsx', 'utf8');
+    assert.match(page, /flattenNavItems/);
+    assert.ok(!page.includes("href:'/"), 'sin tools hardcodeados en /discover');
 });
