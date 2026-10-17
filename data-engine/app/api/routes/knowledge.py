@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
 from app.core.database import get_db
+from app.schemas import ChatPageContext
+from app.services.brain_service import resolve_page_context
 from app.core.errors import safe_detail
 from app.models import (
     InvestmentPrinciple,
@@ -69,6 +71,7 @@ class LibraryQuestion(BaseModel):
     document_id: int | None = Field(default=None, ge=1)
     collection_id: int | None = Field(default=None, ge=1)
     mode: Literal["respuesta", "analisis"] = "respuesta"
+    page: ChatPageContext | None = None
 
 
 @router.post("/chat")
@@ -77,9 +80,14 @@ async def chat_library(payload: LibraryQuestion, db: Session = Depends(get_db)) 
     from app.services.async_bridge import run_from_any_context
     from app.services.knowledge_chat import ask_library
 
-    return await run_in_threadpool(
-        lambda: run_from_any_context(ask_library(db, **payload.model_dump()))
+    fields = payload.model_dump()
+    page_context = resolve_page_context(db, fields.pop("page", None))
+    result = await run_in_threadpool(
+        lambda: run_from_any_context(ask_library(db, **fields))
     )
+    # Eco del contexto de página resuelto en servidor (pastilla "Viendo X").
+    result["context"] = page_context.echo() if page_context else None
+    return result
 
 
 class CollectionCreate(BaseModel):

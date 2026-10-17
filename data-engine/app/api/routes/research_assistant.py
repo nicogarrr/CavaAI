@@ -9,6 +9,8 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.schemas import ChatPageContext
+from app.services.brain_service import resolve_page_context
 from app.services.research_assistant_narrative import synthesize
 from app.services.research_assistant_service import answer, guide_context
 
@@ -20,6 +22,7 @@ class AssistantRequest(BaseModel):
     question: str = Field(min_length=3, max_length=2000)
     ticker: str | None = Field(default=None, min_length=1, max_length=20)
     review_id: int | None = Field(default=None, ge=1)
+    page: ChatPageContext | None = None
 
     @model_validator(mode="after")
     def validate_scope(self):
@@ -55,6 +58,8 @@ class AssistantResponse(BaseModel):
     suggested_next_steps: list[str]
     review_id: int | None
     writeback: Literal[False] = False
+    # Eco del contexto de página resuelto en servidor (pastilla "Viendo X").
+    context: dict | None = None
 
 
 class ContextNews(BaseModel):
@@ -82,9 +87,17 @@ class GuideContextResponse(BaseModel):
 
 @router.post("/assistant", response_model=AssistantResponse)
 async def research_assistant(payload: AssistantRequest, db: Session = Depends(get_db)) -> AssistantResponse:
+    # Contexto de página explícito: en modo explore el ticker de la página
+    # (resuelto en servidor, acotado al tenant) completa la pregunta sin
+    # ticker. El modo guía sigue exigiendo ticker explícito.
+    page_context = resolve_page_context(db, payload.page)
+    if payload.mode == "explore" and not payload.ticker and page_context and page_context.company:
+        payload = payload.model_copy(update={"ticker": page_context.company.ticker})
     try:
         baseline = answer(db, payload)
-        return AssistantResponse.model_validate(await synthesize(db, payload, baseline))
+        response = AssistantResponse.model_validate(await synthesize(db, payload, baseline))
+        response.context = page_context.echo() if page_context else None
+        return response
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

@@ -1,8 +1,8 @@
 """MemoryService contract tests.
 
-Chat memory is user-directed context: writes happen only on explicit
-triggers, duplicates consolidate instead of multiplying, and retrieval
-ranks overlap, importance, recency and company affinity transparently.
+El cerebro es SOLO LECTURA: la escritura desde el chat
+(``maybe_write_from_chat``) quedó retirada. La recuperación sigue
+ordenando por solape, importancia, recencia y afinidad de empresa.
 """
 
 import pytest
@@ -31,36 +31,6 @@ def _company(db: Session) -> Company:
     db.add(company)
     db.commit()
     return company
-
-
-def test_write_only_on_explicit_trigger(db):
-    service = MemoryService()
-    assert service.maybe_write_from_chat(db, "What is the revenue trend?") is None
-    assert service.maybe_write_from_chat(db, "recuerda X") is None  # too short
-    item = service.maybe_write_from_chat(db, "Recuerda que vigilo el free cash flow de cerca")
-    assert item is not None
-    assert item.importance == 7
-    assert item.scope == "portfolio"
-    assert item.metadata_["write_policy"] == "triggered_by_user_instruction"
-
-
-def test_duplicate_write_consolidates_instead_of_duplicating(db):
-    service = MemoryService()
-    text = "Recuerda que vigilo el free cash flow de cerca"
-    first = service.maybe_write_from_chat(db, text)
-    second = service.maybe_write_from_chat(db, "  recuerda   que VIGILO el free cash flow de cerca ")
-    assert first.id == second.id
-    assert db.query(MemoryItem).count() == 1
-
-
-def test_company_scoped_write_stays_with_company(db):
-    company = _company(db)
-    service = MemoryService()
-    item = service.maybe_write_from_chat(
-        db, "Mi tesis sobre Apple es que el moat sigue intacto", company, scope="company"
-    )
-    assert item.company_id == company.id
-    assert item.scope == "company"
 
 
 def test_retrieval_ranks_overlap_importance_and_company(db):

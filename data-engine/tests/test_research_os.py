@@ -448,7 +448,9 @@ def test_memory_api_tracks_claims_evidence_sections_and_sessions():
     hypotheses = next(s for s in chat_payload["sections"] if s["key"] == "user_hypotheses")
     assert "Azure AI demand" in hypotheses["body"]
     source_types = {source["type"] for source in chat_payload["sources"]}
-    assert {"thesis_version", "financial_fact", "claim", "claim_evidence", "memory_item", "memory_writeback"} <= source_types
+    assert {"thesis_version", "financial_fact", "claim", "claim_evidence", "memory_item"} <= source_types
+    # El cerebro es SOLO LECTURA: ni "Recuerda ..." escribe memoria desde el chat.
+    assert "memory_writeback" not in source_types
 
     db = SessionLocal()
     try:
@@ -458,7 +460,7 @@ def test_memory_api_tracks_claims_evidence_sections_and_sessions():
                 MemoryItem.content.like("%Azure AI demand%"),
             )
         )
-        assert stored_chat_memory is not None
+        assert stored_chat_memory is None
     finally:
         db.close()
 
