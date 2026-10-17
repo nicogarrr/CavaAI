@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import time
 from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
@@ -15,6 +16,23 @@ from app.llm.errors import LLMError, ProviderHTTPError, ProviderResponseError, P
 from app.llm.json import parse_json_response
 
 logger = logging.getLogger(__name__)
+
+# OpenCode answers 502 with this fixed message when its free tier is used from outside
+# OpenCode. It does not change between attempts, so retrying only burns seconds.
+_FREE_TIER_ORIGIN_MARKER = "free tier can only be used from within"
+_FREE_TIER_BREAKER_SECONDS = 120.0
+# (provider, model) -> monotonic time until which calls fail fast. After it passes,
+# the next call is a real probe; if the 502 persists the breaker closes again.
+_free_tier_breaker: dict[tuple[str, str], float] = {}
+
+
+def _is_free_tier_origin_error(response: httpx.Response) -> bool:
+    if response.status_code != 502:
+        return False
+    try:
+        return _FREE_TIER_ORIGIN_MARKER in response.text.lower()
+    except Exception:
+        return False
 
 _ERROR_BODY_PREVIEW_CHARS = 200
 _REDACTED = "[REDACTED]"
@@ -125,6 +143,9 @@ class LLMProvider(ABC):
         headers: Mapping[str, str],
         payload: Mapping[str, Any],
     ) -> httpx.Response:
+        breaker_key = (str(self.name), str(payload.get("model")))
+        if _free_tier_breaker.get(breaker_key, 0.0) > time.monotonic():
+            raise ProviderHTTPError(self.name, 502)
         for attempt in range(self._max_retries + 1):
             try:
                 response = await self._send(url, headers=headers, payload=payload)
@@ -144,6 +165,9 @@ class LLMProvider(ABC):
             if response.status_code < 400:
                 return response
             self._log_http_error(response, headers, payload, attempt)
+            if _is_free_tier_origin_error(response):
+                _free_tier_breaker[breaker_key] = time.monotonic() + _FREE_TIER_BREAKER_SECONDS
+                raise ProviderHTTPError(self.name, 502)
             if response.status_code not in {408, 409, 429} and response.status_code < 500:
                 raise ProviderHTTPError(self.name, response.status_code)
             if attempt >= self._max_retries:
