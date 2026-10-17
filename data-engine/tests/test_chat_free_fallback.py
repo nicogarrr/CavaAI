@@ -343,3 +343,100 @@ async def test_502_backup_advice_with_invented_facts_is_still_rejected(invented)
     result = await ChatSynthesisService(ChatFallbackProvider(primary, backup)).synthesize_general(
         question='¿Qué opinas del margen de seguridad?', baseline=ChatResponse(answer='', sources=[]))
     assert result.model == 'fallback'
+
+
+def _chain(groq_value, gemini_value):
+    p = Fake(ProviderHTTPError("opencode-go", 502))
+    return p, Fake(groq_value), Fake(gemini_value)
+
+
+@run_async
+async def test_chain_valid_gemini_never_calls_groq_and_uses_pinned_model_and_prompt():
+    from app.llm.chat_provider import GEMINI_MODEL
+    p, g, m = _chain(response("ok groq", model=GROQ_MODEL, provider="groq"), response("ok gemini", model=GEMINI_MODEL, provider="gemini"))
+    out = await ChatFallbackProvider(p, g, backup2=m).complete(LLMRequest([Message("user", "hola")], task="chat", model="deepseek-v4.1-flash-free"))
+    assert out.provider == "gemini" and not g.calls
+    assert m.calls[0].model == GEMINI_MODEL and "prosa plana" in m.calls[0].messages[-1].content
+
+
+@run_async
+async def test_chain_gemini_failure_tries_38_then_groq_with_pinned_models():
+    from app.llm.chat_provider import GEMINI_MODELS
+    p, g, m = _chain(response("ok groq", model=GROQ_MODEL, provider="groq"), ProviderHTTPError("gemini", 503))
+    out = await ChatFallbackProvider(p, g, backup2=m).complete(LLMRequest([Message("user", "hola")], task="chat"))
+    assert out.provider == "groq" and g.calls[0].model == GROQ_MODEL
+    assert [c.model for c in m.calls] == list(GEMINI_MODELS) and GEMINI_MODELS == ("gemini-3.5-flash-lite", "gemini-3.8-flash")
+
+
+@run_async
+async def test_chain_35_rejected_then_38_accepted_never_reaches_groq():
+    from app.llm.chat_provider import GEMINI_MODEL, GEMINI_MODEL_2
+    p, g, m = _chain(response("groq", model=GROQ_MODEL, provider="groq"), None)
+    seen = []
+    class Seq(Fake):
+        async def complete(self, request):
+            self.calls.append(request)
+            return response("MALA" if request.model == GEMINI_MODEL else "BUENA", model=request.model, provider="gemini")
+    m = Seq()
+    def only_good(resp):
+        if resp.text != "BUENA":
+            raise ValueError("rejected")
+    out = await ChatFallbackProvider(p, g, backup2=m, validator=only_good).complete(LLMRequest([Message("user", "hola")], task="chat"))
+    assert out.text == "BUENA" and out.model == GEMINI_MODEL_2 and not g.calls
+
+
+@run_async
+async def test_chain_gemini_rejected_by_validator_falls_to_groq():
+    from app.llm.chat_provider import GEMINI_MODEL
+    p, g, m = _chain(response("BUENA", model=GROQ_MODEL, provider="groq"), response("MALA", model=GEMINI_MODEL, provider="gemini"))
+    def only_good(resp):
+        if resp.text != "BUENA":
+            raise ValueError("rejected")
+    out = await ChatFallbackProvider(p, g, backup2=m, validator=only_good).complete(LLMRequest([Message("user", "hola")], task="chat"))
+    assert out.text == "BUENA" and len(m.calls) == 2 and len(g.calls) == 1
+
+
+@run_async
+async def test_chain_every_candidate_still_goes_through_the_truth_validator():
+    from app.llm.chat_provider import GEMINI_MODEL
+    from app.llm.errors import ProviderResponseError
+    p, g, m = _chain(response("Rentabilidad del 30,55% segun el informe", model=GROQ_MODEL, provider="groq"), response("Otra cifra inventada 12,45", model=GEMINI_MODEL, provider="gemini"))
+    def reject(resp):
+        raise ValueError("ungrounded")
+    with pytest.raises(ProviderResponseError, match="ungrounded"):
+        await ChatFallbackProvider(p, g, backup2=m, validator=reject).complete(LLMRequest([Message("user", "hola")], task="chat"))
+    assert len(m.calls) == 2 and len(g.calls) == 1
+
+
+@run_async
+async def test_chain_without_gemini_behaves_as_before():
+    from app.llm.errors import ProviderResponseError
+    p, g = Fake(ProviderHTTPError("opencode-go", 502)), Fake(ProviderHTTPError("groq", 429))
+    with pytest.raises((ProviderHTTPError, ProviderResponseError)):
+        await ChatFallbackProvider(p, g).complete(LLMRequest([Message("user", "hola")], task="chat"))
+    assert g.calls[0].model == GROQ_MODEL
+
+
+def _gemini_cfg(**over):
+    cfg = dict(llm_enabled=True, opencode_go_api_key="synthetic", groq_api_key="synthetic", groq_chat_fallback_enabled=True, groq_free_plan_confirmed=True, groq_zdr_confirmed=True)
+    cfg.update(over)
+    return Settings(**cfg)
+
+
+def test_gemini_disabled_by_default_and_factory_unchanged():
+    assert create_chat_llm_provider(_gemini_cfg()).backup2 is None
+
+
+@pytest.mark.parametrize("missing", ["gemini_api_key", "gemini_free_plan_confirmed"])
+def test_gemini_factory_is_fail_closed(missing):
+    cfg = dict(gemini_chat_fallback_enabled=True, gemini_api_key="synthetic", gemini_free_plan_confirmed=True)
+    cfg[missing] = None if missing.endswith("key") else False
+    with pytest.raises(ValueError, match="Gemini chat requires"):
+        create_chat_llm_provider(_gemini_cfg(**cfg))
+
+
+def test_gemini_enabled_builds_pinned_free_model_backup():
+    from app.llm.chat_provider import GEMINI_MODEL
+    prov = create_chat_llm_provider(_gemini_cfg(gemini_chat_fallback_enabled=True, gemini_api_key="synthetic", gemini_free_plan_confirmed=True))
+    assert prov.backup2 is not None and prov.backup2.name == "gemini"
+    assert GEMINI_MODEL == "gemini-3.5-flash-lite"

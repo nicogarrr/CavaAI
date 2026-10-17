@@ -66,7 +66,14 @@ answer. It is OFF by default and only builds when all of these hold:
 - `GROQ_FREE_PLAN_CONFIRMED=true` and `GROQ_ZDR_CONFIRMED=true` (free plan
   and zero data retention confirmed by the operator)
 
-Groq output passes through the educational boundary check and never receives
+Optional first backup, tried BEFORE Groq; Groq is used only if Gemini fails or its
+output is rejected (sequential, never in parallel): Gemini `gemini-3.5-flash-lite`, then `gemini-3.8-flash` (free tier). OFF by default; needs
+`GEMINI_CHAT_FALLBACK_ENABLED=true`, `GEMINI_API_KEY` and
+`GEMINI_FREE_PLAN_CONFIRMED=true` (operator confirms the key's project has no
+billing, otherwise usage is charged). The same truthfulness guards apply.
+
+Backup output passes through the same truthfulness validators as the primary
+(the former lexical educational/no-advice filter was removed in #1127) and never receives
 DeepSeek aliases or `effort=max`. This tier exists for chat resilience only;
 research workflows do not use it.
 
