@@ -128,8 +128,11 @@ describe('los nombres dicen lo que se calcula', () => {
     const ui = source('components/portfolio/PortfolioScores.tsx');
     assert.ok(!ui.includes("label: 'CAGR 3Y'"));
     assert.ok(ui.includes("label: 'Retorno acumulado'"));
-    assert.ok(ui.includes("label: 'Consistencia'"));
-    assert.ok(ui.includes("label: 'Resiliencia'"));
+    const labels = JSON.parse(source('lib/i18n/es.json')).portfolio.scores;
+    assert.equal(labels.quality, 'Consistencia');
+    assert.equal(labels.value, 'Resiliencia');
+    assert.ok(ui.includes("t('portfolio.scores.quality')"));
+    assert.ok(ui.includes("t('portfolio.scores.value')"));
     assert.ok(ui.includes('no factores fundamentales'));
     assert.ok(ui.includes('no un CAGR ni una previsión a tres años'));
     assert.ok(ui.includes('sm:grid-cols-5'));

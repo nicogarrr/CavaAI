@@ -61,10 +61,10 @@
   },
   "portfolio": {
     "scores": {
-      "quality": "Calidad",
-      "growth": "Crecimiento",
-      "value": "Valor",
-      "dividend": "Dividendo"
+      "quality": "Consistencia",
+      "growth": "Retorno (banda)",
+      "value": "Resiliencia",
+      "dividend": "Dividendos (banda)"
     },
     "tearsheet": {
       "maxDrawdown": "Caída máxima",

@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Shield, TrendingUp, CircleDollarSign, Coins, Percent } from 'lucide-react';
 import { formatNumber, formatPercent } from '@/lib/format';
 import { portfolioScoreDisplay } from '@/lib/portfolio-score-display';
+import { t } from '@/lib/i18n/t';
 
 interface PortfolioScoresProps {
     scores: {
@@ -17,10 +18,10 @@ interface PortfolioScoresProps {
 
 export default function PortfolioScores({ scores }: PortfolioScoresProps) {
     const scoreItems = [
-        { label: 'Consistencia', value: scores.quality, icon: Shield, color: 'text-purple-400' },
-        { label: 'Retorno (banda)', value: scores.growth, icon: TrendingUp, color: 'text-blue-400' },
-        { label: 'Resiliencia', value: scores.value, icon: CircleDollarSign, color: 'text-green-400' },
-        { label: 'Dividendos (banda)', value: scores.dividend, icon: Coins, color: 'text-yellow-400' },
+        { label: t('portfolio.scores.quality'), value: scores.quality, icon: Shield, color: 'text-purple-400' },
+        { label: t('portfolio.scores.growth'), value: scores.growth, icon: TrendingUp, color: 'text-blue-400' },
+        { label: t('portfolio.scores.value'), value: scores.value, icon: CircleDollarSign, color: 'text-green-400' },
+        { label: t('portfolio.scores.dividend'), value: scores.dividend, icon: Coins, color: 'text-yellow-400' },
         { label: 'Retorno acumulado', value: scores.cagr3y, icon: Percent, color: 'text-teal-400', isPercent: true },
     ];
     const missing = scoreItems.filter((item) => item.value == null).map((item) => item.label);
