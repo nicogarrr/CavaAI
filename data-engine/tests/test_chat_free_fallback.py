@@ -279,3 +279,36 @@ async def test_primary_bad_language_cannot_cancel_valid_backup():
         question="Cuéntame algo", baseline=ChatResponse(answer="", sources=[]),
     )
     assert result.model == GROQ_MODEL and len(p.calls) == 1 and not b.cancelled
+
+
+def test_default_free_backup_hedge_does_not_wait_25_seconds():
+    provider = ChatFallbackProvider(Fake(), Fake())
+    assert provider.delay == 2
+    assert provider.with_candidate_validator(lambda _: None).delay == 2
+
+
+@run_async
+async def test_free_tier_502_starts_backup_and_keeps_candidate_guards():
+    from app.llm.errors import ProviderResponseError
+    primary = Fake(ProviderHTTPError('opencode-go', 502))
+    backup = Fake(response('Texto sintético.', model=GROQ_MODEL, provider='groq'))
+    def reject(_): raise ValueError('unverified citation')
+    with pytest.raises(ProviderResponseError, match='unverified citation'):
+        await ChatFallbackProvider(primary, backup, validator=reject).complete(
+            LLMRequest([Message('user', 'Pregunta sintética')], task='chat'))
+    assert len(backup.calls) == 1
+    instruction = backup.calls[0].messages[-1].content
+    assert 'No atribuyas opiniones a un autor' in instruction
+    assert 'No añadas porcentajes' in instruction
+    assert 'No deduzcas una deuda neta alta' in instruction
+
+
+@run_async
+async def test_502_backup_still_rejects_unsupported_doctrine_numbers_and_advice():
+    from app.schemas import ChatResponse
+    from app.services.chat_synthesis_service import ChatSynthesisService
+    primary = Fake(ProviderHTTPError('opencode-go', 502))
+    backup = Fake(response('Buffett exige un margen de seguridad del 30%.', model=GROQ_MODEL, provider='groq'))
+    result = await ChatSynthesisService(ChatFallbackProvider(primary, backup)).synthesize_general(
+        question='Explica el margen de seguridad', baseline=ChatResponse(answer='', sources=[]))
+    assert result.model == 'fallback'
