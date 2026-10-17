@@ -143,10 +143,13 @@ async def test_external_cancel_collects_both_tasks():
 
 
 @run_async
-async def test_backup_receives_financial_advice_boundary():
+async def test_backup_may_reason_about_positions_but_keeps_truth_rules():
     p, b = Fake(ProviderHTTPError("opencode-go", 429)), Fake()
     await ChatFallbackProvider(p, b).complete(LLMRequest([Message("user", "hola")], task="chat"))
-    assert "No des asesoramiento financiero personalizado" in b.calls[0].messages[-1].content
+    instruction = b.calls[0].messages[-1].content
+    assert "Puedes opinar y razonar" in instruction
+    assert "No des asesoramiento" not in instruction and "educativo" not in instruction
+    assert "No añadas porcentajes" in instruction
 
 
 @run_async
@@ -177,15 +180,13 @@ async def test_paid_primary_override_rejected_before_network():
 
 @pytest.mark.parametrize("text", [
     "Para tu cartera, te recomiendo comprar más AAA y vender BBB.",
-    "Para su jubilación, adquiera acciones de AAA y liquide la posición en BBB.",
     "You should buy AAA and sell BBB.", "Asigne un 60% a acciones.",
 ])
 @run_async
-async def test_known_advice_canaries_rejected(text):
-    from app.llm.errors import ProviderResponseError
+async def test_advice_wording_is_no_longer_rejected_by_the_provider(text):
     p, b = Fake(ProviderHTTPError("opencode-go", 429)), Fake(response(text, model=GROQ_MODEL, provider="groq"))
-    with pytest.raises(ProviderResponseError, match="educational boundary"):
-        await ChatFallbackProvider(p, b).complete(LLMRequest([Message("user", "sintético")], task="chat"))
+    out = await ChatFallbackProvider(p, b).complete(LLMRequest([Message("user", "sintético")], task="chat"))
+    assert out.text == text
 
 
 @run_async
@@ -195,7 +196,7 @@ async def test_structured_context_backup_is_explicit_and_preserved():
     out = await ChatFallbackProvider(p, b).complete(req)
     assert out.provider == "groq"
     assert tuple(b.calls[0].messages[:-1]) == tuple(req.messages)
-    assert "No des asesoramiento financiero personalizado" in b.calls[0].messages[-1].content
+    assert "Puedes opinar y razonar" in b.calls[0].messages[-1].content
 
 @pytest.mark.parametrize("bad", ["not_json", "citation", "language"])
 @run_async
@@ -311,4 +312,32 @@ async def test_502_backup_still_rejects_unsupported_doctrine_numbers_and_advice(
     backup = Fake(response('Buffett exige un margen de seguridad del 30%.', model=GROQ_MODEL, provider='groq'))
     result = await ChatSynthesisService(ChatFallbackProvider(primary, backup)).synthesize_general(
         question='Explica el margen de seguridad', baseline=ChatResponse(answer='', sources=[]))
+    assert result.model == 'fallback'
+
+
+@run_async
+async def test_502_backup_advice_without_invented_facts_now_passes():
+    from app.schemas import ChatResponse
+    from app.services.chat_synthesis_service import ChatSynthesisService
+    primary = Fake(ProviderHTTPError('opencode-go', 502))
+    text = 'Yo no añadiría más a esa posición: ya pesa mucho y el negocio aún no genera caja. Mantendría y vigilaría la deuda.'
+    backup = Fake(response(text, model=GROQ_MODEL, provider='groq'))
+    result = await ChatSynthesisService(ChatFallbackProvider(primary, backup)).synthesize_general(
+        question='¿Qué harías con el margen de seguridad?', baseline=ChatResponse(answer='', sources=[]))
+    assert result.model == GROQ_MODEL and result.answer == text
+
+
+@pytest.mark.parametrize('invented', [
+    'Yo compraría más: el margen de seguridad ideal es del 30% según el informe anual.',
+    'Yo venderia: Warren Buffett ha reiterado que hay que vender con deuda neta alta.',
+    'Yo mantendría: la empresa gana 12,45 dólares por acción.',
+])
+@run_async
+async def test_502_backup_advice_with_invented_facts_is_still_rejected(invented):
+    from app.schemas import ChatResponse
+    from app.services.chat_synthesis_service import ChatSynthesisService
+    primary = Fake(ProviderHTTPError('opencode-go', 502))
+    backup = Fake(response(invented, model=GROQ_MODEL, provider='groq'))
+    result = await ChatSynthesisService(ChatFallbackProvider(primary, backup)).synthesize_general(
+        question='¿Qué opinas del margen de seguridad?', baseline=ChatResponse(answer='', sources=[]))
     assert result.model == 'fallback'
