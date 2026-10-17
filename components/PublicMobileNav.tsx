@@ -13,7 +13,7 @@ export interface PublicNavLinkItem {
 
 /**
  * Navegacion movil del header PUBLICO. Antes la lista de paginas (Metodologia,
- * Terminos, Ayuda) ocupaba una segunda fila permanente del header sticky por
+ * Ayuda) ocupaba una segunda fila permanente del header sticky por
  * debajo de md (`public-header-inner` en columna), robando viewport al
  * contenido en cada pagina publica. Ahora el header es una sola fila en todos
  * los viewports y esos enlaces viven en un drawer con hamburger (>=44px).

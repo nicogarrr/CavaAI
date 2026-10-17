@@ -33,10 +33,6 @@ Regla que sale de esta revisión:
 
 ## Lo que NO se toca
 
-- **`app/(public)/terms/page.tsx`**: su comentario de «pendiente de validación
-  por el dueño» es legal y se resuelve en otra fase. Se verificó que **no hay
-  ningún otro «pendiente de validación» de copy legal** en el repo (búsqueda
-  sobre `app/`, `components/` y `lib/`): el único hit es ese comentario.
 - Archivos con otro dueño en curso (`ThesisMemo.tsx`, `PortfolioTransactions.tsx`,
   `PersonalizedOverview.tsx`, `app/(root)/screener/**`, `components/screener/**`,
   `AlertsManager.tsx`, `lib/format.ts`, `lib/labels.ts`, `lib/glossary.ts`,

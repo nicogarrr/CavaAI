@@ -34,7 +34,4 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.5,
     },
   ];
-  // /terms queda fuera del sitemap a propósito: la página es pública pero
-  // noindex hasta que el texto legal (Dic 2024) se valide; incluirla aquí
-  // empujaría a indexarla.
 }
