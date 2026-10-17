@@ -57,7 +57,12 @@ def _llm_payload(citations=None, drop_facts_citations: bool = False, skip_key: s
             continue
         section_citations = [] if (drop_facts_citations and key == "facts") else citations
         sections.append({"key": key, "body": f"llm {key}", "citations": section_citations})
-    return {"sections": sections, "confidence": 0.8, "insufficient_data": False}
+    return {
+        "sections": sections,
+        "confidence": 0.8,
+        "insufficient_data": False,
+        "answer": "Respuesta natural en prosa, breve y en castellano.",
+    }
 
 
 
@@ -69,7 +74,8 @@ def test_valid_synthesis_replaces_sections_and_records_trace():
     assert result.model == "stub-model"
     assert result.confidence == 0.8
     assert result.prompt_version
-    assert "HECHO" in result.answer and "CONCLUSION" in result.answer
+    assert result.answer == "Respuesta natural en prosa, breve y en castellano."
+    assert "HECHO" not in result.answer
     assert result.llm_trace["json_validity"] is True
     assert result.llm_trace["citation_verification"] is True
     assert result.llm_trace["request_id"] == "req-1"

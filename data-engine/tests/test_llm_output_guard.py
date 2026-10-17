@@ -169,9 +169,13 @@ def budget(monkeypatch):
     return _Budget
 
 
-def _chat_payload(body):
+def _chat_payload(body, answer=None):
     from app.services.chat_synthesis_service import SECTION_ORDER
 
+    # El contrato de sintesis exige `answer`: la prosa natural visible. Sin
+    # answer explicita, el fixture reutiliza el body (prosa corta valida en
+    # los candidatos en castellano; en los ingleses el guard de idioma salta
+    # antes, igual que con las secciones).
     return {
         "sections": [
             {
@@ -183,6 +187,7 @@ def _chat_payload(body):
         ],
         "confidence": 0.8,
         "insufficient_data": False,
+        "answer": body if answer is None else answer,
     }
 
 
@@ -231,7 +236,10 @@ def test_chat_synthesis_english_sections_retry_and_record_both_calls(monkeypatch
     )
     result = _run_chat(provider)
     assert provider.calls == 2 and len(budget.records) == 2
-    assert result.model == "stub-model" and "Margen estable" in result.answer
+    # La respuesta visible es la prosa natural, nunca la seccion cruda.
+    assert result.model == "stub-model"
+    assert result.answer == "Margen estable y deuda baja."
+    assert "HECHO" not in result.answer
 
 
 def test_chat_synthesis_double_rejection_falls_back_and_records_both(monkeypatch, budget):
