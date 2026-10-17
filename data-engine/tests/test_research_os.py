@@ -441,10 +441,12 @@ def test_memory_api_tracks_claims_evidence_sections_and_sessions():
     )
     assert source_aware_chat.status_code == 200
     chat_payload = source_aware_chat.json()
-    assert "HECHO" in chat_payload["answer"]
-    assert "HIPOTESIS / MEMORIA DEL USUARIO" in chat_payload["answer"]
-    assert "AFIRMACION SIN VERIFICAR" in chat_payload["answer"]
-    assert "INFERENCIA" in chat_payload["answer"]
+    # La respuesta visible es prosa natural; la estructura vive en `sections`.
+    assert "HECHO" not in chat_payload["answer"]
+    section_keys = {section["key"] for section in chat_payload["sections"]}
+    assert {"facts", "user_hypotheses", "unverified_claims", "inferences"} <= section_keys
+    hypotheses = next(s for s in chat_payload["sections"] if s["key"] == "user_hypotheses")
+    assert "Azure AI demand" in hypotheses["body"]
     source_types = {source["type"] for source in chat_payload["sources"]}
     assert {"thesis_version", "financial_fact", "claim", "claim_evidence", "memory_item", "memory_writeback"} <= source_types
 

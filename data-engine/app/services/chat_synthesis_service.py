@@ -20,6 +20,7 @@ from app.services.llm_output_guard import _english_hits, complete_guarded, inspe
 from app.services.prompt_registry import get_prompt
 
 PROMPT_VERSION = get_prompt("chat_source_synthesis", allow_remote=False).version
+GENERAL_PROMPT_VERSION = get_prompt("chat_general", allow_remote=False).version
 SECTION_ORDER = (
     "facts",
     "calculations",
@@ -135,9 +136,46 @@ RESPONSE_SCHEMA = {
         },
         "confidence": {"type": "number", "minimum": 0, "maximum": 1},
         "insufficient_data": {"type": "boolean"},
+        # Respuesta visible: prosa natural en castellano, sin etiquetas de
+        # seccion ni IDs de cita. Las secciones quedan para el panel plegado.
+        "answer": {"type": "string"},
     },
-    "required": ["sections", "confidence", "insufficient_data"],
+    "required": ["sections", "confidence", "insufficient_data", "answer"],
 }
+
+
+_CITATION_ID_RE = re.compile(
+    r"\b(?:financial_fact|news_event|document_chunk|claim_evidence|claim|"
+    r"thesis_version|thesis_section|rag_chunk|knowledge_chunk|memory_item|"
+    r"memory_writeback|market_price|research_session|evidence_suggestion):"
+)
+_SECTION_LABEL_DUMP_RE = re.compile(
+    r"(?m)^\s*(?:HECHO|CALCULO|HIPOTESIS|AFIRMACION SIN VERIFICAR|INFERENCIA|"
+    r"CONTRADICCIONES|DATOS INSUFICIENTES|CONCLUSION|FOTO DE EVIDENCIA|NOTICIAS)"
+    r"\s*$"
+)
+
+
+def _prose_answer_valid(text: str | None, *, max_chars: int = 2000) -> bool:
+    """La respuesta visible es prosa, no el volcado del contrato.
+
+    Rechaza IDs de cita, etiquetas de seccion, URLs y volcados en ingles:
+    cualquiera de esos significa que el modelo pego estructura interna en la
+    respuesta que lee el usuario.
+    """
+    body = (text or "").strip()
+    if not body or len(body) > max_chars:
+        return False
+    if _CITATION_ID_RE.search(body):
+        return False
+    if len(_SECTION_LABEL_DUMP_RE.findall(body)) >= 2:
+        return False
+    if re.search(r"https?://|www[.]", body, re.IGNORECASE):
+        return False
+    hits, total = _english_hits(body)
+    if hits >= 2 and hits / max(total, 1) >= 0.15:
+        return False
+    return True
 
 
 
@@ -209,7 +247,23 @@ _CONCEPT_Q_RE = re.compile(
     r"|how does (?:(?:the|an|a)\s+)?" + _CONCEPT_TERM + r" work)"
     r"(?:\s+(?:en general|de una empresa|de un negocio|in general|of a company))?\s*[?!.]*\s*"
 )
-_PERSONAL_RE = re.compile(r"(?i)\b(mi|mis|tu|tus|su|sus|nuestr[oa]s?|m[ií]o|m[ií]a)\b")
+# "su/sus" es ambiguo: en "su cartera" es el usuario (usted), en "sus cartas"
+# (las de Buffett) es un tercero. Solo cuenta como ambito privado cuando
+# modifica a un sustantivo de datos privados; lo demas pasa al generador.
+# Marcas de magnitud financiera: su presencia en una clausula convierte sus
+# cifras en datos que exigen aproximador; sin ellas, "tres ideas" es un
+# recuento del propio texto, no un dato empresarial.
+_MAGNITUDE_MARKER_RE = re.compile(
+    r"[$€£%]|\b(?:USD|EUR|GBP|JPY|d[oó]lares?|dolares?|euros?|libras?|"
+    r"mill[oó]n|millones|billones?|mil|acciones|empleados?|por\s+ciento)\b",
+    re.IGNORECASE,
+)
+
+_PERSONAL_RE = re.compile(
+    r"(?i)\b(mi|mis|tu|tus|nuestr[oa]s?|vuestr[oa]s?|m[ií]o|m[ií]a)\b"
+    r"|\bsu(?:s)?\s+(?:cartera|posici[oó]n(?:es)?|cuenta|inversi[oó]n(?:es)?|"
+    r"acciones|rentabilidad|patrimonio|beneficios?)\b"
+)
 _NUMBER_WORD_RE = re.compile(
     r"(?i)\b(cero|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|"
     r"catorce|quince|veinte\w*|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|"
@@ -242,8 +296,15 @@ def _general_quantity_context(text: str) -> bool:
 
 def _inferred_general_text_valid(
     text: str, *, allow_placeholders: bool = False, quantitative: bool = True,
+    allow_named_attribution: bool = False,
 ) -> bool:
-    """Prosa natural: no atribuciones/citas falsas, cifras aproximadas locales."""
+    """Prosa natural: no atribuciones/citas falsas, cifras aproximadas locales.
+
+    Con doctrina recuperada (cartas de la biblioteca) el modelo SI puede decir
+    "en sus cartas, Buffett...": la atribucion es a fragmentos que se le
+    pasaron. Lo que sigue prohibido es invocar informes oficiales, fuentes o
+    datos que nadie le ha dado.
+    """
     if len(text) > 8000 or not text.strip() or re.search(r"https?://|www[.]|\bdoi:", text, re.I):
         return False
     if re.search(
@@ -283,7 +344,7 @@ def _inferred_general_text_valid(
     ):
         return False
     attribution = re.sub(r"(?i)seg[uú]n (?:la [eé]poca|normativa contable)\b", "", attribution)
-    if re.search(r"(?i)\bseg[uú]n\b", attribution):
+    if not allow_named_attribution and re.search(r"(?i)\bseg[uú]n\b", attribution):
         return False
     # Aproximar no convierte una cifra contable con decimales en estimacion.
     if re.search(r"\d[\d.,]*[.,]\d{2}(?!\d)", text):
@@ -307,6 +368,11 @@ def _inferred_general_text_valid(
         r"rondar[ií]an|ronda|rondan|rondaba|rondaban|cercan[oa]s? a|decenas de|cientos de|miles de|entre)\s+(?:(?:el|la|los|las|de|del)\s+){0,3}$"
     )
     for clause in clauses:
+        if allow_named_attribution and not _MAGNITUDE_MARKER_RE.search(clause):
+            # Respuesta de doctrina: los recuentos del propio texto ("tres
+            # ideas", "dos condiciones") no son cifras empresariales. Las
+            # clausulas con magnitud financiera siguen exigiendo aproximador.
+            continue
         for match in number.finditer(clause):
             token = match.group().strip().rstrip(".,")
             # Periodos/fechas no son una cifra empresarial. No convertirlos
@@ -443,6 +509,8 @@ class ChatSynthesisService:
                     self._verified_sections(data, baseline, set(retrieval_ids))
                     float(data["confidence"])
                     data["insufficient_data"]
+                    if not _prose_answer_valid(data.get("answer")):
+                        raise ValueError("Invalid prose answer")
 
                 bind = getattr(self.provider, "with_candidate_validator", None)
                 provider = bind(_validate_candidate, _record) if bind else self.provider
@@ -456,6 +524,8 @@ class ChatSynthesisService:
                 response = guarded.response
                 cost = spent["cost"]
                 payload = parse_json_response(response.text)
+                if not _prose_answer_valid(payload.get("answer")):
+                    raise ValueError("Invalid prose answer")
                 sections = self._verified_sections(payload, baseline, set(retrieval_ids))
                 declared_confidence = max(0.0, min(1.0, float(payload["confidence"])))
                 declared_insufficient = bool(payload["insufficient_data"])
@@ -489,7 +559,9 @@ class ChatSynthesisService:
                     confidence = min(confidence, MAX_CONFIDENCE_WITHOUT_FACTS)
 
                 baseline.sections = sections
-                baseline.answer = self._render(sections)
+                # Lo visible es la prosa natural; las secciones verificadas
+                # quedan plegadas con sus citas.
+                baseline.answer = (payload.get("answer") or "").strip()
                 baseline.prompt_version = PROMPT_VERSION
                 baseline.model = response.model
                 baseline.confidence = confidence
@@ -552,8 +624,9 @@ class ChatSynthesisService:
         """Respuesta natural en espanol para preguntas sin ticker.
 
         El contrato estructurado (HECHO/CALCULO/...) es para respuestas de
-        datos. Esta ruta general no recibe fuentes; responde con conocimiento
-        natural sin atribuirlo a documentos que no ha consultado.
+        datos. Esta ruta responde con conocimiento natural y, cuando el
+        baseline trae doctrina de la biblioteca (cartas de inversores), con
+        esos fragmentos como apoyo citable de forma natural.
         """
         from app.llm.general_concepts import local_definition
 
@@ -576,10 +649,27 @@ class ChatSynthesisService:
                 ),
                 sources=[],
                 model="abstain",
-                prompt_version="chat-general-v2",
+                prompt_version=GENERAL_PROMPT_VERSION,
                 confidence=0.2,
                 llm_trace={"path": "general", "abstain": True, "reason": "financial_scope"},
             )
+        # Doctrina recuperada por el baseline (cartas de Buffett y compania):
+        # es contexto real consultado, asi que la respuesta puede apoyarse en
+        # el y decir de donde viene. Nunca datos de empresa ni cifras de mercado.
+        def _clip(text: str, limit: int) -> str:
+            compact = " ".join((text or "").split())
+            return compact if len(compact) <= limit else f"{compact[: limit - 3]}..."
+
+        doctrine = [
+            {
+                "author": source.get("author"),
+                "title": source.get("title"),
+                "page": source.get("page_number"),
+                "text": _clip(str(source.get("text") or ""), 600),
+            }
+            for source in baseline.sources
+            if source.get("type") == "knowledge_chunk" and source.get("text")
+        ][:3]
         budget = BudgetController()
         # Mismo control de presupuesto que la ruta estructurada: sin saldo
         # NO hay primera llamada (antes solo se comprobaba el reintento).
@@ -597,7 +687,8 @@ class ChatSynthesisService:
                             "question": question,
                             "scope": scope,
                             "reviewed_at_utc": datetime.now(UTC).date().isoformat(),
-                            "sources_available": False,
+                            "sources_available": bool(doctrine),
+                            "doctrine_context": doctrine or None,
                         },
                         default=str,
                         ensure_ascii=False,
@@ -639,6 +730,7 @@ class ChatSynthesisService:
                 if not _inferred_general_text_valid(
                     resp.text.strip(), allow_placeholders=scope == "ordinary",
                     quantitative=scope != "ordinary" or _general_quantity_context(resp.text),
+                    allow_named_attribution=bool(doctrine),
                 ):
                     raise ValueError("Ungrounded general output")
 
@@ -659,17 +751,24 @@ class ChatSynthesisService:
             text,
             allow_placeholders=scope == "ordinary",
             quantitative=scope != "ordinary" or _general_quantity_context(text),
+            allow_named_attribution=bool(doctrine),
         ):
             return self._general_fallback(baseline, reason="ungrounded")
         return ChatResponse(
             answer=text,
-            # Sin fuentes: la prosa general no se presenta como respaldada.
-            sources=[],
+            # La doctrina consultada viaja como fuente visible (titulo/autor/
+            # pagina); sin doctrina la prosa no se presenta como respaldada.
+            sources=doctrine,
             proposed_actions=[],
             model=guarded.response.model,
-            prompt_version="chat-general-v2",
-            confidence=0.35 if baseline.sources else 0.2,
-            llm_trace={"path": "general", "provider": guarded.response.provider, "cost": spent["cost"]},
+            prompt_version=GENERAL_PROMPT_VERSION,
+            confidence=0.5 if doctrine else (0.35 if baseline.sources else 0.2),
+            llm_trace={
+                "path": "general",
+                "provider": guarded.response.provider,
+                "cost": spent["cost"],
+                "doctrine_chunks": len(doctrine),
+            },
         )
 
     @staticmethod
@@ -683,7 +782,7 @@ class ChatSynthesisService:
             sources=baseline.sources,
             proposed_actions=baseline.proposed_actions,
             model="fallback",
-            prompt_version="chat-general-v2",
+            prompt_version=GENERAL_PROMPT_VERSION,
             confidence=0.2,
             llm_trace={"path": "general", "fallback": True, "reason": reason},
         )
@@ -734,12 +833,6 @@ class ChatSynthesisService:
                         f"{section.key!r}"
                     )
         return [by_key[key] for key in SECTION_ORDER]
-
-    @staticmethod
-    def _render(sections: list[SynthesisSection]) -> str:
-        return "\n\n".join(
-            f"{SECTION_LABELS[section.key]}\n{section.body}" for section in sections
-        )
 
     @staticmethod
     def _baseline_confidence(baseline: ChatResponse) -> float:

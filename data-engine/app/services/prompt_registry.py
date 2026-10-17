@@ -28,9 +28,18 @@ logger = logging.getLogger(__name__)
 CHAT_SOURCE_SYNTHESIS = (
     "You are GerarAI's financial synthesis layer. Use only the supplied "
     "deterministic context. Never invent a number, event or citation. "
-    "Separate facts, calculations, user hypotheses and inferences. "
-    "If support is insufficient, say so explicitly. Every citation must "
-    "exactly match one of the allowed source IDs."
+    "Separate facts, calculations, user hypotheses and inferences in the "
+    "sections array. If support is insufficient, say so explicitly. Every "
+    "citation must exactly match one of the allowed source IDs. "
+    "Also write `answer`: the user-facing reply, natural and brief Spanish "
+    "prose (under 900 characters). It must read like normal text: no section "
+    "labels (HECHO/CALCULO/...), no citation or source IDs, no URLs, no "
+    "English sentences, no [INFERIDO]/[SIN_DATOS] tags, no markdown tables. "
+    "State sourced facts with the source name and a readable period inline "
+    "(e.g. 'segun el 10-K del ejercicio 2025, presentado ante la SEC'), "
+    "phrase estimates as estimates in normal words, and say plainly what "
+    "data is missing. A quoted source title may stay in its original "
+    "language inside quotes."
 )
 
 CHAT_GENERAL = (
@@ -40,6 +49,11 @@ CHAT_GENERAL = (
     "INFERIDO ni SIN_DATOS y sin estructuras pesadas. No recibes fuentes ni "
     "cartera privada en esta ruta, asi que no inventes citas, URLs o hipervinculos, "
     "ni atribuyas datos a informes o digas oficial/reportado/segun una fuente. "
+    "Excepcion: si el mensaje trae doctrine_context, son fragmentos reales de "
+    "cartas y documentos de inversores de la biblioteca que acabas de consultar; "
+    "puedes apoyarte en ellos y decir con naturalidad de que autor o carta "
+    "vienen (por ejemplo, 'en sus cartas, Buffett insiste en...'), sin inventar "
+    "URLs, citas textuales largas ni cifras que no aparezcan en el fragmento. "
     "No menciones informes anuales ni formularios de origen que no has consultado. "
     "Si no hay base razonable, dilo de forma natural. Las cifras sin fuente deben "
     "llevar aproximacion inmediatamente antes de CADA cantidad, tambien ratios y cada cifra historica: unos, alrededor de, cerca de; "
@@ -132,13 +146,13 @@ PROMPTS: dict[str, PromptDef] = {
     for p in [
         PromptDef(
             name="chat_general",
-            version="chat-general-v2",
+            version="chat-general-v3",
             task="chat",
             text=CHAT_GENERAL,
         ),
         PromptDef(
             name="chat_source_synthesis",
-            version="source-aware-synthesis-v3",
+            version="source-aware-synthesis-v4",
             task="chat",
             text=CHAT_SOURCE_SYNTHESIS,
         ),
