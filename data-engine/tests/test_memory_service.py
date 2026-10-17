@@ -104,3 +104,11 @@ def test_write_explicit_note_creates_only_a_tenant_memory_item(db):
     assert [m.content for m in db.query(MemoryItem).all()] == ["prefiero largo plazo"]
     general = MemoryService().write_explicit_note(db, "nota general", None, "portfolio")
     assert general.company_id is None and general.scope == "portfolio"
+
+
+def test_remember_parser_is_linear_on_pathological_whitespace():
+    import time
+    started = time.perf_counter()
+    assert remember_note("recuerda" + " " * 200_000 + "x") is None
+    assert remember_note("recuerda que" + " \t" * 100_000 + "dato largo") == "dato largo"
+    assert time.perf_counter() - started < 1.0
