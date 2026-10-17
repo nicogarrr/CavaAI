@@ -303,6 +303,7 @@ def _chat_payload(citation: str) -> dict:
         ],
         "confidence": 0.8,
         "insufficient_data": False,
+        "answer": "Respuesta natural en prosa con la cifra citada en su seccion.",
     }
 
 
@@ -327,7 +328,9 @@ def test_chat_llm_synthesis_verifies_citations_and_falls_back_on_hallucination()
     assert valid.model == "test-model"
     assert valid.llm_trace["citation_verification"] is True
     assert valid.llm_trace["cache_read_tokens"] == 20
-    assert "HECHO" in valid.answer
+    assert valid.answer == "Respuesta natural en prosa con la cifra citada en su seccion."
+    assert "HECHO" not in valid.answer
+    assert any(section.key == "facts" for section in valid.sections)
 
     invalid_baseline = baseline.model_copy(deep=True)
     invalid_baseline.answer = "safe deterministic answer"

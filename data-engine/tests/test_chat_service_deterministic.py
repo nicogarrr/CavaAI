@@ -48,8 +48,11 @@ def test_empty_company_is_blocked_with_honest_next_steps(db):
     )
     assert response.blocked is True
     assert response.model == "deterministic"
-    assert f"Aun no hay tesis almacenada para {company.ticker}." in response.answer
-    assert "Calculo bloqueado: faltan hechos financieros almacenados." in response.answer
+    # Prosa visible natural; el detalle estructurado queda en `sections`.
+    assert "Todavia no tengo hechos financieros fiables almacenados" in response.answer
+    assert "HECHO" not in response.answer
+    facts_section = next(s for s in response.sections if s.key == "facts")
+    assert "No hay hechos financieros fiables almacenados" in facts_section.body
     assert f"Crear la primera tesis para {company.ticker}" in response.proposed_actions
     assert any("Ingerir hechos financieros SEC/FMP" in action for action in response.proposed_actions)
     assert not response.sources
@@ -79,8 +82,10 @@ def test_populated_company_cites_stored_sourced_rows(db):
     fact_source = next(s for s in response.sources if s["type"] == "financial_fact")
     assert fact_source["source_type"] == "SEC"
     assert fact_source["value"] == 391000000000.0
-    assert "Tesis AAPL v3: `published` con rating `watch`" in response.answer
-    assert "Faltan entradas almacenadas" in response.answer  # other key metrics absent
+    assert "Tengo guardada la tesis v3 (estado published, rating watch)." in response.answer
+    assert "ingresos 391 mil millones USD (ejercicio 2025, SEC)" in response.answer
+    assert "Aun faltan datos almacenados de:" in response.answer  # other key metrics absent
+    assert "efectivo y equivalentes" in response.answer  # cash_and_equivalents traducido
 
 
 def test_unverified_claim_surfaces_review_action(db):
@@ -98,7 +103,9 @@ def test_unverified_claim_surfaces_review_action(db):
 
     response = ChatService()._deterministic_answer(db, "AAPL claims?", "company", "AAPL")
     assert "Revisar afirmaciones no verificadas o contradichas" in response.proposed_actions
-    assert "[unverified] Margins will expand next year" in response.answer
+    assert "Hay afirmaciones pendientes de verificar." in response.answer
+    unverified = next(s for s in response.sections if s.key == "unverified_claims")
+    assert "[unverified] Margins will expand next year" in unverified.body
 
 
 def test_ticker_resolved_from_question_text(db):

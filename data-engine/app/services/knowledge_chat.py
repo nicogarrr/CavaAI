@@ -18,11 +18,82 @@ from app.models import KnowledgeChunk, KnowledgeDocument
 from app.services import knowledge_analysis
 
 logger = logging.getLogger(__name__)
-STOP = frozenset(["que", "qué", "dice", "dicen", "sobre", "de", "del", "la", "el", "los", "las", "un", "una", "y", "en", "por", "para", "como", "cómo", "what", "does", "say", "about", "the", "and", "on", "is", "a", "an", "investment", "investing", "inversión", "inversor", "cartas", "carta", "biblioteca", "buffett", "magallanes"])
+STOP = frozenset([
+    "que", "qué", "dice", "dicen", "sobre", "de", "del", "la", "el", "los", "las", "un", "una", "y", "en", "por", "para", "como", "cómo", "what", "does", "say", "about", "the", "and", "on", "is", "a", "an", "investment", "investing", "inversión", "inversor", "cartas", "carta", "biblioteca", "buffett", "magallanes",
+    # Palabras corrientes de pregunta: sin ellas un solo termino generico
+    # ("sentido", "tiene") recupera fragmentos irrelevantes.
+    "tiene", "tienen", "tenemos", "sentido", "cuándo", "cuando", "hace", "hacen",
+    "puede", "pueden", "podemos", "debe", "deben", "debería", "quiero", "saber",
+    "mejor", "peor", "bueno", "buena", "buenos", "momento", "cosa", "cosas",
+    "importante", "importantes", "según", "segun", "forma", "manera", "caso",
+    "casos", "vez", "veces", "hay", "más", "mas", "muy", "cada", "siempre",
+    "nunca", "porque", "entre", "desde", "hasta", "donde", "dónde", "cuales",
+    "cuáles", "cual", "cuál", "son", "ser", "es", "está", "están", "unos",
+    "unas", "este", "esta", "esto", "ese", "esa", "eso", "piensa", "piensan",
+])
+
+# Puente ES->EN sin LLM: gran parte del corpus (Buffett, Marks, Munger) esta
+# en ingles y una pregunta en castellano no la alcanza por texto. Frases
+# primero (margen de seguridad), luego palabras sueltas.
+_ES_EN_GLOSSARY: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("margen de seguridad", ("margin of safety",)),
+    ("circulo de competencia", ("circle of competence",)),
+    ("círculo de competencia", ("circle of competence",)),
+    ("flujo de caja", ("cash flow",)),
+    ("valor intrinseco", ("intrinsic value",)),
+    ("valor intrínseco", ("intrinsic value",)),
+    ("recomprar", ("repurchase", "buyback")),
+    ("recompras", ("repurchase", "buyback")),
+    ("recompra", ("repurchase", "buyback")),
+    ("acciones", ("share", "stock")),
+    ("accion", ("share", "stock")),
+    ("beneficio", ("earnings", "profit")),
+    ("beneficios", ("earnings", "profit")),
+    ("deuda", ("debt",)),
+    ("dividendo", ("dividend",)),
+    ("dividendos", ("dividend",)),
+    ("valoracion", ("valuation",)),
+    ("valoración", ("valuation",)),
+    ("negocio", ("business",)),
+    ("negocios", ("business",)),
+    ("precio", ("price",)),
+    ("riesgo", ("risk",)),
+    ("foso", ("moat",)),
+    ("calidad", ("quality",)),
+    ("crecimiento", ("growth",)),
+    ("gestor", ("manager",)),
+    ("gestores", ("manager",)),
+    ("cartera", ("portfolio",)),
+    ("invertir", ("invest",)),
+    ("inversion", ("invest",)),
+    ("inversión", ("invest",)),
+    ("tesis", ("thesis",)),
+    ("resultados", ("results", "earnings")),
+    ("empresa", ("company", "business")),
+    ("empresas", ("company", "business")),
+    ("barato", ("cheap",)),
+    ("barata", ("cheap",)),
+    ("largo plazo", ("long term", "long-term")),
+    ("contable", ("accounting",)),
+    ("contabilidad", ("accounting",)),
+    ("mercado", ("market",)),
+)
 
 
 def _terms(question: str) -> list[str]:
-    return list(dict.fromkeys(w for w in re.findall(r"\w+", question.lower()) if len(w) > 2 and w not in STOP))[:12]
+    base = [w for w in re.findall(r"\w+", question.lower()) if len(w) > 2 and w not in STOP]
+    expanded = list(base)
+    # Flexion: la pregunta dice "recomprar" y la carta dice "recompras".
+    for word in base:
+        for ending in ("ar", "er", "ir", "ando", "iendo"):
+            if word.endswith(ending) and len(word) - len(ending) >= 4:
+                expanded.append(word[: -len(ending)])
+                break
+    folded_question = _fold(question)
+    for spanish, english in _ES_EN_GLOSSARY:
+        if spanish in folded_question or spanish in base:
+            expanded.extend(english)
+    return list(dict.fromkeys(expanded))[:16]
 
 
 def _fold(text: str) -> str:
@@ -65,7 +136,20 @@ def retrieve(db: Session, question: str, *, scope: str, author: str | None = Non
         lexical = list(db.execute(statement.where(or_(
             *[KnowledgeChunk.content.ilike(f"%{term.replace('%', '').replace('_', '')}%") for term in terms]
         )).order_by(KnowledgeChunk.id).limit(120)).all())
-        lexical.sort(key=lambda row: -sum(_fold(t) in _fold(row[0].content) for t in terms))
+        covered = sorted(
+            (
+                (sum(_fold(t) in _fold(row[0].content) for t in terms), row)
+                for row in lexical
+            ),
+            key=lambda item: -item[0],
+        )
+        best = covered[0][0] if covered else 0
+        if best >= 2:
+            # Un solo termino comun no basta: sin este suelo la respuesta a
+            # "cuando tiene sentido recomprar acciones" era un fragmento sobre
+            # camiones que solo compartia una palabra generica.
+            covered = [item for item in covered if item[0] >= 2]
+        lexical = [row for _, row in covered]
     semantic = []
     if ids:
         verified = {c.id: (c, d) for c, d in db.execute(statement.where(KnowledgeChunk.id.in_(ids))).all()}
@@ -125,6 +209,11 @@ async def ask_library(db: Session, question: str, *, scope: str = "letters",
             settings = get_settings()
             model = settings.opencode_go_model
             if model not in VERIFIED_FREE_MODELS:
+                result["message"] = (
+                    "Fragmentos encontrados. Sintesis no disponible: el modelo "
+                    "configurado para la biblioteca no es un modelo gratuito "
+                    "verificado."
+                )
                 return result
             # Ni overrides ni fallback pueden salir de los modelos gratuitos en esta función.
             settings = settings.model_copy(update={"llm_model_overrides": {}, "opencode_go_fallback_model": ""})
@@ -174,4 +263,11 @@ async def ask_library(db: Session, question: str, *, scope: str = "letters",
             result.update(status="sin_datos", answers=[], message="Los fragmentos encontrados no responden a esta pregunta.")
     except Exception as exc:
         logger.warning("Knowledge chat synthesis unavailable: %s", type(exc).__name__)
+        if mode == "analisis":
+            return degraded_analysis(result)
+        result["message"] = (
+            "Fragmentos encontrados. Sintesis no disponible ahora mismo: el "
+            "proveedor del modelo no respondio. Los fragmentos citados son "
+            "literales y siguen siendo validos."
+        )
     return result
